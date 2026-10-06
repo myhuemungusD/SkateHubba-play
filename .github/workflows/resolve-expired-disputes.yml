@@ -55,7 +55,20 @@ jobs:
     if: github.repository == 'myhuemungusD/SkateHubba-play'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # `issues: write` lets the alert step open/close the tracking issue (same
+    # escalation firebase-rules-deploy.yml's deploy job uses). No npm install
+    # runs in this job, so the write-scoped token is never exposed to
+    # third-party package scripts.
+    permissions:
+      contents: read
+      issues: write
     steps:
+      # Only the shared alert action is needed from the repo.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/actions
+          persist-credentials: false
+
       - name: Invoke resolve endpoint
         # `shell: bash` is load-bearing: it runs the step with
         # `bash --noprofile --norc -eo pipefail`. Without an explicit shell the
@@ -76,3 +89,16 @@ jobs:
             -w "\nHTTP %{http_code} in %{time_total}s\n" \
             https://skatehubba.com/api/cron/resolve-expired-disputes \
             | tee /dev/stderr
+
+      # Loud failure alerting, same pattern as firebase-rules-deploy.yml: open
+      # (or update) one labelled tracking issue when this job fails, and close
+      # it on the next green run. `always()` so it runs after a failed curl;
+      # a cancelled run (superseded via `concurrency`) is neither and no-ops.
+      - name: Failure alert / auto-resolve
+        if: always()
+        uses: ./.github/actions/cron-failure-alert
+        with:
+          status: ${{ job.status }}
+          label: cron-alert-resolve-expired-disputes
+          job-name: Resolve Expired Disputes (dispute referee)
+          endpoint: /api/cron/resolve-expired-disputes

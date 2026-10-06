@@ -603,6 +603,14 @@ function AppRoutes() {
                 links, shared URLs and installed PWA shortcuts still land. */}
             <Route path="/record" element={<Navigate to="/me" replace />} />
 
+            {/* /play was the old name for the signed-in home. Vercel 307s it to
+                /lobby at the edge (vercel.json), but the native shells serve
+                the bundle locally and never hit Vercel, so the SPA needs the
+                same redirect. Signed-out visitors then fall through /lobby's
+                own guard to the landing page — no second auth check here. */}
+            <Route path="/play" element={<Navigate to="/lobby" replace />} />
+            <Route path="/play/*" element={<Navigate to="/lobby" replace />} />
+
             {/* Public: a shared profile link has to open for someone without
                 an account, or it can never bring them in. No auth guard here
                 — "player" is in PUBLIC_SCREENS so the auth router leaves it

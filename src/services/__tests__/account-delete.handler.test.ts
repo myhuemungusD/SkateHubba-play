@@ -44,6 +44,8 @@ vi.mock("firebase-admin/auth", () => ({ getAuth: h.getAuthMock }));
 vi.mock("firebase-admin/firestore", () => ({ getFirestore: h.getFirestoreMock }));
 vi.mock("firebase-admin/storage", () => ({ getStorage: h.getStorageMock }));
 vi.mock("../../../api/account/_deleteUserData.js", () => ({ deleteUserDataAsAdmin: h.cascadeMock }));
+// Only loaded when SENTRY_DSN is set (see the "error reporting" block).
+vi.mock("@sentry/node", async () => (await import("./sentry-node.test-helpers")).sentryNodeMock);
 
 import { VALID_SERVICE_ACCOUNT } from "./cron.test-helpers";
 import {
@@ -52,6 +54,7 @@ import {
   type AccountRequestOpts,
   type AccountResponseCapture,
 } from "./account-delete.test-helpers";
+import { recordSentryOrder, resetSentryNodeMock, sentryNodeMock, TEST_SENTRY_DSN } from "./sentry-node.test-helpers";
 
 const TOKEN = "eyJhbGciOi.PAYLOAD.SIGNATURE";
 const AUTH = `Bearer ${TOKEN}`;
@@ -122,6 +125,7 @@ beforeEach(() => {
   process.env.FIREBASE_SERVICE_ACCOUNT_JSON = VALID_SERVICE_ACCOUNT;
   delete process.env.FIREBASE_STORAGE_BUCKET;
   delete process.env.ACCOUNT_DELETE_ALLOWED_ORIGIN;
+  delete process.env.SENTRY_DSN;
   // No pre-existing app: the default path is a cold start that initializes one.
   h.getAppsMock.mockReturnValue([]);
   h.initializeAppMock.mockReturnValue(APP);
@@ -491,5 +495,68 @@ describe("erasure ordering", () => {
     const { res, out } = makeAccountRes();
     await expect(handler(makeAccountReq({ authorization: AUTH }), res)).resolves.toBeUndefined();
     expect(out.body).toMatchObject({ code: "erasure_failed" });
+  });
+});
+
+describe("error reporting (server-side Sentry)", () => {
+  async function callRecordingOrder(): Promise<{ out: AccountResponseCapture; order: string[] }> {
+    const handler = await loadHandler();
+    const { res, out } = makeAccountRes();
+    const order = recordSentryOrder(res);
+    await handler(makeAccountReq({ method: "POST", authorization: AUTH }), res);
+    return { out, order };
+  }
+  const captures = () => sentryNodeMock.captureException.mock.calls;
+
+  beforeEach(() => {
+    process.env.SENTRY_DSN = TEST_SENTRY_DSN;
+    resetSentryNodeMock();
+  });
+
+  it("is inert without a DSN — the SDK is never initialised", async () => {
+    delete process.env.SENTRY_DSN;
+    h.cascadeMock.mockRejectedValueOnce(new Error("firestore unavailable"));
+    const out = await call();
+    expect(out.body).toMatchObject({ code: "erasure_failed" });
+    expect(sentryNodeMock.init).not.toHaveBeenCalled();
+    expect(captures()).toHaveLength(0);
+  });
+
+  it("reports account_delete_erasure_failed with the uid and flushes BEFORE responding", async () => {
+    h.cascadeMock.mockRejectedValueOnce(new Error("firestore unavailable"));
+    const { out, order } = await callRecordingOrder();
+    expect(out.body).toMatchObject({ code: "erasure_failed" });
+    expect(order.slice(-3)).toEqual(["error:account_delete_erasure_failed", "flush", "respond"]);
+    const ctx = captures().find((c) => c[1].tags.event === "account_delete_erasure_failed")?.[1];
+    expect(ctx).toMatchObject({ level: "error", extra: { uid: TOKEN_UID } });
+  });
+
+  it("never sends the ID token to Sentry", async () => {
+    h.cascadeMock.mockRejectedValueOnce(new Error("firestore unavailable"));
+    await callRecordingOrder();
+    expect(JSON.stringify(captures())).not.toContain(TOKEN);
+  });
+
+  it("redacts the init failure message (it can quote the service-account secret)", async () => {
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = '{"private_key": "-----BEGIN PRIVATE KEY-----SECRET';
+    const { out, order } = await callRecordingOrder();
+    expect(out.body).toMatchObject({ code: "init_failed" });
+    expect(order).toEqual(["error:account_delete_init_failed", "flush", "respond"]);
+    const reported = captures()[0][0] as Error;
+    expect(`${reported.message} ${reported.stack}`).not.toContain("SECRET");
+  });
+
+  it("reports an Auth-delete failure after erasure, flushed before the 200", async () => {
+    h.deleteUserMock.mockRejectedValueOnce(new Error("USER_NOT_FOUND"));
+    const { out, order } = await callRecordingOrder();
+    expect(out.body).toMatchObject({ ok: true, authDeleted: false });
+    expect(order.slice(-3)).toEqual(["error:account_delete_auth_failed", "flush", "respond"]);
+  });
+
+  it("keeps the success path unchanged when Sentry itself is down", async () => {
+    sentryNodeMock.flush.mockRejectedValue(new Error("sentry unreachable"));
+    const out = await call();
+    expect(out.code).toBe(200);
+    expect(out.body).toEqual({ ok: true, authDeleted: true, summary: SUMMARY });
   });
 });

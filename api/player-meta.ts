@@ -32,6 +32,8 @@
  * ahead of the rules deploy is safe.
  */
 
+import { withSentry } from "./_sentry.js";
+
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
 const FIRESTORE_DB_NAME = "skatehubba";
 
@@ -199,7 +201,7 @@ function renderCard(card: CardContent, canonical: string): string {
 </html>`;
 }
 
-export default async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
+async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
   const rawUid = firstParam(req, "uid");
   const uid = rawUid && UID_SHAPE.test(rawUid) ? rawUid : null;
   const canonical = uid ? `${SITE_ORIGIN}/player/${uid}` : SITE_ORIGIN;
@@ -220,3 +222,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
   res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400");
   res.status(200).send(renderCard(content, canonical));
 }
+
+// Only the unhandled-throw path reports: a missing/private profile is the
+// expected generic-card fallback, not an error.
+export default withSentry("player_meta", handler);
