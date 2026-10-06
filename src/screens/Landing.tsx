@@ -1,12 +1,17 @@
-import { useCallback, useEffect, useRef, useState, lazy, Suspense } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { GoogleButton } from "../components/GoogleButton";
 import { InviteButton } from "../components/InviteButton";
+import { LandingDemoVideo } from "../components/LandingDemoVideo";
 import { SkateButton } from "../components/SkateButton";
 import { VideoIcon, ClockIcon, FlameIcon, ShieldIcon, TrophyIcon, UsersIcon } from "../components/icons";
 import { SOCIAL_LINKS } from "../constants/socialLinks";
 
-// Lazy: keeps mapbox-gl + LandingMap out of the initial landing bundle.
-const LandingMap = lazy(() => import("../components/map/LandingMap"));
+// Feature freeze (2026-10): the spot-map teaser ("30+ spots, live in LA",
+// locked pins, "Unlock the Map") was removed from the landing page so
+// mapbox-gl and map tiles never load here. The page now sells only the core
+// S.K.A.T.E. Challenge loop. The LandingMap component is kept (unused) under
+// src/components/map/ in case the teaser returns with the Map feature — see
+// src/lib/featureFlags.ts.
 
 /* ── Types ───────────────────────────────────────────────── */
 
@@ -90,6 +95,17 @@ const FEATURES = [
 
 /* ── Component ───────────────────────────────────────────── */
 
+// The hero entrance animation plays once per page load. The landing can be
+// mounted twice in quick succession (the boot landing painted before the full
+// app loads, then App's own landing route — see src/boot/landingBoot.ts), and
+// replaying the entrance on that swap would look like a glitch.
+let heroEntrancePlayed = false;
+
+/** @internal test-only reset */
+export function __resetHeroEntranceForTest(): void {
+  heroEntrancePlayed = false;
+}
+
 export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) {
   const handleAuth = useCallback(
     (mode: AuthMode) => () => {
@@ -98,35 +114,14 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
     [onGo],
   );
 
-  // Gate the LandingMap mount on scroll-into-view so mapbox-gl (~500 KB) only
-  // loads when the user is actually about to see it. Initial-true when the
-  // platform lacks IntersectionObserver (jsdom tests, ancient browsers) so
-  // those paths still render the map.
-  const mapSentinelRef = useRef<HTMLDivElement>(null);
-  const [shouldLoadMap, setShouldLoadMap] = useState<boolean>(() => typeof IntersectionObserver === "undefined");
-
-  useEffect(() => {
-    if (shouldLoadMap) return;
-    const node = mapSentinelRef.current;
-    if (!node) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setShouldLoadMap(true);
-          observer.disconnect();
-        }
-      },
-      // Pre-fetch the chunk before the section enters the viewport so the
-      // map feels instant on slower connections.
-      { rootMargin: "200px" },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [shouldLoadMap]);
-
   const handleGoogle = useCallback(() => {
     onGoogle();
   }, [onGoogle]);
+
+  const [animateHero] = useState(() => !heroEntrancePlayed);
+  useEffect(() => {
+    heroEntrancePlayed = true;
+  }, []);
 
   return (
     <div className="min-h-dvh pb-28 md:pb-0">
@@ -171,7 +166,9 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
         {/* Layered ambient glow */}
         <div className="absolute inset-0 pointer-events-none bg-hero-glow" />
 
-        <div className="relative max-w-6xl mx-auto px-6 flex flex-col items-center text-center hero-stagger">
+        <div
+          className={`relative max-w-6xl mx-auto px-6 flex flex-col items-center text-center${animateHero ? " hero-stagger" : ""}`}
+        >
           {/* Badge */}
           <span className="inline-flex items-center gap-2 font-body text-xs tracking-wide text-brand-orange/80 border border-brand-orange/15 rounded-full px-4 py-1.5 mb-8 backdrop-blur-sm">
             <span className="w-1.5 h-1.5 rounded-full bg-brand-orange animate-rec-pulse" />
@@ -179,9 +176,11 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
           </span>
 
           {/* Main headline */}
+          {/* hero-lcp: the heading is the page's LCP element, so it must be
+              visible in the very first frame (see .hero-stagger in index.css). */}
           <h1
             id="hero-heading"
-            className="font-display tracking-wide text-white mb-5 leading-[0.9] text-[clamp(3rem,2.2rem_+_4.5vw,6.5rem)]"
+            className="hero-lcp font-display tracking-wide text-white mb-5 leading-[0.9] text-[clamp(3rem,2.2rem_+_4.5vw,6.5rem)]"
           >
             <span className="block text-brand-orange [text-shadow:0_0_60px_rgba(255,107,0,0.35),0_0_120px_rgba(255,107,0,0.15)]">
               SKATEHUBBA
@@ -247,46 +246,6 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
         </a>
       </section>
 
-      {/* ─── Spot Map Teaser ────────────────────────────── */}
-      <section
-        id="spots"
-        aria-labelledby="spots-heading"
-        className="max-w-5xl mx-auto px-6 py-12 md:py-16 scroll-mt-20"
-      >
-        <div className="text-center mb-6 md:mb-8">
-          <h2 id="spots-heading" className="font-display text-fluid-2xl text-white tracking-wider mb-2">
-            30+ spots, live in LA — your city next
-          </h2>
-          <p className="font-body text-sm text-dim">Sign up to log a spot, claim a session, or scope the gnar.</p>
-        </div>
-        {shouldLoadMap ? (
-          <Suspense
-            fallback={
-              <div
-                aria-label="Loading map"
-                className="w-full h-[320px] md:h-[480px] rounded-2xl border border-white/10 bg-surface-alt animate-pulse"
-              />
-            }
-          >
-            <LandingMap onSignUpPrompt={handleAuth("signup")} />
-          </Suspense>
-        ) : (
-          <div
-            ref={mapSentinelRef}
-            data-testid="landing-map-sentinel"
-            aria-label="Map loads when in view"
-            className="w-full h-[320px] md:h-[480px] rounded-2xl border border-white/10 bg-surface-alt"
-          />
-        )}
-        <div className="mt-6 flex justify-center">
-          <div className="w-full max-w-sm">
-            <SkateButton onClick={handleAuth("signup")} disabled={googleLoading}>
-              Unlock the Map
-            </SkateButton>
-          </div>
-        </div>
-      </section>
-
       {/* ─── Demo Video ──────────────────────────────────── */}
       <section id="demo" aria-labelledby="demo-heading" className="max-w-5xl mx-auto px-6 py-16 md:py-24 scroll-mt-20">
         <h2 id="demo-heading" className="sr-only">
@@ -294,19 +253,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
         </h2>
         <div className="video-showcase">
           <div className="relative rounded-2xl overflow-hidden border border-white/[0.08] shadow-[0_0_80px_rgba(255,107,0,0.06),0_20px_60px_rgba(0,0,0,0.4)]">
-            <video
-              autoPlay
-              loop
-              muted
-              playsInline
-              preload="metadata"
-              disablePictureInPicture
-              controlsList="nodownload noplaybackrate"
-              className="w-full aspect-video object-cover bg-surface"
-              aria-label="SkateHubba gameplay demo"
-            >
-              <source src="/sh-video-edit.mp4" type="video/mp4" />
-            </video>
+            <LandingDemoVideo />
             {/* Bottom fade */}
             <div className="absolute inset-0 pointer-events-none bg-video-overlay" />
             {/* Caption overlay */}

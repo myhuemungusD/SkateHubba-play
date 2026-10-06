@@ -11,14 +11,24 @@ const TABS: ReadonlyArray<{ id: AdminTab; label: string }> = [
  * treatment as the clips feed's Top/New control so the selected affordance
  * reads identically across the app.
  */
-export function AdminTabs({ tab, onChange }: { tab: AdminTab; onChange: (next: AdminTab) => void }) {
+export function AdminTabs({
+  tab,
+  onChange,
+  showVerifyPro = true,
+}: {
+  tab: AdminTab;
+  onChange: (next: AdminTab) => void;
+  /** False while Verified Pro is frozen (VITE_FEATURE_EXTRAS_ENABLED off) — drops the Verify Pro tab. */
+  showVerifyPro?: boolean;
+}) {
+  const tabs = showVerifyPro ? TABS : TABS.filter(({ id }) => id !== "verify");
   return (
     <div
       role="group"
       aria-label="Admin sections"
-      className="mb-6 grid grid-cols-3 gap-1 rounded-xl border border-border bg-surface/40 p-0.5"
+      className={`mb-6 grid ${tabs.length === 3 ? "grid-cols-3" : "grid-cols-2"} gap-1 rounded-xl border border-border bg-surface/40 p-0.5`}
     >
-      {TABS.map(({ id, label }) => {
+      {tabs.map(({ id, label }) => {
         const pressed = tab === id;
         return (
           <button

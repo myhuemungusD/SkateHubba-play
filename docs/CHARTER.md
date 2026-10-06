@@ -27,7 +27,7 @@
 - **Repo tree corrected.** Removed `tailwind.config.js` (Tailwind 4 config is CSS-based in `src/index.css`). Added `src/components/onboarding/`, `OnboardingContext`. Doc index regenerated against actual repo: 15 docs including this charter.
 - **`src/services/games.ts` description corrected.** Game CRUD is decomposed across `games.create.ts`, `games.turns.ts`, `games.judge.ts`, `games.match.ts`, `games.subscriptions.ts`, `games.mappers.ts`. `games.ts` is now a barrel re-export.
 - **PR-gate job list corrected.** **Nine** jobs: `enforce-pr-policy`, `guard-as-any-casts`, `verify-no-cloud-functions`, `guard-todo-fixme-hack`, `verify-workflow-changes`, `check-test-duplication`, `check-file-length`, `validate-firebase-rules`, `build-functions`.
-- **`firestore.rules` size corrected** to **3260 lines / ~189 KB** (measured 2026-08-26). Earlier figures of ~1546 and ~1805 LOC were both stale. At ~74% of Firebase's 256 KB hard limit — see `docs/GAPS.md` P2-9.
+- **`firestore.rules` size corrected** to **3335 lines / ~194 KB** (measured 2026-10-01; 3260 / ~189 KB on 2026-08-26). Earlier figures of ~1546 and ~1805 LOC were both stale. At ~76% of Firebase's 256 KB hard limit — see `docs/GAPS.md` P2-9.
 - **Pre-flight gate corrected** to use the `verify` script (which includes `check:test-dup`).
 - **Tech-debt source corrected.** `COMPREHENSIVE_GAP_ANALYSIS.md` was archived to `docs/archive/COMPREHENSIVE_GAP_ANALYSIS.md`. Active debt now lives in `docs/DECISIONS.md` and `docs/STATUS_REPORT.md`, with security debt in `docs/GAPS.md`.
 
@@ -59,16 +59,17 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 - Atomic username reservation with uniqueness enforcement
 - WebM (web) and MP4 (Capacitor native) video capture, 1KB–50MB
 - Lobby with active/completed games, leaderboard, win/loss stats
-- Auto-forfeit on expired turns (client-triggered — see known gaps)
+- Auto-forfeit on expired turns — client on game open plus a 15-minute server sweep (`api/cron/sweep-expired-turns.ts`)
 - Nudge system with rate limiting
 - Spot map (Mapbox GL + Firestore `spots` collection, challenge flow integration)
-- Clip feed embedded in lobby — two lanes: pending referee rulings (disputes and Call-BS reviews awaiting the viewer, ruled inline) above the community clip spotlight (thumbs up / thumbs down, Top/New toggle, autoplay)
-- Persistent bottom tab bar (Home / Map / Me)
+- Clips feed on its own tab (`/feed`) — two lanes: pending referee rulings (disputes and Call-BS reviews awaiting the viewer, ruled inline) above the community clip spotlight (thumbs up / thumbs down, Top/New toggle, autoplay)
+- Persistent five-tab bottom bar (Home · Clips · Challenge · Map · Me), Challenge as the raised centre action
+- Nearby-spots dropdown on map search (closest active spots within 10 km)
 - Verified pro profiles with gold treatment
 - Public player profiles with game history
 - Setter dispute flow for matcher "landed" claims (v1.1.0)
 - User blocking + content reporting (App Store UGC compliance)
-- GDPR Article 20 "Download My Data" from lobby account menu
+- GDPR Article 20 "Download My Data" from Settings (`AccountActions`)
 - Settings screen (notifications, haptics, blocked players, help)
 - Pull-to-refresh with haptic commitment cue
 - Safe-area insets for iOS Dynamic Island and home indicator
@@ -78,7 +79,7 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 - PostHog with consent gating; Vercel Analytics + Speed Insights
 - Service worker for FCM background messages, with a cron-driven drain endpoint as the sender (see §4.4)
 - Onboarding tutorial overlays (`HubzMascot`, `MascotBubble`, `SpotlightOverlay`, `TutorialOverlay`)
-- Capacitor Android project initialized; iOS scaffolded; Fastlane scaffolded
+- Capacitor iOS + Android shells with store release pipeline (fastlane, signed AAB + iOS CI), Android back button, Universal/App Links, native share/network bridges
 
 ### 2.2 In review
 
@@ -88,7 +89,7 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 
 - Custom Mapbox style for branded dark-base map (`VITE_MAPBOX_STYLE_URL`, no code change)
 - Cut the missing git tags — the repo has no `v1.0.0`/`v1.1.0` tag despite the CHANGELOG linking to both
-- Close the two partially-open P0s in [GAPS.md](GAPS.md) (dispute notifications, DSA controls)
+- Close the remaining partially-open P0 in [GAPS.md](GAPS.md) (P0-4, DSA controls — account-level items block store submission)
 
 ### 2.4 Known critical gaps
 
@@ -137,7 +138,7 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 
 ### 4.1 Web platform
 
-- React 19.2 + Vite 8 (SPA only — no SSR)
+- React 19 + Vite 8 (SPA only — no SSR)
 - TypeScript 5.6 strict
 - Tailwind CSS 4 — **CSS-based config in `src/index.css`** via `@import "tailwindcss"` + `@theme { ... }`. No `tailwind.config.js`.
 - React Router v8 (`react-router` package; all routes in `App.tsx`; transitions via `NavigationContext.setScreen`)
@@ -184,7 +185,7 @@ The `verify-no-cloud-functions` CI gate scopes to `^functions/src/` — the drai
 
 Auto-forfeit runs on two paths: the client's `forfeitExpiredTurn` on game open, and `api/cron/sweep-expired-turns.ts` on a 15-minute GitHub Actions schedule. Both share the `decideExpiredForfeit` helper in `src/services/turnForfeit.shared.ts`, so they cannot diverge.
 
-### 4.5 Security rules (the real backend, 3260 lines / ~189 KB)
+### 4.5 Security rules (the real backend, 3335 lines / ~194 KB)
 
 Firestore rules enforce:
 
@@ -201,9 +202,9 @@ Firestore rules enforce:
 Storage rules enforce:
 
 - Auth required, owner-scoped writes
-- Filename in {`set`, `match`} × extension in {`.webm`, `.mp4`}
+- Game videos: filename pinned to `set-{uid}` / `match-{uid}` (the uploader's UID) × extension in {`.webm`, `.mp4`}; never `update` — retries delete then create
 - Content-type matches extension
-- Size 1KB–50MB
+- Size 1KB–50MB (game videos); avatars `users/{uid}/avatar.*` ≤2MB; user clips `userClips/{uid}/*`
 
 ### 4.6 Hosting & deployment
 
@@ -230,7 +231,7 @@ Storage rules enforce:
 - ESLint 9 + Prettier 3.8 + Husky + lint-staged
 - TypeScript strict mode, no `any` (CI gate `guard-as-any-casts` enforces)
 - No TODO/FIXME/HACK in `src/` (CI gate `guard-todo-fixme-hack`)
-- File-length budgets (soft): services 400 LOC, screens 350 LOC, components 250 LOC — gated by `check-file-length` job
+- File-length budgets (soft): services 400 LOC, screens 350 LOC, components 250 LOC — reported by the `check-file-length` job (non-blocking, `continue-on-error`)
 - Test duplication gate via `scripts/check-test-duplication.mjs` and `check-test-duplication` job
 - Release-please for versioning
 
@@ -275,9 +276,9 @@ SkateHubba-play/
 ├── public/                    # PWA manifest, firebase-messaging-sw.js, static assets
 ├── infra/                     # backup + lifecycle shell scripts
 ├── scripts/                   # check-test-duplication.mjs, check-file-length.mjs, ...
-├── docs/                      # 15 docs (see §4.13)
+├── docs/                      # 22 docs (see §4.13)
 ├── fastlane/
-├── firestore.rules            # 3260 lines / ~189 KB — the real backend
+├── firestore.rules            # 3335 lines / ~194 KB — the real backend
 ├── storage.rules
 ├── firebase.json
 ├── vercel.json
@@ -321,7 +322,7 @@ authoritative per-collection reference (fields, constraints, access model).
 
 ### 4.12 Production dependencies (approved majors)
 
-React 19.2, react-dom 19.2, react-router 8, firebase 12, mapbox-gl 3, lucide-react 1, zod 4, posthog-js 1, @sentry/react 10, @sentry/capacitor 4, @vercel/analytics 2, @vercel/speed-insights 2, nsfwjs 4 (on-device avatar screening), firebase-admin 14 (serverless endpoints only), @capacitor/core 8 (+ android/ios/camera/haptics/keyboard/app/status-bar/splash-screen/push-notifications), @capacitor-community/video-recorder 7, @capacitor-firebase/authentication 8, @capacitor-firebase/app-check 8.
+React 19, react-dom 19, react-router 8, firebase 12, mapbox-gl 3, lucide-react 1, zod 4, posthog-js 1, @sentry/react 10, @sentry/capacitor 4, @vercel/analytics 2, @vercel/speed-insights 2, nsfwjs 4 (on-device avatar screening), firebase-admin 14 (serverless endpoints only), @capacitor/core 8 (+ android/ios/app/camera/clipboard/haptics/keyboard/network/push-notifications/share/splash-screen/status-bar), @capacitor-community/video-recorder 7, @capacitor-firebase/authentication 8, @capacitor-firebase/app-check 8.
 
 These are the approved majors. Minors and patches track upstream via the caret ranges in `package.json`; `package-lock.json` is the deterministic record installed in CI and in production. New production deps require written justification and Chief Engineer approval.
 
@@ -351,7 +352,7 @@ screenshots/
 ### 4.14 Prohibited
 
 - Custom backend / API server (no Express, no Next.js routes, no Vercel serverless functions for app logic)
-- Application-authored Cloud Functions in PRs (CI rejects new code under `functions/src/`; reintroduction requires maintainer sign-off and a tightened gate). Two approved exceptions exist. (1) The `api/cron/**` serverless endpoints — the auto-referee sweep and the push drain — which live outside the `functions/src/` gate and were signed off as referee/courier roles that write only transitions a client could legally have written itself. (2) The **stats close-out function** under `functions/src/` — maintainer-approved 2026-07 under exactly the sign-off + tightened-gate procedure this bullet defines. It moved win/loss stat writes server-side after a client-side stats-replay path corrupted production win/loss counters. The tightened gate (`verify-no-cloud-functions` in `pr-gate.yml`) pins its exact file set — `functions/src/index.ts`, `functions/src/index.test.ts`, `functions/src/applyGameStats.ts`, `functions/src/applyGameStats.test.ts` — and hard-fails any other `functions/src/` addition; the `build-functions` job type-checks, builds, and tests it on every PR that touches `functions/**`.
+- Application-authored Cloud Functions in PRs (CI rejects new code under `functions/src/`; reintroduction requires maintainer sign-off and a tightened gate). Two approved exceptions exist. (1) The `api/` serverless endpoints, which live outside the `functions/src/` gate: the `api/cron/**` auto-referee sweeps and push drain (signed off as referee/courier roles that write only transitions a client could legally have written itself), plus server-side account deletion (`api/account/delete.ts`) and `/player` social-card metadata (`api/player-meta.ts`). (2) The **stats close-out function** under `functions/src/` — maintainer-approved 2026-07 under exactly the sign-off + tightened-gate procedure this bullet defines. It moved win/loss stat writes server-side after a client-side stats-replay path corrupted production win/loss counters. The tightened gate (`verify-no-cloud-functions` in `pr-gate.yml`) pins its exact file set — `functions/src/index.ts`, `functions/src/index.test.ts`, `functions/src/applyGameStats.ts`, `functions/src/applyGameStats.test.ts` — and hard-fails any other `functions/src/` addition; the `build-functions` job type-checks, builds, and tests it on every PR that touches `functions/**`.
 - PostgreSQL / Neon / Drizzle (Firestore is the datastore — final)
 - React Native / Expo (Capacitor wraps the PWA — final)
 - Redux / Zustand / MobX / TanStack Query (Context + hooks is sufficient)
@@ -478,9 +479,9 @@ CI failures override deadlines.
 - Scope creep
 - Client-side mutation safety (rules are the only server-side enforcement)
 
-### 9.2 Known tech debt (last reviewed August 2026)
+### 9.2 Known tech debt (last reviewed October 2026)
 
-1. **P0 — Auto-forfeit is client-triggered only.** `forfeitExpiredTurn` runs only when a client opens the app and observes an expired turn. `api/cron/sweep-expired-turns.ts` plus `.github/workflows/sweep-expired-turns.yml` exist to close this; confirm the schedule is actually green before treating it as resolved. The push drain (§4.4) does not cover this path.
+1. **~~P0 — Auto-forfeit is client-triggered only.~~** Resolved. `api/cron/sweep-expired-turns.ts` runs every 15 minutes via `.github/workflows/sweep-expired-turns.yml` and shares `decideExpiredForfeit` with the client path (see §2.4). Residual risk: the cron workflows have no failure alerting — `docs/GAPS.md` P1-8.
 2. **P1 — Firestore backups not running.** Run `firebase-infra-setup.yml` on `workflow_dispatch`.
 3. **P1 — Storage video lifecycle not enforced.** Same workflow.
 4. **~~P2 — Stale FCM token pruning.~~** Resolved. `api/cron/drain-push-dispatch.ts` removes any token FCM rejects with `registration-token-not-registered` / `invalid-registration-token` from both `/pushTargets/{uid}.tokens` and `users/{uid}/private/profile.fcmTokens`. Tracked as `PERF-2` in `docs/NOTIFICATION_AUDIT.md`.
@@ -500,7 +501,7 @@ Tech debt lives in `docs/DECISIONS.md`, `docs/STATUS_REPORT.md`, and `docs/GAPS.
 - A platform investors can audit without concern
 - Working game loop end-to-end ✅ (v1.0.0)
 - Spot map, clip feed, dispute system shipped ✅ (v1.1.0)
-- Background push functional (next P0)
+- Background push functional ✅ (`api/cron/drain-push-dispatch.ts`)
 - 100 completed real games (Phase 1 milestone)
 - 50+ weekly active players (Phase 2 milestone)
 - Play Store internal track release (distribution gate)

@@ -46,6 +46,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { parseServiceAccountJson } from "../cron/_serviceAccount.js";
 import { deleteUserDataAsAdmin, type DeletionSummary } from "./_deleteUserData.js";
+import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
 
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
 const FIRESTORE_DB_NAME = "skatehubba";
@@ -193,7 +194,7 @@ function fail(res: ApiResponse, status: number, code: FailureCode, message: stri
   res.status(status).json({ ok: false, code, message });
 }
 
-export default async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
+async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
   applyCors(req, res);
 
   // Preflight. Answered before any auth work — a preflight carries no
@@ -225,6 +226,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
     app = getAdminApp();
   } catch (err) {
     log("account_delete_init_failed", { error: err instanceof Error ? err.message : String(err) });
+    // redactMessage: a parse failure on FIREBASE_SERVICE_ACCOUNT_JSON quotes
+    // part of the secret in its message.
+    captureServerError("account_delete_init_failed", err, {}, { redactMessage: true });
+    await flushServerErrors();
     fail(res, 500, "init_failed", "Server misconfiguration.");
     return;
   }
@@ -269,6 +274,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
     await getAuth(app).revokeRefreshTokens(uid);
   } catch (err) {
     log("account_delete_revoke_failed", { uid, error: err instanceof Error ? err.message : String(err) });
+    captureServerError("account_delete_revoke_failed", err, { uid }, { level: "warning" });
   }
 
   let summary: DeletionSummary;
@@ -286,6 +292,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
     // the user can retry. Every phase is idempotent, so a retry resumes rather
     // than double-deleting.
     log("account_delete_erasure_failed", { uid, error: err instanceof Error ? err.message : String(err) });
+    captureServerError("account_delete_erasure_failed", err, { uid });
+    await flushServerErrors();
     fail(res, 500, "erasure_failed", "Could not delete your data. Your account is unchanged — please try again.");
     return;
   }
@@ -298,10 +306,17 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
     await getAuth(app).deleteUser(uid);
   } catch (err) {
     log("account_delete_auth_failed", { uid, error: err instanceof Error ? err.message : String(err) });
+    captureServerError("account_delete_auth_failed", err, { uid });
+    await flushServerErrors();
     res.status(200).json({ ok: true, authDeleted: false, summary });
     return;
   }
 
   log("account_delete_success", { uid, ...summary });
+  // Sends a queued revoke_failed warning, if any; immediate when nothing is queued.
+  await flushServerErrors();
   res.status(200).json({ ok: true, authDeleted: true, summary });
 }
+
+// Reports anything the handler throws despite the never-throw contract above.
+export default withSentry("account_delete", handler);

@@ -52,6 +52,7 @@ import {
   type DisputeGameUpdate,
 } from "../../src/services/dispute.resolution.shared.js";
 import { toGameDoc, type GameDoc } from "../../src/services/games.mappers.js";
+import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
 
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
 const FIRESTORE_DB_NAME = "skatehubba";
@@ -430,6 +431,7 @@ async function resolveCommunityReview(
     // malformed doc — the game stays frozen for an operator to inspect.
     if (!disputeSnap.exists) {
       console.warn(JSON.stringify({ event: "resolve_missing_dispute", gameId }));
+      captureServerError("resolve_missing_dispute", new Error("dispute doc missing"), { gameId }, { level: "warning" });
       return { resolved: false, push: null };
     }
     const dispute = disputeSnap.data() as Record<string, unknown>;
@@ -515,6 +517,7 @@ async function dispatchAdminPush(db: Firestore, gameId: string, n: ResolveNotifi
         message: err instanceof Error ? err.message : String(err),
       }),
     );
+    captureServerError("resolve_push_failed", err, { gameId }, { level: "warning" });
   }
 }
 
@@ -557,11 +560,12 @@ async function runPass(
           message: err instanceof Error ? err.message : String(err),
         }),
       );
+      captureServerError("resolve_game_failed", err, { phase, gameId: docSnap.id }, { level: "warning" });
     }
   }
 }
 
-export default async function handler(req: CronRequest, res: CronResponse): Promise<void> {
+async function handler(req: CronRequest, res: CronResponse): Promise<void> {
   if (!isAuthorized(req)) {
     res.status(401).json({ error: "unauthorized" });
     return;
@@ -582,6 +586,8 @@ export default async function handler(req: CronRequest, res: CronResponse): Prom
   try {
     db = getAdminFirestore();
   } catch (err) {
+    captureServerError("resolve_init_failed", err, {}, { redactMessage: true });
+    await flushServerErrors();
     res.status(500).json({ error: "init_failed", message: err instanceof Error ? err.message : String(err) });
     return;
   }
@@ -592,6 +598,7 @@ export default async function handler(req: CronRequest, res: CronResponse): Prom
     // (b) binding community verdict for disputed landed claims.
     await runPass(db, "communityReview", resolveCommunityReview, dryRun, summary);
 
+    await flushServerErrors();
     res.status(200).json(summary);
   } catch (err) {
     // Query-level failure (index missing, permission, etc). Never throw to the
@@ -599,6 +606,10 @@ export default async function handler(req: CronRequest, res: CronResponse): Prom
     console.warn(
       JSON.stringify({ event: "resolve_failed", message: err instanceof Error ? err.message : String(err) }),
     );
+    captureServerError("resolve_failed", err);
+    await flushServerErrors();
     res.status(500).json({ ...summary, error: "resolve_failed" });
   }
 }
+
+export default withSentry("resolve_expired_disputes", handler);

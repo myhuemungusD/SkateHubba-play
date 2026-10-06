@@ -1,0 +1,157 @@
+# Cron failure alert (shared by the three scheduled referee/courier workflows)
+#
+# Same pattern as the `Alert on deploy failure` / `Resolve alert on deploy
+# success` steps in firebase-rules-deploy.yml: a single auto-managed GitHub
+# issue per job, identified by a label. On failure it is opened (or updated —
+# never duplicated); on the next success it is commented on and closed. Uses
+# only the job's GITHUB_TOKEN (caller must grant `issues: write`) — no new
+# secrets.
+#
+# One deliberate difference from the rules-deploy step: these jobs run every
+# 5–15 minutes, so a multi-hour outage would otherwise add hundreds of
+# identical comments (the #519 failure mode, at 100x the rate). Repeat
+# failures therefore comment at most once per `comment-interval-minutes`;
+# the issue title always carries the running failure count, so the outage is
+# visible from the issue list without opening anything.
+name: Cron failure alert
+description: Open/update a tracking issue when a scheduled job fails; close it on recovery.
+
+inputs:
+  status:
+    description: "`failure` or `success` — normally `job.status` from the caller."
+    required: true
+  label:
+    description: Label that identifies this job's alert issue (one label per workflow).
+    required: true
+  job-name:
+    description: Human-readable job name used in the issue title/body.
+    required: true
+  endpoint:
+    description: Endpoint the job calls, for the issue body.
+    required: true
+  comment-interval-minutes:
+    description: Minimum minutes between repeat-failure comments on an open issue.
+    required: false
+    default: "60"
+
+runs:
+  using: composite
+  steps:
+    - name: Open or update alert issue
+      if: always() && inputs.status == 'failure'
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        ALERT_LABEL: ${{ inputs.label }}
+        ALERT_JOB: ${{ inputs.job-name }}
+        ALERT_ENDPOINT: ${{ inputs.endpoint }}
+        ALERT_INTERVAL: ${{ inputs.comment-interval-minutes }}
+      with:
+        script: |
+          const label = process.env.ALERT_LABEL;
+          const job = process.env.ALERT_JOB;
+          const intervalMs = Number(process.env.ALERT_INTERVAL || '60') * 60000;
+          const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+          const marker = /<!-- failures:(\d+) -->/;
+          const body = (count) => [
+            `<!-- failures:${count} -->`,
+            `The scheduled **${job}** job failed.`,
+            '',
+            `- Failed run: ${runUrl}`,
+            `- Endpoint: \`${process.env.ALERT_ENDPOINT}\``,
+            `- Triggered by: \`${context.eventName}\``,
+            `- Consecutive failed runs so far: **${count}**`,
+            '',
+            'Common causes: `CRON_SECRET` drift between this repo and the Vercel',
+            'project env (HTTP 401), a broken production deploy (5xx), or the',
+            'endpoint exceeding its time budget. Check the run log, fix, then',
+            're-run the workflow (or wait for the next scheduled run).',
+            '',
+            '_This issue is auto-managed: repeat failures update it (comments are',
+            'throttled), and the next successful run closes it._',
+          ].join('\n');
+          const title = (count) => `🚨 Scheduled job FAILING — ${job} (${count} failed run${count === 1 ? '' : 's'})`;
+
+          try {
+            await github.rest.issues.getLabel({ ...context.repo, name: label });
+          } catch (e) {
+            if (e.status !== 404) throw e;
+            await github.rest.issues.createLabel({
+              ...context.repo,
+              name: label,
+              color: 'b60205',
+              description: `Automated alert: ${job} failed`.slice(0, 100),
+            });
+          }
+
+          const existing = await github.rest.issues.listForRepo({
+            ...context.repo, state: 'open', labels: label, per_page: 1,
+          });
+
+          if (existing.data.length === 0) {
+            const created = await github.rest.issues.create({
+              ...context.repo, title: title(1), body: body(1), labels: [label],
+            });
+            core.notice(`Opened alert issue #${created.data.number}.`);
+            return;
+          }
+
+          const issue = existing.data[0];
+          const count = Number((issue.body || '').match(marker)?.[1] || '1') + 1;
+          // The running count lives in the issue body (hidden marker) so the
+          // throttled comments never lose track of it.
+          await github.rest.issues.update({
+            ...context.repo,
+            issue_number: issue.number,
+            title: title(count),
+            body: (issue.body || '').match(marker)
+              ? issue.body.replace(marker, `<!-- failures:${count} -->`)
+              : `<!-- failures:${count} -->\n${issue.body || ''}`,
+          });
+
+          const comments = await github.rest.issues.listComments({
+            ...context.repo, issue_number: issue.number, per_page: 100,
+          });
+          const last = comments.data.at(-1);
+          const lastAt = Date.parse(last ? last.created_at : issue.created_at);
+          if (Date.now() - lastAt >= intervalMs) {
+            await github.rest.issues.createComment({
+              ...context.repo, issue_number: issue.number, body: body(count),
+            });
+            core.notice(`Updated alert issue #${issue.number} (failure ${count}).`);
+          } else {
+            core.notice(`Alert issue #${issue.number} bumped to ${count} failures (comment throttled).`);
+          }
+
+    - name: Close alert issue on recovery
+      if: always() && inputs.status == 'success'
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        ALERT_LABEL: ${{ inputs.label }}
+        ALERT_JOB: ${{ inputs.job-name }}
+      with:
+        script: |
+          const label = process.env.ALERT_LABEL;
+          const existing = await github.rest.issues.listForRepo({
+            ...context.repo, state: 'open', labels: label, per_page: 1,
+          });
+          if (existing.data.length === 0) {
+            core.info('No open alert issue to close.');
+            return;
+          }
+          const number = existing.data[0].number;
+          const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+          await github.rest.issues.createComment({
+            ...context.repo,
+            issue_number: number,
+            body: [
+              `The scheduled **${process.env.ALERT_JOB}** job succeeded again.`,
+              '',
+              `- Successful run: ${runUrl}`,
+              '',
+              'Closing this auto-managed alert. A new one opens on the next failure.',
+            ].join('\n'),
+          });
+          await github.rest.issues.update({
+            ...context.repo, issue_number: number, state: 'closed', state_reason: 'completed',
+          });
+          core.notice(`Closed alert issue #${number}.`);

@@ -38,6 +38,7 @@ import { parseServiceAccountJson } from "./_serviceAccount.js";
 // cold start (ERR_MODULE_NOT_FOUND).
 import { decideExpiredForfeit, type ForfeitGameUpdate } from "../../src/services/turnForfeit.shared.js";
 import { toGameDoc, type GameDoc } from "../../src/services/games.mappers.js";
+import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
 
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
 const FIRESTORE_DB_NAME = "skatehubba";
@@ -335,6 +336,7 @@ async function dispatchAdminPush(
         message: err instanceof Error ? err.message : String(err),
       }),
     );
+    captureServerError("sweep_push_failed", err, { gameId }, { level: "warning" });
   }
 }
 
@@ -520,6 +522,7 @@ async function reconcileChallengeNotifications(
           message: err instanceof Error ? err.message : String(err),
         }),
       );
+      captureServerError("challenge_reconcile_failed", err, { gameId: docSnap.id }, { level: "warning" });
     }
   }
 
@@ -605,6 +608,7 @@ async function remindUpcomingDeadlines(db: Firestore, nowMs: number, dryRun: boo
           message: err instanceof Error ? err.message : String(err),
         }),
       );
+      captureServerError("turn_reminder_failed", err, { gameId: docSnap.id }, { level: "warning" });
     }
   }
 
@@ -647,11 +651,12 @@ async function runNotificationPasses(db: Firestore, summary: SweepSummary, dryRu
           message: err instanceof Error ? err.message : String(err),
         }),
       );
+      captureServerError("notify_pass_failed", err, { pass: name });
     }
   }
 }
 
-export default async function handler(req: CronRequest, res: CronResponse): Promise<void> {
+async function handler(req: CronRequest, res: CronResponse): Promise<void> {
   if (!isAuthorized(req)) {
     res.status(401).json({ error: "unauthorized" });
     return;
@@ -683,7 +688,14 @@ export default async function handler(req: CronRequest, res: CronResponse): Prom
     db = getAdminFirestore();
   } catch (err) {
     // Misconfiguration (missing/malformed service account) — surface as 500.
-    res.status(500).json({ error: "init_failed", message: err instanceof Error ? err.message : String(err) });
+    // The raw error (e.g. a JSON.parse failure on FIREBASE_SERVICE_ACCOUNT_JSON)
+    // can embed a snippet of the secret it failed to parse, so it's logged
+    // server-side only — the client gets a flat message, matching the same
+    // init_failed path in api/account/delete.ts.
+    console.warn(JSON.stringify({ event: "init_failed", message: err instanceof Error ? err.message : String(err) }));
+    captureServerError("sweep_init_failed", err, {}, { redactMessage: true });
+    await flushServerErrors();
+    res.status(500).json({ error: "init_failed", message: "Server misconfiguration." });
     return;
   }
 
@@ -719,6 +731,7 @@ export default async function handler(req: CronRequest, res: CronResponse): Prom
             message: err instanceof Error ? err.message : String(err),
           }),
         );
+        captureServerError("sweep_game_failed", err, { gameId: docSnap.id }, { level: "warning" });
       }
     }
 
@@ -726,11 +739,16 @@ export default async function handler(req: CronRequest, res: CronResponse): Prom
     // never delay the state transitions the game actually depends on.
     await runNotificationPasses(db, summary, dryRun);
 
+    await flushServerErrors();
     res.status(200).json(summary);
   } catch (err) {
     // Query-level failure (index missing, permission, etc). Never throw to the
     // platform — return what we have plus the error so the cron logs surface it.
     console.warn(JSON.stringify({ event: "sweep_failed", message: err instanceof Error ? err.message : String(err) }));
+    captureServerError("sweep_failed", err);
+    await flushServerErrors();
     res.status(500).json({ ...summary, error: "sweep_failed" });
   }
 }
+
+export default withSentry("sweep_expired_turns", handler);

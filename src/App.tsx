@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, lazy, Suspense, type ReactNode } from "react";
+import { useState, useCallback, useEffect, useSyncExternalStore, lazy, Suspense, type ReactNode } from "react";
 import { Routes, Route, Navigate, useParams, useNavigate, useLocation } from "react-router";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
@@ -23,6 +23,18 @@ import { firebaseReady } from "./firebase";
 import { ConsentBanner } from "./components/ConsentBanner";
 import { DeleteAccountRetryBanner } from "./components/DeleteAccountRetryBanner";
 import { useAnalyticsConsent } from "./hooks/useAnalyticsConsent";
+import { isExtrasEnabled } from "./lib/featureFlags";
+import {
+  hasBootGoogleSignIn,
+  isBootShellActive,
+  isLandingBooted,
+  releaseBootShell,
+  requestBootGoogleSignIn,
+  setLandingBridge,
+  subscribeBootShell,
+  takeBootGoogleSignIn,
+  type LandingBridge,
+} from "./boot/landingBoot";
 // Eager: first-paint / onboarding path (Landing, AuthScreen, ProfileSetup)
 // plus Lobby since it's the primary destination for returning authed users.
 // DOB + parental consent are collected inline on AuthScreen (COPPA/CCPA), and
@@ -75,6 +87,7 @@ function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
 }
 
 function FirebaseMissing() {
+  useEffect(() => releaseBootShell(), []);
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6 text-center">
       <span className="font-display text-lg tracking-[0.35em] text-brand-orange mb-2">SKATEHUBBA™</span>
@@ -106,9 +119,27 @@ function AppEmailVerifyBanner() {
 
 function AppScreens() {
   const auth = useAuthContext();
+  const { pathname } = useLocation();
   useEmailVerifiedToast(auth.user?.emailVerified);
 
-  if (auth.loading) return <Spinner />;
+  // Replay a Google tap made on the boot landing before App had loaded.
+  const { loading, user, handleGoogleSignIn } = auth;
+  useEffect(() => {
+    if (!loading && !user && takeBootGoogleSignIn()) void handleGoogleSignIn();
+  }, [loading, user, handleGoogleSignIn]);
+
+  // When the landing was painted ahead of App (signed-out visitor, see
+  // boot/landingBoot.ts), keep showing it while Firebase Auth resolves rather
+  // than swapping it for the full-screen spinner.
+  const landingWhileLoading = auth.loading && pathname === "/" && isLandingBooted();
+
+  // The boot landing hands over to App's own screens as soon as App renders
+  // anything but `/`.
+  useEffect(() => {
+    if (pathname !== "/") releaseBootShell();
+  }, [pathname]);
+
+  if (auth.loading && !landingWhileLoading) return <Spinner />;
 
   return (
     <>
@@ -121,6 +152,39 @@ function AppScreens() {
       <TutorialOverlay />
     </>
   );
+}
+
+/**
+ * The `/` route. While the boot landing (see boot/landingBoot.ts) is still on
+ * screen, App doesn't render a second landing: it hands its handlers to the
+ * boot one through the shell bridge, so that instance — and whatever the
+ * visitor already did on it — stays. A signed-in user, or leaving the route,
+ * releases the shell and App renders its own screens from then on.
+ */
+function LandingRoute({
+  authLoading,
+  signedIn,
+  onGo,
+  onGoogle,
+  googleLoading,
+  onNav,
+}: LandingBridge & { authLoading: boolean; signedIn: boolean }) {
+  const shellActive = useSyncExternalStore(subscribeBootShell, isBootShellActive);
+  const holdShell = shellActive && !signedIn;
+
+  // Taps before auth resolves are queued the same way the boot landing does
+  // and replayed by AppScreens.
+  const googleHandler = authLoading ? requestBootGoogleSignIn : onGoogle;
+  useEffect(() => {
+    if (!holdShell) return;
+    setLandingBridge({ onGo, onGoogle: googleHandler, googleLoading, onNav });
+  }, [holdShell, onGo, googleHandler, googleLoading, onNav]);
+  useEffect(() => {
+    if (shellActive && signedIn) releaseBootShell();
+  }, [shellActive, signedIn]);
+
+  if (holdShell) return null;
+  return <Landing onGo={onGo} onGoogle={onGoogle} googleLoading={googleLoading} onNav={onNav} />;
 }
 
 /**
@@ -163,7 +227,7 @@ function PlayerProfileRoute({
   onChallenge: (uid: string, username: string) => void;
   onViewPlayer: (uid: string) => void;
   blockedUids: Set<string>;
-  onAddSpot: () => void;
+  onAddSpot?: () => void;
   onRefreshProfile: () => Promise<void>;
   onSignUp: () => void;
   onEditProfile: () => void;
@@ -242,6 +306,12 @@ function AppRoutes() {
   const analyticsAllowed = useAnalyticsConsent();
   const { notify } = useNotifications();
   const [challengeTarget, setChallengeTarget] = useState("");
+  const extrasEnabled = isExtrasEnabled();
+  // Where a frozen-feature URL lands (see the /map, /spots/:id, /feed routes).
+  const frozenRedirect = auth.activeProfile ? "/lobby" : "/";
+  // The profile "ADD A SPOT" CTA deep-links into the Map; omit it while the
+  // Map is frozen so PlayerProfileScreen renders no spot entry point at all.
+  const onAddSpot = extrasEnabled ? nav.navigateToMapWithAddSpot : undefined;
   const directChallenge = useCallback(
     async (username: string) => {
       if (!auth.user?.emailVerified) {
@@ -303,14 +373,18 @@ function AppRoutes() {
             <Route
               path="/"
               element={
-                <Landing
+                <LandingRoute
                   onGo={(m) => {
                     nav.setAuthMode(m);
                     nav.setScreen("auth");
                   }}
                   onGoogle={auth.handleGoogleSignIn}
-                  googleLoading={auth.googleLoading}
+                  // A Google tap on the boot landing stays "loading" until
+                  // AppScreens replays it once auth has resolved.
+                  googleLoading={auth.googleLoading || hasBootGoogleSignIn()}
                   onNav={nav.setScreen}
+                  authLoading={auth.loading}
+                  signedIn={auth.user !== null}
                 />
               }
             />
@@ -512,7 +586,7 @@ function AppRoutes() {
                     onOpenGame={game.openGame}
                     onBack={() => nav.setScreen("lobby")}
                     onViewPlayer={nav.navigateToPlayer}
-                    onAddSpot={nav.navigateToMapWithAddSpot}
+                    onAddSpot={onAddSpot}
                     onRefreshProfile={auth.refreshProfile}
                     onEditProfile={() => navigate("/settings")}
                     onViewMyStats={() => navigate("/my-stats")}
@@ -529,6 +603,14 @@ function AppRoutes() {
                 links, shared URLs and installed PWA shortcuts still land. */}
             <Route path="/record" element={<Navigate to="/me" replace />} />
 
+            {/* /play was the old name for the signed-in home. Vercel 307s it to
+                /lobby at the edge (vercel.json), but the native shells serve
+                the bundle locally and never hit Vercel, so the SPA needs the
+                same redirect. Signed-out visitors then fall through /lobby's
+                own guard to the landing page — no second auth check here. */}
+            <Route path="/play" element={<Navigate to="/lobby" replace />} />
+            <Route path="/play/*" element={<Navigate to="/lobby" replace />} />
+
             {/* Public: a shared profile link has to open for someone without
                 an account, or it can never bring them in. No auth guard here
                 — "player" is in PUBLIC_SCREENS so the auth router leaves it
@@ -544,7 +626,7 @@ function AppRoutes() {
                   onChallenge={(_uid, username) => directChallenge(username)}
                   onViewPlayer={nav.navigateToPlayer}
                   blockedUids={blockedUids}
-                  onAddSpot={nav.navigateToMapWithAddSpot}
+                  onAddSpot={onAddSpot}
                   onRefreshProfile={auth.refreshProfile}
                   onSignUp={() => {
                     nav.setAuthMode("signup");
@@ -600,33 +682,50 @@ function AppRoutes() {
               }
             />
 
-            <Route path="/map" element={auth.user ? <MapPage /> : <Navigate to="/auth" replace />} />
-            {/* Signed-out target is "/" (not "/auth") to match the auth
-              router's bounce for gated screens — /spots/:id now resolves to
-              the "spotdetail" screen, so both mechanisms fire and must agree
-              on a destination or they fight over the URL. The auth router
-              stashes the spot id before bouncing and restores it post-login. */}
-            <Route path="/spots/:id" element={auth.user ? <SpotDetailPage /> : <Navigate to="/" replace />} />
+            {/* Feature freeze: Map, spot detail and the Clips feed are gated
+              behind VITE_FEATURE_EXTRAS_ENABLED (default OFF — see
+              src/lib/featureFlags.ts). While frozen, every one of these URLs
+              redirects instead of 404'ing so old deep links, shares and PWA
+              shortcuts still land somewhere useful: signed-in users go to the
+              lobby, signed-out visitors go home — the same destinations the
+              existing auth guards use. */}
+            {extrasEnabled ? (
+              <>
+                <Route path="/map" element={auth.user ? <MapPage /> : <Navigate to="/auth" replace />} />
+                {/* Signed-out target is "/" (not "/auth") to match the auth
+                router's bounce for gated screens — /spots/:id now resolves to
+                the "spotdetail" screen, so both mechanisms fire and must agree
+                on a destination or they fight over the URL. The auth router
+                stashes the spot id before bouncing and restores it post-login. */}
+                <Route path="/spots/:id" element={auth.user ? <SpotDetailPage /> : <Navigate to="/" replace />} />
 
-            {/* Clips is its own tab again. Same auth guard as /lobby — the feed
-              reads clips as a signed-in viewer (upvotes, disputes, comments),
-              so a signed-out render has nothing to show. */}
-            <Route
-              path="/feed"
-              element={
-                auth.activeProfile ? (
-                  <FeedScreen
-                    profile={auth.activeProfile}
-                    onViewPlayer={nav.navigateToPlayer}
-                    onChallengeUser={(username: string) => {
-                      directChallenge(username);
-                    }}
-                  />
-                ) : (
-                  <Navigate to="/" replace />
-                )
-              }
-            />
+                {/* Clips is its own tab again. Same auth guard as /lobby — the feed
+                reads clips as a signed-in viewer (upvotes, disputes, comments),
+                so a signed-out render has nothing to show. */}
+                <Route
+                  path="/feed"
+                  element={
+                    auth.activeProfile ? (
+                      <FeedScreen
+                        profile={auth.activeProfile}
+                        onViewPlayer={nav.navigateToPlayer}
+                        onChallengeUser={(username: string) => {
+                          directChallenge(username);
+                        }}
+                      />
+                    ) : (
+                      <Navigate to="/" replace />
+                    )
+                  }
+                />
+              </>
+            ) : (
+              <>
+                <Route path="/map" element={<Navigate to={frozenRedirect} replace />} />
+                <Route path="/spots/:id" element={<Navigate to={frozenRedirect} replace />} />
+                <Route path="/feed" element={<Navigate to={frozenRedirect} replace />} />
+              </>
+            )}
 
             <Route
               path="/admin"

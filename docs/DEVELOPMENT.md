@@ -45,7 +45,7 @@ Open [http://localhost:5173](http://localhost:5173).
 | `npm run test:rules`                        | Run Firestore rules tests against the rules emulator                        |
 | `npm run test:e2e`                          | Run Playwright E2E tests (auto-starts the Auth/Firestore/Storage emulators) |
 | `npm run test:e2e:ui`                       | Same as above in the Playwright UI runner                                   |
-| `npm run lint`                              | Lint `src/` and `api/` with ESLint                                          |
+| `npm run lint`                              | Lint `src/`, `api/`, `e2e/`, and `public/sw-cleanup.js` with ESLint         |
 | `npm run lint:fix`                          | Lint and auto-fix where possible                                            |
 | `npm run format`                            | Format `src/**/*.{ts,tsx}` with Prettier                                    |
 | `npm run check:test-dup`                    | Flag duplicated test cases (CI gate, part of `verify`)                      |
@@ -129,7 +129,7 @@ skatehubba-play/
 │   ├── services/            # Single entry point for every Firebase SDK call
 │   │   ├── auth.ts          # Sign-up, sign-in, Google OAuth, password reset
 │   │   ├── users.ts         # Profiles + atomic username reservation
-│   │   ├── games.ts         # Game CRUD + real-time subscriptions + transactions
+│   │   ├── games.ts         # Barrel over games.{create,match,judge,turns,mappers,subscriptions}.ts
 │   │   ├── clips.ts         # Landed-trick clips feed + upvotes
 │   │   ├── spots.ts         # Skate spots (geo-tagged map)
 │   │   └── storage.ts       # Video upload (WebM/MP4)
@@ -176,7 +176,7 @@ skatehubba-play/
 
 - `App.tsx` is the intentional monolith — it owns the full route table, auth-gated `<Route>`s, and the global provider tree (Auth/Navigation/Notification/Game/Onboarding). Do not split it into route-based files without discussion.
 - URL routing uses `react-router` v8. All `<Route>` elements live in `App.tsx`. Screen transitions go through `NavigationContext.setScreen` (or `useNavigate` for parameterised routes).
-- Non-critical screens (gameplay, profile, map, settings, legal pages) are `lazy()`-imported and wrapped in `<Suspense>`; Landing/AuthScreen/ProfileSetup/Lobby are eager for first paint.
+- Non-critical screens (challenge, gameplay, profile, clips feed, map, settings, legal pages, …) are `lazy()`-imported and wrapped in `<Suspense>`; Landing/AuthScreen/ProfileSetup/Lobby are eager for first paint.
 - New Firebase operations belong in the relevant `src/services/*.ts` file — components never import the Firebase SDK directly.
 
 ### Styling
@@ -191,25 +191,22 @@ skatehubba-play/
 
 ## Deploying Security Rules
 
-> ## ⚠️ THE RULES DEPLOY IS CURRENTLY BROKEN — PRODUCTION RULES ARE STALE
+> **Resolved incident (2026-08-20 → 2026-09-13).** Every rules deploy in that
+> window failed because `google-github-actions/auth` rejected the
+> `FIREBASE_WIF_PROVIDER` secret, so production ran a stale ruleset for ~3 weeks
+> ([#519](https://github.com/myhuemungusD/SkateHubba-play/issues/519), closed
+> 2026-09-14). [#560](https://github.com/myhuemungusD/SkateHubba-play/pull/560)
+> made a WIF failure fall back to `FIREBASE_TOKEN` at runtime instead of
+> aborting, and [#563](https://github.com/myhuemungusD/SkateHubba-play/pull/563)
+> fixed a false positive in the PII gate. The daily scheduled deploy has been
+> green since.
 >
-> Verified 2026-08-29 against the workflow run history. The last **successful**
-> deploy was run #793 on **2026-08-20** (a manual `workflow_dispatch`). Every
-> run since has failed — 15 consecutive failures across push, schedule, and
-> dispatch triggers. `google-github-actions/auth` rejects the
-> `FIREBASE_WIF_PROVIDER` secret with `Invalid value for "audience"`: the value
-> passes the workflow's own regex but is rejected by Google. Tracked as
-> [#519](https://github.com/myhuemungusD/SkateHubba-play/issues/519).
->
-> **Consequences while this holds:**
->
-> - `firestore.rules` on `main` is **not** what production is enforcing. Several
->   rules commits are undeployed. Before reasoning about a live authorization
->   decision, diff against the last deployed commit rather than `HEAD`.
-> - The "drift can never exceed 24h" guarantee below describes the design, not
->   the current state. It has not held since 2026-08-20.
->
-> This is a secret/GCP-configuration fix, not a code fix.
+> **Still open (verified in the run #845 log, 2026-10-01):** WIF itself still
+> fails with the same `audience` error. Every green deploy is authenticating
+> with the deprecated `FIREBASE_TOKEN` fallback, which Google is sunsetting, and
+> the production PII scan is skipped because that token cannot drive the Admin
+> SDK. Fixing the `FIREBASE_WIF_PROVIDER` secret is a GCP/secrets task, not a
+> code change.
 
 Firestore rules/indexes and Storage rules are deployed by the
 `.github/workflows/firebase-rules-deploy.yml` workflow whenever `firestore.rules`,
@@ -237,8 +234,7 @@ production rules drift for ~3 months unnoticed. Two guards now prevent a repeat:
   rules" command to diff against `HEAD`, so re-deploying daily is the simplest
   implementable guarantee — the deploy is idempotent, so drift between `main`
   and production can never exceed 24h, and a failed scheduled deploy trips the
-  same alert step above. **This guarantee is not currently holding — see the
-  warning above.**
+  same alert step above.
 
 `firebase-tools` in the deploy step is pinned to `@15` to match the version in
 `package.json` (`firebase-tools@^15`). The deploy runs with `set -euo pipefail`
@@ -272,7 +268,7 @@ Or step through individually:
 
 ```bash
 npx tsc -b                # Type check
-npm run lint              # ESLint over src/ and api/
+npm run lint              # ESLint over src/, api/, e2e/, public/sw-cleanup.js
 npm run test:coverage     # Tests + coverage thresholds
 npm run build             # Production build
 npm run check:test-dup    # Duplicated-test gate

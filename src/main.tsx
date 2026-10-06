@@ -5,8 +5,14 @@ import { Capacitor } from "@capacitor/core";
 import { initSentry, captureException, addBreadcrumb } from "./lib/sentry";
 import { initPosthogOnConsent } from "./lib/posthog";
 import { captureInstallPrompt } from "./lib/installPrompt";
-import App from "./App";
+import { Root } from "./boot/Root";
+import { runWhenIdle, setLandingBooted, shouldBootLanding } from "./boot/landingBoot";
 import "./index.css";
+
+// The full app (Firebase, contexts, every route) is a separate chunk so a
+// signed-out visitor's landing page can paint before it loads — see
+// src/boot/landingBoot.ts.
+const loadApp = () => import("./App");
 
 // Park Chromium's one-shot `beforeinstallprompt` before it fires so the
 // Settings "Install app" card can open the install dialog later. First thing
@@ -38,68 +44,75 @@ function scrubUrl(url: string): string {
 // Vercel → Project Settings → Environment Variables).
 // initSentry() dynamically imports @sentry/react so the SDK is never
 // bundled or fetched when no DSN is configured.
+// Deferred to idle so the SDK download/parse never competes with first paint.
+// Every helper in lib/sentry is a safe no-op until init resolves.
 if (import.meta.env.VITE_SENTRY_DSN) {
-  initSentry({
-    dsn: String(import.meta.env.VITE_SENTRY_DSN),
-    environment: import.meta.env.MODE,
-    // Tag each event with the deploy's release so Sentry can track regressions
-    // across versions. Source maps uploaded in release.yml key off this string.
-    release: APP_RELEASE,
-    // Capture 100% of transactions in development; 10% in production to
-    // stay within the free quota. Adjust as traffic grows.
-    tracesSampleRate: import.meta.env.DEV ? 1.0 : 0.1,
-    // Never let the SDK attach default PII (IP address, cookies, request
-    // headers, user-agent-derived data). This is the SDK-level switch that
-    // backs the "PII scrubbing: Done" status — beforeSend below is the
-    // belt-and-braces for anything that still slips through.
-    sendDefaultPii: false,
-    // Strip PII from breadcrumbs / event data. We scrub both the request URL
-    // and any breadcrumb data.url since a reported event often carries
-    // navigation history (fetch, history.pushState) picked up automatically
-    // by the browser integrations — those are a more common PII leak than
-    // the report URL itself.
-    beforeSend(event) {
-      if (event.request?.url) {
-        event.request.url = scrubUrl(event.request.url);
-      }
-      // Drop request headers/cookies wholesale — these can carry auth
-      // tokens, session cookies, and the user's IP via forwarding headers.
-      // We never need them for triage, so strip rather than scrub.
-      if (event.request) {
-        delete event.request.headers;
-        delete event.request.cookies;
-      }
-      // Scrub identifying user fields. sendDefaultPii=false already keeps the
-      // SDK from auto-populating these, but setUser() (src/lib/sentry.ts) can
-      // still attach them, so redact explicitly here.
-      if (event.user) {
-        delete event.user.email;
-        delete event.user.ip_address;
-      }
-      if (event.breadcrumbs) {
-        for (const crumb of event.breadcrumbs) {
-          const url = crumb.data?.url;
-          if (typeof url === "string") crumb.data!.url = scrubUrl(url);
+  runWhenIdle(() =>
+    initSentry({
+      dsn: String(import.meta.env.VITE_SENTRY_DSN),
+      environment: import.meta.env.MODE,
+      // Tag each event with the deploy's release so Sentry can track regressions
+      // across versions. Source maps uploaded in release.yml key off this string.
+      release: APP_RELEASE,
+      // Capture 100% of transactions in development; 10% in production to
+      // stay within the free quota. Adjust as traffic grows.
+      tracesSampleRate: import.meta.env.DEV ? 1.0 : 0.1,
+      // Never let the SDK attach default PII (IP address, cookies, request
+      // headers, user-agent-derived data). This is the SDK-level switch that
+      // backs the "PII scrubbing: Done" status — beforeSend below is the
+      // belt-and-braces for anything that still slips through.
+      sendDefaultPii: false,
+      // Strip PII from breadcrumbs / event data. We scrub both the request URL
+      // and any breadcrumb data.url since a reported event often carries
+      // navigation history (fetch, history.pushState) picked up automatically
+      // by the browser integrations — those are a more common PII leak than
+      // the report URL itself.
+      beforeSend(event) {
+        if (event.request?.url) {
+          event.request.url = scrubUrl(event.request.url);
         }
-      }
-      return event;
-    },
-  });
+        // Drop request headers/cookies wholesale — these can carry auth
+        // tokens, session cookies, and the user's IP via forwarding headers.
+        // We never need them for triage, so strip rather than scrub.
+        if (event.request) {
+          delete event.request.headers;
+          delete event.request.cookies;
+        }
+        // Scrub identifying user fields. sendDefaultPii=false already keeps the
+        // SDK from auto-populating these, but setUser() (src/lib/sentry.ts) can
+        // still attach them, so redact explicitly here.
+        if (event.user) {
+          delete event.user.email;
+          delete event.user.ip_address;
+        }
+        if (event.breadcrumbs) {
+          for (const crumb of event.breadcrumbs) {
+            const url = crumb.data?.url;
+            if (typeof url === "string") crumb.data!.url = scrubUrl(url);
+          }
+        }
+        return event;
+      },
+    }),
+  );
 }
 
 // Arm PostHog. It does NOT start here — `initPosthogOnConsent` defers the
 // actual `posthog.init()` until the visitor accepts the consent banner. See
 // that function for why gating events alone was not enough.
+// Also deferred to idle; consent gating is unchanged (init still waits for OK).
 if (import.meta.env.VITE_POSTHOG_KEY) {
-  initPosthogOnConsent(
-    {
-      apiKey: String(import.meta.env.VITE_POSTHOG_KEY),
-      host: import.meta.env.VITE_POSTHOG_HOST ? String(import.meta.env.VITE_POSTHOG_HOST) : undefined,
-      release: APP_RELEASE,
-    },
-    // PostHog init failures (network, quota, bad key) must never break the
-    // app — Sentry gets the breadcrumb, the rest of the app carries on.
-    (err) => captureException(err, { extra: { context: "initPosthog" } }),
+  runWhenIdle(() =>
+    initPosthogOnConsent(
+      {
+        apiKey: String(import.meta.env.VITE_POSTHOG_KEY),
+        host: import.meta.env.VITE_POSTHOG_HOST ? String(import.meta.env.VITE_POSTHOG_HOST) : undefined,
+        release: APP_RELEASE,
+      },
+      // PostHog init failures (network, quota, bad key) must never break the
+      // app — Sentry gets the breadcrumb, the rest of the app carries on.
+      (err) => captureException(err, { extra: { context: "initPosthog" } }),
+    ),
   );
 }
 
@@ -112,13 +125,17 @@ window.addEventListener("unhandledrejection", (event) => {
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error("Missing #root element in index.html");
 
-createRoot(rootEl).render(
-  <StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
-  </StrictMode>,
-);
+const root = createRoot(rootEl);
+void shouldBootLanding(window.location.pathname, Capacitor.isNativePlatform()).then((boot) => {
+  setLandingBooted(boot);
+  root.render(
+    <StrictMode>
+      <BrowserRouter>
+        <Root boot={boot} loadApp={loadApp} />
+      </BrowserRouter>
+    </StrictMode>,
+  );
+});
 
 // Capacitor's SplashScreen plugin is configured with `launchAutoHide: false`
 // (see capacitor.config.ts), so the native splash stays visible until we

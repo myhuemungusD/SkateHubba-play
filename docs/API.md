@@ -2,7 +2,7 @@
 
 All Firebase operations are contained in `src/services/`. Components and hooks import from these files — never from the Firebase SDK directly. Services are pure async functions with no React dependencies, which makes them straightforward to mock in tests.
 
-> **Scope:** this reference covers the core auth / user / game / storage surface. `src/services/` holds 54 modules in total; the domains not expanded here (clips, disputes, spots, notifications, push, achievements, locker, admin, MFA, avatars, blocking, reports, GDPR export) are summarised in [ARCHITECTURE.md](ARCHITECTURE.md#service-layer), and every exported function carries JSDoc at its definition.
+> **Scope:** this reference covers the core auth / user / game / storage surface. `src/services/` holds 55 modules in total; the domains not expanded here (clips, disputes, spots, notifications, push, achievements, locker, admin, MFA, avatars, blocking, reports, GDPR export) are summarised in [ARCHITECTURE.md](ARCHITECTURE.md#service-layer), and every exported function carries JSDoc at its definition.
 
 ---
 

@@ -60,10 +60,12 @@
     <!-- Brand logo (critical for first paint) -->
     <link rel="preload" href="/logonew.webp" as="image" type="image/webp" />
 
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <!-- Fonts: self-hosted (see @font-face in src/index.css). Preloaded so the
+         hero heading (Bebas Neue, the LCP element) and body copy paint in
+         their real faces without a late swap. Vite rewrites these to the
+         fingerprinted /assets/ URLs the CSS references. -->
+    <link rel="preload" href="/src/assets/fonts/bebas-neue-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/src/assets/fonts/dm-sans-latin-wght.woff2" as="font" type="font/woff2" crossorigin />
 
     <!-- Structured Data -->
     <script type="application/ld+json">
@@ -88,7 +90,7 @@
   </head>
   <body class="bg-[#0A0A0A] text-white antialiased grain">
     <div id="root"></div>
-    <script src="/sw-cleanup.js"></script>
+    <script src="/sw-cleanup.js" defer></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
