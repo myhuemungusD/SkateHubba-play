@@ -86,7 +86,7 @@
     "uuid": "^14.0.0",
     "ip-address": "^10.1.1",
     "hono": "^4.12.31",
-    "basic-ftp": "^5.3.1",
+    "basic-ftp": "^6.2.2",
     "dompurify": "^3.4.12",
     "fast-uri": "^3.1.4",
     "@hono/node-server": "^2.0.5",
@@ -95,7 +95,13 @@
     "brace-expansion": "^5.0.9",
     "minimatch": "^10.1.1",
     "re2": "^1.25.2",
-    "qs": "^6.16.0"
+    "qs": "^6.16.0",
+    "firebase-tools": {
+      "chokidar": "^4.0.3"
+    },
+    "@tensorflow/tfjs": {
+      "argparse": "^2.0.1"
+    }
   },
   "devDependencies": {
     "@capacitor/cli": "^8.2.0",
