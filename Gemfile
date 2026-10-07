@@ -3,6 +3,8 @@ source "https://rubygems.org"
 # Fastlane pin — upgrades are deliberate, not automatic.
 gem "fastlane", "~> 2.222"
 
-# Load any plugins declared in fastlane/Pluginfile.
-plugins_path = File.join(File.dirname(__FILE__), "fastlane", "Pluginfile")
-eval_gemfile(plugins_path) if File.exist?(plugins_path)
+# Load the plugins declared in fastlane/Pluginfile. Bundler resolves the path
+# relative to this Gemfile. Keep it a literal string: Dependabot can only
+# follow eval_gemfile with an uninterpolated string argument, and fails the
+# whole bundler update job otherwise.
+eval_gemfile "fastlane/Pluginfile"
