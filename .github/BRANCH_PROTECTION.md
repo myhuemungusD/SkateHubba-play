@@ -16,62 +16,70 @@ The rules below prevent this class of incident from recurring. (`main.yml` today
 
 ## Required Rules for `main`
 
-Configure these in **GitHub → Settings → Branches → Add rule** (pattern: `main`):
+This is the protection that is **live on `main`** (last synced 2026-10-07).
+`scripts/apply-branch-protection.sh` applies exactly this payload, so the
+script, this file and GitHub stay in sync. Re-run the script after editing
+either one.
 
-### 1. Require pull request before merging
+### 1. Require a pull request before merging
 
-- **Required approving reviews**: 1
-- **Dismiss stale pull request approvals when new commits are pushed**: ✅
-- **Require review from Code Owners**: ✅ (see `.github/CODEOWNERS`)
-- **Require approval of the most recent reviewable push**: ✅
+- ✅ Required, with **0 approving reviews**. The repo has a single maintainer
+  and GitHub doesn't let you approve your own PR, so requiring approvals
+  would make every maintainer PR unmergeable. The PR requirement plus the
+  required checks below is what stops direct pushes from agents and bots.
+- If a second maintainer joins: raise approvals to 1 and turn on
+  "Require review from Code Owners" (`.github/CODEOWNERS` is already in place).
 
 ### 2. Require status checks to pass before merging
 
-- **Require branches to be up to date before merging**: ✅
-- **Required status checks**:
-  - `build-and-test` (from `.github/workflows/main.yml`)
-  - `enforce-pr-policy` (from `.github/workflows/pr-gate.yml`)
-  - `verify-no-cloud-functions` (from `.github/workflows/pr-gate.yml`)
-  - `Validate Firebase rules changes` (from `.github/workflows/pr-gate.yml`)
+- **Require branches to be up to date before merging**: ✅ (strict)
+- **Required status checks** (all from the GitHub Actions app, all run on
+  every PR to `main`; the change-scoped ones skip their heavy steps and pass
+  when nothing relevant changed):
+  - `build-and-test` (`main.yml`)
+  - `e2e` (`main.yml`)
+  - `enforce-pr-policy` (`pr-gate.yml`)
+  - `guard-as-any-casts` (`pr-gate.yml`)
+  - `guard-todo-fixme-hack` (`pr-gate.yml`)
+  - `verify-no-cloud-functions` (`pr-gate.yml`)
+  - `verify-workflow-changes` (`pr-gate.yml`)
+  - `Validate Firebase rules changes` (`pr-gate.yml`)
+  - `Build and test Cloud Functions` (`pr-gate.yml`)
 
-> ⚠️ **Use the display name, not the job id.** That job sets
-> `name: Validate Firebase rules changes` (`pr-gate.yml:153`), so GitHub
-> publishes the check run under that string. A required check registered as
-> `validate-firebase-rules` never reports and leaves every PR stuck on
-> "Expected — Waiting for status to be reported".
-> `scripts/apply-branch-protection.sh` currently carries the job-id form and
-> needs the same correction.
-
-> **Automation:** `scripts/apply-branch-protection.sh` applies every rule
-> below **except §5 (push restrictions)** via `gh api`. Run it whenever this
-> checklist changes so the remote repo stays in sync with the documented
-> policy.
+> ⚠️ **Use the display name, not the job id.** Jobs with a `name:` publish
+> their check run under that name (`Validate Firebase rules changes`, not
+> `validate-firebase-rules`). A required check registered under the job id
+> never reports and leaves every PR stuck on "Expected — Waiting for status
+> to be reported".
 >
-> ⚠️ The script sends `"restrictions": null`, which _clears_ push
-> restrictions. If §5 was set through the UI, running the script silently
-> removes it — re-apply §5 in the UI afterwards, or fix the payload to
-> `{"users": ["myhuemungusD"], "teams": [], "apps": []}`.
+> Don't make a check required unless it runs on **every** PR. A workflow with
+> `paths:` filters (or one that only runs on `push`) never reports on the PRs
+> it skips, and those PRs can never merge.
 
 ### 3. Require conversation resolution before merging
 
-- ✅ All review comments must be resolved
+- ✅ All review threads must be resolved
 
-### 4. Do not allow bypassing the above settings
+### 4. Require linear history
 
-- ✅ Even administrators must follow these rules
+- ✅ Only squash merges are enabled in repo settings (merge commits and
+  rebase merges are off), and the squash commit title is the PR title, so
+  every commit on `main` is a Conventional Commit that release-please can read.
 
-### 5. Restrict who can push to matching branches
+### 5. Admin bypass
 
-- Only the repository owner (`@myhuemungusD`) may push directly
-- AI agents and bot accounts must go through pull requests
+- `enforce_admins` is **off**, so the repository owner keeps a break-glass
+  path. Turn it on to hold admins to the same rules.
 
-### 6. Block force pushes
+### 6. Block force pushes and deletions
 
-- ✅ Do not allow force pushes
+- ✅ Force pushes blocked
+- ✅ Branch deletion blocked
 
-### 7. Block deletions
+### 7. Not required (on purpose)
 
-- ✅ Do not allow branch deletion
+- **Signed commits**: off. Dependabot and agent commits are unsigned and
+  would be blocked.
 
 ---
 
@@ -85,23 +93,26 @@ In addition to GitHub's branch protection settings, the following CI checks run 
 | `verify-no-cloud-functions`       | `pr-gate.yml`               | Enforces the `functions/src/` **allowlist** — the 4 approved files pass, anything else is rejected     |
 | `verify-workflow-changes`         | `pr-gate.yml`               | Warns when `.github/workflows/` files are modified                                                     |
 | `Validate Firebase rules changes` | `pr-gate.yml`               | Runs emulator rules tests when Firestore/Storage rules change (job id `validate-firebase-rules`)       |
-| `guard-as-any-casts`              | `pr-gate.yml`               | Rejects `as any` in `src/` and `functions/src/` production code                                        |
-| `guard-todo-fixme-hack`           | `pr-gate.yml`               | Rejects `TODO` / `FIXME` / `HACK` in production code                                                   |
+| `guard-as-any-casts`              | `pr-gate.yml`               | Rejects `as any` in `src/`, `functions/src/` and `api/` production code                                |
+| `guard-todo-fixme-hack`           | `pr-gate.yml`               | Rejects `TODO` / `FIXME` / `HACK` in `src/` and `api/`                                                 |
 | `check-test-duplication`          | `pr-gate.yml`               | Flags duplicated test blocks                                                                           |
 | `check-file-length`               | `pr-gate.yml`               | Reports files over the LOC budgets (`continue-on-error: true` — non-blocking)                          |
-| `build-functions`                 | `pr-gate.yml`               | Builds and tests the approved Cloud Functions codebase when it changes                                 |
+| `Build and test Cloud Functions`  | `pr-gate.yml`               | Builds, tests and audits (high+) the approved Cloud Functions codebase when it changes                 |
 | `e2e`                             | `main.yml`                  | Playwright end-to-end suite against the Firebase emulators                                             |
 | `build-and-test`                  | `main.yml`                  | Lint, type check, tests, build (blocking `npm audit` when this PR touches deps; report-only otherwise) |
 | `lighthouse`                      | `main.yml`                  | Performance regression check                                                                           |
 | Rules deploy                      | `firebase-rules-deploy.yml` | Pushes `firestore.rules` / `storage.rules` / indexes to production on merge to `main`                  |
 | Infra setup                       | `firebase-infra-setup.yml`  | Manual workflow for daily Firestore backups + 90-day Storage lifecycle (`workflow_dispatch`)           |
-| `audit-nightly`                   | `main.yml`                  | Nightly `npm audit` against main's lockfile — catches drift no PR can gate (schedule + dispatch)       |
+| `audit-nightly`                   | `main.yml`                  | Nightly `npm audit` of main's root lockfile (moderate+) and `functions/` lockfile (high+)              |
+| CodeQL                            | `codeql.yml`                | Static analysis (JS/TS, Actions, Python) on PRs, pushes to main and weekly. Not required yet           |
 
 ---
 
 ## CODEOWNERS
 
-The `.github/CODEOWNERS` file assigns `@myhuemungusD` as the default owner for all files. When "Require review from Code Owners" is enabled, every PR requires their approval.
+`.github/CODEOWNERS` assigns `@myhuemungusD` as the default owner for all files,
+so they are auto-requested as reviewer on every PR. Code-owner review is not
+enforced while there is a single maintainer (see §1).
 
 ---
 
@@ -119,28 +130,16 @@ The `.github/CODEOWNERS` file assigns `@myhuemungusD` as the default owner for a
 
 ---
 
-## Setup Checklist
+## Setup
 
-You can apply the entire ruleset in one command:
+Apply the whole ruleset in one command (needs admin on the repo):
 
 ```bash
-GITHUB_REPO=myhuemungusD/skatehubba-play bash scripts/apply-branch-protection.sh
+GITHUB_REPO=myhuemungusD/SkateHubba-play bash scripts/apply-branch-protection.sh
 ```
 
-Or click through the UI:
-
-- [ ] Go to GitHub → Settings → Branches → Add branch protection rule
-- [ ] Set branch name pattern to `main`
-- [ ] Enable "Require a pull request before merging"
-- [ ] Set required approving reviews to 1
-- [ ] Enable "Dismiss stale pull request approvals when new commits are pushed"
-- [ ] Enable "Require review from Code Owners"
-- [ ] Enable "Require approval of the most recent reviewable push"
-- [ ] Enable "Require status checks to pass before merging"
-- [ ] Enable "Require branches to be up to date before merging"
-- [ ] Add required status checks: `build-and-test`, `enforce-pr-policy`, `verify-no-cloud-functions`, `Validate Firebase rules changes` (display name — see the warning above)
-- [ ] Enable "Require conversation resolution before merging"
-- [ ] Enable "Do not allow bypassing the above settings"
-- [ ] Enable "Restrict who can push to matching branches" (add `@myhuemungusD`) — **UI only**, `apply-branch-protection.sh` does not set this
-- [ ] Disable "Allow force pushes"
-- [ ] Disable "Allow deletions"
+The script replaces the protection on `main` with the payload above. Repo
+settings that go with it (Settings → General → Pull Requests): squash merging
+only, default commit message "Pull request title and commit details", "Always
+suggest updating pull request branches", "Allow auto-merge" and
+"Automatically delete head branches" all on.

@@ -17,7 +17,7 @@ We only maintain the latest version on `main`. Security patches are applied ther
 
 To report a vulnerability:
 
-1. Email **security@skatehubba.com** with:
+1. Report it privately through GitHub: **[Security → Report a vulnerability](https://github.com/myhuemungusD/SkateHubba-play/security/advisories/new)** (private vulnerability reporting is enabled), or email **security@skatehubba.com** with:
    - Description of the vulnerability
    - Steps to reproduce
    - Potential impact
@@ -100,11 +100,13 @@ The `main` branch is protected by GitHub branch protection rules and automated C
 
 Key safeguards:
 
-- **All changes to `main` must go through a pull request** with at least one CODEOWNER approval
-- **Required CI checks** must pass: lint, type check, tests, build
+- **All changes to `main` must go through a pull request**, squash-merged (linear history), with all review conversations resolved
+- **Required CI checks** must pass on an up-to-date branch: lint, type check, tests, build, e2e, rules tests and the functions build/test/audit when those areas change, plus the PR Gate guards
+- **Dependency and code scanning**: Dependabot alerts and security updates, npm audit in CI (root and `functions/`), secret scanning with push protection, and CodeQL
 - **Cloud Functions allowlist guard**: a CI job permits only the four maintainer-approved files under `functions/src/` (the stats close-out, approved 2026-07) and rejects any other addition there
 - **Workflow change detection**: modifications to `.github/workflows/` are flagged for manual review
 - **Force pushes and branch deletion are blocked** on `main`
+- **Least-privilege Actions**: the default `GITHUB_TOKEN` is read-only, each workflow declares its own `permissions:`, and every third-party action is pinned to a full commit SHA (enforced in repo settings)
 
 Full configuration details: [`.github/BRANCH_PROTECTION.md`](.github/BRANCH_PROTECTION.md)
 

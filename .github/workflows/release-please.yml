@@ -30,5 +30,10 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-          # Scope the release to the default repo token; no PAT needed.
+          # Default repo token. Known limitation: GitHub doesn't start other
+          # workflows for events made with GITHUB_TOKEN, so the release PR
+          # gets no CI checks (it can't satisfy branch protection without a
+          # manual push) and a published release won't trigger release.yml.
+          # Fix: swap in a GitHub App token (actions/create-github-app-token)
+          # or a fine-grained PAT stored as a secret.
           token: ${{ secrets.GITHUB_TOKEN }}

@@ -18,14 +18,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Block direct pushes from bots without review
+      - name: Confirm the change arrived via pull request
         run: |
           echo "✅ PR gate passed — this change arrived via pull request."
           echo ""
-          echo "Branch protection policy requires:"
-          echo "  - At least 1 approving review from a CODEOWNER"
-          echo "  - All CI status checks passing (build-and-test)"
+          echo "Branch protection on main requires:"
+          echo "  - A pull request (no direct pushes)"
+          echo "  - All required status checks passing (build-and-test, e2e, PR Gate jobs)"
           echo "  - Branch is up to date with main before merge"
+          echo "  - All review conversations resolved; squash merge only (linear history)"
           echo ""
           echo "See .github/BRANCH_PROTECTION.md for full ruleset."
 
@@ -37,9 +38,10 @@ jobs:
 
       - name: Reject as-any in production code
         run: |
-          # Covers both the app (src/) and the approved Cloud Functions
-          # codebase (functions/src/), with the same test-file exclusions.
-          if grep -rn "as any" src/ functions/src/ --include="*.ts" --include="*.tsx" | grep -v __tests__ | grep -v __mocks__ | grep -v ".test."; then
+          # Covers the app (src/), the approved Cloud Functions codebase
+          # (functions/src/) and the serverless endpoints (api/), with the
+          # same test-file exclusions.
+          if grep -rn "as any" src/ functions/src/ api/ --include="*.ts" --include="*.tsx" | grep -v __tests__ | grep -v __mocks__ | grep -v ".test."; then
             echo "::error::'as any' found in production code. Keep type casts in test files only."
             exit 1
           fi
@@ -94,11 +96,11 @@ jobs:
 
       - name: Reject TODO/FIXME/HACK in production code
         run: |
-          MATCHES=$(grep -rn --include="*.ts" --include="*.tsx" -E '\b(TODO|FIXME|HACK)\b' src/ || true)
+          MATCHES=$(grep -rn --include="*.ts" --include="*.tsx" -E '\b(TODO|FIXME|HACK)\b' src/ api/ || true)
           if [ -n "$MATCHES" ]; then
             echo "$MATCHES"
             echo ""
-            echo "::error::TODO/FIXME/HACK comments found in src/. Resolve before merging."
+            echo "::error::TODO/FIXME/HACK comments found in src/ or api/. Resolve before merging."
             exit 1
           fi
 
@@ -233,6 +235,15 @@ jobs:
         if: steps.changed.outputs.touched == 'true'
         working-directory: functions
         run: npm test
+
+      # functions/ has its own lockfile, so the root audit in main.yml never
+      # sees it. Block on high/critical only: the remaining moderates come in
+      # through firebase-admin → @google-cloud/storage → gaxios 6 → uuid and
+      # can't be fixed from here until Google ships a new storage client.
+      - name: Audit functions dependencies (blocking on high/critical)
+        if: steps.changed.outputs.touched == 'true'
+        working-directory: functions
+        run: npm audit --audit-level=high
 
       - name: Skip note
         if: steps.changed.outputs.touched != 'true'

@@ -261,9 +261,10 @@ jobs:
   # lockfile surface here instead — a red scheduled run in the Actions tab is
   # the alert, and the fix lands via Dependabot or a dedicated dep-bump PR
   # rather than being hand-patched into whatever PR happens to be open.
-  # Root package only: functions/ carries known unfixable moderates via
-  # firebase-admin transitives (tracked upstream), so auditing it here would
-  # leave this job permanently red and train everyone to ignore it.
+  # functions/ is audited too, but at --audit-level=high: it carries known
+  # unfixable moderates via firebase-admin transitives (tracked upstream), so
+  # auditing it at moderate would leave this job permanently red and train
+  # everyone to ignore it.
   audit-nightly:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -291,3 +292,11 @@ jobs:
       - name: Audit dependencies (blocking — main lockfile drift)
         run: |
           npm audit --audit-level=moderate
+
+      # Runs even if the root audit failed so one red night reports both.
+      # `npm audit` reads the lockfile only, so no install is needed.
+      - name: Audit functions dependencies (blocking on high/critical)
+        if: ${{ !cancelled() }}
+        working-directory: functions
+        run: |
+          npm audit --audit-level=high

@@ -23,8 +23,11 @@ name: Release Recovery (v1.1.0 retroactive tag)
 # not backfilling them here. v1.1.0 has been running in production for
 # two months without those assets; the marginal value of backfilling does
 # not justify adding a `workflow_dispatch` trigger to the load-bearing
-# release.yml or provisioning a PAT/App-token secret. v1.2.0+ will work
-# normally because release-please uses its own GitHub App token.
+# release.yml or provisioning a PAT/App-token secret. Note: v1.2.0+ has the
+# same limitation today, because release-please.yml also runs with the
+# default GITHUB_TOKEN (its release PRs get no CI checks, and its releases
+# don't trigger release.yml) until a GitHub App token or fine-grained PAT is
+# wired into release-please.yml.
 #
 # Delete this file in a follow-up PR after the run succeeds.
 
@@ -45,9 +48,9 @@ jobs:
     if: github.event.inputs.confirm == 'YES'
     runs-on: ubuntu-latest
     steps:
-      # actions/github-script v7.0.1 — pinned by SHA per CLAUDE.md hardening
+      # Pinned by SHA per CLAUDE.md hardening.
       - name: Create v1.1.0 tag, Release, and flip PR #247 label
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const owner = context.repo.owner;

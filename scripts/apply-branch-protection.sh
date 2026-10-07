@@ -13,7 +13,7 @@
 #      (falls back to `gh repo view --json nameWithOwner` when unset)
 #
 # Usage:
-#   GITHUB_REPO=myhuemungusD/skatehubba-play bash scripts/apply-branch-protection.sh
+#   GITHUB_REPO=myhuemungusD/SkateHubba-play bash scripts/apply-branch-protection.sh
 #   bash scripts/apply-branch-protection.sh   # infers repo from current checkout
 #
 # Idempotent: re-running replays the same settings, which is how we keep the
@@ -34,37 +34,49 @@ fi
 BRANCH="${BRANCH:-main}"
 # Required status checks — keep in sync with .github/BRANCH_PROTECTION.md.
 # Job names must match the `name:` (or job id, when unnamed) GitHub exposes
-# as the check run.
+# as the check run. Every entry must run on EVERY pull request to main, or
+# PRs it skips can never merge.
 REQUIRED_CHECKS=(
   "build-and-test"
+  "e2e"
   "enforce-pr-policy"
+  "guard-as-any-casts"
+  "guard-todo-fixme-hack"
   "verify-no-cloud-functions"
-  "validate-firebase-rules"
+  "verify-workflow-changes"
+  "Validate Firebase rules changes"
+  "Build and test Cloud Functions"
 )
+# GitHub Actions' app id. Pinning checks to it stops any other app (or a
+# commit status posted with a stolen token) from satisfying a required check.
+GITHUB_ACTIONS_APP_ID=15368
 
 echo "→ Applying branch protection to ${REPO}@${BRANCH}"
 
 # Build the JSON payload on the fly so the required-status-checks array can
 # be populated from the shell list above. Uses jq (available on ubuntu-latest
 # and any machine with gh CLI) instead of python3 for portability.
-CHECK_CONTEXTS_JSON=$(printf '%s\n' "${REQUIRED_CHECKS[@]}" | jq -R -s 'split("\n") | map(select(length > 0))')
+CHECKS_JSON=$(printf '%s\n' "${REQUIRED_CHECKS[@]}" | jq -R -s --argjson app "$GITHUB_ACTIONS_APP_ID" \
+  'split("\n") | map(select(length > 0)) | map({context: ., app_id: $app})')
 
 PAYLOAD=$(cat <<EOF
 {
   "required_status_checks": {
     "strict": true,
-    "contexts": ${CHECK_CONTEXTS_JSON}
+    "checks": ${CHECKS_JSON}
   },
-  "enforce_admins": true,
+  "enforce_admins": false,
   "required_pull_request_reviews": {
-    "required_approving_review_count": 1,
-    "dismiss_stale_reviews": true,
-    "require_code_owner_reviews": true,
-    "require_last_push_approval": true
+    "required_approving_review_count": 0,
+    "dismiss_stale_reviews": false,
+    "require_code_owner_reviews": false,
+    "require_last_push_approval": false
   },
   "restrictions": null,
+  "required_linear_history": true,
   "allow_force_pushes": false,
   "allow_deletions": false,
+  "block_creations": false,
   "required_conversation_resolution": true,
   "lock_branch": false,
   "allow_fork_syncing": false

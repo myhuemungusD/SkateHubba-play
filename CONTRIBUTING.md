@@ -97,7 +97,7 @@ refactor: extract video recorder into hook
 test: add forfeit edge case to smoke tests
 ```
 
-Prefixes: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`
+Prefixes: `feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `chore`, `ci`, `build`, `style`
 
 ---
 
@@ -106,8 +106,10 @@ Prefixes: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`
 The `main` branch has protection rules that apply to all contributors, including AI agents:
 
 - **Direct pushes to `main` are blocked** — all changes must go through a pull request
-- **At least 1 approving review** from a CODEOWNER is required
-- **CI status checks must pass** before merging (lint, type check, tests, build)
+- **Required CI checks must pass** and the branch must be up to date with `main` (lint, type check, tests, build, e2e, and the PR Gate guards)
+- **Squash merge only** (linear history) — the PR title becomes the commit on `main`, so it must be a Conventional Commit
+- **All review conversations must be resolved** before merging
+- The maintainer (`@myhuemungusD`) is auto-requested as reviewer via CODEOWNERS
 - **`functions/src/` is allowlisted, not banned** — a CI guard permits exactly `index.ts`, `index.test.ts`, `applyGameStats.ts`, and `applyGameStats.test.ts` (the maintainer-approved stats close-out, approved 2026-07) and rejects any other file added under `functions/src/`. Discuss before adding one.
 - **Workflow changes are flagged** — modifications to `.github/workflows/` require explicit maintainer review
 
