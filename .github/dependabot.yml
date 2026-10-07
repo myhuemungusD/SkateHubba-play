@@ -30,6 +30,12 @@ updates:
     # (this also covers the tracked v3→v4 Capacitor migration, AUDIT_2026-05 F9).
     ignore:
       - dependency-name: "@sentry/react"
+      # eslint-plugin-react-hooks 7.1 promotes the React Compiler rules
+      # (set-state-in-effect, refs, purity) to errors in the recommended
+      # config: 22 lint errors in src/ (seen on #615). Hold it at 7.0.x until
+      # those are fixed, then delete this entry.
+      - dependency-name: "eslint-plugin-react-hooks"
+        versions: [">=7.1.0"]
     groups:
       production-dependencies:
         dependency-type: production
