@@ -9,6 +9,11 @@ updates:
       time: "06:00"
       timezone: Etc/UTC
     open-pull-requests-limit: 5
+    # Supply-chain buffer: wait 3 days after a release before proposing it,
+    # so a hijacked publish is usually yanked before it reaches a PR.
+    # Security updates ignore cooldown and still open immediately.
+    cooldown:
+      default-days: 3
     commit-message:
       # `chore` is hidden in release-please changelog-sections, so dependency
       # bumps don't churn the CHANGELOG or force a version bump; they ride
@@ -42,6 +47,8 @@ updates:
       time: "06:00"
       timezone: Etc/UTC
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3
     commit-message:
       prefix: chore
       include: scope
@@ -54,8 +61,13 @@ updates:
   # NOTE: these PRs edit `uses:` pins inside .github/workflows/**, so each one
   # trips the `verify-workflow-changes` warning in pr-gate.yml by design —
   # that warning is the intended maintainer-review signal, not a failure.
+  # `directories` (not `directory`) so the pins inside the local composite
+  # action (.github/actions/*/action.yml) are kept current too; a plain
+  # `directory: "/"` only scans .github/workflows.
   - package-ecosystem: github-actions
-    directory: "/"
+    directories:
+      - "/"
+      - "/.github/actions/*"
     schedule:
       interval: weekly
       day: monday
@@ -67,3 +79,25 @@ updates:
     groups:
       github-actions:
         patterns: ["*"]
+
+  # ── Ruby: fastlane, used by android-aab.yml to upload to Google Play ──
+  # Without this entry Dependabot only opens security PRs here, and those keep
+  # failing because fastlane pins rubyzip < 3 (see Dependabot alert for
+  # rubyzip). Weekly version updates still pick up fixes fastlane allows.
+  - package-ecosystem: bundler
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      ruby-dependencies:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]

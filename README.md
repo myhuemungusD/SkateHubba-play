@@ -114,14 +114,14 @@ No custom backend for game logic — the client talks directly to Firebase with 
 
 - **Invite & share** — SMS, link copy, and native share for invites and trick clips
 - **Push notifications** — FCM "your turn" alerts that deep-link into the game
-- **Cross-game clips feed** — every landed trick rolls into a global, scrollable feed; the top slot autoplays muted with tap-to-unmute and rotates through visible clips
-- **Clip upvotes** — single-tap, no-undo upvotes; one vote per user per clip enforced by rules, with a Top/New toggle over upvote-ranked results
+- **Cross-game clips feed** — every landed trick rolls into a global, scrollable feed; the top slot autoplays muted with tap-to-unmute and rotates through visible clips _(frozen: hidden unless `VITE_FEATURE_EXTRAS_ENABLED=true`, see [Feature freeze](#environment-variables))_
+- **Clip upvotes** — single-tap, no-undo upvotes; one vote per user per clip enforced by rules, with a Top/New toggle over upvote-ranked results _(frozen: hidden unless `VITE_FEATURE_EXTRAS_ENABLED=true`, see [Feature freeze](#environment-variables))_
 - **Leaderboard** — ranked players by wins
 - **Player profiles** — public per-user pages with full game history
-- **Spots map** — geo-tagged skate spots with gnar rating + bust risk, filters, a nearby-spots dropdown (closest spots within 10 km), and challenge-from-spot
+- **Spots map** — geo-tagged skate spots with gnar rating + bust risk, filters, a nearby-spots dropdown (closest spots within 10 km), and challenge-from-spot _(frozen: hidden unless `VITE_FEATURE_EXTRAS_ENABLED=true`, see [Feature freeze](#environment-variables))_
 - **Achievements & badges** — earned badges (century club, streaks, OG, …) shown on profiles
 - **Hubba Locker** — collectible locker items with a profile showcase (economy Phase A)
-- **Verified Pro** — gold username treatment for verified professional skaters
+- **Verified Pro** — gold username treatment for verified professional skaters _(frozen: hidden unless `VITE_FEATURE_EXTRAS_ENABLED=true`, see [Feature freeze](#environment-variables))_
 - **Admin console** — in-app moderation surface for bans, badge awards, and dispute oversight
 
 ### Platform
@@ -359,8 +359,8 @@ All analytics flow through a single wrapper (`src/services/analytics.ts`) that f
 | `sign_in_failure` / `sign_up_failure`              | Auth attempt rejected                          | `method`, `code`                                             |
 | `install_prompt_answered`                          | User answers the Chromium install dialog       | `outcome` (accepted / dismissed)                             |
 | `app_installed`                                    | Browser fires `appinstalled`                   | —                                                            |
-| `landing_map_viewed`                               | Landing-page map teaser scrolls into view      | —                                                            |
-| `landing_pin_clicked`                              | Locked pin on the landing map teaser tapped    | `spotId`                                                     |
+| `landing_map_viewed`                               | Not fired: landing map teaser removed (#599)   | —                                                            |
+| `landing_pin_clicked`                              | Not fired: landing map teaser removed (#599)   | `spotId`                                                     |
 | `profile_viewed`                                   | Player profile screen mounts                   | hashed `viewerUid` / `profileUid`, `isOwn`, `msToFirstPaint` |
 | `profile_stat_tile_tapped`                         | Stat tile tapped on a profile                  | `statName`, hashed `profileUid`                              |
 | `avatar_upload_started` / `_completed` / `_failed` | Avatar upload pipeline stages                  | `source`, sizes, `nsfwScore`, `errorCode`                    |

@@ -1,5 +1,6 @@
-# Branch protection: all changes require review from a maintainer.
-# This file is enforced by GitHub's "Require review from Code Owners" rule.
+# Code owners are auto-requested as reviewers on every PR.
+# Code-owner approval is NOT enforced while the repo has a single maintainer
+# (GitHub doesn't allow approving your own PR). See .github/BRANCH_PROTECTION.md.
 
 # Default owner for everything
 * @myhuemungusD
