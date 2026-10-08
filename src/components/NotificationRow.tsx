@@ -57,9 +57,9 @@ export function NotificationRow({
           {" · "}
           <span className="text-subtle">{n.message}</span>
         </p>
-        <p className="font-body text-[10px] text-faint mt-0.5">{loading ? "Opening…" : relativeTime(n.timestamp)}</p>
+        <p className="font-body text-xs text-bright mt-0.5">{loading ? "Opening…" : relativeTime(n.timestamp)}</p>
         {missing && (
-          <p role="alert" className="font-body text-[10px] text-brand-red mt-0.5">
+          <p role="alert" className="font-body text-xs text-brand-red mt-0.5">
             That game is no longer available
           </p>
         )}
@@ -72,7 +72,7 @@ export function NotificationRow({
           e.stopPropagation();
           onDismiss();
         }}
-        className="shrink-0 p-1 text-faint hover:text-brand-red transition-colors opacity-60 hover:opacity-100 focus-visible:opacity-100"
+        className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-bright hover:text-brand-red transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
       >
         <svg
           width="12"

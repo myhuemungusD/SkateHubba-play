@@ -1,3 +1,4 @@
+import { ActionDock } from "../../../components/ActionDock";
 import { UploadProgress } from "../../../components/UploadProgress";
 import { Btn } from "../../../components/ui/Btn";
 import type { UploadProgress as UploadProgressData } from "../../../services/storage";
@@ -25,11 +26,13 @@ export function SetterDecisionPanel({
   submitSetterTrick,
   submitSetterMissed,
 }: Props) {
+  if (!videoRecorded && !submitting) return null;
+
   return (
-    <>
+    <ActionDock testId="land-decision">
       {videoRecorded && !submitting && !error && (
-        <div className="mt-5" role="group" aria-label="Did you land the trick?">
-          <p className="font-display text-xl text-white text-center mb-4">Did you land it?</p>
+        <div role="group" aria-label="Did you land the trick?">
+          <p className="font-display text-xl text-white text-center mb-3">Did you land it?</p>
           <div className="flex gap-3">
             <Btn onClick={() => submitSetterTrick(videoBlob)} variant="success" disabled={submitting}>
               ✓ Landed
@@ -41,7 +44,7 @@ export function SetterDecisionPanel({
         </div>
       )}
       {submitting && (
-        <div className="mt-5 text-center">
+        <div className="text-center">
           {uploadProgress ? (
             <UploadProgress progress={uploadProgress} />
           ) : (
@@ -52,15 +55,13 @@ export function SetterDecisionPanel({
         </div>
       )}
       {!submitting && error && videoRecorded && (
-        <div className="mt-5">
-          <Btn
-            onClick={setterAction === "missed" ? submitSetterMissed : () => submitSetterTrick(videoBlob)}
-            variant="secondary"
-          >
-            Retry
-          </Btn>
-        </div>
+        <Btn
+          onClick={setterAction === "missed" ? submitSetterMissed : () => submitSetterTrick(videoBlob)}
+          variant="secondary"
+        >
+          Retry
+        </Btn>
       )}
-    </>
+    </ActionDock>
   );
 }

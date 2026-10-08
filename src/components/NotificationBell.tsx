@@ -120,7 +120,7 @@ export function NotificationBell({
       <button
         type="button"
         onClick={handleToggle}
-        className="relative p-2 rounded-xl border border-border hover:border-border-hover hover:bg-white/[0.02] transition-all duration-300"
+        className="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border hover:border-border-hover hover:bg-white/[0.02] transition-all duration-300"
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
         aria-expanded={open}
       >
@@ -141,7 +141,7 @@ export function NotificationBell({
           <path d="M13.73 21a2 2 0 0 1-3.46 0" />
         </svg>
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-brand-orange font-display text-[9px] text-white leading-none">
+          <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 flex items-center justify-center rounded-full bg-brand-orange font-display text-xs text-black leading-none">
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
@@ -149,7 +149,10 @@ export function NotificationBell({
 
       {/* Dropdown panel */}
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-[320px] max-h-[420px] flex flex-col rounded-2xl border border-white/[0.06] bg-surface/95 backdrop-blur-xl shadow-[0_8px_40px_rgba(0,0,0,0.4),0_2px_8px_rgba(0,0,0,0.2)] animate-scale-in z-50">
+        <div
+          data-testid="notification-panel"
+          className="notification-panel z-50 flex flex-col rounded-2xl border border-white/[0.06] bg-surface/95 backdrop-blur-xl shadow-[0_8px_40px_rgba(0,0,0,0.4),0_2px_8px_rgba(0,0,0,0.2)] animate-scale-in"
+        >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <span className="font-display text-sm tracking-wider text-white">NOTIFICATIONS</span>
@@ -158,7 +161,7 @@ export function NotificationBell({
               <button
                 type="button"
                 onClick={toggleSound}
-                className="text-xs text-subtle hover:text-white transition-colors p-1"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center text-bright hover:text-white transition-colors"
                 aria-label={soundEnabled ? "Mute sounds" : "Unmute sounds"}
                 title={soundEnabled ? "Mute sounds" : "Unmute sounds"}
               >
@@ -201,7 +204,7 @@ export function NotificationBell({
                 <button
                   type="button"
                   onClick={markAllRead}
-                  className="font-body text-[10px] text-subtle hover:text-brand-orange transition-colors"
+                  className="inline-flex min-h-11 items-center font-body text-xs text-bright hover:text-brand-orange transition-colors"
                 >
                   Mark all read
                 </button>
@@ -210,7 +213,7 @@ export function NotificationBell({
           </div>
 
           {/* Notification list */}
-          <div className="flex-1 overflow-y-auto no-scrollbar">
+          <div className="min-h-0 flex-1 overflow-y-auto no-scrollbar">
             {notifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10">
                 <svg
@@ -260,7 +263,7 @@ export function NotificationBell({
               <button
                 type="button"
                 onClick={clearAll}
-                className="font-body text-[10px] text-subtle hover:text-brand-red transition-colors"
+                className="inline-flex min-h-11 items-center font-body text-xs text-bright hover:text-brand-red transition-colors"
               >
                 Clear all
               </button>

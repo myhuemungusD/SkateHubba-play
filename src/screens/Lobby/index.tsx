@@ -48,7 +48,7 @@ export function Lobby({
   const emailVerified = user?.emailVerified ?? false;
 
   return (
-    <div className="relative min-h-dvh bg-background/40 pb-24">
+    <div className="lobby-root relative min-h-dvh bg-background/40 pb-24">
       <LobbyHeader
         profile={profile}
         games={games}

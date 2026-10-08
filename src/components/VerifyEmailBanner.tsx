@@ -137,7 +137,7 @@ export function VerifyEmailBanner({
     >
       <div>
         <span className="font-display text-xs tracking-wider text-brand-orange block">VERIFY YOUR EMAIL</span>
-        <span className="font-body text-xs text-muted" aria-live="polite">
+        <span className="block font-body text-sm text-muted" aria-live="polite">
           {statusMessage}
         </span>
         {/* Desktop users with side-by-side tabs never trigger
@@ -147,7 +147,7 @@ export function VerifyEmailBanner({
           type="button"
           onClick={handleCheckNow}
           disabled={checking}
-          className="mt-1 inline-flex items-center font-body text-[11px] text-subtle underline underline-offset-2 hover:text-brand-orange disabled:opacity-40 transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange rounded"
+          className="mt-2 flex min-h-11 w-full items-center font-body text-sm text-bright underline underline-offset-2 hover:text-brand-orange disabled:opacity-40 transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange rounded"
           aria-busy={checking}
           aria-label={checking ? "Checking verification status" : "I verified my email — check now"}
         >

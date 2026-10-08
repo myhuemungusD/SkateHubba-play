@@ -161,8 +161,57 @@
 @layer components {
   .touch-target {
     min-height: 2.75rem;
+    min-width: 2.75rem;
     padding-left: 0.75rem;
     padding-right: 0.75rem;
+  }
+
+  /* 9:16 clip capped so the land/miss (or record) bar can stay on screen.
+     Width tracks the height cap so the frame doesn't stretch. */
+  .trick-frame {
+    width: min(100%, 360px, calc(55dvh * 9 / 16));
+    max-height: 55dvh;
+    aspect-ratio: 9 / 16;
+    margin-inline: auto;
+  }
+
+  /* Phone sheet for the bell. Portaled positioning is not used: the panel
+     stays in the bell so a wide window can drop back to an anchored popover.
+     The lobby header must not use backdrop-filter, or this fixed sheet is
+     trapped in that header instead of the viewport. */
+  .notification-panel {
+    position: fixed;
+    left: 0.75rem;
+    right: 0.75rem;
+    top: calc(env(safe-area-inset-top) + 4rem);
+    max-height: min(70dvh, calc(100dvh - env(safe-area-inset-top) - 5.5rem));
+    overflow: hidden;
+  }
+
+  @media (min-width: 933px) {
+    .notification-panel {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      left: auto;
+      width: 320px;
+      margin-top: 0.5rem;
+      max-height: 420px;
+    }
+  }
+
+  /* Turn-sending actions (record, landed/missed, roll). Fixed, not sticky:
+     sticky cannot pull a control up into view when it starts below the fold. */
+  .action-dock {
+    position: fixed;
+    z-index: 30;
+    inset-inline: 0;
+    bottom: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(10, 10, 10, 0.95);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    padding: 0.75rem 1.25rem max(env(safe-area-inset-bottom), 0.75rem);
   }
 }
 
@@ -292,13 +341,13 @@
 }
 
 /* ── Scale-in for modals / cards ─────────────────────── */
+/* Transform only. An opacity:0 start made /auth report no Largest Contentful
+   Paint — Chrome never counts a fully transparent node as painted. */
 @keyframes scale-in {
   from {
-    opacity: 0;
     transform: scale(0.96) translateY(8px);
   }
   to {
-    opacity: 1;
     transform: scale(1) translateY(0);
   }
 }
@@ -568,8 +617,75 @@
    already includes the safe-area inset) while it is on screen, so the end of
    every page — e.g. the "Create Account" button on /auth — can always be
    scrolled clear of the fixed banner instead of hiding underneath it. */
+/* Focused fields sit above the keyboard. visualViewport publishes the overlap
+   as --keyboard-inset (see KeyboardInset); 45dvh of scroll-margin covers
+   browsers that don't resize the layout viewport (mobile Safari). */
+input,
+textarea,
+select {
+  scroll-margin-top: 6rem;
+  scroll-margin-bottom: 45dvh;
+}
+
+body {
+  padding-bottom: var(--keyboard-inset, 0px);
+}
+
+/* Scroll anchoring fights the route-change reset and leaves game over
+   a few pixels down. The app resets scroll itself. */
+html {
+  overflow-anchor: none;
+}
+
+html.consent-banner-open {
+  /* scrollIntoView (and the browser's "focused field" scroll) honor this, so
+     a tap on Sign in or a date field lands above the fixed banner. */
+  scroll-padding-bottom: var(--consent-banner-space, calc(5rem + env(safe-area-inset-bottom)));
+}
+
 html.consent-banner-open body {
-  padding-bottom: var(--consent-banner-space, calc(5rem + env(safe-area-inset-bottom)));
+  padding-bottom: calc(
+    var(--consent-banner-space, calc(5rem + env(safe-area-inset-bottom))) + var(--keyboard-inset, 0px)
+  );
+}
+
+/* While the lobby tour card is up, leave room to scroll the finished-games
+   row clear of the bubble (the bubble is fixed above the bottom nav). */
+html.tour-open .lobby-root {
+  padding-bottom: calc(20rem + env(safe-area-inset-bottom));
+}
+
+/* Short / landscape phones. Unlayered so it wins over the hero's clamp()
+   utilities, which otherwise stay huge and shove Sign in under the banner. */
+@media (max-height: 500px) {
+  .landing-hero {
+    justify-content: flex-start;
+    padding-top: calc(env(safe-area-inset-top) + 3.75rem);
+  }
+
+  .landing-hero h1 {
+    margin-bottom: 0.5rem;
+    font-size: 2rem;
+    line-height: 0.95;
+  }
+
+  .landing-hero h1 span:last-child {
+    font-size: 1rem;
+  }
+
+  .landing-kicker {
+    margin-bottom: 0.5rem;
+  }
+
+  .landing-sub {
+    margin-bottom: 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+
+  .landing-hero > a[href="#demo"] {
+    display: none;
+  }
 }
 
 /* ── Reduced motion ────────────────────────────────── */

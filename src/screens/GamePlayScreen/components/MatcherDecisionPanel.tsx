@@ -1,3 +1,4 @@
+import { ActionDock } from "../../../components/ActionDock";
 import { UploadProgress } from "../../../components/UploadProgress";
 import { Btn } from "../../../components/ui/Btn";
 import type { UploadProgress as UploadProgressData } from "../../../services/storage";
@@ -19,15 +20,21 @@ export function MatcherDecisionPanel({
   matcherLanded,
   submitMatchWithCall,
 }: Props) {
+  const showDock =
+    (videoRecorded && !submitting && !error) ||
+    (submitting && !uploadProgress) ||
+    (!submitting && !!error && videoRecorded && matcherLanded !== null);
+  if (!showDock) return null;
+
   return (
-    <>
+    <ActionDock testId="land-decision">
       {videoRecorded && !submitting && !error && (
-        <div className="mt-5" role="group" aria-label="Did you land the trick?">
+        <div role="group" aria-label="Did you land the trick?">
           {uploadProgress ? (
             <UploadProgress progress={uploadProgress} />
           ) : (
             <>
-              <p className="font-display text-xl text-white text-center mb-4">Did you land it?</p>
+              <p className="font-display text-xl text-white text-center mb-3">Did you land it?</p>
               <div className="flex gap-3">
                 <Btn onClick={() => submitMatchWithCall(true)} variant="success" disabled={submitting}>
                   ✓ Landed
@@ -41,17 +48,15 @@ export function MatcherDecisionPanel({
         </div>
       )}
       {submitting && !uploadProgress && (
-        <div className="mt-5 text-center">
+        <div className="text-center">
           <span className="font-display text-lg text-brand-green tracking-wider animate-pulse">Submitting...</span>
         </div>
       )}
       {!submitting && error && videoRecorded && matcherLanded !== null && (
-        <div className="mt-5">
-          <Btn onClick={() => submitMatchWithCall(matcherLanded)} variant="secondary">
-            Retry
-          </Btn>
-        </div>
+        <Btn onClick={() => submitMatchWithCall(matcherLanded)} variant="secondary">
+          Retry
+        </Btn>
       )}
-    </>
+    </ActionDock>
   );
 }

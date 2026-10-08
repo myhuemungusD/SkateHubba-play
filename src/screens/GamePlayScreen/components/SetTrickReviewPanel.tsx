@@ -1,3 +1,4 @@
+import { ActionDock } from "../../../components/ActionDock";
 import { Btn } from "../../../components/ui/Btn";
 import type { GameDoc } from "../../../services/games";
 import { isFirebaseStorageUrl } from "../../../utils/helpers";
@@ -45,7 +46,7 @@ export function SetTrickReviewPanel({
             playsInline
             preload="metadata"
             aria-label={`${setterUsername}'s ${game.currentTrickName || "trick"} video`}
-            className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
+            className="trick-frame rounded-2xl bg-black object-cover border border-border"
           />
         </div>
       ) : (
@@ -54,31 +55,31 @@ export function SetTrickReviewPanel({
         </p>
       )}
 
-      {!setReviewSubmitting && !error && (
-        <div role="group" aria-label="Rule clean or sketchy">
-          <p className="font-display text-xl text-white text-center mb-4">Is the set clean?</p>
-          <div className="flex gap-3">
-            <Btn onClick={() => onRule(true)} variant="success" disabled={setReviewSubmitting}>
-              Clean
-            </Btn>
-            <Btn onClick={() => onRule(false)} variant="danger" disabled={setReviewSubmitting}>
-              Sketchy
-            </Btn>
+      <ActionDock>
+        {!setReviewSubmitting && !error && (
+          <div role="group" aria-label="Rule clean or sketchy">
+            <p className="font-display text-xl text-white text-center mb-3">Is the set clean?</p>
+            <div className="flex gap-3">
+              <Btn onClick={() => onRule(true)} variant="success" disabled={setReviewSubmitting}>
+                Clean
+              </Btn>
+              <Btn onClick={() => onRule(false)} variant="danger" disabled={setReviewSubmitting}>
+                Sketchy
+              </Btn>
+            </div>
           </div>
-        </div>
-      )}
-      {setReviewSubmitting && (
-        <div className="text-center">
-          <span className="font-display text-lg text-amber-400 tracking-wider animate-pulse">Ruling...</span>
-        </div>
-      )}
-      {!setReviewSubmitting && error && lastSetReviewAction !== null && (
-        <div className="mt-3">
+        )}
+        {setReviewSubmitting && (
+          <div className="text-center">
+            <span className="font-display text-lg text-amber-400 tracking-wider animate-pulse">Ruling...</span>
+          </div>
+        )}
+        {!setReviewSubmitting && error && lastSetReviewAction !== null && (
           <Btn onClick={() => onRule(lastSetReviewAction)} variant="secondary">
             Retry
           </Btn>
-        </div>
-      )}
+        )}
+      </ActionDock>
     </div>
   );
 }

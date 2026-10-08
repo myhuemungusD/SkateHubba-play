@@ -43,7 +43,15 @@ const config: CapacitorConfig = {
   },
   ios: {
     backgroundColor: "#0A0A0A",
-    // Honor iPhone notch + Dynamic Island safe-area insets inside the webview.
+    // Left at "always" on purpose. StatusBar.overlaysWebView is false, so the
+    // webview is already pushed below the status bar, and CSS still adds
+    // env(safe-area-inset-*) (pt-safe / pb-safe) because viewport-fit=cover
+    // is set. On some Capacitor/iOS combinations those two insets stack and
+    // the header or bottom nav sits too far in; on others env() reports 0
+    // and only the CSS fallback minimum applies. Headless Chrome cannot show
+    // a notch, so this was not changed here. Confirm on a real iPhone 15
+    // before switching to contentInset: "never" (CSS would then own the inset).
+    // See docs/mobile-phone-layout.md.
     contentInset: "always",
   },
   plugins: {

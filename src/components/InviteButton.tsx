@@ -106,7 +106,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
       <button
         type="button"
         onClick={() => setShowPanel(!showPanel)}
-        className="w-full flex items-center justify-center gap-2.5 bg-transparent border border-border text-subtle hover:text-white hover:border-border-hover hover:bg-white/[0.02] rounded-2xl py-3.5 font-display tracking-wider text-lg transition-all duration-300 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+        className="flex min-h-11 w-full items-center justify-center gap-2.5 rounded-2xl border border-white/20 bg-transparent py-3.5 font-display text-lg tracking-wider text-white transition-all duration-300 hover:border-white/40 hover:bg-white/[0.04] active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
       >
         {showPanel ? (
           <>

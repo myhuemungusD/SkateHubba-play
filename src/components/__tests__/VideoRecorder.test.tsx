@@ -121,6 +121,7 @@ describe("VideoRecorder", () => {
     render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
     expect(screen.getByText(/Open Camera/)).toBeInTheDocument();
     expect(screen.getByText("Tap to open camera")).toBeInTheDocument();
+    expect(screen.getByTestId("trick-viewfinder")).toHaveClass("trick-frame");
   });
 
   it("opens camera on button click and shows preview state", async () => {

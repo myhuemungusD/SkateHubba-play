@@ -32,8 +32,12 @@ export function DiceNew() {
   }
 
   return (
-    <div className="min-h-dvh bg-background px-5 pt-8 pb-24 max-w-[430px] mx-auto">
-      <button type="button" onClick={() => navigate("/dice")} className="font-body text-sm text-muted">
+    <div className="mx-auto min-h-dvh max-w-[430px] bg-background px-5 pb-24 pt-[max(env(safe-area-inset-top),2rem)]">
+      <button
+        type="button"
+        onClick={() => navigate("/dice")}
+        className="inline-flex min-h-11 items-center font-body text-sm text-bright"
+      >
         Back
       </button>
       <h1 className="mt-4 font-display text-3xl tracking-wider text-white">Roll someone</h1>

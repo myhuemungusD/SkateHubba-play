@@ -34,12 +34,24 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
     return <WaitingScreen game={game} profile={profile} onBack={onBack} />;
   }
 
+  const pinActionBar =
+    ((c.isSetter || c.isMatcher) && c.showRecorder) ||
+    c.isDisputeReviewer ||
+    c.isSetTrickReviewer ||
+    c.isPendingReviewSetter;
+  // The body already shows the countdown on review screens. A second pill in
+  // the header crowds "Games" and "Flag" on a 375px phone.
+  const timerInBody = c.isPendingReviewSetter || c.isPendingReviewMatcher || c.isCommunityReview;
+
   return (
-    <div className="min-h-dvh bg-background/80 pb-10">
+    <div
+      className={`min-h-dvh bg-background/80 ${pinActionBar ? "pb-[calc(12rem+env(safe-area-inset-bottom))]" : "pb-10"}`}
+    >
       <GamePlayHeader
         deadline={c.deadline}
         isPlayer={c.isPlayer}
         reported={c.reported}
+        showTimer={!timerInBody}
         onBack={onBack}
         onReport={c.openReport}
       />
@@ -98,6 +110,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             onRecorded={c.handleRecorded}
             label={c.isSetter ? "Land Your Trick" : `Match the ${game.currentTrickName || "Trick"}`}
             doneLabel="Recorded"
+            pinControls
           />
         )}
 

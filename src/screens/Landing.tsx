@@ -150,7 +150,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
           <button
             type="button"
             onClick={handleAuth("signin")}
-            className="font-body text-sm text-dim hover:text-white px-3 py-2 rounded-md transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            className="inline-flex min-h-11 items-center font-body text-sm text-dim hover:text-white px-3 rounded-md transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
             Account
           </button>
@@ -161,7 +161,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
       <section
         id="hero"
         aria-labelledby="hero-heading"
-        className="relative min-h-dvh flex flex-col items-center justify-center overflow-hidden"
+        className="landing-hero relative min-h-dvh flex flex-col items-center justify-center overflow-x-hidden pt-[calc(env(safe-area-inset-top)+3.5rem)] pb-[var(--consent-banner-space,0px)] [@media(max-height:500px)]:justify-start [@media(max-height:500px)]:overflow-y-auto"
       >
         {/* Layered ambient glow */}
         <div className="absolute inset-0 pointer-events-none bg-hero-glow" />
@@ -170,7 +170,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
           className={`relative max-w-6xl mx-auto px-6 flex flex-col items-center text-center${animateHero ? " hero-stagger" : ""}`}
         >
           {/* Badge */}
-          <span className="inline-flex items-center gap-2 font-body text-xs tracking-wide text-brand-orange/80 border border-brand-orange/15 rounded-full px-4 py-1.5 mb-8 backdrop-blur-sm">
+          <span className="landing-kicker inline-flex items-center gap-2 font-body text-xs tracking-wide text-brand-orange/80 border border-brand-orange/15 rounded-full px-4 py-1.5 mb-8 backdrop-blur-sm">
             <span className="w-1.5 h-1.5 rounded-full bg-brand-orange animate-rec-pulse" />
             Free to play
           </span>
@@ -180,16 +180,18 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
               visible in the very first frame (see .hero-stagger in index.css). */}
           <h1
             id="hero-heading"
-            className="hero-lcp font-display tracking-wide text-white mb-5 leading-[0.9] text-[clamp(3rem,2.2rem_+_4.5vw,6.5rem)]"
+            className="hero-lcp font-display tracking-wide text-white mb-5 leading-[0.9] text-[clamp(3rem,2.2rem_+_4.5vw,6.5rem)] [@media(max-height:500px)]:mb-2 [@media(max-height:500px)]:text-[2.25rem]"
           >
             <span className="block text-brand-orange [text-shadow:0_0_60px_rgba(255,107,0,0.35),0_0_120px_rgba(255,107,0,0.15)]">
               SKATEHUBBA
             </span>
-            <span className="block text-[clamp(1.2rem,0.8rem_+_2vw,2.5rem)]">FOR THE LOVE OF THE GAME.</span>
+            <span className="block text-[clamp(1.2rem,0.8rem_+_2vw,2.5rem)] [@media(max-height:500px)]:text-lg">
+              FOR THE LOVE OF THE GAME.
+            </span>
           </h1>
 
           {/* Subtitle */}
-          <p className="font-body text-fluid-lg text-dim max-w-md leading-relaxed mb-10">
+          <p className="landing-sub font-body text-fluid-lg text-dim max-w-md leading-relaxed mb-10">
             The first async S.K.A.T.E. game. No edits. No excuses.
           </p>
 
@@ -325,7 +327,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
                   ))}
                 </div>
                 <div className="w-full h-20 rounded-lg bg-[#161616] border border-white/[0.04] flex items-center justify-center">
-                  <span className="font-body text-[10px] text-[#333]">trick video</span>
+                  <span className="font-body text-xs text-[#8a8a8a]">trick video</span>
                 </div>
                 <div className="flex gap-2 w-full">
                   <div className="flex-1 h-8 rounded-lg bg-gradient-to-r from-brand-orange to-[#FF8533] flex items-center justify-center">
@@ -443,7 +445,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
               href={SOCIAL_LINKS.x}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#888] hover:text-white transition-colors duration-200"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center text-[#a3a3a3] hover:text-white transition-colors duration-200"
               aria-label="Follow on X"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -454,7 +456,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
               href={SOCIAL_LINKS.instagram}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#888] hover:text-white transition-colors duration-200"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center text-[#a3a3a3] hover:text-white transition-colors duration-200"
               aria-label="Follow on Instagram"
             >
               <svg
@@ -477,7 +479,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
               href={SOCIAL_LINKS.facebook}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#888] hover:text-white transition-colors duration-200"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center text-[#a3a3a3] hover:text-white transition-colors duration-200"
               aria-label="Follow on Facebook"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -488,7 +490,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
               href={SOCIAL_LINKS.tiktok}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#888] hover:text-white transition-colors duration-200"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center text-[#a3a3a3] hover:text-white transition-colors duration-200"
               aria-label="Follow on TikTok"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -499,7 +501,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
               href={SOCIAL_LINKS.store}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#888] hover:text-white transition-colors duration-200"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center text-[#a3a3a3] hover:text-white transition-colors duration-200"
               aria-label="SkateHubba store"
             >
               <svg
@@ -524,21 +526,21 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
             <button
               type="button"
               onClick={() => onNav("privacy")}
-              className="font-body text-xs text-faint hover:text-dim transition-colors duration-200"
+              className="inline-flex min-h-11 items-center font-body text-xs text-[#b5b5b5] hover:text-white transition-colors duration-200"
             >
               Privacy
             </button>
             <button
               type="button"
               onClick={() => onNav("terms")}
-              className="font-body text-xs text-faint hover:text-dim transition-colors duration-200"
+              className="inline-flex min-h-11 items-center font-body text-xs text-[#b5b5b5] hover:text-white transition-colors duration-200"
             >
               Terms
             </button>
             <button
               type="button"
               onClick={() => onNav("datadeletion")}
-              className="font-body text-xs text-faint hover:text-dim transition-colors duration-200"
+              className="inline-flex min-h-11 items-center font-body text-xs text-[#b5b5b5] hover:text-white transition-colors duration-200"
             >
               Data Deletion
             </button>

@@ -145,6 +145,7 @@ export function GameOverScreen({
 
   return (
     <div
+      data-scroll-root=""
       className={`min-h-dvh flex flex-col items-center px-6 pt-[max(env(safe-area-inset-top),2.5rem)] pb-10 overflow-y-auto ${isWinner ? "bg-win-glow" : "bg-loss-glow"}`}
     >
       <div className="text-center w-full max-w-md animate-scale-in">
@@ -250,7 +251,7 @@ export function GameOverScreen({
             type="button"
             onClick={() => setShowReport(true)}
             disabled={reported}
-            className="font-body text-xs text-subtle hover:text-brand-red transition-colors duration-300 mt-2 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="mt-2 inline-flex min-h-11 items-center justify-center font-body text-sm text-bright hover:text-brand-red transition-colors duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {reported ? "Reported" : "Report opponent"}
           </button>
