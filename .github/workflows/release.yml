@@ -68,7 +68,7 @@ jobs:
         # demangle. Silently skipped if SENTRY_AUTH_TOKEN is absent — a fresh
         # repo without Sentry configured still ships a valid GitHub Release.
         if: env.SENTRY_AUTH_TOKEN != ''
-        uses: getsentry/action-release@ff07929a6537bac57790c3451cf4d364aca38528 # v3.7.0
+        uses: getsentry/action-release@6fb9aeade7061441cf3864e34fbe11a1457ad7dc # v3.7.1
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
