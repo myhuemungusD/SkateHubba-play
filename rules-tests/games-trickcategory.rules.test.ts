@@ -43,32 +43,32 @@ describe("games rules — trickCategory invariants", () => {
   describe("create", () => {
     it("accepts a game with no trickCategory (legacy client baseline)", async () => {
       const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-      await assertSucceeds(setDoc(ref, fx.makeValidGame(OPTS)));
+      await assertSucceeds(fx.createGameWithAnchor(ref, fx.makeValidGame(OPTS)));
     });
 
     it("accepts a game with trickCategory 'flip'", async () => {
       const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-      await assertSucceeds(setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: "flip" })));
+      await assertSucceeds(fx.createGameWithAnchor(ref, fx.makeValidGame(OPTS, { trickCategory: "flip" })));
     });
 
     it.each(VALID_CATEGORIES)("accepts trickCategory '%s'", async (category) => {
       const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-      await assertSucceeds(setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: category })));
+      await assertSucceeds(fx.createGameWithAnchor(ref, fx.makeValidGame(OPTS, { trickCategory: category })));
     });
 
     it("rejects an unknown trickCategory string ('kickflips')", async () => {
       const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-      await assertFails(setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: "kickflips" })));
+      await assertFails(fx.createGameWithAnchor(ref, fx.makeValidGame(OPTS, { trickCategory: "kickflips" })));
     });
 
     it("rejects a numeric trickCategory (123)", async () => {
       const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-      await assertFails(setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: 123 })));
+      await assertFails(fx.createGameWithAnchor(ref, fx.makeValidGame(OPTS, { trickCategory: 123 })));
     });
 
     it("rejects a null trickCategory", async () => {
       const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-      await assertFails(setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: null })));
+      await assertFails(fx.createGameWithAnchor(ref, fx.makeValidGame(OPTS, { trickCategory: null })));
     });
   });
 
@@ -82,7 +82,7 @@ describe("games rules — trickCategory invariants", () => {
       // Bob writes a doc naming Alice as player1 (the challenger) while
       // choosing the category himself — denied by the player1Uid pin.
       const ref = fx.gameDoc(fx.authedContext(getEnv(), P2_UID), "g1");
-      await assertFails(setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: "gap" })));
+      await assertFails(fx.createGameWithAnchor(ref, fx.makeValidGame(OPTS, { trickCategory: "gap" })));
     });
 
     it("accepts the opponent choosing a category on a game they start themselves", async () => {
@@ -94,7 +94,7 @@ describe("games rules — trickCategory invariants", () => {
       // usernames must track the authoritative roster (p2-bob→"bob",
       // p1-alice→"alice") the username-impersonation guard binds against.
       await assertSucceeds(
-        setDoc(
+        fx.createGameWithAnchor(
           ref,
           fx.makeValidGame(
             { player1Uid: P2_UID, player2Uid: P1_UID, player1Username: "bob", player2Username: "alice" },
@@ -172,25 +172,35 @@ describe("games rules — trickCategory invariants", () => {
       it("accepts a custom game with bounded customRules text", async () => {
         const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
         await assertSucceeds(
-          setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: "custom", customRules: "mongo only, no pushing" })),
+          fx.createGameWithAnchor(
+            ref,
+            fx.makeValidGame(OPTS, { trickCategory: "custom", customRules: "mongo only, no pushing" }),
+          ),
         );
       });
 
       it("accepts an explicit null customRules (non-custom game)", async () => {
         const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-        await assertSucceeds(setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: "flip", customRules: null })));
+        await assertSucceeds(
+          fx.createGameWithAnchor(ref, fx.makeValidGame(OPTS, { trickCategory: "flip", customRules: null })),
+        );
       });
 
       it("rejects customRules over the 120-char limit", async () => {
         const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
         await assertFails(
-          setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: "custom", customRules: "x".repeat(121) })),
+          fx.createGameWithAnchor(
+            ref,
+            fx.makeValidGame(OPTS, { trickCategory: "custom", customRules: "x".repeat(121) }),
+          ),
         );
       });
 
       it("rejects a non-string customRules (number)", async () => {
         const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-        await assertFails(setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: "custom", customRules: 123 })));
+        await assertFails(
+          fx.createGameWithAnchor(ref, fx.makeValidGame(OPTS, { trickCategory: "custom", customRules: 123 })),
+        );
       });
     });
 

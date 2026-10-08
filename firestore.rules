@@ -510,7 +510,8 @@ service cloud.firestore {
         //   (B) both have it and the value is unchanged (untouched update)
         //   (C) the new value equals request.time (client wrote
         //       serverTimestamp()), which is what the game-create flow does
-        //       after addDoc().
+        //       in the same batch as the game create (the /games create rule
+        //       requires it there via getAfter()).
         && (
           (!('lastGameCreatedAt' in request.resource.data)
             && !('lastGameCreatedAt' in resource.data))
@@ -1217,11 +1218,18 @@ service cloud.firestore {
                get(/databases/$(database)/documents/users/$(request.resource.data.player2Uid)).data.get('isVerifiedPro', false)
         )
         // Rate limit: at most one game creation per 30 seconds per user.
-        // Checks the user's lastGameCreatedAt field — if it doesn't exist
-        // (first game ever) the condition is satisfied automatically.
+        // The PRE-write lastGameCreatedAt (get) must be absent (first game
+        // ever) or older than 30s, AND the same batch must stamp the anchor
+        // to request.time (getAfter). Before the getAfter() binding the
+        // anchor was a separate best-effort write, so a client that simply
+        // never sent it skipped the cooldown entirely. The users/{uid}
+        // update rule already pins a written lastGameCreatedAt to
+        // request.time, so the anchor can only move forward. Both docs are
+        // already fetched above (users/{auth.uid}), so this adds at most the
+        // one post-write read.
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('lastGameCreatedAt', null) == request.time
         && (
-          !exists(/databases/$(database)/documents/users/$(request.auth.uid))
-          || !('lastGameCreatedAt' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
+          !('lastGameCreatedAt' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
           || request.time > get(/databases/$(database)/documents/users/$(request.auth.uid)).data.lastGameCreatedAt + duration.value(30, 's')
         )
         // Block check: neither player may have blocked the other.

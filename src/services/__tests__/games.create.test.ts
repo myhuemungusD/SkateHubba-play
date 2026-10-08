@@ -110,17 +110,14 @@ describe("games service", () => {
 
   describe("createGame", () => {
     // The `createGame` flow uses a client-generated deterministic id
-    // (`doc(gamesRef()).id`) + `setDoc(doc(gamesRef(), id), data)` instead of
-    // `addDoc`. That means `setDoc` is called twice:
-    //   - call 0: writes the game doc
-    //   - call 1: writes the lastGameCreatedAt field on the user profile
-    // Notifications (opponent challenge, optional judge invite) now commit
-    // through writeBatch — see writeNotification's H2 companion-write fix.
+    // (`doc(gamesRef()).id`) and commits ONE writeBatch with two sets:
+    //   - batch.set 0: the game doc
+    //   - batch.set 1: the challenger's lastGameCreatedAt cooldown anchor
+    // (the /games create rule requires both in the same write via getAfter).
+    // Notifications (opponent challenge, optional judge invite) commit through
+    // their own later writeBatch — see writeNotification's H2 companion-write fix.
     const gameSetDocCall = (): Record<string, unknown> => {
-      // The game doc write is always the FIRST setDoc call (the user profile
-      // merge fires after `metrics.gameCreated`). In all these tests the
-      // second arg is the game payload.
-      const call = mockSetDoc.mock.calls[0];
+      const call = mockBatchSet.mock.calls[0];
       return call[1] as Record<string, unknown>;
     };
 
@@ -128,16 +125,13 @@ describe("games service", () => {
       const id = await createGame("p1", "alice", "p2", "bob");
       // Deterministic id from mockDoc — `doc(gamesRef()).id` → "auto-id"
       expect(id).toBe("auto-id");
-      // setDoc fires twice: the game write itself and the user profile merge
-      // for `lastGameCreatedAt`. The challenge notification + its companion
-      // notification_limits doc now ride a single writeBatch (H2 hardening),
-      // so addDoc is no longer involved.
-      expect(mockSetDoc).toHaveBeenCalledTimes(2);
+      // Two batches: game + cooldown anchor, then the challenge notification
+      // + its companion notification_limits doc (H2 hardening). No setDoc or
+      // addDoc is involved.
+      expect(mockSetDoc).not.toHaveBeenCalled();
       expect(mockAddDoc).not.toHaveBeenCalled();
-      // The challenge notification → one writeBatch.commit() with two .set()s
-      // (notification + companion notification_limits doc).
-      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
-      expect(mockBatchSet).toHaveBeenCalledTimes(2);
+      expect(mockBatchCommit).toHaveBeenCalledTimes(2);
+      expect(mockBatchSet).toHaveBeenCalledTimes(4);
 
       const docData = gameSetDocCall();
       expect(docData.player1Uid).toBe("p1");
@@ -194,17 +188,16 @@ describe("games service", () => {
     it("uses a client-generated deterministic id — retrying is idempotent", async () => {
       // The first write "fails" transiently; withRetry retries. Both attempts
       // must target the same docRef so the server cannot create two games.
-      mockSetDoc.mockRejectedValueOnce(new Error("unavailable")).mockResolvedValueOnce(undefined);
+      mockBatchCommit.mockRejectedValueOnce(new Error("unavailable")).mockResolvedValueOnce(undefined);
       const id = await createGame("p1", "alice", "p2", "bob");
       expect(id).toBe("auto-id");
-      // First setDoc call = failed game-doc write; second = successful retry;
-      // third = user-profile merge. All three should land on real refs.
-      expect(mockSetDoc.mock.calls.length).toBeGreaterThanOrEqual(2);
+      // batch.set 0/1 = failed attempt (game + anchor); 2/3 = successful retry.
+      expect(mockBatchSet.mock.calls.length).toBeGreaterThanOrEqual(4);
 
-      // Critically, the first two setDoc calls (game writes) target the same
-      // doc ref — if addDoc were still used, a retry would pick a NEW id.
-      const firstGameRef = mockSetDoc.mock.calls[0][0];
-      const retryGameRef = mockSetDoc.mock.calls[1][0];
+      // Critically, both attempts write the game to the same doc ref — if
+      // addDoc were still used, a retry would pick a NEW id.
+      const firstGameRef = mockBatchSet.mock.calls[0][0];
+      const retryGameRef = mockBatchSet.mock.calls[2][0];
       expect(firstGameRef).toEqual(retryGameRef);
     }, 10_000);
 
@@ -230,22 +223,23 @@ describe("games service", () => {
       expect(docData.updatedAt).toBe("SERVER_TS");
     });
 
-    it("updates lastGameCreatedAt on user profile (best effort)", async () => {
+    it("writes lastGameCreatedAt in the same batch as the game", async () => {
       await createGame("p1", "alice", "p2", "bob");
-      // setDoc: game write, user profile merge. (Notification + its
-      // companion limit doc now go through writeBatch — see refactor.)
-      expect(mockSetDoc).toHaveBeenCalledTimes(2);
-      // The user profile merge is the second setDoc call (after the game).
-      const userProfilePath = (mockSetDoc.mock.calls[1][0] as { __path?: string }).__path ?? "";
-      expect(userProfilePath).toContain("users");
+      // The anchor is the second set of the FIRST batch, committed together
+      // with the game (the rules check it with getAfter()).
+      const [anchorRef, anchorData, anchorOpts] = mockBatchSet.mock.calls[1];
+      expect((anchorRef as { __path?: string }).__path).toBe("users/p1");
+      expect(anchorData).toEqual({ lastGameCreatedAt: "SERVER_TS" });
+      expect(anchorOpts).toEqual({ merge: true });
+      expect(mockBatchCommit.mock.invocationCallOrder[0]).toBeGreaterThan(mockBatchSet.mock.invocationCallOrder[1]);
     });
 
-    it("still returns game id if rate-limit timestamp update fails", async () => {
-      // First setDoc = game write (succeeds). Second setDoc = user profile
-      // merge (fails). createGame should still resolve with the new id.
-      mockSetDoc.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("write failed"));
-      const id = await createGame("p1", "alice", "p2", "bob");
-      expect(id).toBe("auto-id");
+    it("fails the create when the game + anchor batch is rejected", async () => {
+      // No separate best-effort anchor write any more: a denied batch (e.g.
+      // the server-side cooldown) means no game was created.
+      mockBatchCommit.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+      await expect(createGame("p1", "alice", "p2", "bob")).rejects.toThrow("denied");
+      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
     });
 
     it("includes pro status flags when players are verified pros", async () => {
@@ -404,15 +398,15 @@ describe("games service", () => {
             order.push("getIdToken");
             return "fresh-token";
           });
-          mockSetDoc.mockImplementationOnce(async () => {
-            order.push("setDoc");
+          mockBatchCommit.mockImplementationOnce(async () => {
+            order.push("commit");
           });
 
           await createGame("p1", "alice", "p2", "bob");
 
           expect(getIdToken).toHaveBeenCalledTimes(1);
           expect(getIdToken).toHaveBeenCalledWith(true);
-          expect(order).toEqual(["getIdToken", "setDoc"]);
+          expect(order).toEqual(["getIdToken", "commit"]);
         } finally {
           setCurrentUser(null);
         }
@@ -424,7 +418,7 @@ describe("games service", () => {
         try {
           const id = await createGame("p1", "alice", "p2", "bob");
           expect(id).toBe("auto-id");
-          expect(mockSetDoc).toHaveBeenCalledTimes(2);
+          expect(mockBatchCommit).toHaveBeenCalledTimes(2);
           expect(mockAddBreadcrumb).toHaveBeenCalledWith(
             expect.objectContaining({
               category: "auth",

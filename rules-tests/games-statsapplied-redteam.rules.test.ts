@@ -25,6 +25,7 @@ import { describe, it } from "vitest";
 import { assertSucceeds, assertFails } from "@firebase/rules-unit-testing";
 import { doc, setDoc, updateDoc } from "firebase/firestore";
 import {
+  createGameWithAnchor,
   setupRulesTestEnv,
   authedContext,
   gameDoc,
@@ -43,8 +44,8 @@ const BOB_UID = "bob-uid";
 // profiles seeded with the handles makeValidGame defaults to (alice/bob).
 const getEnv = setupRulesTestEnv(PROJECT_ID, async (env) => {
   await env.withSecurityRulesDisabled(async (ctx) => {
-    await setDoc(doc(ctx.firestore(), "users", ALICE_UID), { username: "alice" });
-    await setDoc(doc(ctx.firestore(), "users", BOB_UID), { username: "bob" });
+    await setDoc(doc(ctx.firestore(), "users", ALICE_UID), { uid: ALICE_UID, username: "alice" });
+    await setDoc(doc(ctx.firestore(), "users", BOB_UID), { uid: BOB_UID, username: "bob" });
   });
 });
 
@@ -52,7 +53,7 @@ describe("games CREATE — statsApplied cannot be forged at creation", () => {
   it("denied: create a game with statsApplied:true", async () => {
     const alice = authedContext(getEnv(), ALICE_UID);
     await assertFails(
-      setDoc(
+      createGameWithAnchor(
         gameDoc(alice, "game-create-flag-true"),
         makeValidGame({ player1Uid: ALICE_UID, player2Uid: BOB_UID }, { statsApplied: true }),
       ),
@@ -62,7 +63,7 @@ describe("games CREATE — statsApplied cannot be forged at creation", () => {
   it("denied: create a game with statsApplied:false (any presence is forbidden)", async () => {
     const alice = authedContext(getEnv(), ALICE_UID);
     await assertFails(
-      setDoc(
+      createGameWithAnchor(
         gameDoc(alice, "game-create-flag-false"),
         makeValidGame({ player1Uid: ALICE_UID, player2Uid: BOB_UID }, { statsApplied: false }),
       ),
@@ -72,7 +73,10 @@ describe("games CREATE — statsApplied cannot be forged at creation", () => {
   it("control: create a game WITHOUT statsApplied succeeds", async () => {
     const alice = authedContext(getEnv(), ALICE_UID);
     await assertSucceeds(
-      setDoc(gameDoc(alice, "game-create-clean"), makeValidGame({ player1Uid: ALICE_UID, player2Uid: BOB_UID })),
+      createGameWithAnchor(
+        gameDoc(alice, "game-create-clean"),
+        makeValidGame({ player1Uid: ALICE_UID, player2Uid: BOB_UID }),
+      ),
     );
   });
 });

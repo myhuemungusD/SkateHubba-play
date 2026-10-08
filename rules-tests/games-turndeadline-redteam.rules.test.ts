@@ -44,6 +44,7 @@ import {
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Timestamp, doc, setDoc, updateDoc, serverTimestamp, setLogLevel } from "firebase/firestore";
+import { createGameWithAnchor } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-games-turndeadline-redteam";
 
@@ -168,8 +169,8 @@ beforeEach(async () => {
   // authoritative users/{uid}.username, so the create-path test needs the
   // players' profiles seeded with the matching handles.
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
-    await setDoc(doc(ctx.firestore(), "users", P1_UID), { username: "alice" });
-    await setDoc(doc(ctx.firestore(), "users", P2_UID), { username: "bob" });
+    await setDoc(doc(ctx.firestore(), "users", P1_UID), { uid: P1_UID, username: "alice" });
+    await setDoc(doc(ctx.firestore(), "users", P2_UID), { uid: P2_UID, username: "bob" });
   });
 });
 
@@ -180,11 +181,13 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
       // Without the 48h cap, this write would succeed and then permanently
       // block the opponent's forfeit path (forfeit requires
       // request.time > resource.data.turnDeadline).
-      await assertFails(setDoc(gameRef(asP1()), makeValidGame({ turnDeadline: farFutureDeadline() })));
+      await assertFails(createGameWithAnchor(gameRef(asP1()), makeValidGame({ turnDeadline: farFutureDeadline() })));
     });
 
     it("legitimate: create CAN use a 24h-ahead turnDeadline", async () => {
-      await assertSucceeds(setDoc(gameRef(asP1()), makeValidGame({ turnDeadline: validFutureDeadline() })));
+      await assertSucceeds(
+        createGameWithAnchor(gameRef(asP1()), makeValidGame({ turnDeadline: validFutureDeadline() })),
+      );
     });
   });
 

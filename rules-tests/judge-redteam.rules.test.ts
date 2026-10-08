@@ -20,6 +20,7 @@ import {
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { doc, setDoc, updateDoc, serverTimestamp, setLogLevel } from "firebase/firestore";
+import { createGameWithAnchor } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-judge-redteam";
 
@@ -84,7 +85,7 @@ afterAll(async () => {
 
 async function seedUser(uid: string, username: string): Promise<void> {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
-    await setDoc(doc(ctx.firestore(), "users", uid), { username });
+    await setDoc(doc(ctx.firestore(), "users", uid), { uid, username });
   });
 }
 
@@ -145,17 +146,17 @@ describe("judge accept — red-team against player self-accept", () => {
 describe("judge username binding — create", () => {
   it("rejects a forged judgeUsername (≠ users/{judgeId}.username)", async () => {
     await assertFails(
-      setDoc(doc(asP1().firestore(), "games", GAME_ID), makeGameWithJudge({ judgeUsername: "victim" })),
+      createGameWithAnchor(doc(asP1().firestore(), "games", GAME_ID), makeGameWithJudge({ judgeUsername: "victim" })),
     );
   });
 
   it("permits a create whose judgeUsername matches the judge's profile", async () => {
-    await assertSucceeds(setDoc(doc(asP1().firestore(), "games", GAME_ID), makeGameWithJudge()));
+    await assertSucceeds(createGameWithAnchor(doc(asP1().firestore(), "games", GAME_ID), makeGameWithJudge()));
   });
 
   it("permits an honor-system create (judgeId null, judgeUsername null — no bind)", async () => {
     await assertSucceeds(
-      setDoc(
+      createGameWithAnchor(
         doc(asP1().firestore(), "games", GAME_ID),
         makeGameWithJudge({ judgeId: null, judgeStatus: null, judgeUsername: null }),
       ),
