@@ -28,32 +28,32 @@ describe("games rules — spotId invariants", () => {
   describe("create", () => {
     it("accepts a game with no spotId (baseline)", async () => {
       const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-      await assertSucceeds(setDoc(ref, fx.makeValidGame(OPTS)));
+      await assertSucceeds(fx.createGameWithAnchor(ref, fx.makeValidGame(OPTS)));
     });
 
     it("accepts a game with a string spotId", async () => {
       const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-      await assertSucceeds(setDoc(ref, fx.makeValidGame(OPTS, { spotId: VALID_SPOT_ID })));
+      await assertSucceeds(fx.createGameWithAnchor(ref, fx.makeValidGame(OPTS, { spotId: VALID_SPOT_ID })));
     });
 
     it("rejects a non-string spotId", async () => {
       const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-      await assertFails(setDoc(ref, fx.makeValidGame(OPTS, { spotId: 12345 })));
+      await assertFails(fx.createGameWithAnchor(ref, fx.makeValidGame(OPTS, { spotId: 12345 })));
     });
 
     it("rejects a spotId that is not a string (object)", async () => {
       const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-      await assertFails(setDoc(ref, fx.makeValidGame(OPTS, { spotId: { injected: true } })));
+      await assertFails(fx.createGameWithAnchor(ref, fx.makeValidGame(OPTS, { spotId: { injected: true } })));
     });
 
     it("rejects a spotId longer than 64 characters", async () => {
       const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-      await assertFails(setDoc(ref, fx.makeValidGame(OPTS, { spotId: "x".repeat(65) })));
+      await assertFails(fx.createGameWithAnchor(ref, fx.makeValidGame(OPTS, { spotId: "x".repeat(65) })));
     });
 
     it("accepts a spotId exactly 64 characters", async () => {
       const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-      await assertSucceeds(setDoc(ref, fx.makeValidGame(OPTS, { spotId: "x".repeat(64) })));
+      await assertSucceeds(fx.createGameWithAnchor(ref, fx.makeValidGame(OPTS, { spotId: "x".repeat(64) })));
     });
   });
 
