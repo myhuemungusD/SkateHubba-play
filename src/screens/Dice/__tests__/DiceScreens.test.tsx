@@ -158,9 +158,9 @@ describe("DiceNew", () => {
     vi.mocked(createDiceGame).mockResolvedValue({
       gameId: "g9",
       status: "active",
-      label: null,
-      currentTurn: "u1",
-      roundsWon: {},
+      label: "POINT 4",
+      currentTurn: "u2",
+      roundsWon: { u1: 0 },
       winner: null,
       applied: true,
     });
@@ -270,7 +270,7 @@ describe("DiceTable", () => {
       status: "active",
       label: null,
       currentTurn: "u1",
-      roundsWon: {},
+      roundsWon: { u2: 1 },
       winner: null,
       applied: true,
     });

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as firebase from "../../firebase";
-import { requireDb, resetFirebaseMock } from "../../firebase";
+import { requireDb } from "../../firebase";
 import { trackEvent } from "../analytics";
 import { addBreadcrumb, captureException } from "../../lib/sentry";
 import { logger } from "../logger";
@@ -24,9 +24,9 @@ vi.mock("../analytics", () => ({ trackEvent: vi.fn() }));
 vi.mock("../../lib/sentry", () => ({ addBreadcrumb: vi.fn(), captureException: vi.fn() }));
 vi.mock("../logger", () => ({ logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock("firebase/functions", () => ({
-  getFunctions: (...args: unknown[]) => fns.getFunctions(...args),
-  httpsCallable: (...args: unknown[]) => fns.httpsCallable(...args),
-  connectFunctionsEmulator: (...args: unknown[]) => fns.connectFunctionsEmulator(...args),
+  getFunctions: fns.getFunctions,
+  httpsCallable: fns.httpsCallable,
+  connectFunctionsEmulator: fns.connectFunctionsEmulator,
 }));
 vi.mock("firebase/firestore", () => ({
   collection: vi.fn(() => "col"),
@@ -67,8 +67,8 @@ function raw(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     player1Uid: "u1",
     player2Uid: "u2",
-    player1Username: "jay",
-    player2Username: "remy",
+    player1Username: "kit",
+    player2Username: "fox",
     status: "active",
     currentTurn: "u1",
     round: 2,
@@ -154,9 +154,14 @@ describe("dice errors", () => {
   });
 });
 
+function resetDiceFirebase(): void {
+  vi.mocked(requireDb).mockClear();
+  Object.defineProperty(firebase, "isEmulatorMode", { value: false, writable: true, configurable: true });
+}
+
 describe("dice subscriptions", () => {
   beforeEach(() => {
-    resetFirebaseMock();
+    resetDiceFirebase();
     snaps.onSnapshot.mockReset();
     vi.mocked(logger.warn).mockClear();
   });
@@ -246,7 +251,7 @@ describe("dice subscriptions", () => {
 
 describe("dice callable", () => {
   beforeEach(() => {
-    resetFirebaseMock();
+    resetDiceFirebase();
     fns.callable.mockReset();
     fns.connectFunctionsEmulator.mockClear();
     fns.getFunctions.mockClear();

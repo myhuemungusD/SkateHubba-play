@@ -10,6 +10,7 @@
 import { describe, it } from "vitest";
 import { assertSucceeds, assertFails } from "@firebase/rules-unit-testing";
 import {
+  Timestamp,
   collection,
   deleteDoc,
   doc,
@@ -17,7 +18,6 @@ import {
   getDocs,
   query,
   setDoc,
-  Timestamp,
   updateDoc,
   where,
 } from "firebase/firestore";
