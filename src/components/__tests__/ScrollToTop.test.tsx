@@ -13,10 +13,17 @@ function Jump() {
   );
 }
 
+/** jsdom has no scrollingElement. Install one for the duration of a test. */
+function stubScrollingElement(value: Element | null): void {
+  Object.defineProperty(document, "scrollingElement", { configurable: true, get: () => value });
+}
+
 describe("ScrollToTop", () => {
   it("resets the window and inner scroll roots when the path changes", async () => {
     const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
-    Object.defineProperty(document.documentElement, "scrollTop", { value: 400, writable: true, configurable: true });
+    const scroller = document.createElement("div");
+    scroller.scrollTop = 180;
+    stubScrollingElement(scroller);
     render(
       <MemoryRouter initialEntries={["/lobby"]}>
         <ScrollToTop />
@@ -36,7 +43,26 @@ describe("ScrollToTop", () => {
 
     expect(screen.getByText("You Win")).toBeInTheDocument();
     expect(scrollTo).toHaveBeenCalledWith(0, 0);
+    expect(scroller.scrollTop).toBe(0);
     expect(root?.scrollTop).toBe(0);
+    Reflect.deleteProperty(document, "scrollingElement");
+    scrollTo.mockRestore();
+  });
+
+  it("still resets the window when the document has no scrolling element", async () => {
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    stubScrollingElement(null);
+    render(
+      <MemoryRouter initialEntries={["/lobby"]}>
+        <ScrollToTop />
+        <Routes>
+          <Route path="/lobby" element={<p>Lobby</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Lobby")).toBeInTheDocument();
+    expect(scrollTo).toHaveBeenCalledWith(0, 0);
+    Reflect.deleteProperty(document, "scrollingElement");
     scrollTo.mockRestore();
   });
 });

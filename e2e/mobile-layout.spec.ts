@@ -74,6 +74,7 @@ test("landscape landing keeps Free to play under the header and sign-in above th
   expect(bannerBox).not.toBeNull();
   expect(signBox!.y + signBox!.height).toBeLessThanOrEqual(bannerBox!.y + 1);
   await expectNoHorizontalOverflow(page);
+  await page.screenshot({ path: "docs/mobile-phone-layout/after/landing-landscape.png" });
 });
 
 test("iPhone SE signup can scroll the date of birth clear of the cookie banner", async ({ page }) => {
@@ -88,6 +89,7 @@ test("iPhone SE signup can scroll the date of birth clear of the cookie banner",
   expect(monthBox).not.toBeNull();
   expect(bannerBox).not.toBeNull();
   expect(monthBox!.y + monthBox!.height).toBeLessThanOrEqual(bannerBox!.y + 1);
+  await page.screenshot({ path: "docs/mobile-phone-layout/after/signup-se.png" });
 });
 
 test("route changes reset scroll to the top", async ({ page }) => {
@@ -111,6 +113,9 @@ test("the notifications panel stays inside a phone viewport", async ({ page }) =
     await page.setViewportSize({ width: phone.width, height: phone.height });
     await expectInsideViewport(page, panel);
     await expectNoHorizontalOverflow(page);
+    if (phone.name === "iphone15") {
+      await page.screenshot({ path: "docs/mobile-phone-layout/after/notifications-393.png" });
+    }
   }
 });
 
@@ -136,7 +141,11 @@ test("land and miss stay on screen after a take on a short phone", async ({ brow
     await page.setViewportSize(phone);
     await expectInsideViewport(page, landed);
     await expectInsideViewport(page, missed);
+    if (phone.width === 375) {
+      await page.screenshot({ path: "docs/mobile-phone-layout/after/land-miss-375.png" });
+    }
   }
+  await expectNoHorizontalOverflow(page);
   await ctx.close();
 });
 
@@ -182,5 +191,11 @@ test("roll dice hub, picker, and table fit a phone", async ({ page }) => {
     await expectInsideViewport(page, page.getByRole("button", { name: "ROLL" }));
     await expectInsideViewport(page, page.getByRole("button", { name: "Leave the match" }));
     await expectNoHorizontalOverflow(page);
+    if (phone.name === "se") {
+      await page.screenshot({ path: "docs/mobile-phone-layout/after/dice-se.png" });
+    }
+    if (phone.name === "landscape") {
+      await page.screenshot({ path: "docs/mobile-phone-layout/after/dice-landscape.png" });
+    }
   }
 });
