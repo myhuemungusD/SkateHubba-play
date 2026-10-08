@@ -21,6 +21,27 @@ function isValidPhotoUrl(url: string): boolean {
 }
 
 /**
+ * Sink-side guard for the photo preview `<img src>`. `addPhotoUrl` already
+ * rejects non-https input, but the preview renders straight from component
+ * state, so the sink re-checks rather than trusting every future writer of
+ * `photoUrls`. The URL is parsed and only an https URL passes; the `src` is
+ * then rebuilt behind a fixed `https://` prefix, so no other scheme
+ * (javascript:, data:, blob:, …) can ever reach the attribute. Anything
+ * unparseable or non-https yields `undefined`, so the `<img>` renders with
+ * no `src` and never loads it.
+ */
+export function safePhotoPreviewSrc(url: string): string | undefined {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return undefined;
+  }
+  if (parsed.protocol !== "https:") return undefined;
+  return `https://${parsed.host}${parsed.pathname}${parsed.search}${parsed.hash}`;
+}
+
+/**
  * Parse a coordinate input string into a number, or NaN when the parse
  * fails (empty, "-", etc.). NaN is intentional — callers keep it in
  * state so the submit guard's Number.isFinite check rejects empty input
@@ -398,7 +419,11 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                 <div className="flex gap-2 overflow-x-auto pb-2">
                   {photoUrls.map((url, i) => (
                     <div key={i} className="relative flex-shrink-0">
-                      <img src={url} alt={`Spot photo ${i + 1}`} className="w-20 h-20 object-cover rounded-lg" />
+                      <img
+                        src={safePhotoPreviewSrc(url)}
+                        alt={`Spot photo ${i + 1}`}
+                        className="w-20 h-20 object-cover rounded-lg"
+                      />
                       <button
                         type="button"
                         onClick={() => removePhoto(i)}

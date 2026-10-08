@@ -10,7 +10,7 @@ vi.mock("../../services/analytics", () => ({
 }));
 
 vi.mock("../../utils/helpers", () => ({
-  isFirebaseStorageUrl: (u: string) => u?.startsWith("https://firebasestorage.googleapis.com"),
+  isFirebaseStorageUrl: (u: string) => u?.startsWith("https://firebasestorage.googleapis.com/"),
   LETTERS: ["S", "K", "A", "T", "E"] as const,
 }));
 
