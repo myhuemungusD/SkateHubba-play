@@ -362,9 +362,11 @@ VITE_FIREBASE_MEASUREMENT_ID
 
 VITE_RECAPTCHA_SITE_KEY / VITE_APPCHECK_ENABLED
                      — App Check via reCAPTCHA v3. BOTH are required to turn
-                       App Check on, and it is OFF by default — enabling
-                       Console enforcement without a matching reCAPTCHA domain
-                       allowlist locks every signed-in user out. Follow
+                       App Check on; it is OFF in code by default. Production
+                       sets both (monitor mode: tokens sent, Console
+                       enforcement still off). Enabling Console enforcement
+                       without a matching reCAPTCHA domain allowlist locks
+                       every signed-in user out. Follow
                        docs/APPCHECK_ROLLOUT.md; do not flip these ad hoc.
 
 VITE_SENTRY_DSN      — Sentry error tracking. Without it errors only reach the

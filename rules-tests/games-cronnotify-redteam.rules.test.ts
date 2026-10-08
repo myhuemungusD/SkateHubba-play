@@ -50,12 +50,12 @@ const getEnv = fx.setupRulesTestEnv(PROJECT_ID, fx.seedGameProfiles);
 describe("games create — cron tombstones cannot be pre-seeded", () => {
   it("denied: challenger seeds challengeNotifiedAt to disarm the challenge backstop", async () => {
     const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-    await assertFails(setDoc(ref, fx.makeValidGame(OPTS, { challengeNotifiedAt: serverTimestamp() })));
+    await assertFails(fx.createGameWithAnchor(ref, fx.makeValidGame(OPTS, { challengeNotifiedAt: serverTimestamp() })));
   });
 
   it("denied: challenger seeds turnReminderSentFor for the opening turn", async () => {
     const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-    await assertFails(setDoc(ref, fx.makeValidGame(OPTS, { turnReminderSentFor: 1 })));
+    await assertFails(fx.createGameWithAnchor(ref, fx.makeValidGame(OPTS, { turnReminderSentFor: 1 })));
   });
 
   it("denied: even an explicitly-null challengeNotifiedAt (the ban is presence-based)", async () => {
@@ -64,12 +64,12 @@ describe("games create — cron tombstones cannot be pre-seeded", () => {
     // path has any business naming this field, and a value-based check would be
     // one relaxation away from accepting a real timestamp.
     const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-    await assertFails(setDoc(ref, fx.makeValidGame(OPTS, { challengeNotifiedAt: null })));
+    await assertFails(fx.createGameWithAnchor(ref, fx.makeValidGame(OPTS, { challengeNotifiedAt: null })));
   });
 
   it("succeeds: the normal create, which names neither field", async () => {
     const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-    await assertSucceeds(setDoc(ref, fx.makeValidGame(OPTS)));
+    await assertSucceeds(fx.createGameWithAnchor(ref, fx.makeValidGame(OPTS)));
   });
 });
 

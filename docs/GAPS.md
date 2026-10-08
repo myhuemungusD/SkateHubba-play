@@ -166,6 +166,8 @@ The report/ban infrastructure is above-average as abuse tooling (`reports.ts`, `
 
 ### P2-3 · App Check is OFF in production; failure mode is unmonitorable
 
+**Status (2026-10-08): PARTIAL** — App Check is now live in production in reCAPTCHA v3 **monitor mode**: the web client mints and sends tokens, but Console enforcement is still **off** for Firestore and Storage, so non-app traffic is not yet rejected. The `getToken` probe gap and the native forced-update gap below still stand. Next step is Phase 2 of `docs/APPCHECK_ROLLOUT.md`.
+
 `src/firebase.ts:141` — App Check is opt-in and disabled; `docs/APPCHECK_ROLLOUT.md:301-321` checklist is 18/18 unchecked. Firestore/Storage are unprotected against non-app traffic; every rules rate-limit is the only stand-in. Worse, `isAppCheckInitialized()` can report `true` while zero tokens mint (`firebase.ts:206-210`, `APPCHECK_ROLLOUT.md:33-40`) — the Apr 22 lockout signature — because there's no `getToken` probe. Native flag is baked into shipped binaries with no forced-update path (`android-aab.yml:73-74`).
 
 ### P2-4 · Rules tests don't run on `main` pushes or on non-rules PRs
@@ -173,6 +175,8 @@ The report/ban infrastructure is above-average as abuse tooling (`reports.ts`, `
 `pr-gate.yml:152-192` runs `test:rules` only if the diff touches rules files; `main.yml` has no rules step. A PR changing `src/services/reports.ts` batch shape can break the `getAfter()` companion contract (`firestore.rules:2570-2571`) and pass every check, failing only at runtime as `permission-denied`. (Mitigated: `firebase-rules-deploy.yml` blocks deploy on a full emulator run.)
 
 ### P2-5 · No SAST / CodeQL / secret scanning in CI
+
+**Status (2026-10-08): MOSTLY CLOSED** — `.github/workflows/codeql.yml` (CodeQL for JS/TS, Actions, Python) landed in #616, and GitHub secret scanning with push protection is enabled on the repo. Still no gitleaks/Semgrep workflow.
 
 12 workflows, none CodeQL/Semgrep/gitleaks. The stated threat model (`SECURITY.md:89`) includes AI agents pushing code, and the repo handles service-account JSON in env — a committed-secret scanner is the obvious missing control.
 

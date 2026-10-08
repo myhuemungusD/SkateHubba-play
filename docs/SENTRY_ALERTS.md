@@ -146,4 +146,5 @@ alerting setup, not an afterthought.
 `appcheck_init_failed`, `appcheck_enabled_but_no_site_key`,
 `appcheck_native_init_failed`, and `users/{uid} permission-denied after retries` as
 rollout abort triggers, but this document defines no matching alert — it currently
-covers only the two map alerts. Add them before the next App Check enablement attempt.
+covers only the two map alerts. App Check is now on in production in monitor mode, so
+these signals are live; add the rules before Console enforcement is turned on.
