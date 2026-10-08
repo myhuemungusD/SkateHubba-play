@@ -11,6 +11,8 @@ import { LockerShowcase } from "../../components/LockerShowcase";
 import { usePlayerProfileController } from "./usePlayerProfileController";
 import { BlockControls } from "./components/BlockControls";
 import { ChallengeButton } from "./components/ChallengeButton";
+import { RollDiceButton } from "./components/RollDiceButton";
+import { isDiceEnabled, isExtrasEnabled } from "../../lib/featureFlags";
 import { GameHistorySection } from "./components/GameHistorySection";
 import { OpponentList } from "./components/OpponentList";
 import { PlayerProfileError } from "./components/PlayerProfileError";
@@ -21,7 +23,6 @@ import { ProfileStatsGrid } from "./components/ProfileStatsGrid";
 import { SignUpToChallengeCta } from "./components/SignUpToChallengeCta";
 import { AddedSpotsPlaceholder } from "./components/AddedSpotsPlaceholder";
 import { WinStreakBanner } from "./components/WinStreakBanner";
-import { isExtrasEnabled } from "../../lib/featureFlags";
 
 /**
  * Streak length before the banner appears. A "1 win streak" is just a win —
@@ -312,6 +313,8 @@ export function PlayerProfileScreen({
         {!isOwnProfile && hasViewer && onChallenge && !c.isBlocked && (
           <ChallengeButton username={profile.username} uid={profile.uid} onChallenge={onChallenge} />
         )}
+
+        {isDiceEnabled() && !isOwnProfile && hasViewer && !c.isBlocked && <RollDiceButton opponentUid={profile.uid} />}
 
         {!hasViewer && onSignUp && <SignUpToChallengeCta username={profile.username} onSignUp={onSignUp} />}
 

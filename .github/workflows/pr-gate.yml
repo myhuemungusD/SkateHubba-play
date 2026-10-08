@@ -59,18 +59,16 @@ jobs:
 
       - name: Enforce Cloud Functions allowlist
         run: |
-          # The stats close-out function is the one maintainer-approved,
-          # application-authored Cloud Functions codebase (see docs/CHARTER.md
-          # §4.14 and the CLAUDE.md guardrail table). It replaced a client-side
-          # stats-replay path that corrupted production win/loss counters.
-          # This gate pins its EXACT file set: any changed file under
-          # functions/src/ that is not on the allowlist below hard-fails, so no
-          # future PR can smuggle new authored Cloud Functions in beside it.
+          # Maintainer-approved Cloud Functions (see docs/CHARTER.md §4.14):
+          #   • the stats close-out (approved 2026-07)
+          #   • Roll Dice — diceAction + diceSweep (approved 2026-10). The
+          #     server rolls every die; clients never write diceGames.
+          # Any other changed file under functions/src/ hard-fails.
           VIOLATIONS=""
           while IFS= read -r file; do
             [ -z "$file" ] && continue
             case "$file" in
-              functions/src/index.ts|functions/src/index.test.ts|functions/src/applyGameStats.ts|functions/src/applyGameStats.test.ts) ;;
+              functions/src/index.ts|functions/src/index.test.ts|functions/src/applyGameStats.ts|functions/src/applyGameStats.test.ts|functions/src/dice/*.ts) ;;
               *) VIOLATIONS="${VIOLATIONS}${file}"$'\n' ;;
             esac
           done < <(git diff origin/main...HEAD --name-only | grep -E '^functions/src/' || true)
@@ -78,11 +76,12 @@ jobs:
           if [ -n "$VIOLATIONS" ]; then
             printf '%s' "$VIOLATIONS"
             echo "::error::Unapproved Cloud Functions source detected under functions/src/."
-            echo "Only the maintainer-approved stats close-out file set is allowed:"
+            echo "Only the maintainer-approved file set is allowed:"
             echo "  functions/src/index.ts"
             echo "  functions/src/index.test.ts"
             echo "  functions/src/applyGameStats.ts"
             echo "  functions/src/applyGameStats.test.ts"
+            echo "  functions/src/dice/*.ts  (Roll Dice, approved 2026-10)"
             echo "Any other functions/src/ code requires explicit maintainer approval."
             echo "See .github/BRANCH_PROTECTION.md for details."
             exit 1

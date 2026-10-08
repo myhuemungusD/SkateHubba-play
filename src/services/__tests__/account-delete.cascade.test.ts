@@ -129,6 +129,9 @@ describe("full cascade over a populated account", () => {
       blockedUsers: 1,
       avatarObjects: 1,
       usernameReleased: true,
+      diceGames: 0,
+      diceStats: 0,
+      diceCreateLimits: 0,
     });
   });
 
@@ -255,6 +258,8 @@ describe("ownership fields", () => {
   const OWNERSHIP: [string, string][] = [
     ["games", "player1Uid"],
     ["games", "player2Uid"],
+    ["diceGames", "player1Uid"],
+    ["diceGames", "player2Uid"],
     ["clips", "playerUid"],
     ["disputes", "setterUid"],
     ["clipVotes", "uid"],
@@ -692,6 +697,9 @@ describe("idempotency", () => {
       blockedUsers: 0,
       avatarObjects: 0,
       usernameReleased: false,
+      diceGames: 0,
+      diceStats: 0,
+      diceCreateLimits: 0,
     });
   });
 
@@ -706,6 +714,60 @@ describe("idempotency", () => {
     expect(second.games).toBe(0);
     expect(second.usernameReleased).toBe(false);
     expect(survivors(store)).toEqual(before);
+  });
+});
+
+describe("Roll Dice cleanup", () => {
+  it("closes active matches, credits the survivor, and deletes the account's dice rows", async () => {
+    const store = makeFakeStore({
+      users: { [UID]: { username: "TonyH" }, [OTHER]: { username: "rival" } },
+      usernames: { tonyh: { uid: UID } },
+      diceGames: {
+        idle: { player1Uid: UID, player2Uid: OTHER, status: "active", round: 1, rollCount: 0 },
+        invited: { player1Uid: OTHER, player2Uid: UID, status: "active", round: 1, rollCount: 0 },
+        live: { player1Uid: UID, player2Uid: OTHER, status: "active", round: 2, rollCount: 3, currentTurn: UID },
+        done: { player1Uid: UID, player2Uid: OTHER, status: "forfeit", winner: OTHER },
+        theirs: { player1Uid: OTHER, player2Uid: "u3", status: "active", rollCount: 4 },
+      },
+      diceStats: {
+        [UID]: { wins: 2, losses: 1, gamesPlayed: 3 },
+        [OTHER]: { wins: 4, losses: 1, gamesPlayed: 5 },
+      },
+      diceCreateLimits: { [UID]: { lastCreateAt: 1 }, [OTHER]: { lastCreateAt: 2 } },
+    });
+
+    const summary = await deleteUserDataAsAdmin(store.deps, UID);
+
+    expect(summary.diceGames).toBe(3);
+    expect(summary.diceStats).toBe(1);
+    expect(summary.diceCreateLimits).toBe(1);
+    expect(store.docs.get("diceGames/idle")).toMatchObject({ status: "expired", winner: null, endReason: "quit" });
+    expect(store.docs.get("diceGames/invited")).toMatchObject({
+      status: "declined",
+      winner: null,
+      endReason: "decline",
+    });
+    expect(store.docs.get("diceGames/live")).toMatchObject({
+      status: "forfeit",
+      winner: OTHER,
+      endReason: "quit",
+      currentTurn: null,
+    });
+    expect(store.docs.get("diceGames/done")).toMatchObject({ status: "forfeit", winner: OTHER });
+    expect(store.docs.get("diceGames/theirs")?.status).toBe("active");
+    expect(store.docs.has("diceStats/u1")).toBe(false);
+    expect(store.docs.get("diceStats/u2")).toMatchObject({ wins: 5, losses: 1, gamesPlayed: 6 });
+    expect(store.docs.has("diceCreateLimits/u1")).toBe(false);
+    expect(store.docs.has("diceCreateLimits/u2")).toBe(true);
+  });
+
+  it("does not write a win when the match never started", async () => {
+    const store = makeFakeStore({
+      diceGames: { idle: { player1Uid: UID, player2Uid: OTHER, status: "active" } },
+      diceStats: { [OTHER]: { wins: 1, losses: 0, gamesPlayed: 1 } },
+    });
+    await deleteUserDataAsAdmin(store.deps, UID);
+    expect(store.docs.get("diceStats/u2")).toEqual({ wins: 1, losses: 0, gamesPlayed: 1 });
   });
 });
 

@@ -160,6 +160,7 @@ The honor-system path no longer resolves a "landed" claim instantly. It freezes 
 | Server-side account deletion (GDPR erasure) | `api/account/delete.ts`, `api/account/_deleteUserData.ts`                     |
 | Social cards for shared `/player` links     | `api/player-meta.ts`, crawler-UA rewrite in `vercel.json`                     |
 | Stats close-out Cloud Function              | `functions/src/applyGameStats.ts` (CI-pinned allowlist)                       |
+| Roll Dice (C-Lo), flag off                  | `functions/src/dice/`, `src/screens/Dice/`, `docs/DICE.md`                    |
 | Mobile store release pipeline               | `fastlane/`, `.github/workflows/ios-build.yml`, `android-aab.yml`             |
 | Native shell (back button, deep links)      | `src/services/nativeApp.ts`, `nativeBridge.ts`                                |
 | Nearby spots dropdown on map search         | `src/services/spots.ts` (`getSpotsNearby`), `src/utils/geo.ts`                |

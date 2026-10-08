@@ -238,6 +238,31 @@ describe("NotificationBell", () => {
     expect(onOpenGame).toHaveBeenCalledWith(game);
   });
 
+  it("opens a Roll Dice match from a dice notification without fetching a S.K.A.T.E. game", async () => {
+    const onOpenDice = vi.fn();
+    mockNotifications.mockReturnValue({
+      ...baseCtx,
+      notifications: [
+        {
+          id: "n-dice",
+          type: "game_event",
+          title: "Roll Dice",
+          message: "Your roll",
+          timestamp: Date.now(),
+          read: false,
+          gameId: "dg1",
+          sourceType: "dice_turn",
+        },
+      ],
+      unreadCount: 1,
+    });
+    render(<NotificationBell onOpenDice={onOpenDice} onOpenGame={vi.fn()} />);
+    await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
+    await userEvent.click(screen.getByText("Roll Dice"));
+    expect(onOpenDice).toHaveBeenCalledWith("dg1");
+    expect(getNotificationGameMock).not.toHaveBeenCalled();
+  });
+
   it("navigates to game when notification with gameId is clicked", async () => {
     const game = { id: "g1" };
     const onOpenGame = vi.fn();

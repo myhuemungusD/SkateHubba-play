@@ -90,7 +90,7 @@ Parked. Distractions until the traction number lands:
 - AI trick recognition
 - AR/VR features
 - Blockchain / NFTs — evaluated Aug 2026 and rejected; the economy works without them (see [docs/ECONOMY.md](docs/ECONOMY.md))
-- Speed S.K.A.T.E. / new game modes
+- Speed S.K.A.T.E. / further game modes (Roll Dice is built and frozen behind `VITE_FEATURE_DICE_ENABLED` — see `docs/DICE.md`)
 - Multi-language / global expansion
 - Esports / pro league
 - Smart sensors / wearables

@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, within, type RenderOptions } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import userEvent from "@testing-library/user-event";
 import { Timestamp } from "firebase/firestore";
 import { Lobby } from "../Lobby";
@@ -83,6 +84,10 @@ const cardByOpponent = (name: RegExp) => screen.getByRole("button", { name });
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("Lobby", () => {
@@ -563,6 +568,20 @@ describe("Lobby", () => {
       await renderExpanded({ games: [makeJudgeGame({ currentTurn: "j1", phase: "disputable" })] });
 
       expect(screen.getByText("Referee @ref reviewing")).toBeInTheDocument();
+    });
+
+    it("shows the Roll Dice card only while the dice flag is on", async () => {
+      renderLobby();
+      expect(screen.queryByTestId("roll-dice-card")).not.toBeInTheDocument();
+      vi.stubEnv("VITE_FEATURE_DICE_ENABLED", "true");
+      render(
+        <MemoryRouter>
+          <NotificationProvider uid="u1">
+            <Lobby {...defaultProps} />
+          </NotificationProvider>
+        </MemoryRouter>,
+      );
+      expect(await screen.findByTestId("roll-dice-card")).toBeInTheDocument();
     });
 
     it("hides Profile button on active judge game card (judge is not a player)", async () => {

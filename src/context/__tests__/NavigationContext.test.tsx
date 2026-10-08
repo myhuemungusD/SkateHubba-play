@@ -365,4 +365,11 @@ describe("auth-router deep-link stash/restore", () => {
     // Prefix match must not be sloppy — a sibling path is still a 404.
     expect(pathToScreen("/spotsomething")).toBe("notfound");
   });
+
+  it("resolves Roll Dice paths to the dice screen", () => {
+    expect(pathToScreen("/dice")).toBe("dice");
+    expect(pathToScreen("/dice/new")).toBe("dice");
+    expect(pathToScreen("/dice/game-1")).toBe("dice");
+    expect(pathToScreen("/dicey")).toBe("notfound");
+  });
 });

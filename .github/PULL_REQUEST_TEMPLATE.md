@@ -32,7 +32,7 @@ production. -->
 - [ ] No new dependency — or the addition is justified below with its `npm audit` result and bundle-size impact
 
 <!-- Auto-enforced by CI (not optional):
-  - New code under functions/src/ is rejected except the approved stats file set.
+  - New code under functions/src/ is rejected except the approved stats file set and functions/src/dice/*.ts.
   - Changes to .github/workflows/** are flagged for maintainer review.
   - `as any` and TODO/FIXME/HACK in src/ fail the PR gate.
 -->

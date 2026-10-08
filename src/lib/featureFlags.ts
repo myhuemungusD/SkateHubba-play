@@ -31,3 +31,11 @@ export function parseFlag(raw: unknown): boolean {
 export function isExtrasEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_EXTRAS_ENABLED);
 }
+
+/**
+ * Roll Dice (street dice / C-Lo). Separate from the extras freeze: it ships
+ * off, and turning extras on must not surface it. Literal "true" only.
+ */
+export function isDiceEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_DICE_ENABLED);
+}

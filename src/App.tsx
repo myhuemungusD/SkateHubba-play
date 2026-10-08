@@ -23,7 +23,7 @@ import { firebaseReady } from "./firebase";
 import { ConsentBanner } from "./components/ConsentBanner";
 import { DeleteAccountRetryBanner } from "./components/DeleteAccountRetryBanner";
 import { useAnalyticsConsent } from "./hooks/useAnalyticsConsent";
-import { isExtrasEnabled } from "./lib/featureFlags";
+import { isDiceEnabled, isExtrasEnabled } from "./lib/featureFlags";
 import {
   hasBootGoogleSignIn,
   isBootShellActive,
@@ -66,6 +66,9 @@ const SpotDetailPage = lazy(() => import("./screens/SpotDetailPage").then((m) =>
 const Settings = lazy(() => import("./screens/Settings").then((m) => ({ default: m.Settings })));
 const MyStatsScreen = lazy(() => import("./screens/MyStatsScreen").then((m) => ({ default: m.MyStatsScreen })));
 const AdminScreen = lazy(() => import("./screens/AdminScreen").then((m) => ({ default: m.AdminScreen })));
+const DiceHub = lazy(() => import("./screens/Dice/DiceHub").then((m) => ({ default: m.DiceHub })));
+const DiceNew = lazy(() => import("./screens/Dice/DiceNew").then((m) => ({ default: m.DiceNew })));
+const DiceTable = lazy(() => import("./screens/Dice/DiceTable").then((m) => ({ default: m.DiceTable })));
 
 function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
   return (
@@ -342,8 +345,14 @@ function AppRoutes() {
   // Deep-link into a game when a push notification is tapped (service worker postMessage)
   useEffect(() => {
     const handler = (e: Event) => {
-      const gameId = (e as CustomEvent).detail?.gameId;
-      if (!gameId || !game.games) return;
+      const detail = (e as CustomEvent<{ gameId?: unknown; kind?: unknown }>).detail;
+      const gameId = detail?.gameId;
+      if (typeof gameId !== "string" || gameId.length === 0) return;
+      if (detail?.kind === "dice") {
+        navigate(`/dice/${gameId}`);
+        return;
+      }
+      if (!game.games) return;
       const found = game.games.find((g) => g.id === gameId);
       if (found) {
         game.openGame(found);
@@ -357,7 +366,7 @@ function AppRoutes() {
     window.addEventListener(OPEN_GAME_EVENT, handler);
     return () => window.removeEventListener(OPEN_GAME_EVENT, handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-subscribe when games list or openGame changes
-  }, [game.games, game.openGame, nav.setScreen]);
+  }, [game.games, game.openGame, nav.setScreen, navigate]);
 
   return (
     <>
@@ -460,6 +469,7 @@ function AppRoutes() {
                     onLoadMore={game.loadMoreGames}
                     gamesLoading={game.gamesLoading}
                     onViewPlayer={nav.navigateToPlayer}
+                    onOpenDice={(id) => navigate(`/dice/${id}`)}
                   />
                 ) : (
                   <Navigate to="/" replace />
@@ -681,6 +691,32 @@ function AppRoutes() {
                 )
               }
             />
+
+            {/* Roll Dice is its own freeze (VITE_FEATURE_DICE_ENABLED, default
+                off). With the flag off these URLs redirect the same way the
+                extras do, so a push tap still lands somewhere useful. */}
+            {isDiceEnabled() ? (
+              <>
+                <Route
+                  path="/dice"
+                  element={auth.activeProfile ? <DiceHub /> : <Navigate to={frozenRedirect} replace />}
+                />
+                <Route
+                  path="/dice/new"
+                  element={auth.activeProfile ? <DiceNew /> : <Navigate to={frozenRedirect} replace />}
+                />
+                <Route
+                  path="/dice/:gameId"
+                  element={auth.activeProfile ? <DiceTable /> : <Navigate to={frozenRedirect} replace />}
+                />
+              </>
+            ) : (
+              <>
+                <Route path="/dice" element={<Navigate to={frozenRedirect} replace />} />
+                <Route path="/dice/new" element={<Navigate to={frozenRedirect} replace />} />
+                <Route path="/dice/:gameId" element={<Navigate to={frozenRedirect} replace />} />
+              </>
+            )}
 
             {/* Feature freeze: Map, spot detail and the Clips feed are gated
               behind VITE_FEATURE_EXTRAS_ENABLED (default OFF — see

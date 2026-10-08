@@ -32,6 +32,9 @@ interface ImportMetaEnv {
   /** Feature-freeze switch: "true" shows Map / Clips feed / Verified Pro.
    *  Unset (default) hides them. Read via src/lib/featureFlags.ts. */
   readonly VITE_FEATURE_EXTRAS_ENABLED?: string;
+  /** Roll Dice switch: "true" shows /dice. Unset (default) hides it.
+   *  Read via isDiceEnabled() — not the extras flag. */
+  readonly VITE_FEATURE_DICE_ENABLED?: string;
   readonly VITE_MAPBOX_TOKEN?: string;
   /** Optional Mapbox Studio style URL. Falls back to mapbox://styles/mapbox/dark-v11. */
   readonly VITE_MAPBOX_STYLE_URL?: string;

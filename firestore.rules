@@ -3339,5 +3339,28 @@ service cloud.firestore {
                  == get(/databases/$(database)/documents/disputes/$(resource.data.disputeId)).data.get('bailVotes', 0) - 1)
         );
     }
+
+    // ── Roll Dice (server-written) ──
+    // The diceAction callable and the account-deletion cascade are the only
+    // writers. Both use the Admin SDK, which bypasses these rules. Clients
+    // may read a match they are in, and any signed-in user may read a single
+    // diceStats doc (the hub shows wins and losses). Nothing here is a
+    // S.K.A.T.E. game: onGameCompleted never sees this collection.
+    match /diceGames/{gameId} {
+      allow get, list: if isSignedIn() && request.auth.uid in resource.data.playerUids;
+      allow create, update, delete: if false;
+    }
+
+    match /diceStats/{uid} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow write: if false;
+    }
+
+    // Create-cooldown anchor. Not readable by clients (it would leak the
+    // last time someone started a match).
+    match /diceCreateLimits/{uid} {
+      allow read, write: if false;
+    }
   }
 }

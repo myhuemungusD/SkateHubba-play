@@ -4,7 +4,18 @@ import { NotificationRow } from "./NotificationRow";
 import { getNotificationGame } from "../services/notifications";
 import type { GameDoc } from "../services/games";
 
-export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onOpenGame?: (g: GameDoc) => void }) {
+const DICE_SOURCE_TYPES = new Set(["dice_challenge", "dice_turn", "dice_result"]);
+
+export function NotificationBell({
+  games,
+  onOpenGame,
+  onOpenDice,
+}: {
+  games?: GameDoc[];
+  onOpenGame?: (g: GameDoc) => void;
+  /** Roll Dice rows navigate here instead of looking up a S.K.A.T.E. game. */
+  onOpenDice?: (gameId: string) => void;
+}) {
   const {
     notifications,
     unreadCount,
@@ -78,6 +89,11 @@ export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onO
   const activate = useCallback(
     async (n: AppNotification, cached: GameDoc | undefined) => {
       if (!n.read) markRead(n.id);
+      if (n.gameId && n.sourceType && DICE_SOURCE_TYPES.has(n.sourceType)) {
+        onOpenDice?.(n.gameId);
+        closePanel();
+        return;
+      }
       if (!n.gameId || !onOpenGame) return;
       if (cached) {
         onOpenGame(cached);
@@ -95,7 +111,7 @@ export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onO
       onOpenGame(game);
       closePanel();
     },
-    [markRead, onOpenGame, closePanel],
+    [markRead, onOpenGame, onOpenDice, closePanel],
   );
 
   return (

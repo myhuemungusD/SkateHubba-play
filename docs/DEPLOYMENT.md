@@ -204,6 +204,15 @@ To deploy a single function by name (the deployed export is `onGameCompleted`;
 firebase deploy --only functions:onGameCompleted
 ```
 
+Roll Dice ships as two more exports, `diceAction` and `diceSweep`. They stay
+off until `DICE_ENABLED` / `DICE_TESTER_UIDS` and the client flag are set.
+The steps are in `docs/DICE.md`. Do not deploy them as part of a routine
+rules push — rules deploy does not upload functions.
+
+```bash
+firebase deploy --only functions:diceAction,functions:diceSweep
+```
+
 **Pre-deploy check — region co-location:** the trigger is pinned to
 `us-central1` (`functions/src/index.ts`), which must match the `skatehubba`
 named database's location or the trigger will never fire. Confirm with

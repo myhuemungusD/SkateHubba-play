@@ -288,13 +288,15 @@ function gameIdFromPushData(data: unknown): string | null {
  * Returns an unsubscribe function. Safe to call on web (no-op unsubscribe) so
  * consumers can mount it unconditionally.
  */
-export function subscribeToNativePushOpens(cb: (gameId: string) => void): () => void {
+export function subscribeToNativePushOpens(cb: (gameId: string, data?: Record<string, unknown>) => void): () => void {
   if (!isPushSupported()) return () => {};
 
   let removed = false;
   const handle = PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
-    const gameId = gameIdFromPushData(action.notification.data);
-    if (gameId) cb(gameId);
+    const data = action.notification.data;
+    const gameId = gameIdFromPushData(data);
+    const record = typeof data === "object" && data !== null ? (data as Record<string, unknown>) : undefined;
+    if (gameId) cb(gameId, record);
   }).catch((err: unknown) => {
     logger.warn("push_action_listener_failed", { error: parseFirebaseError(err) });
     return null;
