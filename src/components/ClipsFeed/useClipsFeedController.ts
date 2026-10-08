@@ -130,35 +130,60 @@ export function useClipsFeedController(viewerUid: string) {
     [viewerUid],
   );
 
+  // Changing the sort (or the viewer, which `hydrateVotes` keys on) re-enters
+  // the loading state. Done during render (React's "adjust state when a prop
+  // changes" pattern) rather than in the fetch effect, so the effect body
+  // never sets state synchronously.
+  const poolKey = `${sort}|${viewerUid}`;
+  const [loadedPoolKey, setLoadedPoolKey] = useState(poolKey);
+  if (loadedPoolKey !== poolKey) {
+    setLoadedPoolKey(poolKey);
+    setLoading(true);
+    setError(null);
+    setErrorCode(null);
+  }
+
+  // The async half of a pool load: every state write happens in a promise
+  // callback, never synchronously in the caller.
+  const fetchPool = useCallback(
+    (): Promise<void> =>
+      fetchClipsFeed(null, PAGE_SIZE, sort)
+        .then((page) => {
+          if (!mountedRef.current) return;
+          setPool(page.clips);
+          setCurrentIndex(0);
+          setCursor(page.cursor);
+          setHasMore(page.cursor !== null);
+          // Hydration is fire-and-forget — spotlight renders immediately,
+          // vote counts pop in once the batch resolves.
+          void hydrateVotes(page.clips);
+        })
+        .catch((err: unknown) => {
+          const code = errorCodeFor(err);
+          logger.warn("clips_feed_load_failed", { code, error: parseFirebaseError(err) });
+          if (mountedRef.current) {
+            setError(copyForError(code));
+            setErrorCode(code ?? null);
+          }
+        })
+        .finally(() => {
+          if (mountedRef.current) setLoading(false);
+        }),
+    [hydrateVotes, sort],
+  );
+
   const loadPool = useCallback(async () => {
     setLoading(true);
     setError(null);
     setErrorCode(null);
-    try {
-      const page = await fetchClipsFeed(null, PAGE_SIZE, sort);
-      if (!mountedRef.current) return;
-      setPool(page.clips);
-      setCurrentIndex(0);
-      setCursor(page.cursor);
-      setHasMore(page.cursor !== null);
-      // Hydration is fire-and-forget — spotlight renders immediately,
-      // vote counts pop in once the batch resolves.
-      void hydrateVotes(page.clips);
-    } catch (err) {
-      const code = errorCodeFor(err);
-      logger.warn("clips_feed_load_failed", { code, error: parseFirebaseError(err) });
-      if (mountedRef.current) {
-        setError(copyForError(code));
-        setErrorCode(code ?? null);
-      }
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  }, [hydrateVotes, sort]);
+    await fetchPool();
+  }, [fetchPool]);
 
+  // Initial state is already `loading: true` with no error, so mount and
+  // sort/viewer changes only need the async half.
   useEffect(() => {
-    loadPool();
-  }, [loadPool]);
+    void fetchPool();
+  }, [fetchPool]);
 
   // Filter blocked users + session-dismissed clips out on the client.
   const visibleClips = useMemo(

@@ -23,6 +23,18 @@ export function SpotDetailPage() {
   const [submittingComment, setSubmittingComment] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
 
+  // Navigating to another spot re-enters the loading state. Done during
+  // render (React's "adjust state when a prop changes" pattern) rather than
+  // in the fetch effect, so the effect body never sets state synchronously.
+  const [loadedId, setLoadedId] = useState(id);
+  if (loadedId !== id) {
+    setLoadedId(id);
+    if (id) {
+      setLoading(true);
+      setError(null);
+    }
+  }
+
   // Fetch spot and comments with stale-result guard. Firestore has no
   // native request cancellation, so we use a `cancelled` flag to drop
   // results from a query whose effect has already been cleaned up.
@@ -30,8 +42,6 @@ export function SpotDetailPage() {
     if (!id) return;
 
     let cancelled = false;
-    setLoading(true);
-    setError(null);
 
     Promise.all([getSpot(id), getSpotComments(id)])
       .then(([spotData, commentsData]) => {
