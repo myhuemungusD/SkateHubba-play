@@ -15,6 +15,14 @@ const mockPersistentLocalCache = vi.fn((..._: unknown[]) => ({ __cache: "persist
 const mockPersistentMultipleTabManager = vi.fn((..._: unknown[]) => ({}));
 const mockAddBreadcrumb = vi.fn((..._: unknown[]) => undefined);
 
+const capacitorState = vi.hoisted(() => ({ platform: "web" }));
+vi.mock("@capacitor/core", () => ({
+  Capacitor: {
+    isNativePlatform: () => capacitorState.platform !== "web",
+    getPlatform: () => capacitorState.platform,
+  },
+}));
+
 vi.mock("../lib/sentry", () => ({
   addBreadcrumb: (...args: unknown[]) => mockAddBreadcrumb(...args),
   captureMessage: vi.fn(),
@@ -59,6 +67,7 @@ describe("firebase module", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetModules();
+    capacitorState.platform = "web";
   });
 
   afterEach(() => {
@@ -184,6 +193,31 @@ describe("firebase module", () => {
       ([arg]) => (arg as { category?: string } | undefined)?.category === "lifecycle",
     );
     expect(lifecycleCrumbs).toHaveLength(0);
+  });
+
+  it("uses the single-tab persistent cache on the iOS shell", async () => {
+    capacitorState.platform = "ios";
+    stubFirebaseEnv();
+    vi.stubEnv("VITE_USE_EMULATORS", "false");
+
+    const mod = await import("../firebase");
+    expect(mod.firestoreCacheMode).toBe("persistent");
+    expect(mockPersistentLocalCache).toHaveBeenCalledTimes(1);
+    expect(mockPersistentLocalCache).toHaveBeenCalledWith();
+    expect(mockPersistentMultipleTabManager).not.toHaveBeenCalled();
+    expect(mockMemoryLocalCache).not.toHaveBeenCalled();
+  });
+
+  it("keeps the multi-tab persistent cache on Android", async () => {
+    capacitorState.platform = "android";
+    stubFirebaseEnv();
+    vi.stubEnv("VITE_USE_EMULATORS", "false");
+
+    await import("../firebase");
+    expect(mockPersistentMultipleTabManager).toHaveBeenCalledTimes(1);
+    expect(mockPersistentLocalCache).toHaveBeenCalledWith({
+      tabManager: mockPersistentMultipleTabManager.mock.results[0]?.value,
+    });
   });
 
   it("falls back to memory cache when persistent cache init throws (Safari private / broken WebView)", async () => {

@@ -62,6 +62,20 @@ print(f"{udid}\t{name}")
 PY
 }
 
+# simctl openurl shows an "Open in SkateHubba?" confirmation and does not
+# deliver the link. The Debug build reads -SKATEHUBBA_ROUTE instead.
+shoot_route() {
+  local udid="$1"
+  local slug="$2"
+  local name="$3"
+  shift 3
+  xcrun simctl terminate "$udid" com.skatehubba.app >/dev/null 2>&1 || true
+  sleep 1
+  xcrun simctl launch "$udid" com.skatehubba.app "$@"
+  sleep 12
+  xcrun simctl io "$udid" screenshot "${OUT}/${slug}-${name}.png"
+}
+
 shoot() {
   local udid="$1"
   local slug="$2"
@@ -70,15 +84,9 @@ shoot() {
   xcrun simctl bootstatus "$udid" -b
   xcrun simctl status_bar "$udid" override --time "9:41" --batteryState charged --batteryLevel 100 || true
   xcrun simctl install "$udid" "$APP"
-  xcrun simctl launch "$udid" com.skatehubba.app
-  sleep 12
-  xcrun simctl io "$udid" screenshot "${OUT}/${slug}-landing.png"
-  xcrun simctl openurl "$udid" "skatehubba://app/auth"
-  sleep 6
-  xcrun simctl io "$udid" screenshot "${OUT}/${slug}-auth.png"
-  xcrun simctl openurl "$udid" "skatehubba://app/privacy"
-  sleep 6
-  xcrun simctl io "$udid" screenshot "${OUT}/${slug}-privacy.png"
+  shoot_route "$udid" "$slug" landing
+  shoot_route "$udid" "$slug" auth -SKATEHUBBA_ROUTE /auth
+  shoot_route "$udid" "$slug" privacy -SKATEHUBBA_ROUTE /privacy
   xcrun simctl shutdown "$udid" || true
 }
 

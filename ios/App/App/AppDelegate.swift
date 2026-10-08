@@ -13,6 +13,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // simulator builds still launch. See ios/App/SkatehubbaFcm.
         SkatehubbaFcm.configureIfPossible()
         enableEdgeSwipeBack()
+        deliverScreenshotRoute()
         return true
     }
 
@@ -45,6 +46,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func applicationDidBecomeActive(_ application: UIApplication) {
         // The webview may not exist yet during didFinishLaunching.
         enableEdgeSwipeBack()
+        deliverScreenshotRoute()
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
@@ -95,6 +97,44 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
         attempt(8)
     }
+
+    /// Debug builds accept `-SKATEHUBBA_ROUTE /privacy` from `simctl launch`
+    /// so the screenshot job can open a screen without `simctl openurl`.
+    /// openurl raises an "Open in SkateHubba?" confirmation and never
+    /// delivers the link. Release builds compile this to a no-op.
+    private func deliverScreenshotRoute() {
+        #if DEBUG
+        guard let route = Self.screenshotRoute() else { return }
+        let js = "window.dispatchEvent(new CustomEvent('skatehubba:screenshot-route', { detail: '\(route)' }));"
+        func attempt(_ remaining: Int) {
+            DispatchQueue.main.async {
+                self.bridgeController()?.webView?.evaluateJavaScript(js, completionHandler: nil)
+                if remaining > 0 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        attempt(remaining - 1)
+                    }
+                }
+            }
+        }
+        attempt(15)
+        #endif
+    }
+
+    /// A route is a path such as `/auth` or `/privacy`. Anything else is
+    /// ignored so the argument cannot become JavaScript.
+    #if DEBUG
+    private static func screenshotRoute() -> String? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let flag = args.firstIndex(of: "-SKATEHUBBA_ROUTE"), flag + 1 < args.count else { return nil }
+        let route = args[flag + 1]
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/-")
+        guard route.hasPrefix("/"),
+              !route.hasPrefix("//"),
+              route.count <= 80,
+              route.unicodeScalars.allSatisfy({ allowed.contains($0) }) else { return nil }
+        return route
+    }
+    #endif
 
     private func bridgeController() -> CAPBridgeViewController? {
         let keyWindow = window

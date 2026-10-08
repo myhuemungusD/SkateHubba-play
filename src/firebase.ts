@@ -84,15 +84,16 @@ if (env) {
     // here prevents the whole app from crashing on module load (H-F13) and
     // lets us fall back to an in-memory cache.
     try {
-      db = initializeFirestore(
-        app,
-        {
-          localCache: persistentLocalCache({
-            tabManager: persistentMultipleTabManager(),
-          }),
-        },
-        FIRESTORE_DB_NAME,
-      );
+      // iOS WKWebView never settles the Web Locks lease that
+      // persistentMultipleTabManager waits on, so Firestore init hangs and
+      // the App chunk never finishes loading (the shell stays on the boot
+      // spinner). The iOS shell is one webview, so the single-tab cache is
+      // the one that matches it. Android and the website keep multi-tab.
+      const localCache =
+        Capacitor.getPlatform() === "ios"
+          ? persistentLocalCache()
+          : persistentLocalCache({ tabManager: persistentMultipleTabManager() });
+      db = initializeFirestore(app, { localCache }, FIRESTORE_DB_NAME);
       firestoreCacheMode = "persistent";
     } catch (err) {
       // Never silently swallow — always breadcrumb + log so ops can see
