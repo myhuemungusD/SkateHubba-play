@@ -685,3 +685,18 @@ input:-webkit-autofill {
 .animate-graffiti-drip {
   animation: graffiti-drip 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
+
+/* Roll Dice: one tumble while the callable is in flight. The die snaps to
+ * the face when prefers-reduced-motion is set (the class is not applied). */
+@keyframes dice-tumble {
+  0% {
+    transform: rotateX(0deg) rotateY(0deg);
+  }
+  100% {
+    transform: rotateX(360deg) rotateY(360deg);
+  }
+}
+
+.animate-dice-tumble {
+  animation: dice-tumble 0.6s ease-in-out;
+}

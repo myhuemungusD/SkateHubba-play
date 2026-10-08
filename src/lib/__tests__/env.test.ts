@@ -71,17 +71,25 @@ describe("safeParseEnv", () => {
     expect(safeParseEnv({ ...validEnv, VITE_APPCHECK_ENABLED: "" })?.VITE_APPCHECK_ENABLED).toBe(false);
   });
 
-  it.each([
+  const flagCases: [string | undefined, boolean][] = [
     [undefined, false],
     ["", false],
     ["false", false],
     ["TRUE", false],
     ["1", false],
     ["true", true],
-  ])("parses VITE_FEATURE_EXTRAS_ENABLED=%j as %s (feature freeze, default off)", (raw, expected) => {
+  ];
+
+  it.each(flagCases)("parses VITE_FEATURE_EXTRAS_ENABLED=%j as %s (feature freeze, default off)", (raw, expected) => {
     const result = safeParseEnv({ ...validEnv, VITE_FEATURE_EXTRAS_ENABLED: raw });
     expect(result).not.toBeNull();
     expect(result?.VITE_FEATURE_EXTRAS_ENABLED).toBe(expected);
+  });
+
+  it.each(flagCases)("parses VITE_FEATURE_DICE_ENABLED=%j as %s (Roll Dice, default off)", (raw, expected) => {
+    const result = safeParseEnv({ ...validEnv, VITE_FEATURE_DICE_ENABLED: raw });
+    expect(result).not.toBeNull();
+    expect(result?.VITE_FEATURE_DICE_ENABLED).toBe(expected);
   });
 
   it("accepts every optional var when provided with a valid string", () => {

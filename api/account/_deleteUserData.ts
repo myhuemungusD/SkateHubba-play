@@ -86,6 +86,12 @@ export interface DeletionSummary {
   blockedUsers: number;
   avatarObjects: number;
   usernameReleased: boolean;
+  /** Active Roll Dice matches closed so the other player is not left waiting. */
+  diceGames: number;
+  /** 1 when diceStats/{uid} existed and was deleted, otherwise 0. */
+  diceStats: number;
+  /** 1 when diceCreateLimits/{uid} existed and was deleted, otherwise 0. */
+  diceCreateLimits: number;
 }
 
 /** Everything the cascade needs, injected so the unit tests can drive it with fakes. */
@@ -114,6 +120,9 @@ function emptySummary(): DeletionSummary {
     blockedUsers: 0,
     avatarObjects: 0,
     usernameReleased: false,
+    diceGames: 0,
+    diceStats: 0,
+    diceCreateLimits: 0,
   };
 }
 
@@ -214,6 +223,100 @@ async function deleteRefs(db: Firestore, refs: FirebaseFirestore.DocumentReferen
  * Returns null when the profile is already gone (a resumed run), in which case
  * the reservation was either freed on the previous attempt or never held.
  */
+function numField(data: Record<string, unknown>, field: string): number {
+  const value = data[field];
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * True once anyone has rolled or a round has already been won.
+ * Mirrors `matchHasStarted` in functions/src/dice/engine.ts. Duplicated here
+ * so account deletion (Vercel) does not import the Cloud Functions package.
+ */
+function diceMatchStarted(data: Record<string, unknown>): boolean {
+  if (numField(data, "round") > 1 || numField(data, "rollCount") > 0) return true;
+  const results = data.results;
+  if (results && typeof results === "object" && Object.keys(results).length > 0) return true;
+  const roundsWon = data.roundsWon;
+  if (!roundsWon || typeof roundsWon !== "object") return false;
+  return Object.values(roundsWon).some((n) => typeof n === "number" && n > 0);
+}
+
+function otherDicePlayer(data: Record<string, unknown>, uid: string): string | null {
+  const p1 = data.player1Uid;
+  const p2 = data.player2Uid;
+  if (p1 === uid && typeof p2 === "string" && p2 !== uid) return p2;
+  if (p2 === uid && typeof p1 === "string" && p1 !== uid) return p1;
+  return null;
+}
+
+async function deleteIfPresent(db: Firestore, collectionName: string, uid: string): Promise<number> {
+  const ref = db.collection(collectionName).doc(uid);
+  const snap = await ref.get();
+  if (!snap.exists) return 0;
+  await ref.delete();
+  return 1;
+}
+
+/**
+ * Close every active dice match this account is in.
+ *
+ * Before the first roll, the challenger leaving expires the match and the
+ * opponent leaving declines it. After play has started, the other player
+ * wins the match and their diceStats win counter moves. Terminal matches
+ * stay so the other player keeps the history.
+ */
+async function closeActiveDiceGames(db: Firestore, uid: string, nowMs: number): Promise<number> {
+  const col = db.collection("diceGames");
+  const [asP1, asP2] = await Promise.all([
+    scanAll(col.where("player1Uid", "==", uid)),
+    scanAll(col.where("player2Uid", "==", uid)),
+  ]);
+  const seen = new Set<string>();
+  let closed = 0;
+  for (const snap of [...asP1, ...asP2]) {
+    if (seen.has(snap.id)) continue;
+    seen.add(snap.id);
+    const data = snap.data() as Record<string, unknown>;
+    if (data.status !== "active") continue;
+    const survivor = otherDicePlayer(data, uid);
+    const started = diceMatchStarted(data);
+    const challengerLeft = data.player1Uid === uid;
+    let status: "forfeit" | "expired" | "declined" = "declined";
+    let endReason: "quit" | "decline" = "decline";
+    if (started) {
+      status = "forfeit";
+      endReason = "quit";
+    } else if (challengerLeft) {
+      status = "expired";
+      endReason = "quit";
+    }
+    const winner = started ? survivor : null;
+    await db.runTransaction(async (tx) => {
+      const fresh = await tx.get(snap.ref);
+      const current = (fresh.data() ?? {}) as Record<string, unknown>;
+      if (current.status !== "active") return;
+      tx.update(snap.ref, { status, winner, endReason, currentTurn: null, updatedAt: nowMs });
+      if (!winner) return;
+      const statsRef = db.collection("diceStats").doc(winner);
+      const statsSnap = await tx.get(statsRef);
+      const stats = (statsSnap.data() ?? {}) as Record<string, unknown>;
+      tx.set(
+        statsRef,
+        {
+          wins: numField(stats, "wins") + 1,
+          losses: numField(stats, "losses"),
+          gamesPlayed: numField(stats, "gamesPlayed") + 1,
+          updatedAt: nowMs,
+        },
+        { merge: true },
+      );
+    });
+    closed += 1;
+  }
+  return closed;
+}
+
 export async function readUsername(db: Firestore, uid: string): Promise<string | null> {
   const snap = await db.collection("users").doc(uid).get();
   if (!snap.exists) return null;
@@ -336,6 +439,16 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
     db,
     [...nonActiveGameIds].map((id) => gamesCol.doc(id)),
   );
+
+  // ── Phase 2b: Roll Dice ──
+  // Unlike S.K.A.T.E., an open dice match is closed rather than left active.
+  // The other player would otherwise sit on a turn that can never be taken.
+  // A match nobody has rolled in just ends. A match that has started is a
+  // forfeit: the player who stays gets the win. The departing user's own
+  // diceStats doc is deleted below, so their loss is not written first.
+  summary.diceGames = await closeActiveDiceGames(db, uid, Date.now());
+  summary.diceStats = await deleteIfPresent(db, "diceStats", uid);
+  summary.diceCreateLimits = await deleteIfPresent(db, "diceCreateLimits", uid);
 
   // ── Phase 3: authored community content ──
   // Ownership fields mirror the client cascade exactly: clips are keyed by

@@ -1,7 +1,13 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { onDocumentUpdated } from "firebase-functions/v2/firestore";
+import { onCall } from "firebase-functions/v2/https";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import { defineBoolean, defineString } from "firebase-functions/params";
 import { applyGameStats } from "./applyGameStats.js";
+import { handleDiceCall } from "./dice/callable.js";
+import { sweepExpiredDiceGames } from "./dice/handlers.js";
+import { adminDiceDb } from "./dice/store.js";
 
 /**
  * The app uses the named Firestore database "skatehubba", NOT the (default)
@@ -37,3 +43,29 @@ export const onGameCompleted = onDocumentUpdated(
     await applyGameStats(getFirestore(DATABASE_ID), event.params.gameId);
   },
 );
+
+/**
+ * Roll Dice kill switch. Default off. While off, only uids in
+ * DICE_TESTER_UIDS (comma-separated) can call. Set both at deploy time;
+ * they are not read from the client.
+ */
+const diceEnabled = defineBoolean("DICE_ENABLED", { default: false });
+const diceTesterUids = defineString("DICE_TESTER_UIDS", { default: "" });
+
+/**
+ * The only client entry for Roll Dice. App Check is monitored, not enforced,
+ * until Firestore enforcement is turned on (see docs/APPCHECK_ROLLOUT.md).
+ */
+export const diceAction = onCall({ region: "us-central1", enforceAppCheck: false }, (request) =>
+  handleDiceCall(request, {
+    enabled: diceEnabled.value(),
+    testers: diceTesterUids.value(),
+    nowMs: Date.now(),
+    db: adminDiceDb(getFirestore(DATABASE_ID)),
+  }),
+);
+
+/** Backstop for expired dice turns. Same decision as claimTimeout. */
+export const diceSweep = onSchedule({ schedule: "every 15 minutes", region: "us-central1" }, async () => {
+  await sweepExpiredDiceGames(adminDiceDb(getFirestore(DATABASE_ID)), Date.now());
+});

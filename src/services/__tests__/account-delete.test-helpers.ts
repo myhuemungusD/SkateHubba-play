@@ -148,6 +148,7 @@ export interface FakeTransaction {
   get(ref: FakeDocRef): Promise<FakeDocSnap>;
   delete(ref: FakeDocRef): void;
   update(ref: FakeDocRef, data: DocData): void;
+  set(ref: FakeDocRef, data: DocData, options?: { merge?: boolean }): void;
 }
 
 export interface FakeBatch {
@@ -362,6 +363,12 @@ export function makeFakeStore(seed: Seed = {}, objects: string[] = []): FakeStor
             store.txUpdates.push({ path: ref.path, data });
             const current = store.docs.get(ref.path);
             if (current) store.docs.set(ref.path, { ...current, ...data });
+          }),
+        set: (ref, data, options) =>
+          void staged.push(() => {
+            store.events.push(`tx:set:${ref.path}`);
+            const current = options?.merge ? store.docs.get(ref.path) : undefined;
+            store.docs.set(ref.path, { ...(current ?? {}), ...data });
           }),
       });
       for (const apply of staged) apply();

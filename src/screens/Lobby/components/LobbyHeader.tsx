@@ -8,11 +8,20 @@ interface Props {
   games: GameDoc[];
   onViewRecord: () => void;
   onOpenGame: (g: GameDoc) => void;
+  onOpenDice?: (gameId: string) => void;
   onOpenSettings?: () => void;
   onSignOut: () => void;
 }
 
-export function LobbyHeader({ profile, games, onViewRecord, onOpenGame, onOpenSettings, onSignOut }: Props) {
+export function LobbyHeader({
+  profile,
+  games,
+  onViewRecord,
+  onOpenGame,
+  onOpenDice,
+  onOpenSettings,
+  onSignOut,
+}: Props) {
   return (
     <div className="px-5 pt-safe pb-4 flex justify-between items-center border-b border-white/[0.04] glass max-w-[430px] mx-auto">
       <img src="/logonew.webp" alt="" draggable={false} className="h-7 w-auto select-none" aria-hidden="true" />
@@ -35,7 +44,7 @@ export function LobbyHeader({ profile, games, onViewRecord, onOpenGame, onOpenSe
             className="font-body text-xs text-brand-orange group-hover:text-[#FF8533] transition-colors duration-300"
           />
         </button>
-        <NotificationBell games={games} onOpenGame={onOpenGame} />
+        <NotificationBell games={games} onOpenGame={onOpenGame} onOpenDice={onOpenDice} />
         {onOpenSettings && (
           <button
             type="button"

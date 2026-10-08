@@ -2,7 +2,7 @@
 
 ## Overview
 
-SkateHubba S.K.A.T.E. is a client-first web application. There is no Express server and no general-purpose API — the React SPA talks directly to Firebase services, with Firestore security rules serving as the authorization layer. Server-side code is limited to the maintainer-approved stats close-out Cloud Function (`functions/src/`, pinned to an exact file set by the `verify-no-cloud-functions` CI gate) and the narrow Vercel serverless endpoints under `api/`: scheduled sweeps for expired turns and disputes, the FCM push drain (`api/cron/drain-push-dispatch.ts` — this replaced a `firestore-send-fcm` Firebase Extension that turned out not to exist, see `docs/CHARTER.md` §4.4), account deletion, and social-card metadata for shared `/player` links.
+SkateHubba S.K.A.T.E. is a client-first web application. There is no Express server and no general-purpose API — the React SPA talks directly to Firebase services, with Firestore security rules serving as the authorization layer. Server-side code is limited to the maintainer-approved stats close-out Cloud Function and the Roll Dice functions (`functions/src/`, pinned by the `verify-no-cloud-functions` CI gate — see `docs/DICE.md`) and the narrow Vercel serverless endpoints under `api/`: scheduled sweeps for expired turns and disputes, the FCM push drain (`api/cron/drain-push-dispatch.ts` — this replaced a `firestore-send-fcm` Firebase Extension that turned out not to exist, see `docs/CHARTER.md` §4.4), account deletion, and social-card metadata for shared `/player` links.
 
 This means:
 

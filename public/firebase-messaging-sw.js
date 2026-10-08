@@ -52,7 +52,13 @@ self.addEventListener("notificationclick", function (event) {
 
   var data = event.notification.data || {};
   var gameId = data.gameId;
-  var urlPath = gameId ? "/?game=" + gameId : "/";
+  var kind = data.kind;
+  var urlPath = "/";
+  if (gameId && kind === "dice") {
+    urlPath = "/dice/" + encodeURIComponent(gameId);
+  } else if (gameId) {
+    urlPath = "/?game=" + encodeURIComponent(gameId);
+  }
 
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (clientList) {
@@ -62,7 +68,9 @@ self.addEventListener("notificationclick", function (event) {
         if (client.url.indexOf(self.location.origin) === 0 && "focus" in client) {
           client.focus();
           if (gameId) {
-            client.postMessage({ type: "OPEN_GAME", gameId: gameId });
+            var message = { type: "OPEN_GAME", gameId: gameId };
+            if (kind === "dice") message.kind = "dice";
+            client.postMessage(message);
           }
           return;
         }

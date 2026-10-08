@@ -43,9 +43,10 @@ Firebase SDK.
   CI. Ship the tests with the code, not after.
 - No `console.log`. Use `console.warn` for expected error paths and
   Sentry for everything else.
-- `functions/src/` is allowlisted, not banned. `pr-gate.yml` permits exactly
+- `functions/src/` is allowlisted, not banned. `pr-gate.yml` permits
   `index.ts`, `index.test.ts`, `applyGameStats.ts`, `applyGameStats.test.ts`
-  (the maintainer-approved stats close-out, approved 2026-07). Any other file
+  (the maintainer-approved stats close-out, approved 2026-07) and
+  `functions/src/dice/*.ts` (Roll Dice, approved 2026-10). Any other file
   added there hard-fails the gate — discuss first.
 
 ## Verification gate (run before declaring done)

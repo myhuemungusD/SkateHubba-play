@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isExtrasEnabled, parseFlag } from "../featureFlags";
+import { isDiceEnabled, isExtrasEnabled, parseFlag } from "../featureFlags";
 
 describe("parseFlag", () => {
   it("accepts only the literal string 'true'", () => {
@@ -38,5 +38,28 @@ describe("isExtrasEnabled (VITE_FEATURE_EXTRAS_ENABLED)", () => {
     expect(isExtrasEnabled()).toBe(true);
     vi.stubEnv("VITE_FEATURE_EXTRAS_ENABLED", "false");
     expect(isExtrasEnabled()).toBe(false);
+  });
+});
+
+describe("isDiceEnabled (VITE_FEATURE_DICE_ENABLED)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is OFF when the env var is unset — the production default", () => {
+    expect(import.meta.env.VITE_FEATURE_DICE_ENABLED).toBeUndefined();
+    expect(isDiceEnabled()).toBe(false);
+  });
+
+  it("stays off for anything other than the literal string true", () => {
+    vi.stubEnv("VITE_FEATURE_DICE_ENABLED", "TRUE");
+    expect(isDiceEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_DICE_ENABLED", "true");
+    expect(isDiceEnabled()).toBe(true);
+  });
+
+  it("does not follow the extras flag", () => {
+    vi.stubEnv("VITE_FEATURE_EXTRAS_ENABLED", "true");
+    expect(isDiceEnabled()).toBe(false);
   });
 });

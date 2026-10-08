@@ -58,10 +58,10 @@ vi.mock("../../services/fcm", () => ({
 
 const mockNativePushUnsub = vi.fn();
 /** Captures the callback the watcher hands to subscribeToNativePushOpens. */
-let nativePushCb: ((gameId: string) => void) | null = null;
+let nativePushCb: ((gameId: string, data?: Record<string, unknown>) => void) | null = null;
 
 vi.mock("../../services/pushNotifications", () => ({
-  subscribeToNativePushOpens: vi.fn((cb: (gameId: string) => void) => {
+  subscribeToNativePushOpens: vi.fn((cb: (gameId: string, data?: Record<string, unknown>) => void) => {
     nativePushCb = cb;
     return mockNativePushUnsub;
   }),
@@ -463,6 +463,17 @@ describe("service worker deep-link bridge", () => {
     expect((ev![0] as CustomEvent).detail).toEqual({ gameId: "g99" });
   });
 
+  it("forwards a dice kind from the service worker", () => {
+    const { listeners } = stubServiceWorker();
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    render(<GameNotificationWatcher />);
+    listeners["message"][0](
+      new MessageEvent("message", { data: { type: "OPEN_GAME", gameId: "g-dice", kind: "dice" } }),
+    );
+    const ev = dispatchSpy.mock.calls.find((c) => c[0] instanceof CustomEvent && c[0].type === OPEN_GAME_EVENT);
+    expect((ev![0] as CustomEvent).detail).toEqual({ gameId: "g-dice", kind: "dice" });
+  });
+
   it("ignores messages with a non-OPEN_GAME type", () => {
     const { listeners } = stubServiceWorker();
     const dispatchSpy = vi.spyOn(window, "dispatchEvent");
@@ -546,6 +557,14 @@ describe("native push deep-link bridge", () => {
     expect((ev![0] as CustomEvent).detail).toEqual({ gameId: "g-native" });
   });
 
+  it("forwards a dice kind from a native push", () => {
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    render(<GameNotificationWatcher />);
+    nativePushCb!("g-dice", { kind: "dice", gameId: "g-dice" });
+    const ev = dispatchSpy.mock.calls.find((c) => c[0] instanceof CustomEvent && c[0].type === OPEN_GAME_EVENT);
+    expect((ev![0] as CustomEvent).detail).toEqual({ gameId: "g-dice", kind: "dice" });
+  });
+
   it("does not subscribe while signed out", () => {
     mockUser = null;
     render(<GameNotificationWatcher />);
@@ -591,6 +610,11 @@ describe("native universal-link bridge", () => {
   it("ignores paths with no matching route", () => {
     deliver("/blog/some-post");
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it("navigates a Roll Dice universal link", () => {
+    deliver("/dice/g-dice");
+    expect(mockNavigate).toHaveBeenCalledWith("/dice/g-dice");
   });
 
   it("subscribes while signed out and unsubscribes on unmount", () => {

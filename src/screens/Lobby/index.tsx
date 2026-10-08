@@ -1,4 +1,6 @@
+import { lazy, Suspense } from "react";
 import type { UserProfile } from "../../services/users";
+import { isDiceEnabled } from "../../lib/featureFlags";
 import type { GameDoc } from "../../services/games";
 import { PushPermissionBanner } from "../../components/PushPermissionBanner";
 import { useLobbyController } from "./useLobbyController";
@@ -9,11 +11,14 @@ import { CompletedSummaryLine } from "./components/CompletedSummaryLine";
 import { LoadMoreButton } from "./components/LoadMoreButton";
 import { EmptyLobbyState } from "./components/EmptyLobbyState";
 
+const RollDiceCard = lazy(() => import("./components/RollDiceCard").then((m) => ({ default: m.RollDiceCard })));
+
 interface Props {
   profile: UserProfile;
   games: GameDoc[];
   onChallenge: () => void;
   onOpenGame: (g: GameDoc) => void;
+  onOpenDice?: (gameId: string) => void;
   onSignOut: () => void;
   onViewRecord: () => void;
   onOpenSettings?: () => void;
@@ -29,6 +34,7 @@ export function Lobby({
   games,
   onChallenge,
   onOpenGame,
+  onOpenDice,
   onSignOut,
   onViewRecord,
   onOpenSettings,
@@ -48,6 +54,7 @@ export function Lobby({
         games={games}
         onViewRecord={onViewRecord}
         onOpenGame={onOpenGame}
+        onOpenDice={onOpenDice}
         onOpenSettings={onOpenSettings}
         onSignOut={onSignOut}
       />
@@ -57,6 +64,11 @@ export function Lobby({
       </div>
 
       <div className="px-5 pt-7 max-w-[430px] mx-auto">
+        {isDiceEnabled() ? (
+          <Suspense fallback={null}>
+            <RollDiceCard />
+          </Suspense>
+        ) : null}
         {/* The redesign leads with the turn stack, so the screen name is
             screen-reader-only: it restores the h1 every other screen has and
             anchors the heading outline without bringing back the "Your Games"

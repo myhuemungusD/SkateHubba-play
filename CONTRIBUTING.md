@@ -110,7 +110,7 @@ The `main` branch has protection rules that apply to all contributors, including
 - **Squash merge only** (linear history) — the PR title becomes the commit on `main`, so it must be a Conventional Commit
 - **All review conversations must be resolved** before merging
 - The maintainer (`@myhuemungusD`) is auto-requested as reviewer via CODEOWNERS
-- **`functions/src/` is allowlisted, not banned** — a CI guard permits exactly `index.ts`, `index.test.ts`, `applyGameStats.ts`, and `applyGameStats.test.ts` (the maintainer-approved stats close-out, approved 2026-07) and rejects any other file added under `functions/src/`. Discuss before adding one.
+- **`functions/src/` is allowlisted, not banned** — a CI guard permits `index.ts`, `index.test.ts`, `applyGameStats.ts`, and `applyGameStats.test.ts` (the maintainer-approved stats close-out, approved 2026-07) and `functions/src/dice/*.ts` (Roll Dice, approved 2026-10). It rejects any other file added under `functions/src/`. Discuss before adding one.
 - **Workflow changes are flagged** — modifications to `.github/workflows/` require explicit maintainer review
 
 See [`.github/BRANCH_PROTECTION.md`](.github/BRANCH_PROTECTION.md) for the full ruleset and setup checklist.
@@ -149,7 +149,7 @@ See [docs/TESTING.md](docs/TESTING.md) for patterns and examples.
 
 To keep this repo focused:
 
-- No backend / API servers — this is a Firebase-first app. The only approved server-side code is the maintainer-approved stats close-out function (`functions/src/`, pinned to an exact file set by the `verify-no-cloud-functions` CI gate) and the existing narrow `api/` serverless endpoints (cron sweeps, push drain, account deletion, social cards). New code in either location requires maintainer sign-off — see `docs/CHARTER.md` §4.14.
+- No backend / API servers — this is a Firebase-first app. The only approved server-side code is the maintainer-approved stats close-out function and the Roll Dice functions (`functions/src/`, pinned by the `verify-no-cloud-functions` CI gate — see `docs/DICE.md`) and the existing narrow `api/` serverless endpoints (cron sweeps, push drain, account deletion, social cards). New code in either location requires maintainer sign-off — see `docs/CHARTER.md` §4.14.
 - No new database engines (PostgreSQL, Redis, etc.)
 - No state management libraries (Redux, Zustand, etc.) — local state + hooks are sufficient
 - No UI component libraries — we use Tailwind with custom components

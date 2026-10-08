@@ -179,6 +179,25 @@ describe("Smoke: frozen-extras deep links (VITE_FEATURE_EXTRAS_ENABLED=true)", (
  * and Clips feed URLs must redirect rather than 404, to the same destinations
  * the existing auth guards use: /lobby when signed in, / when signed out.
  */
+describe("Smoke: Roll Dice stays hidden while VITE_FEATURE_DICE_ENABLED is unset", () => {
+  const DICE_PATHS = ["/dice", "/dice/new", "/dice/game-1"];
+
+  it.each(DICE_PATHS)("redirects a signed-in user from %s to /lobby", async (path) => {
+    await mountApp(path);
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe("/lobby");
+    });
+  });
+
+  it.each(DICE_PATHS)("redirects a signed-out visitor from %s to the landing page", async (path) => {
+    mocks.auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    await mountApp(path);
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe("/");
+    });
+  });
+});
+
 describe("Smoke: feature freeze redirects (VITE_FEATURE_EXTRAS_ENABLED unset)", () => {
   const FROZEN_PATHS = ["/map", "/feed", "/spots/11111111-2222-3333-4444-555555555555"];
 

@@ -24,6 +24,9 @@ const CHIME_BY_TYPE: Record<string, ChimeType> = {
   game_won: "game_won",
   game_lost: "game_lost",
   judge_invite: "general",
+  dice_challenge: "new_challenge",
+  dice_turn: "your_turn",
+  dice_result: "general",
 };
 
 /**
@@ -41,6 +44,9 @@ const FIRESTORE_HANDLED_FCM_TYPES = new Set([
   "game_won",
   "game_lost",
   "judge_invite",
+  "dice_challenge",
+  "dice_turn",
+  "dice_result",
 ]);
 
 /**
@@ -210,7 +216,8 @@ function useServiceWorkerDeepLink(uid: string | null) {
       if (event.data?.type !== "OPEN_GAME") return;
       const gameId = event.data.gameId;
       if (typeof gameId !== "string" || gameId.length === 0) return;
-      window.dispatchEvent(new CustomEvent(OPEN_GAME_EVENT, { detail: { gameId } }));
+      const kind = typeof event.data.kind === "string" && event.data.kind.length > 0 ? event.data.kind : undefined;
+      window.dispatchEvent(new CustomEvent(OPEN_GAME_EVENT, { detail: kind ? { gameId, kind } : { gameId } }));
     };
 
     sw.addEventListener("message", handler);
@@ -227,8 +234,9 @@ function useServiceWorkerDeepLink(uid: string | null) {
 function useNativePushDeepLink(uid: string | null) {
   useEffect(() => {
     if (!uid) return;
-    return subscribeToNativePushOpens((gameId) => {
-      window.dispatchEvent(new CustomEvent(OPEN_GAME_EVENT, { detail: { gameId } }));
+    return subscribeToNativePushOpens((gameId, data) => {
+      const kind = data && typeof data.kind === "string" && data.kind.length > 0 ? data.kind : undefined;
+      window.dispatchEvent(new CustomEvent(OPEN_GAME_EVENT, { detail: kind ? { gameId, kind } : { gameId } }));
     });
   }, [uid]);
 }
@@ -258,6 +266,7 @@ const ROUTABLE_SEGMENTS = new Set([
   "spots",
   "feed",
   "admin",
+  "dice",
 ]);
 
 /**

@@ -53,6 +53,13 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Roll Dice (C-Lo). DEFAULTS TO OFF, and it is not part of the extras
+  // switch. Read at call sites via isDiceEnabled() in src/lib/featureFlags.ts.
+  VITE_FEATURE_DICE_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // ── Optional: third-party integrations ──────────────────────────────
   VITE_MAPBOX_TOKEN: z.string().optional(),
   // Format validation (mapbox://styles/ prefix or https URL) deliberately

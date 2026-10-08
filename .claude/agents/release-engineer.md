@@ -46,9 +46,10 @@ green and the production deploy healthy.
   document the bundle-size impact.
 - CSP and HSTS headers in `vercel.json` are load-bearing. Test changes
   against `npm run build && npm run preview` before pushing.
-- `functions/src/` is allowlisted, not banned. `pr-gate.yml` permits exactly
+- `functions/src/` is allowlisted, not banned. `pr-gate.yml` permits
   `index.ts`, `index.test.ts`, `applyGameStats.ts`, `applyGameStats.test.ts`
-  (approved 2026-07); any other file added there hard-fails the gate. Note
+  (approved 2026-07) and `functions/src/dice/*.ts` (Roll Dice, approved
+  2026-10); any other file added there hard-fails the gate. Note
   `pr-gate.yml` also _builds and tests_ the `functions/` package on change.
 
 ## Verification gate

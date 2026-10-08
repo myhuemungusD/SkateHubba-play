@@ -367,14 +367,14 @@ describe("subscribeToNativePushOpens", () => {
     const onOpen = vi.fn();
     const { fire } = await subscribe(onOpen);
     fire({ notification: { data: { gameId: "g1", type: "your_turn" } } });
-    expect(onOpen).toHaveBeenCalledWith("g1");
+    expect(onOpen).toHaveBeenCalledWith("g1", { gameId: "g1", type: "your_turn" });
   });
 
   it("falls back to parsing click_action for legacy payloads", async () => {
     const onOpen = vi.fn();
     const { fire } = await subscribe(onOpen);
     fire({ notification: { data: { click_action: "/?game=g2&x=1" } } });
-    expect(onOpen).toHaveBeenCalledWith("g2");
+    expect(onOpen).toHaveBeenCalledWith("g2", { click_action: "/?game=g2&x=1" });
   });
 
   it("stays silent for payloads with no game reference", async () => {

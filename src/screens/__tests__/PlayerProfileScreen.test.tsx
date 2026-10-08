@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import userEvent from "@testing-library/user-event";
 import { PlayerProfileScreen } from "../PlayerProfileScreen";
 import { opponentProfile, buildCompletedGame, buildBaseProps, fetchedState } from "./playerProfile.test-helpers";
@@ -38,6 +39,10 @@ describe("PlayerProfileScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUsePlayerProfile.mockReturnValue(fetchedState());
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   // ── Own Profile ────────────────────────────────────
@@ -248,6 +253,18 @@ describe("PlayerProfileScreen", () => {
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} />);
     expect(document.querySelector('img[src="/logonew.webp"]')).toBeInTheDocument();
     expect(screen.getByText("@sk8rboi")).toBeInTheDocument();
+  });
+
+  it("shows Roll Dice on another skater when the flag is on", async () => {
+    vi.stubEnv("VITE_FEATURE_DICE_ENABLED", "true");
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: opponentProfile }));
+    render(
+      <MemoryRouter>
+        <PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} onChallenge={vi.fn()} />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole("button", { name: "Roll Dice" })).toBeInTheDocument();
+    vi.unstubAllEnvs();
   });
 
   it("shows Challenge button for other players", async () => {
