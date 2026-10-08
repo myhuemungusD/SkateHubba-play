@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Routes, Route } from "react-router";
+import { MemoryRouter, Routes, Route, useNavigate } from "react-router";
 import type { Spot, SpotComment } from "../../types/spot";
 
 const mockGetSpot = vi.fn();
@@ -72,7 +72,44 @@ beforeEach(() => {
   mockGetSpotComments.mockResolvedValue([]);
 });
 
+/** Test-only control that navigates the router to another spot in place. */
+function GoToSpot({ id }: { id: string }) {
+  const navigate = useNavigate();
+  return <button onClick={() => navigate(`/spots/${id}`)}>go to other spot</button>;
+}
+
 describe("SpotDetailPage", () => {
+  it("re-enters the loading state and fetches the new spot when the route id changes", async () => {
+    const OTHER_ID = "99999999-8888-7777-6666-555555555555";
+    render(
+      <MemoryRouter initialEntries={[`/spots/${FIXTURE_SPOT.id}`]}>
+        <GoToSpot id={OTHER_ID} />
+        <Routes>
+          <Route path="/spots/:id" element={<SpotDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Test Hubba" })).toBeInTheDocument();
+    });
+
+    let resolveOther: (spot: Spot) => void = () => {};
+    mockGetSpot.mockReturnValueOnce(
+      new Promise<Spot>((resolve) => {
+        resolveOther = resolve;
+      }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "go to other spot" }));
+
+    expect(mockGetSpot).toHaveBeenLastCalledWith(OTHER_ID);
+    expect(screen.queryByRole("heading", { name: "Test Hubba" })).not.toBeInTheDocument();
+
+    resolveOther({ ...FIXTURE_SPOT, id: OTHER_ID, name: "Other Rail" });
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Other Rail" })).toBeInTheDocument();
+    });
+  });
+
   it("loads the spot via getSpot and renders its name + description", async () => {
     renderPage();
     await waitFor(() => {

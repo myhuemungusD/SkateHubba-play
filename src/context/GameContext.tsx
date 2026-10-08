@@ -1,6 +1,16 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from "react";
 import { useAuthContext } from "./AuthContext";
-import { useNavigationContext } from "./NavigationContext";
+import { useNavigationContext, type Screen } from "./NavigationContext";
 import { useNotifications } from "./NotificationContext";
 import { getUserProfile } from "../services/users";
 import { isUserBlocked } from "../services/blocking";
@@ -55,7 +65,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   // Pagination state
   const [gamesLimit, setGamesLimit] = useState(GAMES_PAGE_SIZE);
-  const [hasMoreGames, setHasMoreGames] = useState(false);
   const [gamesLoading, setGamesLoading] = useState(false);
 
   const loadMoreGames = useCallback(() => {
@@ -63,14 +72,43 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setGamesLimit((prev) => prev + GAMES_PAGE_SIZE);
   }, []);
 
-  // Clear game state when user logs out
-  useEffect(() => {
+  // Clear game state when user logs out. The state reset happens during
+  // render (React's "adjust state when a prop changes" pattern); the ref is
+  // cleared in an effect because refs must not be written during render.
+  const [prevUser, setPrevUser] = useState(user);
+  if (prevUser !== user) {
+    setPrevUser(user);
     if (!user) {
       setGames([]);
       setActiveGame(null);
-      forfeitAttemptedRef.current.clear();
     }
+  }
+  useEffect(() => {
+    if (!user) forfeitAttemptedRef.current.clear();
   }, [user]);
+
+  // A new games subscription (sign-in, profile change, or a bigger page from
+  // loadMoreGames) shows the loading state until its first snapshot lands.
+  // Flipped during render when the subscription inputs change, so the
+  // subscribe effect below never sets state synchronously.
+  const [gamesSubInputs, setGamesSubInputs] = useState<{
+    user: typeof user;
+    profile: typeof activeProfile;
+    limit: number;
+  } | null>(null);
+  if (user && activeProfile) {
+    if (
+      gamesSubInputs === null ||
+      gamesSubInputs.user !== user ||
+      gamesSubInputs.profile !== activeProfile ||
+      gamesSubInputs.limit !== gamesLimit
+    ) {
+      setGamesSubInputs({ user, profile: activeProfile, limit: gamesLimit });
+      setGamesLoading(true);
+    }
+  } else if (gamesSubInputs !== null) {
+    setGamesSubInputs(null);
+  }
 
   // Sweep all expired turns in a games list. Extracted so the snapshot
   // handler and the deadline timer (below) share one code path. Safe to call
@@ -101,7 +139,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // Subscribe to games list with pagination
   useEffect(() => {
     if (!user || !activeProfile) return;
-    setGamesLoading(true);
     const unsub = subscribeToMyGames(
       user.uid,
       (updatedGames) => {
@@ -142,14 +179,26 @@ export function GameProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(handle);
   }, [games, user, activeProfile, sweepExpiredTurns]);
 
-  // Track whether there are more games to load
-  useEffect(() => {
-    setHasMoreGames(games.length >= gamesLimit);
-  }, [games.length, gamesLimit]);
+  // Whether there are more games to load: a full page means there may be more.
+  const hasMoreGames = games.length >= gamesLimit;
 
-  // Real-time single game subscription
+  // Real-time single game subscription. `screenRef` mirrors the screen for
+  // the snapshot callback without resubscribing on navigation. It follows the
+  // committed screen via the layout effect, and goToScreen also records this
+  // provider's own navigations up front: a navigation into a lazily-loaded
+  // screen can suspend before it commits, and a snapshot landing in that
+  // window must still see where the user is headed.
   const screenRef = useRef(screen);
-  screenRef.current = screen;
+  useLayoutEffect(() => {
+    screenRef.current = screen;
+  }, [screen]);
+  const goToScreen = useCallback(
+    (s: Screen) => {
+      screenRef.current = s;
+      setScreen(s);
+    },
+    [setScreen],
+  );
 
   useEffect(() => {
     if (!activeGame) return;
@@ -159,7 +208,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         // document. Recover from account-deletion/admin cleanup instead of
         // leaving the user trapped on a stale game shell forever.
         setActiveGame(null);
-        setScreen("lobby");
+        goToScreen("lobby");
         notify({
           type: "info",
           title: "Game no longer available",
@@ -169,11 +218,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
       }
       setActiveGame(updated);
       if ((updated.status === "complete" || updated.status === "forfeit") && screenRef.current === "game") {
-        setScreen("gameover");
+        goToScreen("gameover");
       }
     });
     return unsub;
-    // notify/setScreen are read from their current provider render; including
+    // notify/goToScreen are read from their current provider render; including
     // notify (whose identity changes with notification state) would tear down
     // and recreate this listener after every toast.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- subscribe only when the game identity changes
@@ -183,12 +232,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
     (g: GameDoc) => {
       setActiveGame(g);
       if (g.status === "complete" || g.status === "forfeit") {
-        setScreen("gameover");
+        goToScreen("gameover");
       } else {
-        setScreen("game");
+        goToScreen("game");
       }
     },
-    [setScreen],
+    [goToScreen],
   );
 
   const startChallenge = useCallback(
@@ -265,7 +314,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         customRules,
       );
       setActiveGame(shell);
-      setScreen("game");
+      goToScreen("game");
       // Success toast doubles as instruction: after setScreen() the user
       // lands on /game to set a trick — the toast confirms the challenge
       // took and nudges them toward the next step. Light haptic + chime
@@ -277,7 +326,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         gameId,
       });
     },
-    [user, activeProfile, setScreen, notify],
+    [user, activeProfile, goToScreen, notify],
   );
 
   // Memoize the provider value so consumers don't re-render on every
