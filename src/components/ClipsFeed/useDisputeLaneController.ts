@@ -98,36 +98,58 @@ export function useDisputeLaneController(viewerUid: string): DisputeLaneControll
     });
   }, []);
 
+  // A different viewer re-enters the loading state. Done during render
+  // (React's "adjust state when a prop changes" pattern) rather than in the
+  // fetch effect, so the effect body never sets state synchronously.
+  const [loadedFor, setLoadedFor] = useState(viewerUid);
+  if (loadedFor !== viewerUid) {
+    setLoadedFor(viewerUid);
+    setLoading(true);
+    setError(null);
+  }
+
+  // The async half of a load: every state write happens in a promise
+  // callback, never synchronously in the caller.
+  const fetchLane = useCallback(
+    (): Promise<void> =>
+      fetchOpenDisputes(PAGE_SIZE)
+        .then(async (open) => {
+          if (!mountedRef.current) return;
+          setDisputes(open);
+          // Seed from the server-maintained aggregates on the dispute docs — no
+          // fan-out count query, same trick `clips.upvoteCount` uses.
+          setTallies(new Map(open.map((d) => [d.id, { land: d.landVotes, bail: d.bailVotes }])));
+          // Best-effort: a failure here leaves every card in the read-only
+          // tally state rather than blocking the lane.
+          try {
+            const states = await fetchDisputeViewerState(viewerUid, open);
+            if (!mountedRef.current) return;
+            setViewerState(states);
+          } catch (err) {
+            logger.warn("dispute_lane_viewer_state_failed", { error: parseFirebaseError(err) });
+          }
+        })
+        .catch((err: unknown) => {
+          logger.warn("dispute_lane_load_failed", { error: parseFirebaseError(err) });
+          if (mountedRef.current) setError("Couldn't load the calls waiting on the community.");
+        })
+        .finally(() => {
+          if (mountedRef.current) setLoading(false);
+        }),
+    [viewerUid],
+  );
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      const open = await fetchOpenDisputes(PAGE_SIZE);
-      if (!mountedRef.current) return;
-      setDisputes(open);
-      // Seed from the server-maintained aggregates on the dispute docs — no
-      // fan-out count query, same trick `clips.upvoteCount` uses.
-      setTallies(new Map(open.map((d) => [d.id, { land: d.landVotes, bail: d.bailVotes }])));
-      // Best-effort: a failure here leaves every card in the read-only
-      // tally state rather than blocking the lane.
-      try {
-        const states = await fetchDisputeViewerState(viewerUid, open);
-        if (!mountedRef.current) return;
-        setViewerState(states);
-      } catch (err) {
-        logger.warn("dispute_lane_viewer_state_failed", { error: parseFirebaseError(err) });
-      }
-    } catch (err) {
-      logger.warn("dispute_lane_load_failed", { error: parseFirebaseError(err) });
-      if (mountedRef.current) setError("Couldn't load the calls waiting on the community.");
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  }, [viewerUid]);
+    await fetchLane();
+  }, [fetchLane]);
 
+  // Initial state is already `loading: true, error: null`, so mount and
+  // viewer changes only need the async half.
   useEffect(() => {
-    void load();
-  }, [load]);
+    void fetchLane();
+  }, [fetchLane]);
 
   const handleVerdict = useCallback(
     async (dispute: Dispute, verdict: DisputeVerdict) => {

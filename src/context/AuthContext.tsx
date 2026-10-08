@@ -263,13 +263,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // without this an MFA user would be an attempt with no outcome. Guarded on a
   // challenge actually being pending, so ordinary sign-ins (which emit their
   // own event at the call site) are not double-counted.
-  useEffect(() => {
-    if (!user || !mfaChallenge) return;
-    logger.info("mfa_sign_in_completed", { uid: user.uid, method: mfaMethod });
-    analytics.signIn(mfaMethod);
-    metrics.signIn(mfaMethod, user.uid);
+  //
+  // The challenge is retired during render (React's "adjust state when a prop
+  // changes" pattern) and the completion is recorded as a fresh object; the
+  // effect below fires the analytics exactly once per completion object, so
+  // no effect has to set state.
+  const [completedMfa, setCompletedMfa] = useState<{ uid: string; method: MfaMethod } | null>(null);
+  if (user && mfaChallenge) {
     setMfaChallenge(null);
-  }, [user, mfaChallenge, mfaMethod]);
+    setCompletedMfa({ uid: user.uid, method: mfaMethod });
+  }
+  useEffect(() => {
+    if (!completedMfa) return;
+    logger.info("mfa_sign_in_completed", { uid: completedMfa.uid, method: completedMfa.method });
+    analytics.signIn(completedMfa.method);
+    metrics.signIn(completedMfa.method, completedMfa.uid);
+  }, [completedMfa]);
 
   // Reactive analytics-consent gate. PostHog identify is only permitted once
   // the user has accepted the ConsentBanner (see PrivacyPolicy §Usage data:
@@ -339,18 +348,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Invalidate pendingDeleteUid when a different auth user arrives (someone
   // else signs in on the same tab) — the banner must not prompt them to
-  // finish deleting a stranger's account.
+  // finish deleting a stranger's account. The state is cleared during render
+  // (React's "adjust state when a prop changes" pattern); the log line and the
+  // localStorage clear are side effects, so they run in the effect below,
+  // once per invalidation (a fresh object each time).
+  const [invalidatedDelete, setInvalidatedDelete] = useState<{ uid: string } | null>(null);
+  if (user && pendingDeleteUid && user.uid !== pendingDeleteUid) {
+    setInvalidatedDelete({ uid: pendingDeleteUid });
+    setPendingDeleteUid(null);
+  }
   useEffect(() => {
-    if (!user || !pendingDeleteUid) return;
-    if (user.uid !== pendingDeleteUid) {
-      logger.info("delete_account_pending_retry_cleared", {
-        uid: pendingDeleteUid,
-        reason: "different_user_signed_in",
-      });
-      clearPendingDeleteUid();
-      setPendingDeleteUid(null);
-    }
-  }, [user, pendingDeleteUid]);
+    if (!invalidatedDelete) return;
+    logger.info("delete_account_pending_retry_cleared", {
+      uid: invalidatedDelete.uid,
+      reason: "different_user_signed_in",
+    });
+    clearPendingDeleteUid();
+  }, [invalidatedDelete]);
 
   const handleSignOut = useCallback(async () => {
     logger.info("user_sign_out");

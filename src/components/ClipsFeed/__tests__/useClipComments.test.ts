@@ -153,6 +153,33 @@ describe("useClipComments", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
+  it("switching to another clip shows the loading state and fetches that clip's thread", async () => {
+    mockFetch.mockResolvedValueOnce({ comments: [comment({ text: "first clip" })], cursor: null });
+    const { result, rerender } = renderHook(({ clipId }) => useClipComments(clipId, "me", "viewer"), {
+      initialProps: { clipId: "c1" },
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.comments[0].text).toBe("first clip");
+
+    let resolveSecond: (page: { comments: ClipComment[]; cursor: null }) => void = () => {};
+    mockFetch.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveSecond = resolve;
+      }),
+    );
+    rerender({ clipId: "c2" });
+
+    expect(result.current.loading).toBe(true);
+    expect(result.current.error).toBe("");
+    expect(mockFetch).toHaveBeenLastCalledWith("c2");
+
+    await act(async () => {
+      resolveSecond({ comments: [comment({ text: "second clip" })], cursor: null });
+    });
+    expect(result.current.loading).toBe(false);
+    expect(result.current.comments[0].text).toBe("second clip");
+  });
+
   it("reload refetches the thread", async () => {
     const { result } = mount();
     await waitFor(() => expect(result.current.loading).toBe(false));
