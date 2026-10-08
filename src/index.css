@@ -183,7 +183,7 @@
     position: fixed;
     left: 0.75rem;
     right: 0.75rem;
-    top: calc(env(safe-area-inset-top) + 4rem);
+    top: calc(env(safe-area-inset-top) + 4rem + var(--overlay-top, 0px));
     max-height: min(70dvh, calc(100dvh - env(safe-area-inset-top) - 5.5rem));
     overflow: hidden;
   }
@@ -600,6 +600,13 @@
    env(safe-area-inset-*) returns 0, so we max() with a sensible fallback that
    matches the app's existing pt-5 / pb-3 spacing. Requires
    <meta name="viewport" content="...viewport-fit=cover"> (set in index.html). */
+/* --overlay-top is the Google app's floating address bar (see toolbarOverlay).
+   It is 0 in Safari, Chrome iOS, the installed PWA, and the Capacitor shell,
+   so those layouts do not move. Fixed bars use .top-below-overlay; in-flow
+   pages pick it up from body padding. */
+:root {
+  --overlay-top: 0px;
+}
 .pt-safe {
   padding-top: max(env(safe-area-inset-top), 1.25rem);
 }
@@ -610,6 +617,13 @@
    height (e.g. a fixed nav with h-14) so non-notched viewports are unchanged. */
 .pt-safe-inset {
   padding-top: env(safe-area-inset-top);
+}
+/* top: 0 while --overlay-top is 0. Same box Safari paints today. */
+.top-below-overlay {
+  top: var(--overlay-top, 0px);
+}
+.top-below-overlay-4 {
+  top: calc(1rem + var(--overlay-top, 0px));
 }
 
 /* ── Cookie banner clearance ────────────────────────── */
@@ -628,6 +642,7 @@ select {
 }
 
 body {
+  padding-top: var(--overlay-top, 0px);
   padding-bottom: var(--keyboard-inset, 0px);
 }
 

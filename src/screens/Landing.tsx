@@ -128,7 +128,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
       {/* ─── Sticky Nav Bar ─────────────────────────────── */}
       <nav
         aria-label="Primary"
-        className="fixed top-0 left-0 right-0 z-50 glass border-b border-white/[0.05] pt-safe-inset"
+        className="fixed top-below-overlay left-0 right-0 z-50 glass border-b border-white/[0.05] pt-safe-inset"
       >
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <a

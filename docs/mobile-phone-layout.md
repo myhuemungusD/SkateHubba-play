@@ -26,11 +26,21 @@ The Oct 8 review's before shots were not in the git tree, so they are not copied
 - **Auth paint.** The card entrance is transform-only, so `/auth` has something to paint on the first frame (Largest Contentful Paint).
 - **Roll Dice.** Hub, picker, and table use the same safe-area padding, 44px controls, and bottom action bar. The dice feature stays behind `VITE_FEATURE_DICE_ENABLED`.
 
+## Google app on iOS
+
+Safari on the same phone already shows the lobby header in full. The Google app's in-app browser (user agent contains `GSA/`) draws a floating address bar on top of the web view instead of resizing it. `env(safe-area-inset-top)` does not include that bar, and `visualViewport.offsetTop` stays 0 because the bar is outside the web view. The header starts underneath it.
+
+`src/lib/toolbarOverlay.ts` publishes `--overlay-top` only for that browser. In-flow pages (the lobby header included) pick it up as body padding. Fixed bars (landing nav, offline banner, toasts, the bell sheet) read the same variable. Safari, Chrome on iOS, the installed home-screen app, and the Capacitor shell get `0`, so they do not move. If the web view does report a real top offset, that number is used instead of the 64px fallback.
+
+The lobby list already scrolls the document, not an inner box, so Safari can collapse its own toolbar. The Google bar does not collapse. The faint shapes under "20 finished" are the graffiti wallpaper showing through the translucent lobby background. Finished games are one line, not placeholder cards, and the tour does not dim the page.
+
 ## Real-device check: iOS safe area
 
 `ios.contentInset` is still `"always"`. `StatusBar.overlaysWebView` is `false`, and CSS also adds `env(safe-area-inset-*)` because `viewport-fit=cover` is set.
 
 On some Capacitor / iOS combinations those insets stack and the header or bottom nav sits too far in. On others `env()` reports 0 and only the CSS fallback applies. Headless Chrome cannot show a notch, so the value was not changed. Confirm on a real iPhone 15 before switching `contentInset` to `"never"` (CSS would then own the inset). The comment in `capacitor.config.ts` points here.
+
+`--overlay-top` is 0 inside the shell, so the Google-app inset does not stack on `contentInset`.
 
 ## Not changed
 
