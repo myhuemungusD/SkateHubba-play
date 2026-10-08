@@ -195,17 +195,16 @@ describe("firebase module", () => {
     expect(lifecycleCrumbs).toHaveLength(0);
   });
 
-  it("uses the single-tab persistent cache on the iOS shell", async () => {
+  it("uses the in-memory Firestore cache on the iOS shell", async () => {
     capacitorState.platform = "ios";
     stubFirebaseEnv();
     vi.stubEnv("VITE_USE_EMULATORS", "false");
 
     const mod = await import("../firebase");
-    expect(mod.firestoreCacheMode).toBe("persistent");
-    expect(mockPersistentLocalCache).toHaveBeenCalledTimes(1);
-    expect(mockPersistentLocalCache).toHaveBeenCalledWith();
+    expect(mod.firestoreCacheMode).toBe("memory");
+    expect(mockMemoryLocalCache).toHaveBeenCalledTimes(1);
+    expect(mockPersistentLocalCache).not.toHaveBeenCalled();
     expect(mockPersistentMultipleTabManager).not.toHaveBeenCalled();
-    expect(mockMemoryLocalCache).not.toHaveBeenCalled();
   });
 
   it("keeps the multi-tab persistent cache on Android", async () => {

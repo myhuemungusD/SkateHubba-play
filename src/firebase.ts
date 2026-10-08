@@ -83,31 +83,41 @@ if (env) {
     // ancient Android WebViews where IndexedDB is unavailable. Catching that
     // here prevents the whole app from crashing on module load (H-F13) and
     // lets us fall back to an in-memory cache.
-    try {
-      // iOS WKWebView never settles the Web Locks lease that
-      // persistentMultipleTabManager waits on, so Firestore init hangs and
-      // the App chunk never finishes loading (the shell stays on the boot
-      // spinner). The iOS shell is one webview, so the single-tab cache is
-      // the one that matches it. Android and the website keep multi-tab.
-      const localCache =
-        Capacitor.getPlatform() === "ios"
-          ? persistentLocalCache()
-          : persistentLocalCache({ tabManager: persistentMultipleTabManager() });
-      db = initializeFirestore(app, { localCache }, FIRESTORE_DB_NAME);
-      firestoreCacheMode = "persistent";
-    } catch (err) {
-      // Never silently swallow — always breadcrumb + log so ops can see
-      // the fallback was triggered in the field.
-      logger.warn("firestore_persistent_cache_failed", {
-        message: err instanceof Error ? err.message : String(err),
-      });
-      addBreadcrumb({
-        category: "lifecycle",
-        message: "firestore_persistent_cache_failed",
-        data: { error: String(err) },
-      });
-      db = initializeFirestore(app, { localCache: memoryLocalCache() }, FIRESTORE_DB_NAME);
+    // iOS WKWebView deadlocks inside the persistent IndexedDB cache (the
+    // multi-tab lease never settles, and a killed webview leaves the next
+    // launch waiting on it). The shell then never gets past the boot
+    // spinner. Memory cache cannot hang launch. Offline Firestore data
+    // does not survive an iOS restart; Android and the website keep the
+    // persistent multi-tab cache.
+    if (Capacitor.getPlatform() === "ios") {
       firestoreCacheMode = "memory";
+      db = initializeFirestore(app, { localCache: memoryLocalCache() }, FIRESTORE_DB_NAME);
+    } else {
+      try {
+        db = initializeFirestore(
+          app,
+          {
+            localCache: persistentLocalCache({
+              tabManager: persistentMultipleTabManager(),
+            }),
+          },
+          FIRESTORE_DB_NAME,
+        );
+        firestoreCacheMode = "persistent";
+      } catch (err) {
+        // Never silently swallow — always breadcrumb + log so ops can see
+        // the fallback was triggered in the field.
+        logger.warn("firestore_persistent_cache_failed", {
+          message: err instanceof Error ? err.message : String(err),
+        });
+        addBreadcrumb({
+          category: "lifecycle",
+          message: "firestore_persistent_cache_failed",
+          data: { error: String(err) },
+        });
+        db = initializeFirestore(app, { localCache: memoryLocalCache() }, FIRESTORE_DB_NAME);
+        firestoreCacheMode = "memory";
+      }
     }
   }
 

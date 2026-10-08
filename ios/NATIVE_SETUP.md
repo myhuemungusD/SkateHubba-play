@@ -54,6 +54,11 @@ There is no Podfile. `npx cap sync ios` refreshes the Capacitor package only.
 On a device with the plist installed, launch should not crash and App Check
 should attest (no `App Check token` errors in the console).
 
+The iPhone shell uses Firestore's in-memory cache. The persistent cache
+deadlocks WKWebView during startup and leaves the app on the boot spinner.
+Game data still syncs while the app is open. It does not stay on disk across
+a restart. Android and the website keep the persistent cache.
+
 ## 3. Push tokens
 
 iOS push registration returns an APNs token. `SkatehubbaFcm` exchanges it
