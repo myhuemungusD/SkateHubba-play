@@ -5,7 +5,7 @@ import { TurnHistoryViewer } from "../TurnHistoryViewer";
 import type { TurnRecord } from "../../services/games";
 
 vi.mock("../../utils/helpers", () => ({
-  isFirebaseStorageUrl: (url: string) => url.startsWith("https://firebasestorage.googleapis.com"),
+  isFirebaseStorageUrl: (url: string) => url.startsWith("https://firebasestorage.googleapis.com/"),
 }));
 
 vi.mock("../../services/analytics", () => ({

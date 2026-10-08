@@ -6,16 +6,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Version
 
 ---
 
-## [Unreleased]
+## 1.2.0 highlights (hand-curated)
 
-Reconstructed by hand on 2026-08-26 and brought current on 2026-10-01. The
-v1.1.0 release was cut 2026-04-19 and nothing was recorded for the ~4 months
-after it, despite 167 `feat`/`fix`/`perf` commits landing. This section groups
-that work by area rather than listing every commit; the git history between
-`v1.1.0` and `HEAD` is the exhaustive record.
+This section is a by-area summary of the work that ships as **1.2.0**. It was
+reconstructed by hand on 2026-08-26 and brought current on 2026-10-01, because
+nothing was recorded for the ~4 months after v1.1.0 (cut 2026-04-19) even though
+167 `feat`/`fix`/`perf` commits landed. The exhaustive per-commit list for the
+same range is release-please's generated `[1.2.0]` entry, which is pending in
+release PR [#528](https://github.com/myhuemungusD/SkateHubba-play/pull/528) and
+lands above this section when that PR merges. Changes after 1.2.0 are recorded
+by release-please from conventional-commit PR titles, not by hand, so no
+`[Unreleased]` section is kept here.
 
-**Release hygiene note:** the repository has **no git tags at all**, and
-`package.json` still reads `1.1.0`. Cutting a real tag is tracked in `ROADMAP.md`.
+**Release hygiene note:** the repository still has **no git tags**, and
+`package.json` reads `1.1.0` until #528 merges, bumping it to `1.2.0` and
+tagging the release. Cutting a real tag is tracked in `ROADMAP.md`.
 
 ### Added
 

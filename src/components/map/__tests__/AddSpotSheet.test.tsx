@@ -13,7 +13,7 @@ vi.mock("../../../context/AuthContext", () => ({
   useAuthContext: () => mockUseAuthContext(),
 }));
 
-import { AddSpotSheet } from "../AddSpotSheet";
+import { AddSpotSheet, safePhotoPreviewSrc } from "../AddSpotSheet";
 import type { Spot } from "../../../types/spot";
 
 const FAKE_USER = { uid: "creator-uid", emailVerified: true };
@@ -38,6 +38,32 @@ const FIXTURE_SPOT: Spot = {
 beforeEach(() => {
   vi.clearAllMocks();
   mockUseAuthContext.mockReturnValue({ user: FAKE_USER });
+});
+
+describe("safePhotoPreviewSrc", () => {
+  it("passes https URLs through unchanged", () => {
+    for (const url of [
+      "https://example.com/spot.jpg",
+      "https://firebasestorage.googleapis.com/v0/b/x/o/spot.png?alt=media&token=abc#frag",
+    ]) {
+      expect(safePhotoPreviewSrc(url)).toBe(url);
+    }
+  });
+
+  it("rejects script, html, svg, blob, data, plain-http and unparseable URLs", () => {
+    for (const url of [
+      "blob:https://skatehubba.com/1b2c3d4e-0000-4000-8000-000000000000",
+      "data:image/png;base64,iVBORw0KGgo=",
+      "javascript:alert(1)",
+      "JaVaScRiPt:alert(1)",
+      "data:text/html,<script>alert(1)</script>",
+      "data:image/svg+xml,<svg onload=alert(1)>",
+      "http://example.com/spot.jpg",
+      "",
+    ]) {
+      expect(safePhotoPreviewSrc(url)).toBeUndefined();
+    }
+  });
 });
 
 describe("AddSpotSheet", () => {

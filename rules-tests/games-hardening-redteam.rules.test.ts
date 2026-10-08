@@ -34,6 +34,7 @@ import {
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { doc, setDoc, updateDoc, serverTimestamp, setLogLevel } from "firebase/firestore";
+import { createGameWithAnchor } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-hardening-redteam";
 
@@ -122,6 +123,7 @@ async function seedBlock(blockerUid: string, blockedUid: string): Promise<void> 
 async function seedUser(uid: string, username: string, isVerifiedPro?: boolean): Promise<void> {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     await setDoc(doc(ctx.firestore(), "users", uid), {
+      uid,
       username,
       ...(isVerifiedPro !== undefined && { isVerifiedPro }),
     });
@@ -156,16 +158,16 @@ beforeEach(async () => {
 describe("games create — blocked_users invariant", () => {
   it("rejects when challenger has blocked the opponent", async () => {
     await seedBlock(P1_UID, P2_UID);
-    await assertFails(setDoc(gameRef(asP1(), "g-blocked-1"), makeCreatePayload()));
+    await assertFails(createGameWithAnchor(gameRef(asP1(), "g-blocked-1"), makeCreatePayload()));
   });
 
   it("rejects when challenger has been blocked by the opponent", async () => {
     await seedBlock(P2_UID, P1_UID);
-    await assertFails(setDoc(gameRef(asP1(), "g-blocked-2"), makeCreatePayload()));
+    await assertFails(createGameWithAnchor(gameRef(asP1(), "g-blocked-2"), makeCreatePayload()));
   });
 
   it("permits when neither side has blocked the other", async () => {
-    await assertSucceeds(setDoc(gameRef(asP1(), "g-blocked-3"), makeCreatePayload()));
+    await assertSucceeds(createGameWithAnchor(gameRef(asP1(), "g-blocked-3"), makeCreatePayload()));
   });
 });
 
@@ -178,22 +180,26 @@ describe("games create — blocked_users invariant", () => {
 // match, forged handles must not.
 describe("games create — username impersonation guard", () => {
   it("rejects a forged player1Username (≠ users/{auth.uid}.username)", async () => {
-    await assertFails(setDoc(gameRef(asP1(), "g-forge-p1"), makeCreatePayload({ player1Username: "victim" })));
+    await assertFails(
+      createGameWithAnchor(gameRef(asP1(), "g-forge-p1"), makeCreatePayload({ player1Username: "victim" })),
+    );
   });
 
   it("rejects a forged player2Username (≠ users/{player2Uid}.username)", async () => {
-    await assertFails(setDoc(gameRef(asP1(), "g-forge-p2"), makeCreatePayload({ player2Username: "victim" })));
+    await assertFails(
+      createGameWithAnchor(gameRef(asP1(), "g-forge-p2"), makeCreatePayload({ player2Username: "victim" })),
+    );
   });
 
   it("permits when both usernames match the authoritative profiles", async () => {
-    await assertSucceeds(setDoc(gameRef(asP1(), "g-honest"), makeCreatePayload()));
+    await assertSucceeds(createGameWithAnchor(gameRef(asP1(), "g-honest"), makeCreatePayload()));
   });
 
   it("rejects a create when the challenger has no profile doc to bind against", async () => {
     // No users/{auth.uid} doc → the username get() resolves to null and the
     // bind fails closed. A game cannot exist without an authoritative handle.
     await testEnv.clearFirestore();
-    await assertFails(setDoc(gameRef(asP1(), "g-noprofile"), makeCreatePayload()));
+    await assertFails(createGameWithAnchor(gameRef(asP1(), "g-noprofile"), makeCreatePayload()));
   });
 });
 
@@ -205,35 +211,42 @@ describe("games create — username impersonation guard", () => {
 describe("games create — Verified Pro badge forgery guard", () => {
   it("rejects a forged player1IsVerifiedPro when the challenger's profile isn't verified", async () => {
     // beforeEach seeds P1 with no isVerifiedPro field (falsy default).
-    await assertFails(setDoc(gameRef(asP1(), "g-forge-badge-p1"), makeCreatePayload({ player1IsVerifiedPro: true })));
+    await assertFails(
+      createGameWithAnchor(gameRef(asP1(), "g-forge-badge-p1"), makeCreatePayload({ player1IsVerifiedPro: true })),
+    );
   });
 
   it("rejects a forged player2IsVerifiedPro when the opponent's profile isn't verified", async () => {
-    await assertFails(setDoc(gameRef(asP1(), "g-forge-badge-p2"), makeCreatePayload({ player2IsVerifiedPro: true })));
+    await assertFails(
+      createGameWithAnchor(gameRef(asP1(), "g-forge-badge-p2"), makeCreatePayload({ player2IsVerifiedPro: true })),
+    );
   });
 
   it("permits player1IsVerifiedPro: true when the challenger's profile really is verified", async () => {
     await seedUser(P1_UID, "alice", true);
     await assertSucceeds(
-      setDoc(gameRef(asP1(), "g-honest-badge-p1"), makeCreatePayload({ player1IsVerifiedPro: true })),
+      createGameWithAnchor(gameRef(asP1(), "g-honest-badge-p1"), makeCreatePayload({ player1IsVerifiedPro: true })),
     );
   });
 
   it("permits player2IsVerifiedPro: true when the opponent's profile really is verified", async () => {
     await seedUser(P2_UID, "bob", true);
     await assertSucceeds(
-      setDoc(gameRef(asP1(), "g-honest-badge-p2"), makeCreatePayload({ player2IsVerifiedPro: true })),
+      createGameWithAnchor(gameRef(asP1(), "g-honest-badge-p2"), makeCreatePayload({ player2IsVerifiedPro: true })),
     );
   });
 
   it("permits omitting both badge fields (the non-Pro default the client actually sends)", async () => {
-    await assertSucceeds(setDoc(gameRef(asP1(), "g-no-badge"), makeCreatePayload()));
+    await assertSucceeds(createGameWithAnchor(gameRef(asP1(), "g-no-badge"), makeCreatePayload()));
   });
 
   it("rejects claiming player1IsVerifiedPro: true when the real profile is explicitly false", async () => {
     await seedUser(P1_UID, "alice", false);
     await assertFails(
-      setDoc(gameRef(asP1(), "g-forge-badge-explicit-false"), makeCreatePayload({ player1IsVerifiedPro: true })),
+      createGameWithAnchor(
+        gameRef(asP1(), "g-forge-badge-explicit-false"),
+        makeCreatePayload({ player1IsVerifiedPro: true }),
+      ),
     );
   });
 });

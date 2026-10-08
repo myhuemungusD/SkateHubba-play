@@ -17,8 +17,24 @@ import {
 import type { Reference } from "@firebase/storage-types";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { doc, serverTimestamp, setDoc, setLogLevel, type DocumentReference } from "firebase/firestore";
+import { doc, serverTimestamp, setDoc, setLogLevel, writeBatch, type DocumentReference } from "firebase/firestore";
 import { afterAll, beforeAll, beforeEach } from "vitest";
+
+/**
+ * Create a /games doc the way the client does (src/services/games.create.ts):
+ * ONE batch with the challenger's users/{player1Uid}.lastGameCreatedAt
+ * cooldown anchor stamped to serverTimestamp(). The create rule requires the
+ * anchor in the same write (getAfter), so a bare setDoc of a game is denied;
+ * every create test, positive or negative, goes through this so the negative
+ * ones keep failing for the guard they target.
+ */
+export function createGameWithAnchor(ref: DocumentReference, data: Record<string, unknown>): Promise<void> {
+  const db = ref.firestore;
+  const batch = writeBatch(db);
+  batch.set(ref, data);
+  batch.set(doc(db, "users", String(data.player1Uid)), { lastGameCreatedAt: serverTimestamp() }, { merge: true });
+  return batch.commit();
+}
 
 interface ValidGameOpts {
   player1Uid: string;
@@ -93,10 +109,10 @@ export function authedContext(env: RulesTestEnvironment, uid: string): RulesTest
 export async function seedGameProfiles(env: RulesTestEnvironment): Promise<void> {
   await env.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
-    await setDoc(doc(db, "users", "p1-alice"), { username: "alice" });
-    await setDoc(doc(db, "users", "p2-bob"), { username: "bob" });
-    await setDoc(doc(db, "users", "j-charlie"), { username: "charlie" });
-    await setDoc(doc(db, "users", "judge-carol"), { username: "carol" });
+    await setDoc(doc(db, "users", "p1-alice"), { uid: "p1-alice", username: "alice" });
+    await setDoc(doc(db, "users", "p2-bob"), { uid: "p2-bob", username: "bob" });
+    await setDoc(doc(db, "users", "j-charlie"), { uid: "j-charlie", username: "charlie" });
+    await setDoc(doc(db, "users", "judge-carol"), { uid: "judge-carol", username: "carol" });
   });
 }
 

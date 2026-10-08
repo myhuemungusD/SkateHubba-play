@@ -14,24 +14,30 @@ the rule itself. That makes "the user is genuinely signed out" a weak hypothesis
 and App Check / wrong-database correspondingly strong. One of the four causes
 below is the culprit.
 
-## 0. Current default — App Check is OFF
+## 0. Current state — App Check ON in monitor mode (unenforced)
 
-As of the Apr 22 incident, App Check is **opt-in**: `src/firebase.ts` only calls
-`initializeAppCheck()` when `VITE_APPCHECK_ENABLED=true` is set in the Vercel
-environment. Default builds skip App Check entirely — users can sign in without
-the client ever minting an App Check token.
+**Production (as of 2026-10-08):** the web client has App Check **on**
+(reCAPTCHA v3, `VITE_APPCHECK_ENABLED=true` in Vercel Production) and sends
+tokens, but Firebase Console enforcement is **off** (Unenforced) for Firestore
+and Storage. A token failure is therefore logged, not fatal. If users are
+suddenly getting `permission-denied` across the board, check first whether
+someone flipped enforcement on (§1).
 
-**If sign-in is still broken despite App Check being off client-side**, Firebase
+**Code default:** App Check is still **opt-in**. `src/firebase.ts` only calls
+`initializeAppCheck()` when `VITE_APPCHECK_ENABLED=true` is set at build time.
+Builds without it (local dev, Preview unless set there) skip App Check entirely.
+
+**If sign-in is broken on a build with App Check off client-side**, Firebase
 Console's server-side enforcement is likely rejecting requests that arrive
 without an App Check header. Firebase Console → App Check → APIs → Cloud
 Firestore → flip **Enforcement** to **Unenforced**. (Re-enforce only after
 turning client-side App Check back on AND verifying the reCAPTCHA allowlist.)
 
-**Planning a re-enablement?** Follow the staged runbook in
+**Planning enforcement (or a re-enablement after a rollback)?** Follow the staged runbook in
 [`docs/APPCHECK_ROLLOUT.md`](./APPCHECK_ROLLOUT.md) — it supersedes the
 three-step summary below with explicit preflight, abort criteria and rollback.
 
-**To turn App Check back on** once reCAPTCHA + enforcement are verified healthy:
+**To turn App Check back on** (only needed after a rollback) once reCAPTCHA + enforcement are verified healthy:
 
 1. Vercel Dashboard → `play` project → **Settings → Environment Variables**.
 2. Set `VITE_APPCHECK_ENABLED=true` (plus a valid `VITE_RECAPTCHA_SITE_KEY`) in the
