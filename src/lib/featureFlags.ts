@@ -39,3 +39,12 @@ export function isExtrasEnabled(): boolean {
 export function isDiceEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_DICE_ENABLED);
 }
+
+/**
+ * Sign in with Apple. Off until the Firebase Apple provider is enabled.
+ * Literal "true" only — the website and Android stay on Google + email
+ * until then. The iOS store build sets this so App Review sees the button.
+ */
+export function isAppleSignInEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_APPLE_SIGNIN_ENABLED);
+}

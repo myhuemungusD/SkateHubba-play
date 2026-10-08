@@ -92,6 +92,15 @@ describe("safeParseEnv", () => {
     expect(result?.VITE_FEATURE_DICE_ENABLED).toBe(expected);
   });
 
+  it.each(flagCases)(
+    "parses VITE_FEATURE_APPLE_SIGNIN_ENABLED=%j as %s (Sign in with Apple, default off)",
+    (raw, expected) => {
+      const result = safeParseEnv({ ...validEnv, VITE_FEATURE_APPLE_SIGNIN_ENABLED: raw });
+      expect(result).not.toBeNull();
+      expect(result?.VITE_FEATURE_APPLE_SIGNIN_ENABLED).toBe(expected);
+    },
+  );
+
   it("accepts every optional var when provided with a valid string", () => {
     const result = safeParseEnv({
       ...validEnv,

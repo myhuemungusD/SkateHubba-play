@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, type RenderOptions } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
@@ -84,6 +84,7 @@ vi.mock("../../services/mfa", () => ({
 }));
 
 beforeEach(() => vi.clearAllMocks());
+afterEach(() => vi.unstubAllEnvs());
 
 const defaultProps = {
   mode: "signin" as const,
@@ -102,6 +103,18 @@ const defaultProps = {
 };
 
 describe("AuthScreen", () => {
+  it("hides Sign in with Apple unless the flag is the literal true", async () => {
+    renderWithProviders(<AuthScreen {...defaultProps} appleLoading />);
+    expect(screen.queryByRole("button", { name: "Continue with Apple" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue with Google" })).toBeEnabled();
+
+    vi.stubEnv("VITE_FEATURE_APPLE_SIGNIN_ENABLED", "true");
+    const onApple = vi.fn();
+    renderWithProviders(<AuthScreen {...defaultProps} onApple={onApple} />);
+    await userEvent.click(screen.getByRole("button", { name: "Continue with Apple" }));
+    expect(onApple).toHaveBeenCalled();
+  });
+
   it("shows generic error for unknown auth error codes", async () => {
     mockSignIn.mockRejectedValueOnce({ code: "auth/some-unknown-code" });
     renderWithProviders(<AuthScreen {...defaultProps} />);

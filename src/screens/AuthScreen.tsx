@@ -19,6 +19,7 @@ import { analytics } from "../services/analytics";
 import { captureException } from "../lib/sentry";
 import { isBenignAuthCode, getAuthErrorMessage } from "../utils/authCodes";
 import { useNotifications } from "../context/NotificationContext";
+import { isAppleSignInEnabled } from "../lib/featureFlags";
 
 export function AuthScreen({
   mode,
@@ -87,7 +88,8 @@ export function AuthScreen({
   const { notify } = useNotifications();
   const isSignup = mode === "signup";
   const showDob = isSignup && showAgeFields;
-  const socialLoading = googleLoading || appleLoading;
+  const appleOn = isAppleSignInEnabled();
+  const socialLoading = googleLoading || (appleOn && appleLoading);
   const anyLoading = loading || socialLoading;
   const isMinor = showDob && isMinorDob(month, day, year);
 
@@ -316,8 +318,8 @@ export function AuthScreen({
         </p>
 
         <div className="flex flex-col gap-3">
-          <AppleButton onClick={onApple} loading={appleLoading} disabled={googleLoading} />
-          <GoogleButton onClick={onGoogle} loading={googleLoading} disabled={appleLoading} />
+          {appleOn ? <AppleButton onClick={onApple} loading={appleLoading} disabled={googleLoading} /> : null}
+          <GoogleButton onClick={onGoogle} loading={googleLoading} disabled={appleOn && appleLoading} />
         </div>
 
         <div className="flex items-center gap-3 my-5">

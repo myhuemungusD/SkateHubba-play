@@ -6,6 +6,7 @@ import { LandingDemoVideo } from "../components/LandingDemoVideo";
 import { SkateButton } from "../components/SkateButton";
 import { VideoIcon, ClockIcon, FlameIcon, ShieldIcon, TrophyIcon, UsersIcon } from "../components/icons";
 import { SOCIAL_LINKS } from "../constants/socialLinks";
+import { isAppleSignInEnabled } from "../lib/featureFlags";
 
 // Feature freeze (2026-10): the spot-map teaser ("30+ spots, live in LA",
 // locked pins, "Unlock the Map") was removed from the landing page so
@@ -125,7 +126,8 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
     onApple();
   }, [onApple]);
 
-  const socialLoading = googleLoading || appleLoading;
+  const appleOn = isAppleSignInEnabled();
+  const socialLoading = googleLoading || (appleOn && appleLoading);
 
   const [animateHero] = useState(() => !heroEntrancePlayed);
   useEffect(() => {
@@ -208,8 +210,8 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
               below as a quieter secondary row so returning users still have
               an explicit "Sign in" entry without competing with the brand CTA. */}
           <div className="w-full max-w-sm flex flex-col gap-3">
-            <AppleButton onClick={handleApple} loading={appleLoading} disabled={googleLoading} />
-            <GoogleButton onClick={handleGoogle} loading={googleLoading} disabled={appleLoading} />
+            {appleOn ? <AppleButton onClick={handleApple} loading={appleLoading} disabled={googleLoading} /> : null}
+            <GoogleButton onClick={handleGoogle} loading={googleLoading} disabled={appleOn && appleLoading} />
             <div
               className="flex items-center justify-center gap-2 text-faint"
               role="group"

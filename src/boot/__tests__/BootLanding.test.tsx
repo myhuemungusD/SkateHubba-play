@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
@@ -30,6 +30,10 @@ beforeEach(() => {
   __resetLandingBootForTest();
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe("BootLanding", () => {
   it("shows the spinner anywhere but the landing", () => {
     renderAt("/auth");
@@ -49,7 +53,14 @@ describe("BootLanding", () => {
     expect(peekBootAuthMode()).toBe("signin");
   });
 
+  it("hides Sign in with Apple on the boot landing when the flag is off", () => {
+    renderAt("/");
+    expect(screen.queryByRole("button", { name: "Continue with Apple" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue with Google" })).toBeInTheDocument();
+  });
+
   it("Apple records the intent and shows the button as loading", async () => {
+    vi.stubEnv("VITE_FEATURE_APPLE_SIGNIN_ENABLED", "true");
     renderAt("/");
     await userEvent.click(screen.getByRole("button", { name: "Continue with Apple" }));
     expect(hasBootAppleSignIn()).toBe(true);

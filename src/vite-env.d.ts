@@ -35,6 +35,9 @@ interface ImportMetaEnv {
   /** Roll Dice switch: "true" shows /dice. Unset (default) hides it.
    *  Read via isDiceEnabled() — not the extras flag. */
   readonly VITE_FEATURE_DICE_ENABLED?: string;
+  /** Sign in with Apple switch: "true" shows the button. Unset (default)
+   *  hides it. Read via isAppleSignInEnabled(). */
+  readonly VITE_FEATURE_APPLE_SIGNIN_ENABLED?: string;
   readonly VITE_MAPBOX_TOKEN?: string;
   /** Optional Mapbox Studio style URL. Falls back to mapbox://styles/mapbox/dark-v11. */
   readonly VITE_MAPBOX_STYLE_URL?: string;

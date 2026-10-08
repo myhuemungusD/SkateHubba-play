@@ -37,6 +37,8 @@ Google sign-in is on the landing page and the sign-in screen, so Apple’s rule 
 2. For the website (not the iOS app), create a Services ID and a Sign in with Apple key in the Apple Developer portal, and paste the Services ID, Team ID, key ID, and private key into the Firebase Apple provider. Firebase’s Apple setup page lists the exact fields. The iOS app uses the bundle ID; the website uses the Services ID.
 3. Add `skatehubba.com` (and any preview domain you sign in from) under Authentication → Settings → Authorized domains.
 4. Download `GoogleService-Info.plist` for the iOS app (`com.skatehubba.app`). You will store it as a GitHub secret in step 8. Do not commit the file.
+5. The website and Android builds hide the Apple button until you flip it on. After the provider in step 1 is enabled, set `VITE_FEATURE_APPLE_SIGNIN_ENABLED` to the literal `true` in Vercel → Project → Environment Variables and redeploy. Anything else (unset, empty, `TRUE`, `false`) keeps the landing page and the sign-in screen exactly as they are today: Continue with Google, then email. The variable is baked in at build time, so changing it without a redeploy does nothing.
+6. App Review needs that button in the iOS store build. The TestFlight workflow (`.github/workflows/ios-release.yml`) sets `VITE_FEATURE_APPLE_SIGNIN_ENABLED=true` for the binary it uploads. Do not run that workflow until step 1 is done. A build with the button on and the Firebase provider off is a broken sign-in for the reviewer. The website flag in step 5 is a separate Vercel change; the store workflow does not turn the website button on.
 
 ## 4. Push notifications (APNs)
 
@@ -101,7 +103,7 @@ Add these on the SkateHubba repo (Settings → Secrets and variables → Actions
 
 `APPLE_ID` is not required for this workflow. Match uses the API key.
 
-The workflow forces `VITE_FEATURE_DICE_ENABLED=false`. Do not add a secret that turns Roll Dice on for a store build.
+The workflow forces `VITE_FEATURE_DICE_ENABLED=false` and `VITE_FEATURE_APPLE_SIGNIN_ENABLED=true`. Do not add a secret that turns Roll Dice on for a store build. The Apple flag is on only in that store build so App Review sees the button (step 3). The website stays on Google and email until you set the same variable in Vercel.
 
 ## 9. What you do after the first green TestFlight upload
 
