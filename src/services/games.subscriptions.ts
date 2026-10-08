@@ -185,9 +185,20 @@ export function subscribeToMyGames(
 }
 
 /**
- * Subscribe to a single game for real-time updates
+ * Subscribe to a single game for real-time updates.
+ *
+ * `onAccessDenied` fires when the rules refuse the read (`permission-denied`):
+ * the viewer is not a participant/judge of this game, or lost access (e.g. a
+ * block or an admin action). Unlike a network blip that is authoritative, and
+ * Firestore tears the listener down after any error, so no further snapshot
+ * will ever arrive. Without this callback the caller is left on a game shell
+ * that can never update.
  */
-export function subscribeToGame(gameId: string, onUpdate: (game: GameDoc | null) => void): Unsubscribe {
+export function subscribeToGame(
+  gameId: string,
+  onUpdate: (game: GameDoc | null) => void,
+  onAccessDenied?: () => void,
+): Unsubscribe {
   return onSnapshot(
     doc(requireDb(), "games", gameId),
     (snap) => {
@@ -198,6 +209,13 @@ export function subscribeToGame(gameId: string, onUpdate: (game: GameDoc | null)
       onUpdate(toGameDoc(snap));
     },
     (err) => {
+      if ((err as { code?: string }).code === "permission-denied") {
+        // Expected outcome of an access check, not an app fault: log it, skip
+        // Sentry, and hand control back to the caller to leave the game.
+        logger.warn("game_access_denied", { gameId });
+        onAccessDenied?.();
+        return;
+      }
       logger.warn("game_subscription_error", { gameId, error: err.message });
       captureException(err, { extra: { context: "subscribeToGame", gameId } });
       // Do NOT emit null here. A transient listener error (network blip,
