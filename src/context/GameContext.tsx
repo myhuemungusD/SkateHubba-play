@@ -202,25 +202,41 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!activeGame) return;
-    const unsub = subscribeToGame(activeGame.id, (updated) => {
-      if (!updated) {
-        // `null` is reserved by subscribeToGame for an authoritative missing
-        // document. Recover from account-deletion/admin cleanup instead of
-        // leaving the user trapped on a stale game shell forever.
-        setActiveGame(null);
-        goToScreen("lobby");
-        notify({
-          type: "info",
-          title: "Game no longer available",
-          message: "It may have been deleted by another player.",
-        });
-        return;
-      }
-      setActiveGame(updated);
-      if ((updated.status === "complete" || updated.status === "forfeit") && screenRef.current === "game") {
-        goToScreen("gameover");
-      }
-    });
+    const leaveDeniedGame = () => {
+      // The rules refused this game (not a participant, or access was
+      // revoked) and the listener is dead. Send the user back to the lobby
+      // with an explanation instead of a frozen game screen.
+      setActiveGame(null);
+      goToScreen("lobby");
+      notify({
+        type: "error",
+        title: "You can't open that game",
+        message: "You don't have access to it. Back to the lobby.",
+      });
+    };
+    const unsub = subscribeToGame(
+      activeGame.id,
+      (updated) => {
+        if (!updated) {
+          // `null` is reserved by subscribeToGame for an authoritative missing
+          // document. Recover from account-deletion/admin cleanup instead of
+          // leaving the user trapped on a stale game shell forever.
+          setActiveGame(null);
+          goToScreen("lobby");
+          notify({
+            type: "info",
+            title: "Game no longer available",
+            message: "It may have been deleted by another player.",
+          });
+          return;
+        }
+        setActiveGame(updated);
+        if ((updated.status === "complete" || updated.status === "forfeit") && screenRef.current === "game") {
+          goToScreen("gameover");
+        }
+      },
+      leaveDeniedGame,
+    );
     return unsub;
     // notify/goToScreen are read from their current provider render; including
     // notify (whose identity changes with notification state) would tear down
