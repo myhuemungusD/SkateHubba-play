@@ -1,7 +1,21 @@
 # App Check Production Rollout — Staged Runbook
 
-**Status:** App Check is built and OFF in production. This document is the
-execution plan to turn it on without repeating the Apr 22 lockout.
+**Status (2026-10-08):** App Check is **live in production in monitor mode**.
+The web client initializes App Check with reCAPTCHA v3 and sends tokens
+(`exchangeRecaptchaV3Token` is called on every page load of skatehubba.com).
+Firebase Console enforcement is **off** (Unenforced) for Firestore and Storage,
+so requests without a valid token are still accepted. In terms of the runbook
+below, Phase 1 (token-only) is in effect and **Phase 2 (enforcement) has not
+started**. The final checklist was not maintained during the Phase 1 flip, so
+re-verify the Phase 0/1 items (allowlist, metrics) before starting Phase 2.
+
+This document is the execution plan for getting to enforcement without
+repeating the Apr 22 lockout.
+
+> Headless/automated browsers get a **403** from `exchangeRecaptchaV3Token`
+> (reCAPTCHA v3 scores them as bots). That is expected in monitor mode and is
+> not, by itself, an abort signal. Judge Phase 1 health by real-user verified
+> request rates in the Console metrics.
 
 **Audience:** solo maintainer, executing alone, in production.
 
@@ -18,7 +32,7 @@ tokens first, verify the metric, enforce last.
 
 | Question                               | Answer                                                                                                                                                                                                                                                                                 |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Is App Check on by default?            | No. `src/firebase.ts:141` — `if (!env.VITE_APPCHECK_ENABLED)` skips init and logs `appcheck_skipped_opt_in_required` (`firebase.ts:144`).                                                                                                                                              |
+| Is App Check on by default?            | In code, no; production opts in via env (see Status). `src/firebase.ts:141` — `if (!env.VITE_APPCHECK_ENABLED)` skips init and logs `appcheck_skipped_opt_in_required` (`firebase.ts:144`).                                                                                            |
 | Does a client-side init failure crash? | No. Web branch wraps `initializeAppCheck()` in try/catch (`firebase.ts:205–220`); native branch has both `.catch()` and try/catch (`firebase.ts:169–203`). Firebase continues.                                                                                                         |
 | Fail-open or fail-closed?              | **Client fails open. Server does not.** With Console enforcement **Unenforced**, a client that mints no token still reads/writes fine. With enforcement **Enforced**, a token failure = `permission-denied`, full stop. This is why Phase 1 exists.                                    |
 | Can the client run in "monitor" mode?  | Yes — that is exactly Phase 1. Enforcement is a **Console** setting, independent of the client. The client sends tokens; Console counts them as verified/unverified and rejects nothing while Unenforced. The rollout below depends on this and it is a documented Firebase behaviour. |
