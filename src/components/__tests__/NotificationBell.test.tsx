@@ -101,8 +101,7 @@ describe("NotificationBell", () => {
     await userEvent.click(screen.getByLabelText("Notifications"));
     expect(screen.getByText("NOTIFICATIONS")).toBeInTheDocument();
     const panel = screen.getByTestId("notification-panel");
-    expect(panel.className).toContain("max-[932px]:inset-x-3");
-    expect(panel.className).toContain("max-[932px]:fixed");
+    expect(panel.className).toContain("notification-panel");
   });
 
   it("shows empty state when no notifications", async () => {

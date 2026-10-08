@@ -170,7 +170,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
           className={`relative max-w-6xl mx-auto px-6 flex flex-col items-center text-center${animateHero ? " hero-stagger" : ""}`}
         >
           {/* Badge */}
-          <span className="inline-flex items-center gap-2 font-body text-xs tracking-wide text-brand-orange/80 border border-brand-orange/15 rounded-full px-4 py-1.5 mb-8 backdrop-blur-sm [@media(max-height:500px)]:mb-3">
+          <span className="landing-kicker inline-flex items-center gap-2 font-body text-xs tracking-wide text-brand-orange/80 border border-brand-orange/15 rounded-full px-4 py-1.5 mb-8 backdrop-blur-sm">
             <span className="w-1.5 h-1.5 rounded-full bg-brand-orange animate-rec-pulse" />
             Free to play
           </span>
@@ -191,7 +191,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
           </h1>
 
           {/* Subtitle */}
-          <p className="font-body text-fluid-lg text-dim max-w-md leading-relaxed mb-10 [@media(max-height:500px)]:mb-4 [@media(max-height:500px)]:text-sm">
+          <p className="landing-sub font-body text-fluid-lg text-dim max-w-md leading-relaxed mb-10">
             The first async S.K.A.T.E. game. No edits. No excuses.
           </p>
 

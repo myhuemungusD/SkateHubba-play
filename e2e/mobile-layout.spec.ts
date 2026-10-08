@@ -23,8 +23,29 @@ const PHONES = [
 test.use({ hasTouch: true, isMobile: true, viewport: { width: 393, height: 852 } });
 
 async function expectNoHorizontalOverflow(page: Page): Promise<void> {
-  const extra = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-  expect(extra).toBeLessThanOrEqual(1);
+  const report = await page.evaluate(() => {
+    const root = document.documentElement;
+    // Compare to innerWidth, not clientWidth. Mobile emulation keeps a few
+    // pixels of scrollbar gutter in clientWidth while fixed bars size to the
+    // window, which is not a sideways overflow.
+    const delta = root.scrollWidth - window.innerWidth;
+    let offender = "";
+    if (delta > 1) {
+      const nodes = document.querySelectorAll("body *");
+      for (let i = 0; i < nodes.length; i++) {
+        const el = nodes[i];
+        if (!el) continue;
+        const box = el.getBoundingClientRect();
+        if (box.right > root.clientWidth + 1 || box.left < -1) {
+          const cls = typeof el.className === "string" ? el.className.slice(0, 80) : "";
+          offender = `${el.tagName.toLowerCase()} ${cls} left=${Math.round(box.left)} right=${Math.round(box.right)}`;
+          break;
+        }
+      }
+    }
+    return { delta, offender };
+  });
+  expect(report.delta, report.offender).toBeLessThanOrEqual(1);
 }
 
 async function expectInsideViewport(page: Page, locator: Locator): Promise<void> {
@@ -59,11 +80,14 @@ test("landscape landing keeps Free to play under the header and sign-in above th
   const header = page.getByRole("navigation", { name: "Primary" });
   const pill = page.getByText("Free to play");
   await expect(pill).toBeVisible();
-  const headerBox = await header.boundingBox();
-  const pillBox = await pill.boundingBox();
-  expect(headerBox).not.toBeNull();
-  expect(pillBox).not.toBeNull();
-  expect(pillBox!.y).toBeGreaterThanOrEqual(headerBox!.y + headerBox!.height - 1);
+  await expect
+    .poll(async () => {
+      const headerBox = await header.boundingBox();
+      const pillBox = await pill.boundingBox();
+      if (!headerBox || !pillBox) return -1;
+      return pillBox.y - (headerBox.y + headerBox.height);
+    })
+    .toBeGreaterThanOrEqual(-1);
 
   const banner = page.getByRole("region", { name: "Cookie and analytics notice" });
   const signIn = page.getByRole("button", { name: "Sign in", exact: true });
@@ -98,8 +122,7 @@ test("route changes reset scroll to the top", async ({ page }) => {
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await page.getByRole("button", { name: "Create account", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Create Account" })).toBeVisible();
-  const top = await page.evaluate(() => window.scrollY);
-  expect(top).toBeLessThan(8);
+  await expect.poll(async () => page.evaluate(() => window.scrollY)).toBeLessThan(8);
 });
 
 test("the notifications panel stays inside a phone viewport", async ({ page }) => {
@@ -129,6 +152,9 @@ test("land and miss stay on screen after a take on a short phone", async ({ brow
   await expectInsideViewport(page, open);
   await open.click();
   await page.getByRole("button", { name: /Record —/i }).click();
+  // The fake recorder's real chunk lands 50ms after start. Stopping sooner
+  // yields a 15-byte blob the app rejects as too small.
+  await page.waitForTimeout(200);
   await page.getByRole("button", { name: "Stop Recording" }).click();
   await expect(page.getByText("✓ Recorded")).toBeVisible({ timeout: 5_000 });
   const landed = page.getByRole("button", { name: "✓ Landed" });

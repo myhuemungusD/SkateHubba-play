@@ -2,7 +2,15 @@
 
 SkateHubba is played on a phone, in a browser or in the Capacitor iOS/Android shell. This note covers the layout fixes from the Oct 8, 2026 mobile review and the one thing that still needs a real device.
 
-Screenshots from the emulator pass live in `docs/mobile-phone-layout/`. Headless Chromium cannot open a real keyboard or draw an iOS notch, so those two checks are called out below.
+After screenshots from the emulator pass (Playwright, the same phone sizes as the review):
+
+- `docs/mobile-phone-layout/after/notifications-393.png` — the bell sheet on an iPhone 15
+- `docs/mobile-phone-layout/after/land-miss-375.png` — Landed / Missed on an iPhone SE after a take
+- `docs/mobile-phone-layout/after/landing-landscape.png` — sideways landing, header clear, sign-in above the cookie row
+- `docs/mobile-phone-layout/after/signup-se.png` — date of birth clear of the cookie row
+- `docs/mobile-phone-layout/after/dice-se.png` and `dice-landscape.png` — Roll Dice with the flag on
+
+The Oct 8 review's before shots were not in the git tree, so they are not copied here. Headless Chromium cannot open a real keyboard or draw an iOS notch, so those two checks are called out below.
 
 ## What changed for a skater
 

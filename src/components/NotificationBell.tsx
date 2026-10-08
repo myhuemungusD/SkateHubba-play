@@ -151,7 +151,7 @@ export function NotificationBell({
       {open && (
         <div
           data-testid="notification-panel"
-          className="z-50 flex max-h-[70dvh] flex-col rounded-2xl border border-white/[0.06] bg-surface/95 backdrop-blur-xl shadow-[0_8px_40px_rgba(0,0,0,0.4),0_2px_8px_rgba(0,0,0,0.2)] animate-scale-in max-[932px]:fixed max-[932px]:inset-x-3 max-[932px]:top-[calc(env(safe-area-inset-top)+4rem)] min-[933px]:absolute min-[933px]:right-0 min-[933px]:top-full min-[933px]:mt-2 min-[933px]:max-h-[420px] min-[933px]:w-[320px]"
+          className="notification-panel z-50 flex flex-col rounded-2xl border border-white/[0.06] bg-surface/95 backdrop-blur-xl shadow-[0_8px_40px_rgba(0,0,0,0.4),0_2px_8px_rgba(0,0,0,0.2)] animate-scale-in"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
@@ -213,7 +213,7 @@ export function NotificationBell({
           </div>
 
           {/* Notification list */}
-          <div className="flex-1 overflow-y-auto no-scrollbar">
+          <div className="min-h-0 flex-1 overflow-y-auto no-scrollbar">
             {notifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10">
                 <svg

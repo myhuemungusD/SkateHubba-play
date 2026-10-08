@@ -175,6 +175,31 @@
     margin-inline: auto;
   }
 
+  /* Phone sheet for the bell. Portaled positioning is not used: the panel
+     stays in the bell so a wide window can drop back to an anchored popover.
+     The lobby header must not use backdrop-filter, or this fixed sheet is
+     trapped in that header instead of the viewport. */
+  .notification-panel {
+    position: fixed;
+    left: 0.75rem;
+    right: 0.75rem;
+    top: calc(env(safe-area-inset-top) + 4rem);
+    max-height: min(70dvh, calc(100dvh - env(safe-area-inset-top) - 5.5rem));
+    overflow: hidden;
+  }
+
+  @media (min-width: 933px) {
+    .notification-panel {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      left: auto;
+      width: 320px;
+      margin-top: 0.5rem;
+      max-height: 420px;
+    }
+  }
+
   /* Turn-sending actions (record, landed/missed, roll). Fixed, not sticky:
      sticky cannot pull a control up into view when it starts below the fold. */
   .action-dock {
@@ -606,6 +631,12 @@ body {
   padding-bottom: var(--keyboard-inset, 0px);
 }
 
+/* Scroll anchoring fights the route-change reset and leaves game over
+   a few pixels down. The app resets scroll itself. */
+html {
+  overflow-anchor: none;
+}
+
 html.consent-banner-open {
   /* scrollIntoView (and the browser's "focused field" scroll) honor this, so
      a tap on Sign in or a date field lands above the fixed banner. */
@@ -622,6 +653,39 @@ html.consent-banner-open body {
    row clear of the bubble (the bubble is fixed above the bottom nav). */
 html.tour-open .lobby-root {
   padding-bottom: calc(20rem + env(safe-area-inset-bottom));
+}
+
+/* Short / landscape phones. Unlayered so it wins over the hero's clamp()
+   utilities, which otherwise stay huge and shove Sign in under the banner. */
+@media (max-height: 500px) {
+  .landing-hero {
+    justify-content: flex-start;
+    padding-top: calc(env(safe-area-inset-top) + 3.75rem);
+  }
+
+  .landing-hero h1 {
+    margin-bottom: 0.5rem;
+    font-size: 2rem;
+    line-height: 0.95;
+  }
+
+  .landing-hero h1 span:last-child {
+    font-size: 1rem;
+  }
+
+  .landing-kicker {
+    margin-bottom: 0.5rem;
+  }
+
+  .landing-sub {
+    margin-bottom: 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+
+  .landing-hero > a[href="#demo"] {
+    display: none;
+  }
 }
 
 /* ── Reduced motion ────────────────────────────────── */

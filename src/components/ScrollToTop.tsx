@@ -9,12 +9,18 @@ import { useLocation } from "react-router";
 export function ScrollToTop() {
   const { pathname } = useLocation();
   useLayoutEffect(() => {
-    window.scrollTo(0, 0);
-    const scrolling = document.scrollingElement;
-    if (scrolling) scrolling.scrollTop = 0;
-    document.querySelectorAll<HTMLElement>("[data-scroll-root]").forEach((el) => {
-      el.scrollTop = 0;
-    });
+    if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
+    const reset = () => {
+      window.scrollTo(0, 0);
+      const scrolling = document.scrollingElement;
+      if (scrolling) scrolling.scrollTop = 0;
+      document.querySelectorAll<HTMLElement>("[data-scroll-root]").forEach((el) => {
+        el.scrollTop = 0;
+      });
+    };
+    reset();
+    const frame = requestAnimationFrame(reset);
+    return () => cancelAnimationFrame(frame);
   }, [pathname]);
   return null;
 }
