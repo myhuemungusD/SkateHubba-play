@@ -1,4 +1,14 @@
-import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  type ReactNode,
+} from "react";
 import { playChime, isSoundEnabled, setSoundEnabled, type ChimeType } from "../services/sounds";
 import { playHaptic, type HapticType } from "../services/haptics";
 import {
@@ -109,12 +119,14 @@ function saveNotifications(uid: string, notifications: AppNotification[]) {
 let idCounter = 0;
 
 export function NotificationProvider({ uid, children }: { uid: string | null; children: ReactNode }) {
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>(() => (uid ? loadNotifications(uid) : []));
   const [toasts, setToasts] = useState<AppNotification[]>([]);
   const [notifyKey, setNotifyKey] = useState(0);
   const [soundEnabled, setSoundEnabledState] = useState(isSoundEnabled);
   const uidRef = useRef(uid);
-  uidRef.current = uid;
+  useLayoutEffect(() => {
+    uidRef.current = uid;
+  }, [uid]);
   const toastTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // Clear all toast timers on unmount
@@ -126,15 +138,16 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
     };
   }, []);
 
-  // Load persisted notifications when uid changes
-  useEffect(() => {
-    if (uid) {
-      setNotifications(loadNotifications(uid));
-    } else {
-      setNotifications([]);
-    }
+  // Load persisted notifications when uid changes. The initial uid is loaded
+  // by the lazy useState initializer above; later changes swap the list
+  // during render (React's "adjust state when a prop changes" pattern) so no
+  // effect has to set state synchronously.
+  const [loadedUid, setLoadedUid] = useState(uid);
+  if (loadedUid !== uid) {
+    setLoadedUid(uid);
+    setNotifications(uid ? loadNotifications(uid) : []);
     setToasts([]);
-  }, [uid]);
+  }
 
   // Persist when notifications change
   useEffect(() => {
