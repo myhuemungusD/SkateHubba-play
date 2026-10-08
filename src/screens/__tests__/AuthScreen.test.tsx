@@ -91,6 +91,8 @@ const defaultProps = {
   onToggle: vi.fn(),
   onGoogle: vi.fn(),
   googleLoading: false,
+  onApple: vi.fn(),
+  appleLoading: false,
   googleError: "",
   onGoogleErrorDismiss: vi.fn(),
   // Default: no pending second factor, and every error is a normal error.

@@ -43,20 +43,16 @@ const config: CapacitorConfig = {
   },
   ios: {
     backgroundColor: "#0A0A0A",
-    // Left at "always" on purpose. StatusBar.overlaysWebView is false, so the
-    // webview is already pushed below the status bar, and CSS still adds
-    // env(safe-area-inset-*) (pt-safe / pb-safe) because viewport-fit=cover
-    // is set. On some Capacitor/iOS combinations those two insets stack and
-    // the header or bottom nav sits too far in; on others env() reports 0
-    // and only the CSS fallback minimum applies. Headless Chrome cannot show
-    // a notch, so this stays "always" until a real iPhone 15 confirms that
-    // "never" (CSS owns the inset) does not tuck the header under the status
-    // bar or leave a double gap.
+    // "never" so the WKWebView scroll view does not add a second inset on top
+    // of CSS env(safe-area-inset-*). initStatusBar() turns overlay on for iOS
+    // only, which makes env() report the real notch — the same single inset
+    // Safari uses. The global StatusBar.overlaysWebView stays false because
+    // Android paints its own status-bar background.
     //
     // The Google app's floating address bar is a separate inset (--overlay-top,
     // src/lib/toolbarOverlay.ts). It is 0 in this shell, so it does not stack
     // on contentInset. See docs/mobile-phone-layout.md.
-    contentInset: "always",
+    contentInset: "never",
   },
   plugins: {
     Keyboard: {

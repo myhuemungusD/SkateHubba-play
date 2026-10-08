@@ -8,6 +8,11 @@ const mockGetRedirectResult = vi.fn();
 
 vi.mock("firebase/auth", () => ({
   GoogleAuthProvider: vi.fn().mockImplementation(() => ({ setCustomParameters: vi.fn() })),
+  OAuthProvider: class {
+    addScope(): this {
+      return this;
+    }
+  },
   signInWithPopup: vi.fn(),
   signInWithRedirect: vi.fn(),
   getRedirectResult: (...args: unknown[]) => mockGetRedirectResult(...args),

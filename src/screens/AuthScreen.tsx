@@ -8,6 +8,7 @@ import { PasswordToggle } from "../components/ui/PasswordToggle";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { DobConsentFields } from "../components/DobConsentFields";
 import { PasswordStrengthMeter } from "../components/PasswordStrengthMeter";
+import { AppleButton } from "../components/AppleButton";
 import { GoogleButton } from "../components/GoogleButton";
 import { CoppaBlockedCard } from "../components/CoppaBlockedCard";
 import { MfaVerifyCard } from "../components/MfaVerifyCard";
@@ -25,6 +26,8 @@ export function AuthScreen({
   onToggle,
   onGoogle,
   googleLoading,
+  onApple,
+  appleLoading,
   googleError,
   onGoogleErrorDismiss,
   mfaChallenge,
@@ -40,6 +43,8 @@ export function AuthScreen({
   onToggle: () => void;
   onGoogle: () => void;
   googleLoading: boolean;
+  onApple: () => void;
+  appleLoading: boolean;
   googleError: string;
   onGoogleErrorDismiss: () => void;
   /** Pending second-factor challenge (from either sign-in path). While set,
@@ -82,7 +87,8 @@ export function AuthScreen({
   const { notify } = useNotifications();
   const isSignup = mode === "signup";
   const showDob = isSignup && showAgeFields;
-  const anyLoading = loading || googleLoading;
+  const socialLoading = googleLoading || appleLoading;
+  const anyLoading = loading || socialLoading;
   const isMinor = showDob && isMinorDob(month, day, year);
 
   // Reset one-shot UI state when the parent toggles mode, but preserve typed
@@ -309,7 +315,10 @@ export function AuthScreen({
             : "Sign in to continue your games."}
         </p>
 
-        <GoogleButton onClick={onGoogle} loading={googleLoading} />
+        <div className="flex flex-col gap-3">
+          <AppleButton onClick={onApple} loading={appleLoading} disabled={googleLoading} />
+          <GoogleButton onClick={onGoogle} loading={googleLoading} disabled={appleLoading} />
+        </div>
 
         <div className="flex items-center gap-3 my-5">
           <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
@@ -323,8 +332,8 @@ export function AuthScreen({
             submit();
           }}
           noValidate
-          aria-busy={googleLoading || undefined}
-          className={`transition-opacity duration-200 ${googleLoading ? "opacity-40 pointer-events-none" : ""}`}
+          aria-busy={socialLoading || undefined}
+          className={`transition-opacity duration-200 ${socialLoading ? "opacity-40 pointer-events-none" : ""}`}
         >
           <Field
             label="Email"
@@ -426,7 +435,7 @@ export function AuthScreen({
           </Btn>
         </form>
 
-        {!isSignup && !googleLoading && (
+        {!isSignup && !socialLoading && (
           <button
             type="button"
             className="w-full touch-target font-body text-xs text-subtle text-center mt-1 cursor-pointer hover:text-white transition-colors duration-300 bg-transparent border-none rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"

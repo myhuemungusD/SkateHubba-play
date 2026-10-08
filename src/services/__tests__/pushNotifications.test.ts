@@ -2,12 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /* ── mock @capacitor/core ─────────────────────── */
 
-const { mockIsNativePlatform } = vi.hoisted(() => ({
+const { mockIsNativePlatform, mockGetPlatform } = vi.hoisted(() => ({
   mockIsNativePlatform: vi.fn().mockReturnValue(true),
+  mockGetPlatform: vi.fn().mockReturnValue("android"),
 }));
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
     isNativePlatform: () => mockIsNativePlatform(),
+    getPlatform: () => mockGetPlatform(),
   },
 }));
 
@@ -91,6 +93,7 @@ beforeEach(() => {
   mockGetPushEnabled.mockReset();
   _resetActivePushToken();
   mockIsNativePlatform.mockReturnValue(true);
+  mockGetPlatform.mockReturnValue("android");
   vi.stubEnv("VITE_FIREBASE_PROJECT_ID", "demo-skatehubba");
   capturedRegistrationHandler = null;
   capturedRegistrationErrorHandler = null;
@@ -474,5 +477,79 @@ describe("unregisterPushToken", () => {
 
     mockSetDoc.mockRejectedValueOnce(new Error("permission-denied"));
     await expect(unregisterPushToken("u1")).resolves.toBeUndefined();
+  });
+});
+
+describe("registerPushToken on iOS", () => {
+  beforeEach(() => {
+    mockGetPlatform.mockReturnValue("ios");
+    mockRequestPermissions.mockResolvedValue({ receive: "granted" });
+  });
+
+  async function register(): Promise<void> {
+    await registerPushToken("u1");
+  }
+
+  it("does not persist the APNs registration token", async () => {
+    await register();
+    await register();
+    capturedRegistrationHandler?.({ value: "apns-hex-token" });
+    await flush();
+    expect(mockSetDoc).not.toHaveBeenCalled();
+  });
+
+  it("persists the FCM token the native bridge posts", async () => {
+    await register();
+    window.dispatchEvent(new CustomEvent("skatehubba:fcm-token", { detail: { token: "fcm-from-bridge" } }));
+    await flush();
+    expect(mockSetDoc).toHaveBeenCalled();
+    const payload = mockSetDoc.mock.calls[0]?.[1] as { fcmTokens: unknown };
+    expect(payload.fcmTokens).toBeDefined();
+  });
+
+  it("accepts a string detail and a token already on window", async () => {
+    (window as Window & { __skatehubbaFcmToken?: string }).__skatehubbaFcmToken = "fcm-cached";
+    await register();
+    await flush();
+    expect(mockSetDoc).toHaveBeenCalled();
+
+    mockSetDoc.mockClear();
+    window.dispatchEvent(new CustomEvent("skatehubba:fcm-token", { detail: "fcm-string" }));
+    await flush();
+    expect(mockSetDoc).toHaveBeenCalled();
+  });
+
+  it("ignores an event with no token and a plain Event falls back to the cache", async () => {
+    await register();
+    window.dispatchEvent(new CustomEvent("skatehubba:fcm-token", { detail: { token: "" } }));
+    window.dispatchEvent(new CustomEvent("skatehubba:fcm-token", { detail: null }));
+    window.dispatchEvent(new CustomEvent("skatehubba:fcm-token", { detail: { token: 1 } }));
+    window.dispatchEvent(new Event("skatehubba:fcm-token"));
+    await flush();
+    expect(mockSetDoc).not.toHaveBeenCalled();
+
+    (window as Window & { __skatehubbaFcmToken?: string }).__skatehubbaFcmToken = "fcm-after";
+    window.dispatchEvent(new CustomEvent("skatehubba:fcm-token", { detail: "" }));
+    await flush();
+    expect(mockSetDoc).toHaveBeenCalled();
+  });
+
+  it("drops the bridge uid when register() throws", async () => {
+    mockRegister.mockRejectedValueOnce(new Error("no apns"));
+    await register();
+    window.dispatchEvent(new CustomEvent("skatehubba:fcm-token", { detail: { token: "too-late" } }));
+    await flush();
+    expect(mockSetDoc).not.toHaveBeenCalled();
+  });
+
+  it("stops persisting after unregister", async () => {
+    await register();
+    window.dispatchEvent(new CustomEvent("skatehubba:fcm-token", { detail: { token: "fcm-live" } }));
+    await flush();
+    await unregisterPushToken("u1");
+    mockSetDoc.mockClear();
+    window.dispatchEvent(new CustomEvent("skatehubba:fcm-token", { detail: { token: "fcm-after-signout" } }));
+    await flush();
+    expect(mockSetDoc).not.toHaveBeenCalled();
   });
 });

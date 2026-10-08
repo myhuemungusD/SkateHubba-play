@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { AppleButton } from "../components/AppleButton";
 import { GoogleButton } from "../components/GoogleButton";
 import { InviteButton } from "../components/InviteButton";
 import { LandingDemoVideo } from "../components/LandingDemoVideo";
@@ -22,6 +23,8 @@ export type LandingProps = {
   onGo: (mode: AuthMode) => void;
   onGoogle: () => void;
   googleLoading: boolean;
+  onApple: () => void;
+  appleLoading: boolean;
   onNav: (screen: LegalScreen) => void;
 };
 
@@ -106,7 +109,7 @@ export function __resetHeroEntranceForTest(): void {
   heroEntrancePlayed = false;
 }
 
-export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) {
+export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, onNav }: LandingProps) {
   const handleAuth = useCallback(
     (mode: AuthMode) => () => {
       onGo(mode);
@@ -117,6 +120,12 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
   const handleGoogle = useCallback(() => {
     onGoogle();
   }, [onGoogle]);
+
+  const handleApple = useCallback(() => {
+    onApple();
+  }, [onApple]);
+
+  const socialLoading = googleLoading || appleLoading;
 
   const [animateHero] = useState(() => !heroEntrancePlayed);
   useEffect(() => {
@@ -199,7 +208,8 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
               below as a quieter secondary row so returning users still have
               an explicit "Sign in" entry without competing with the brand CTA. */}
           <div className="w-full max-w-sm flex flex-col gap-3">
-            <GoogleButton onClick={handleGoogle} loading={googleLoading} />
+            <AppleButton onClick={handleApple} loading={appleLoading} disabled={googleLoading} />
+            <GoogleButton onClick={handleGoogle} loading={googleLoading} disabled={appleLoading} />
             <div
               className="flex items-center justify-center gap-2 text-faint"
               role="group"
@@ -208,7 +218,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
               <button
                 type="button"
                 onClick={handleAuth("signin")}
-                disabled={googleLoading}
+                disabled={socialLoading}
                 className="font-body text-sm text-dim hover:text-white px-3 py-2 min-h-[44px] rounded-md transition-colors duration-200 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
               >
                 Sign in
@@ -219,7 +229,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
               <button
                 type="button"
                 onClick={handleAuth("signup")}
-                disabled={googleLoading}
+                disabled={socialLoading}
                 className="font-body text-sm text-dim hover:text-white px-3 py-2 min-h-[44px] rounded-md transition-colors duration-200 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
               >
                 Create account
@@ -412,7 +422,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
           </p>
 
           <div className="w-full max-w-sm animate-glow-pulse rounded-xl">
-            <SkateButton onClick={handleAuth("signup")} disabled={googleLoading}>
+            <SkateButton onClick={handleAuth("signup")} disabled={socialLoading}>
               Start Playing
             </SkateButton>
           </div>

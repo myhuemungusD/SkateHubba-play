@@ -4,9 +4,10 @@
  * Complements src/services/fcm.ts (web push via Firebase Messaging SDK +
  * firebase-messaging-sw.js). On native, Firebase Messaging's web SDK can't
  * subscribe to APNS/FCM at the OS level — we go through the native
- * `@capacitor/push-notifications` plugin which returns the platform token
- * (FCM on Android, APNS on iOS — the FCM backend accepts both when the app
- * is configured with the matching APNS auth key).
+ * `@capacitor/push-notifications` plugin. Android's registration callback
+ * is already an FCM token. iOS's callback is a raw APNs token, which
+ * `firebase-admin` messaging cannot deliver to — the native SkatehubbaFcm
+ * bridge exchanges it and posts the FCM token on `skatehubba:fcm-token`.
  *
  * The token is stored on the same owner-only private profile subcollection
  * the web flow uses (users/{uid}/private/profile.fcmTokens) so server-side
@@ -46,9 +47,53 @@ import { PUSH_TARGETS_COLLECTION } from "./pushDispatch";
  */
 let activePushToken: string | null = null;
 
+/** Uid the iOS FCM bridge should persist for. Cleared on unregister. */
+let fcmListenerUid: string | null = null;
+
+const FCM_TOKEN_EVENT = "skatehubba:fcm-token";
+
+type FcmWindow = Window & { __skatehubbaFcmToken?: string };
+
+let fcmBridge: ((event: Event) => void) | null = null;
+
 /** @internal Reset the cached active token (for tests only). */
 export function _resetActivePushToken(): void {
   activePushToken = null;
+  fcmListenerUid = null;
+  if (fcmBridge) {
+    window.removeEventListener(FCM_TOKEN_EVENT, fcmBridge);
+    fcmBridge = null;
+  }
+  delete (window as FcmWindow).__skatehubbaFcmToken;
+}
+
+function readCachedFcmToken(): string | null {
+  const token = (window as FcmWindow).__skatehubbaFcmToken;
+  return typeof token === "string" && token.length > 0 ? token : null;
+}
+
+/** Native posts `{ token }` (and the same value on `window`). A string detail is accepted too. */
+function tokenFromFcmEvent(event: Event): string | null {
+  if (event instanceof CustomEvent) {
+    const detail: unknown = event.detail;
+    if (typeof detail === "string" && detail.length > 0) return detail;
+    if (typeof detail === "object" && detail !== null && "token" in detail) {
+      const token = (detail as { token: unknown }).token;
+      if (typeof token === "string" && token.length > 0) return token;
+    }
+  }
+  return readCachedFcmToken();
+}
+
+function ensureFcmBridge(): void {
+  if (fcmBridge) return;
+  fcmBridge = (event: Event) => {
+    const uid = fcmListenerUid;
+    const token = tokenFromFcmEvent(event);
+    if (!uid || !token) return;
+    void persistToken(uid, token);
+  };
+  window.addEventListener(FCM_TOKEN_EVENT, fcmBridge);
 }
 
 /**
@@ -203,19 +248,32 @@ async function registerAndPersist(uid: string, assumeEnabled: boolean): Promise<
   }
 
   // Attach the token listener BEFORE register() — the plugin can emit the
-  // registration event synchronously on a cached APNS/FCM token, so a
-  // listener added after register() can miss the event on warm starts.
+  // registration event synchronously on a cached token, so a listener added
+  // after register() can miss the event on warm starts.
+  const ios = Capacitor.getPlatform() === "ios";
+  if (ios) {
+    fcmListenerUid = uid;
+    ensureFcmBridge();
+  }
   let tokenListener: Awaited<ReturnType<typeof PushNotifications.addListener>> | null = null;
   let errorListener: Awaited<ReturnType<typeof PushNotifications.addListener>> | null = null;
   try {
     tokenListener = await PushNotifications.addListener("registration", (token: Token) => {
+      // iOS hands us the APNs device token. Persisting it would store a value
+      // the push sender cannot deliver to. The FCM token arrives separately.
+      if (Capacitor.getPlatform() === "ios") return;
       void persistToken(uid, token.value);
     });
     errorListener = await PushNotifications.addListener("registrationError", (err: { error: string }) => {
       logger.warn("push_registration_error", { uid, error: err.error });
     });
     await PushNotifications.register();
+    if (ios) {
+      const cached = readCachedFcmToken();
+      if (cached) void persistToken(uid, cached);
+    }
   } catch (err) {
+    fcmListenerUid = null;
     logger.warn("push_register_failed", { uid, error: parseFirebaseError(err) });
     // Clean up the listeners we just added — otherwise a retry stacks
     // duplicate handlers that each write the token on the next event.
@@ -321,6 +379,7 @@ export function subscribeToNativePushOpens(cb: (gameId: string, data?: Record<st
  */
 export async function unregisterPushToken(uid: string): Promise<void> {
   if (!isPushSupported()) return;
+  fcmListenerUid = null;
 
   const token = activePushToken;
   if (token) {

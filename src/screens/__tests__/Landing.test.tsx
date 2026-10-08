@@ -19,6 +19,8 @@ describe("Landing", () => {
     onGo: vi.fn(),
     onGoogle: vi.fn(),
     googleLoading: false,
+    onApple: vi.fn(),
+    appleLoading: false,
     onNav: vi.fn(),
   };
 
@@ -80,6 +82,13 @@ describe("Landing", () => {
     render(<Landing {...defaultProps} onGoogle={onGoogle} />);
     await userEvent.click(screen.getByText("Continue with Google"));
     expect(onGoogle).toHaveBeenCalled();
+  });
+
+  it("calls onApple when Apple button is clicked", async () => {
+    const onApple = vi.fn();
+    render(<Landing {...defaultProps} onApple={onApple} />);
+    await userEvent.click(screen.getByRole("button", { name: "Continue with Apple" }));
+    expect(onApple).toHaveBeenCalled();
   });
 
   it("renders features section", () => {

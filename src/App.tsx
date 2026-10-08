@@ -27,13 +27,16 @@ import { DeleteAccountRetryBanner } from "./components/DeleteAccountRetryBanner"
 import { useAnalyticsConsent } from "./hooks/useAnalyticsConsent";
 import { isDiceEnabled, isExtrasEnabled } from "./lib/featureFlags";
 import {
+  hasBootAppleSignIn,
   hasBootGoogleSignIn,
   isBootShellActive,
   isLandingBooted,
   releaseBootShell,
+  requestBootAppleSignIn,
   requestBootGoogleSignIn,
   setLandingBridge,
   subscribeBootShell,
+  takeBootAppleSignIn,
   takeBootGoogleSignIn,
   type LandingBridge,
 } from "./boot/landingBoot";
@@ -128,10 +131,13 @@ function AppScreens() {
   useEmailVerifiedToast(auth.user?.emailVerified);
 
   // Replay a Google tap made on the boot landing before App had loaded.
-  const { loading, user, handleGoogleSignIn } = auth;
+  const { loading, user, handleGoogleSignIn, handleAppleSignIn } = auth;
   useEffect(() => {
     if (!loading && !user && takeBootGoogleSignIn()) void handleGoogleSignIn();
   }, [loading, user, handleGoogleSignIn]);
+  useEffect(() => {
+    if (!loading && !user && takeBootAppleSignIn()) void handleAppleSignIn();
+  }, [loading, user, handleAppleSignIn]);
 
   // When the landing was painted ahead of App (signed-out visitor, see
   // boot/landingBoot.ts), keep showing it while Firebase Auth resolves rather
@@ -174,6 +180,8 @@ function LandingRoute({
   onGo,
   onGoogle,
   googleLoading,
+  onApple,
+  appleLoading,
   onNav,
 }: LandingBridge & { authLoading: boolean; signedIn: boolean }) {
   const shellActive = useSyncExternalStore(subscribeBootShell, isBootShellActive);
@@ -182,16 +190,33 @@ function LandingRoute({
   // Taps before auth resolves are queued the same way the boot landing does
   // and replayed by AppScreens.
   const googleHandler = authLoading ? requestBootGoogleSignIn : onGoogle;
+  const appleHandler = authLoading ? requestBootAppleSignIn : onApple;
   useEffect(() => {
     if (!holdShell) return;
-    setLandingBridge({ onGo, onGoogle: googleHandler, googleLoading, onNav });
-  }, [holdShell, onGo, googleHandler, googleLoading, onNav]);
+    setLandingBridge({
+      onGo,
+      onGoogle: googleHandler,
+      googleLoading,
+      onApple: appleHandler,
+      appleLoading,
+      onNav,
+    });
+  }, [holdShell, onGo, googleHandler, googleLoading, appleHandler, appleLoading, onNav]);
   useEffect(() => {
     if (shellActive && signedIn) releaseBootShell();
   }, [shellActive, signedIn]);
 
   if (holdShell) return null;
-  return <Landing onGo={onGo} onGoogle={onGoogle} googleLoading={googleLoading} onNav={onNav} />;
+  return (
+    <Landing
+      onGo={onGo}
+      onGoogle={onGoogle}
+      googleLoading={googleLoading}
+      onApple={onApple}
+      appleLoading={appleLoading}
+      onNav={onNav}
+    />
+  );
 }
 
 /**
@@ -392,9 +417,11 @@ function AppRoutes() {
                     nav.setScreen("auth");
                   }}
                   onGoogle={auth.handleGoogleSignIn}
-                  // A Google tap on the boot landing stays "loading" until
+                  // A social tap on the boot landing stays "loading" until
                   // AppScreens replays it once auth has resolved.
                   googleLoading={auth.googleLoading || hasBootGoogleSignIn()}
+                  onApple={auth.handleAppleSignIn}
+                  appleLoading={auth.appleLoading || hasBootAppleSignIn()}
                   onNav={nav.setScreen}
                   authLoading={auth.loading}
                   signedIn={auth.user !== null}
@@ -416,6 +443,8 @@ function AppRoutes() {
                   }}
                   onGoogle={auth.handleGoogleSignIn}
                   googleLoading={auth.googleLoading}
+                  onApple={auth.handleAppleSignIn}
+                  appleLoading={auth.appleLoading}
                   googleError={auth.googleError}
                   onGoogleErrorDismiss={() => auth.setGoogleError("")}
                   mfaChallenge={auth.mfaChallenge}

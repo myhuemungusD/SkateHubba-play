@@ -4,7 +4,9 @@ import { Landing } from "../screens/Landing";
 import { Spinner } from "../components/ui/Spinner";
 import {
   getLandingBridge,
+  hasBootAppleSignIn,
   hasBootGoogleSignIn,
+  requestBootAppleSignIn,
   requestBootGoogleSignIn,
   setBootAuthMode,
   subscribeBootShell,
@@ -24,6 +26,7 @@ export function BootLanding() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [googlePending, setGooglePending] = useState(hasBootGoogleSignIn);
+  const [applePending, setApplePending] = useState(hasBootAppleSignIn);
   const bridge = useSyncExternalStore(subscribeBootShell, getLandingBridge);
 
   if (pathname !== "/") return <Spinner />;
@@ -41,6 +44,11 @@ export function BootLanding() {
         setGooglePending(true);
       }}
       googleLoading={googlePending}
+      onApple={() => {
+        requestBootAppleSignIn();
+        setApplePending(true);
+      }}
+      appleLoading={applePending}
       onNav={(screen) => navigate(LEGAL_PATHS[screen])}
     />
   );

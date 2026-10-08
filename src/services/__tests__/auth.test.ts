@@ -24,6 +24,14 @@ vi.mock("firebase/auth", () => ({
   getRedirectResult: (...args: unknown[]) => mockGetRedirectResult(...args),
   getIdTokenResult: (...args: unknown[]) => mockGetIdTokenResult(...args),
   GoogleAuthProvider: vi.fn(),
+  OAuthProvider: class {
+    addScope(): this {
+      return this;
+    }
+    credential(): object {
+      return {};
+    }
+  },
   signInWithPopup: vi.fn(),
   signInWithRedirect: vi.fn(),
 }));

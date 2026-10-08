@@ -48,6 +48,7 @@ export interface AuthServiceRefs {
   resetPassword: Mock;
   resendVerification: Mock;
   signInWithGoogle: Mock;
+  signInWithApple: Mock;
   resolveGoogleRedirect: Mock;
   deleteAccount: Mock;
 }
@@ -65,6 +66,7 @@ export function createAuthServiceMocks(): AuthServiceMocks {
     resetPassword: vi.fn(),
     resendVerification: vi.fn(),
     signInWithGoogle: vi.fn(),
+    signInWithApple: vi.fn(),
     // Default to a resolved null so AuthContext's mount effect doesn't throw.
     resolveGoogleRedirect: vi.fn().mockResolvedValue(null),
     // Resolves with the server's report. AuthContext reads `authDeleted`
@@ -80,6 +82,7 @@ export function createAuthServiceMocks(): AuthServiceMocks {
       resetPassword: (...args: unknown[]) => refs.resetPassword(...args),
       resendVerification: (...args: unknown[]) => refs.resendVerification(...args),
       signInWithGoogle: (...args: unknown[]) => refs.signInWithGoogle(...args),
+      signInWithApple: (...args: unknown[]) => refs.signInWithApple(...args),
       resolveGoogleRedirect: (...args: unknown[]) => refs.resolveGoogleRedirect(...args),
       deleteAccount: (...args: unknown[]) => refs.deleteAccount(...args),
     },

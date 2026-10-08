@@ -118,12 +118,20 @@ describe("initStatusBar", () => {
     expect(mockSetOverlaysWebView).toHaveBeenCalledWith({ overlay: false });
   });
 
-  it("sets only the style on iOS (background APIs are Android-only)", async () => {
-    mockGetPlatform.mockReturnValue("ios");
+  it("sets the style and leaves overlay alone on an unknown native platform", async () => {
+    mockGetPlatform.mockReturnValue("electron");
     await initStatusBar();
     expect(mockSetStyle).toHaveBeenCalledWith({ style: "DARK" });
     expect(mockSetBackgroundColor).not.toHaveBeenCalled();
     expect(mockSetOverlaysWebView).not.toHaveBeenCalled();
+  });
+
+  it("overlays the webview on iOS so CSS owns the safe area", async () => {
+    mockGetPlatform.mockReturnValue("ios");
+    await initStatusBar();
+    expect(mockSetStyle).toHaveBeenCalledWith({ style: "DARK" });
+    expect(mockSetBackgroundColor).not.toHaveBeenCalled();
+    expect(mockSetOverlaysWebView).toHaveBeenCalledWith({ overlay: true });
   });
 
   it("swallows plugin failures with a warn log", async () => {
@@ -217,6 +225,17 @@ describe("subscribeToDeepLinks", () => {
 
   it("ignores non-http(s) schemes such as OAuth callbacks", async () => {
     expect(await openUrl("com.skatehubba.app://oauth/callback")).toEqual([]);
+  });
+
+  it("routes the skatehubba://app scheme to an in-app path", async () => {
+    expect(await openUrl("skatehubba://app/auth")).toEqual(["/auth"]);
+    expect(await openUrl("skatehubba://app/privacy?from=sim#top")).toEqual(["/privacy?from=sim#top"]);
+  });
+
+  it("ignores a skatehubba URL that is not the app host or has no path", async () => {
+    expect(await openUrl("skatehubba://oauth/callback")).toEqual([]);
+    expect(await openUrl("skatehubba://app/")).toEqual([]);
+    expect(await openUrl("skatehubba://app//double")).toEqual([]);
   });
 
   it("ignores foreign hosts", async () => {

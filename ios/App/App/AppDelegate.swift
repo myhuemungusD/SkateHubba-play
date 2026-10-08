@@ -1,5 +1,7 @@
 import UIKit
+import WebKit
 import Capacitor
+import SkatehubbaFcm
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -7,12 +9,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // No-ops when GoogleService-Info.plist is absent, so unsigned
+        // simulator builds still launch. See ios/App/SkatehubbaFcm.
+        SkatehubbaFcm.configureIfPossible()
+        enableEdgeSwipeBack()
         return true
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: deviceToken)
+        SkatehubbaFcm.exchangeApnsToken(deviceToken) { token in
+            guard let token else { return }
+            self.deliverFcmToken(token)
+        }
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
@@ -34,7 +43,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+        // The webview may not exist yet during didFinishLaunching.
+        enableEdgeSwipeBack()
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
@@ -54,4 +64,45 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 
+    /// iOS has no hardware back button. The edge swipe is the system back
+    /// gesture, and WKWebView leaves it off unless we turn it on. Android
+    /// back is handled in src/services/nativeApp.ts.
+    private func enableEdgeSwipeBack() {
+        bridgeController()?.webView?.allowsBackForwardNavigationGestures = true
+    }
+
+    /// Push the FCM token into the page. JS may not be listening yet (the
+    /// APNs callback can beat the React tree), so the value is also parked
+    /// on `window.__skatehubbaFcmToken` and the event is repeated for a few
+    /// seconds. `arrayUnion` makes a duplicate write a no-op.
+    private func deliverFcmToken(_ token: String) {
+        let escaped = token
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+        let js = """
+        window.__skatehubbaFcmToken = '\(escaped)';
+        window.dispatchEvent(new CustomEvent('skatehubba:fcm-token', { detail: { token: window.__skatehubbaFcmToken } }));
+        """
+        func attempt(_ remaining: Int) {
+            DispatchQueue.main.async {
+                self.bridgeController()?.webView?.evaluateJavaScript(js, completionHandler: nil)
+                if remaining > 0 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        attempt(remaining - 1)
+                    }
+                }
+            }
+        }
+        attempt(8)
+    }
+
+    private func bridgeController() -> CAPBridgeViewController? {
+        let keyWindow = window
+            ?? UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap { $0.windows }
+                .first { $0.isKeyWindow }
+        let root = keyWindow?.rootViewController
+        return root as? CAPBridgeViewController
+    }
 }

@@ -34,11 +34,11 @@ Safari on the same phone already shows the lobby header in full. The Google app'
 
 The lobby list already scrolls the document, not an inner box, so Safari can collapse its own toolbar. The Google bar does not collapse. The faint shapes under "20 finished" are the graffiti wallpaper showing through the translucent lobby background. Finished games are one line, not placeholder cards, and the tour does not dim the page.
 
-## Real-device check: iOS safe area
+## iOS safe area
 
-`ios.contentInset` is still `"always"`. `StatusBar.overlaysWebView` is `false`, and CSS also adds `env(safe-area-inset-*)` because `viewport-fit=cover` is set.
+`ios.contentInset` is `"never"`. On the native shell only, `initStatusBar()` sets the status bar to overlay the webview, so `env(safe-area-inset-*)` is the single inset and the scroll view does not add another one. Android still uses a solid status bar and does not overlay. The CSS classes (`.pt-safe`, `.pb-safe`) are unchanged, so Safari and the installed website render the way they did before.
 
-On some Capacitor / iOS combinations those insets stack and the header or bottom nav sits too far in. On others `env()` reports 0 and only the CSS fallback applies. Headless Chrome cannot show a notch, so the value was not changed. Confirm on a real iPhone 15 before switching `contentInset` to `"never"` (CSS would then own the inset). The comment in `capacitor.config.ts` points here.
+The unsigned simulator job boots a notched iPhone and an iPhone SE and uploads screenshots of the landing, sign-in, and privacy screens.
 
 `--overlay-top` is 0 inside the shell, so the Google-app inset does not stack on `contentInset`.
 
@@ -47,5 +47,5 @@ On some Capacitor / iOS combinations those insets stack and the header or bottom
 - Game rules, Firestore rules, and Cloud Functions.
 - Map, Feed, and Verified Pro stay behind the feature freeze.
 - Lazy-loading Firebase Auth, App Check, and reCAPTCHA (the landing page's main thread time). That touches first paint of sign-in and was left alone.
-- Content-Security-Policy in `vercel.json`. No blocked resource was identified from this UI pass.
+- Content-Security-Policy in `vercel.json`, aside from the Apple sign-in hosts added so Sign in with Apple can load.
 - Decorative 8–10px type on admin, clips, and map screens, and the legal-copy / image-dimension nits from the review.

@@ -9,7 +9,9 @@ storage_mode "git"
 type "appstore"
 app_identifier ["com.skatehubba.app"]
 
-username ENV["APPLE_ID"]
+# The App Store Connect API key is enough for CI. A personal Apple ID is
+# only needed for a laptop that is not using the API key.
+username(ENV["APPLE_ID"]) if ENV["APPLE_ID"].to_s.length.positive?
 team_id ENV["APPLE_TEAM_ID"]
 
 # Read-only in CI: runners consume pre-generated certs, they don't generate.
