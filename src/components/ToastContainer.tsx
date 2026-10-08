@@ -13,7 +13,7 @@ export function ToastContainer() {
     <div
       role="status"
       aria-live="polite"
-      className="fixed top-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-[360px] z-50 flex flex-col gap-2 pointer-events-none"
+      className="fixed top-below-overlay-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-[360px] z-50 flex flex-col gap-2 pointer-events-none"
       aria-label="Notifications"
     >
       {toasts.map((t) => (

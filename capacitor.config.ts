@@ -49,9 +49,13 @@ const config: CapacitorConfig = {
     // is set. On some Capacitor/iOS combinations those two insets stack and
     // the header or bottom nav sits too far in; on others env() reports 0
     // and only the CSS fallback minimum applies. Headless Chrome cannot show
-    // a notch, so this was not changed here. Confirm on a real iPhone 15
-    // before switching to contentInset: "never" (CSS would then own the inset).
-    // See docs/mobile-phone-layout.md.
+    // a notch, so this stays "always" until a real iPhone 15 confirms that
+    // "never" (CSS owns the inset) does not tuck the header under the status
+    // bar or leave a double gap.
+    //
+    // The Google app's floating address bar is a separate inset (--overlay-top,
+    // src/lib/toolbarOverlay.ts). It is 0 in this shell, so it does not stack
+    // on contentInset. See docs/mobile-phone-layout.md.
     contentInset: "always",
   },
   plugins: {

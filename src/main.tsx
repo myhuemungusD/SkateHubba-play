@@ -5,9 +5,13 @@ import { Capacitor } from "@capacitor/core";
 import { initSentry, captureException, addBreadcrumb } from "./lib/sentry";
 import { initPosthogOnConsent } from "./lib/posthog";
 import { captureInstallPrompt } from "./lib/installPrompt";
+import { installToolbarOverlay } from "./lib/toolbarOverlay";
 import { Root } from "./boot/Root";
 import { runWhenIdle, setLandingBooted, shouldBootLanding } from "./boot/landingBoot";
 import "./index.css";
+
+// Before first paint. Safari, Chrome iOS, the PWA, and Capacitor stay at 0.
+installToolbarOverlay();
 
 // The full app (Firebase, contexts, every route) is a separate chunk so a
 // signed-out visitor's landing page can paint before it loads — see
