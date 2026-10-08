@@ -284,6 +284,13 @@ const SCREENSHOT_ROUTE_EVENT = "skatehubba:screenshot-route";
 function routeNativePath(path: string, navigate: (to: string) => void): void {
   const [pathname] = path.split(/[?#]/);
   const [segment, ...rest] = pathname.replace(/^\//, "").split("/");
+  // `/` is the marketing landing. The simulator asks for it explicitly
+  // because a Firebase redirect error on the placeholder CI config would
+  // otherwise leave the shell on the sign-in screen.
+  if (segment === "" || segment === "landing") {
+    navigate("/");
+    return;
+  }
   if (segment === "game" && rest[0]) {
     window.dispatchEvent(new CustomEvent(OPEN_GAME_EVENT, { detail: { gameId: rest[0] } }));
     return;

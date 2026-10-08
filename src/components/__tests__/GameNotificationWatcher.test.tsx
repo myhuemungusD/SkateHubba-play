@@ -612,6 +612,12 @@ describe("native universal-link bridge", () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
+  it("navigates a debug screenshot route of / back to the landing page", () => {
+    render(<GameNotificationWatcher />);
+    window.dispatchEvent(new CustomEvent("skatehubba:screenshot-route", { detail: "/" }));
+    expect(mockNavigate).toHaveBeenCalledWith("/");
+  });
+
   it("navigates a debug screenshot route event", () => {
     render(<GameNotificationWatcher />);
     window.dispatchEvent(new CustomEvent("skatehubba:screenshot-route", { detail: "/privacy" }));

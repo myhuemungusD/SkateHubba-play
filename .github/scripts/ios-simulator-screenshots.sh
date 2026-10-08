@@ -84,7 +84,7 @@ shoot() {
   xcrun simctl bootstatus "$udid" -b
   xcrun simctl status_bar "$udid" override --time "9:41" --batteryState charged --batteryLevel 100 || true
   xcrun simctl install "$udid" "$APP"
-  shoot_route "$udid" "$slug" landing
+  shoot_route "$udid" "$slug" landing -SKATEHUBBA_ROUTE /
   shoot_route "$udid" "$slug" auth -SKATEHUBBA_ROUTE /auth
   shoot_route "$udid" "$slug" privacy -SKATEHUBBA_ROUTE /privacy
   xcrun simctl shutdown "$udid" || true
