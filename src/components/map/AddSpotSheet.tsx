@@ -24,15 +24,21 @@ function isValidPhotoUrl(url: string): boolean {
  * Sink-side guard for the photo preview `<img src>`. `addPhotoUrl` already
  * rejects non-https input, but the preview renders straight from component
  * state, so the sink re-checks rather than trusting every future writer of
- * `photoUrls`. Only an https URL, a local `blob:` object URL, or an inline
- * raster `data:image/...` URL passes; anything else (javascript:,
- * data:text/html, SVG data URLs, …) yields `undefined`, so the `<img>`
- * renders with no `src` and never loads it.
+ * `photoUrls`. The URL is parsed and only an https URL passes; the `src` is
+ * then rebuilt behind a fixed `https://` prefix, so no other scheme
+ * (javascript:, data:, blob:, …) can ever reach the attribute. Anything
+ * unparseable or non-https yields `undefined`, so the `<img>` renders with
+ * no `src` and never loads it.
  */
-const SAFE_PREVIEW_SRC = /^(?:https:\/\/|blob:|data:image\/(?:png|jpeg|gif|webp|avif)[;,])/i;
 export function safePhotoPreviewSrc(url: string): string | undefined {
-  if (!SAFE_PREVIEW_SRC.test(url)) return undefined;
-  return url;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return undefined;
+  }
+  if (parsed.protocol !== "https:") return undefined;
+  return `https://${parsed.host}${parsed.pathname}${parsed.search}${parsed.hash}`;
 }
 
 /**

@@ -41,19 +41,19 @@ beforeEach(() => {
 });
 
 describe("safePhotoPreviewSrc", () => {
-  it("passes https, blob: and raster data:image URLs through unchanged", () => {
+  it("passes https URLs through unchanged", () => {
     for (const url of [
       "https://example.com/spot.jpg",
-      "blob:https://skatehubba.com/1b2c3d4e-0000-4000-8000-000000000000",
-      "data:image/png;base64,iVBORw0KGgo=",
-      "data:image/jpeg;base64,/9j/4AAQ",
+      "https://firebasestorage.googleapis.com/v0/b/x/o/spot.png?alt=media&token=abc#frag",
     ]) {
       expect(safePhotoPreviewSrc(url)).toBe(url);
     }
   });
 
-  it("rejects script, html, svg and plain-http URLs", () => {
+  it("rejects script, html, svg, blob, data, plain-http and unparseable URLs", () => {
     for (const url of [
+      "blob:https://skatehubba.com/1b2c3d4e-0000-4000-8000-000000000000",
+      "data:image/png;base64,iVBORw0KGgo=",
       "javascript:alert(1)",
       "JaVaScRiPt:alert(1)",
       "data:text/html,<script>alert(1)</script>",
