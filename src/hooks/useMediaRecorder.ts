@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useLayoutEffect } from "react";
 import { MAX_VIDEO_DURATION_SECONDS, MIN_UPLOAD_BYTES, VIDEO_BITS_PER_SECOND } from "../constants/video";
 import { isNativePlatform, recordNativeVideo } from "../services/nativeVideo";
 import { logger } from "../services/logger";
@@ -277,8 +277,12 @@ export function useMediaRecorder(
   // value without listing it in their deps. `startRec`'s identity feeds
   // memoized children; rebuilding it because a prop re-rendered with the same
   // number would defeat that for no behavioural gain.
+  // Synced in a layout effect (not during render) so the callbacks, which
+  // only run after commit, always see the committed value.
   const maxDurationRef = useRef(maxDurationSeconds);
-  maxDurationRef.current = maxDurationSeconds;
+  useLayoutEffect(() => {
+    maxDurationRef.current = maxDurationSeconds;
+  }, [maxDurationSeconds]);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   const setVideoRef = useCallback((el: HTMLVideoElement | null) => {

@@ -109,14 +109,28 @@ export function ProfileSetup({
     clearAvailabilityError();
   }, [clearAvailabilityError]);
 
+  // A different uid restarts the existing-profile check. Done during render
+  // (React's "adjust state when a prop changes" pattern) rather than in the
+  // lookup effect, so the effect body never sets state synchronously. The
+  // Retry button resets the same two flags in its own handler.
+  const [checkedUid, setCheckedUid] = useState(uid);
+  if (checkedUid !== uid) {
+    setCheckedUid(uid);
+    setCheckingExisting(true);
+    setFetchFailed(false);
+  }
+  const retryExistingLookup = useCallback(() => {
+    setCheckingExisting(true);
+    setFetchFailed(false);
+    setFetchAttempt((n) => n + 1);
+  }, []);
+
   // If the user already has a profile (e.g. profile fetch timed out on sign-in),
   // skip setup entirely and resolve with the existing profile. On a fetch
   // failure (vs. a confirmed "no profile" null result) we surface a retry
   // screen rather than the create-profile form — see fetchFailed above.
   useEffect(() => {
     let cancelled = false;
-    setCheckingExisting(true);
-    setFetchFailed(false);
     // Use the auth-bootstrap variant so a fresh permission-denied caused
     // by the auth-token propagation race gets retried once before we
     // surface the error banner. The service layer resolves the live
@@ -291,7 +305,7 @@ export function ProfileSetup({
               <span className="text-dim">UID:</span> <span className="text-subtle">{uid}</span>
             </p>
           )}
-          <Btn onClick={() => setFetchAttempt((n) => n + 1)}>Retry</Btn>
+          <Btn onClick={retryExistingLookup}>Retry</Btn>
           {onSignOut && (
             <Btn variant="ghost" onClick={onSignOut} className="mt-3">
               Sign out

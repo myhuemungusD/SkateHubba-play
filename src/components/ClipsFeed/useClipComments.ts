@@ -81,29 +81,51 @@ export function useClipComments(
     };
   }, []);
 
-  const reload = useCallback(async (): Promise<void> => {
+  // Switching to another clip re-enters the loading state. Done during render
+  // (React's "adjust state when a prop changes" pattern) rather than in the
+  // fetch effect, so the effect body never sets state synchronously.
+  const [loadedClipId, setLoadedClipId] = useState(clipId);
+  if (loadedClipId !== clipId) {
+    setLoadedClipId(clipId);
     setLoading(true);
     setError("");
-    try {
+  }
+
+  // The async half of a load: every state write happens in a promise
+  // callback, never synchronously in the caller.
+  const fetchComments = useCallback(
+    (): Promise<void> =>
       // First page only. The sheet shows the newest comments (the service
       // orders `createdAt` desc); paging further is deliberately out of scope
       // here — a "load more" affordance can hang off `page.cursor` later
       // without changing this shape.
-      const page = await fetchClipComments(clipId);
-      if (!mountedRef.current) return;
-      setComments(page.comments);
-    } catch (err) {
-      logger.warn("clip_comments_load_failed", { clipId, error: parseFirebaseError(err) });
-      if (!mountedRef.current) return;
-      setError("Couldn't load comments. Try again.");
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  }, [clipId]);
+      fetchClipComments(clipId)
+        .then((page) => {
+          if (!mountedRef.current) return;
+          setComments(page.comments);
+        })
+        .catch((err: unknown) => {
+          logger.warn("clip_comments_load_failed", { clipId, error: parseFirebaseError(err) });
+          if (!mountedRef.current) return;
+          setError("Couldn't load comments. Try again.");
+        })
+        .finally(() => {
+          if (mountedRef.current) setLoading(false);
+        }),
+    [clipId],
+  );
 
+  const reload = useCallback(async (): Promise<void> => {
+    setLoading(true);
+    setError("");
+    await fetchComments();
+  }, [fetchComments]);
+
+  // Initial state is already `loading: true, error: ""`, so the mount/clip
+  // change only needs the async half.
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    void fetchComments();
+  }, [fetchComments]);
 
   // Own comments always survive the filter: a viewer can't block themselves,
   // and dropping their own freshly posted comment would read as a failed post.

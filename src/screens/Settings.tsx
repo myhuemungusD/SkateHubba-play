@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import type { UserProfile } from "../services/users";
 import { getUserProfile } from "../services/users";
@@ -144,10 +144,13 @@ function BlockedPlayersList({
   const [profiles, setProfiles] = useState<Record<string, UserProfile | null>>({});
   // Latest-value mirror of `profiles` so the hydration effect doesn't list
   // `profiles` in its dep array — the effect *writes* to `profiles`, so a
-  // straightforward dependency would loop. The mirror ref is updated during
-  // commit and read inside the effect body to skip already-hydrated UIDs.
+  // straightforward dependency would loop. The mirror ref is updated in a
+  // layout effect (which runs before the passive hydration effect below) and
+  // read inside the effect body to skip already-hydrated UIDs.
   const profilesRef = useRef(profiles);
-  profilesRef.current = profiles;
+  useLayoutEffect(() => {
+    profilesRef.current = profiles;
+  }, [profiles]);
   // In-flight UIDs. Dedupes overlapping fetches when blockedUids changes mid-
   // hydration (e.g. an unblock happens while the initial batch is resolving).
   const pendingRef = useRef<Set<string>>(new Set());
@@ -202,9 +205,13 @@ function BlockedPlayersList({
   }, [blockedUids]);
 
   // Drop cached profiles the user has since unblocked — keeps the cache from
-  // growing across the session. Prune pendingRef too so an unblock cancels
+  // growing across the session. The state prune happens during render when
+  // `blockedUids` changes (React's "adjust state when a prop changes"
+  // pattern); the pendingRef prune stays in an effect so an unblock cancels
   // the in-flight dedupe for that UID.
-  useEffect(() => {
+  const [prunedFor, setPrunedFor] = useState(blockedUids);
+  if (prunedFor !== blockedUids) {
+    setPrunedFor(blockedUids);
     setProfiles((prev) => {
       let changed = false;
       const next: Record<string, UserProfile | null> = {};
@@ -214,6 +221,8 @@ function BlockedPlayersList({
       }
       return changed ? next : prev;
     });
+  }
+  useEffect(() => {
     for (const uid of Array.from(pendingRef.current)) {
       if (!blockedUids.has(uid)) pendingRef.current.delete(uid);
     }

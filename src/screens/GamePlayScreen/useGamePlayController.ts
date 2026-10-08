@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { GameDoc } from "../../services/games";
 import {
   acceptJudgeInvite,
@@ -108,9 +108,15 @@ export interface GamePlayController {
 
 export function useGamePlayController(game: GameDoc, profile: UserProfile): GamePlayController {
   const [trickName, setTrickName] = useState("");
+  // Mirrors the committed trick name for submitSetterTrick, which reads it
+  // after the upload await. Synced in a layout effect, not during render.
   const trickNameRef = useRef(trickName);
-  trickNameRef.current = trickName;
-  const recorderRevealedRef = useRef(false);
+  useLayoutEffect(() => {
+    trickNameRef.current = trickName;
+  }, [trickName]);
+  // Sticky: once the setter has typed a trick name the recorder stays
+  // revealed even if the field is cleared again.
+  const [recorderRevealed, setRecorderRevealed] = useState(false);
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [videoRecorded, setVideoRecorded] = useState(false);
 
@@ -119,17 +125,19 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
   const [setterAction, setSetterAction] = useState<"landed" | "missed" | null>(null);
   const [matcherLanded, setMatcherLanded] = useState<boolean | null>(null);
   const [uploadProgress, setUploadProgress] = useState<UploadProgressData | null>(null);
-  const [forfeitChecked, setForfeitChecked] = useState(false);
+  // One forfeit check per mounted game screen. A ref, not state: nothing
+  // renders from it, it only guards the effect below.
+  const forfeitCheckedRef = useRef(false);
   const [showReport, setShowReport] = useState(false);
   const [reported, setReported] = useState(false);
 
   useEffect(() => {
-    if (forfeitChecked || game.status !== "active") return;
+    if (forfeitCheckedRef.current || game.status !== "active") return;
     // A frozen review phase pins the (possibly-expired) turnDeadline; firing a
     // forfeit here would be a wasted, rules-rejected write against a game the
     // dispute referee — not the turn sweep — is responsible for advancing.
     if (game.phase === "pendingReview" || game.phase === "communityReview") {
-      setForfeitChecked(true);
+      forfeitCheckedRef.current = true;
       return;
     }
     const deadline = game.turnDeadline?.toMillis?.() ?? 0;
@@ -144,8 +152,8 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
         captureException(err, { extra: { context: "forfeitExpiredTurn", gameId: game.id } });
       });
     }
-    setForfeitChecked(true);
-  }, [game.id, game.status, game.phase, forfeitChecked, game.turnDeadline, profile.uid]);
+    forfeitCheckedRef.current = true;
+  }, [game.id, game.status, game.phase, game.turnDeadline, profile.uid]);
 
   const isPlayer = game.player1Uid === profile.uid || game.player2Uid === profile.uid;
   const isJudge = !!game.judgeId && game.judgeId === profile.uid;
@@ -316,8 +324,9 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
   const matcherUsername = game.currentSetter === game.player1Uid ? game.player2Username : game.player1Username;
 
   const trimmedTrickName = trickName.trim();
-  if (isSetter && trimmedTrickName) recorderRevealedRef.current = true;
-  const showRecorder = !isSetter || recorderRevealedRef.current;
+  const revealRecorderNow = isSetter && trimmedTrickName !== "";
+  if (revealRecorderNow && !recorderRevealed) setRecorderRevealed(true);
+  const showRecorder = !isSetter || recorderRevealed || revealRecorderNow;
 
   const submittedRef = useRef(false);
   const uploadAbortRef = useRef<AbortController | null>(null);
@@ -462,8 +471,11 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
   // In a frozen review phase the turnDeadline is pinned (often already past);
   // the live countdown is the review window, so surface that instead.
   const inReviewPhase = game.phase === "pendingReview" || game.phase === "communityReview";
+  // Fallback for a game with no deadline stamped yet: 24h out, captured once
+  // per mount (same approach as useWaitingScreen) so render stays pure.
+  const [fallbackDeadline] = useState(() => Date.now() + 86400000);
   const deadline =
-    (inReviewPhase ? game.reviewDeadline?.toMillis?.() : game.turnDeadline?.toMillis?.()) || Date.now() + 86400000;
+    (inReviewPhase ? game.reviewDeadline?.toMillis?.() : game.turnDeadline?.toMillis?.()) || fallbackDeadline;
 
   const dismissError = useCallback(() => setError(""), []);
   const openReport = useCallback(() => setShowReport(true), []);
