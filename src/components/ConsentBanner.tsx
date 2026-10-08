@@ -59,11 +59,11 @@ export function ConsentBanner({ onNav }: { onNav: (screen: "privacy" | "terms") 
       ref={regionRef}
       role="region"
       aria-label="Cookie and analytics notice"
-      className="fixed bottom-0 left-0 right-0 z-50 px-3 sm:px-4 pb-safe"
+      className="fixed bottom-0 left-0 right-0 z-50 max-h-[20dvh] overflow-y-auto px-3 pb-safe sm:px-4"
     >
-      <div className="max-w-lg mx-auto mb-1 sm:mb-4 rounded-2xl glass-card px-3 py-2 sm:px-4 sm:py-3 shadow-glass animate-scale-in">
+      <div className="max-w-lg mx-auto mb-1 overflow-y-auto rounded-2xl glass-card px-3 py-2 shadow-glass animate-scale-in sm:mb-4 sm:px-4 sm:py-3 [@media(max-height:500px)]:mb-0 [@media(max-height:500px)]:py-1.5">
         <div className="flex items-center gap-3">
-          <p className="font-body text-xs text-[#aaa] leading-snug flex-1">
+          <p className="font-body text-xs text-[#c8c8c8] leading-snug flex-1">
             Cookie-free analytics.{" "}
             <button
               type="button"

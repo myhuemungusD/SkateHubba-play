@@ -43,7 +43,7 @@ export function SetterTrickInput({
         autoComplete="off"
         autoCorrect="off"
         spellCheck={false}
-        className="w-full bg-transparent text-center font-display text-base tracking-wider text-brand-orange py-1 px-4 outline-none placeholder:text-brand-orange/60 disabled:opacity-40 disabled:cursor-not-allowed"
+        className="min-h-11 w-full bg-transparent text-center font-display text-base tracking-wider text-brand-orange py-2 px-4 outline-none placeholder:text-brand-orange/60 disabled:opacity-40 disabled:cursor-not-allowed"
       />
       {trimmedTrickName && <p className="font-body text-xs text-brand-orange/80 pb-1">Set your {trimmedTrickName}</p>}
       {!showRecorder && !trimmedTrickName && (

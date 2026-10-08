@@ -20,7 +20,7 @@ export function DiceHub() {
   const { games, stats, loading } = useMyDiceGames(uid.length > 0 ? uid : null);
 
   return (
-    <div className="min-h-dvh bg-background px-5 pt-8 pb-24 max-w-[430px] mx-auto">
+    <div className="mx-auto min-h-dvh max-w-[430px] bg-background px-5 pb-24 pt-[max(env(safe-area-inset-top),2rem)]">
       <h1 className="font-display text-3xl tracking-wider text-white">Roll Dice</h1>
       <p className="mt-2 font-body text-sm text-muted">Street dice with another skater. Wins and losses only.</p>
       <p className="mt-4 font-display text-sm tracking-wider text-brand-orange" data-testid="dice-record">
@@ -43,7 +43,7 @@ export function DiceHub() {
             <button
               type="button"
               onClick={() => navigate(`/dice/${game.id}`)}
-              className="w-full rounded-2xl border border-white/[0.06] bg-surface px-4 py-3 text-left font-body text-sm text-white"
+              className="flex min-h-11 w-full items-center rounded-2xl border border-white/[0.06] bg-surface px-4 py-3 text-left font-body text-sm text-white"
             >
               {rowLabel(game, uid)}
             </button>

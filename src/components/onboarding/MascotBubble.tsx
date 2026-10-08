@@ -108,7 +108,7 @@ export function MascotBubble({
             <h2 id="onboarding-title" className="font-display text-base text-white tracking-wide">
               {title}
             </h2>
-            <p className="font-body text-[10px] text-muted uppercase tracking-widest" aria-hidden="true">
+            <p className="font-body text-xs text-bright uppercase tracking-widest" aria-hidden="true">
               {stepLabel}
             </p>
           </div>
@@ -162,7 +162,7 @@ export function MascotBubble({
           <button
             type="button"
             onClick={handleSkip}
-            className={`font-body text-xs text-muted hover:text-white active:text-white active:bg-white/5 rounded-lg px-2 ${TOUCH_TARGET} ${FOCUS_RING}`}
+            className={`font-body text-sm text-bright hover:text-white active:text-white active:bg-white/5 rounded-lg px-2 ${TOUCH_TARGET} ${FOCUS_RING}`}
           >
             skip
           </button>
@@ -171,7 +171,7 @@ export function MascotBubble({
           <button
             type="button"
             onClick={handleBack}
-            className={`font-body text-xs text-muted hover:text-white active:text-white active:bg-white/5 rounded-lg px-2 ${TOUCH_TARGET} ${FOCUS_RING}`}
+            className={`font-body text-sm text-bright hover:text-white active:text-white active:bg-white/5 rounded-lg px-2 ${TOUCH_TARGET} ${FOCUS_RING}`}
           >
             back
           </button>

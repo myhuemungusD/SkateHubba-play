@@ -297,8 +297,8 @@ export function AuthScreen({
   }
 
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center px-6">
-      <div className="w-full max-w-sm p-6 sm:p-8 rounded-2xl glass-card animate-scale-in">
+    <div className="min-h-dvh flex flex-col items-center px-6 pt-[max(env(safe-area-inset-top),1.25rem)] pb-[calc(var(--consent-banner-space,0px)+1.25rem)]">
+      <div className="my-auto w-full max-w-sm p-6 sm:p-8 rounded-2xl glass-card animate-scale-in">
         <img src="/logonew.webp" alt="" draggable={false} className="h-7 w-auto select-none mb-4" aria-hidden="true" />
         <h2 className="font-display text-fluid-3xl text-white mb-1">{isSignup ? "Create Account" : "Welcome Back"}</h2>
         <p className="font-body text-sm text-muted mb-5 sm:mb-7">

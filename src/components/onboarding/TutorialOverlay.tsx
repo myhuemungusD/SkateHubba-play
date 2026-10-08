@@ -130,6 +130,15 @@ export function TutorialOverlay() {
   // stable across renders.
   const advanceForMissingAnchor = useCallback(() => advance(), [advance]);
 
+  // Lets the lobby list scroll the "finished" row clear of this card.
+  useEffect(() => {
+    if (loading || !shouldShow) return;
+    document.documentElement.classList.add("tour-open");
+    return () => {
+      document.documentElement.classList.remove("tour-open");
+    };
+  }, [loading, shouldShow]);
+
   if (loading || !shouldShow || !step) return null;
 
   const onPrimary = () => {

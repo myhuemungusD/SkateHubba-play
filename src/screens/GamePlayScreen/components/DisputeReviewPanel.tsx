@@ -1,3 +1,4 @@
+import { ActionDock } from "../../../components/ActionDock";
 import { Btn } from "../../../components/ui/Btn";
 import type { GameDoc } from "../../../services/games";
 import { isFirebaseStorageUrl } from "../../../utils/helpers";
@@ -45,7 +46,7 @@ export function DisputeReviewPanel({
             playsInline
             preload="metadata"
             aria-label={`${setterUsername}'s ${game.currentTrickName || "trick"} video`}
-            className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
+            className="trick-frame rounded-2xl bg-black object-cover border border-border"
           />
         </div>
       )}
@@ -61,7 +62,7 @@ export function DisputeReviewPanel({
             playsInline
             preload="metadata"
             aria-label={`${matcherUsername}'s match attempt video`}
-            className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
+            className="trick-frame rounded-2xl bg-black object-cover border border-border"
           />
         </div>
       )}
@@ -72,31 +73,31 @@ export function DisputeReviewPanel({
         </p>
       )}
 
-      {!disputeSubmitting && !error && (
-        <div role="group" aria-label="Rule landed or missed">
-          <p className="font-display text-xl text-white text-center mb-4">Did they land it?</p>
-          <div className="flex gap-3">
-            <Btn onClick={() => onResolve(true)} variant="success" disabled={disputeSubmitting}>
-              Landed
-            </Btn>
-            <Btn onClick={() => onResolve(false)} variant="danger" disabled={disputeSubmitting}>
-              Missed
-            </Btn>
+      <ActionDock>
+        {!disputeSubmitting && !error && (
+          <div role="group" aria-label="Rule landed or missed">
+            <p className="font-display text-xl text-white text-center mb-3">Did they land it?</p>
+            <div className="flex gap-3">
+              <Btn onClick={() => onResolve(true)} variant="success" disabled={disputeSubmitting}>
+                Landed
+              </Btn>
+              <Btn onClick={() => onResolve(false)} variant="danger" disabled={disputeSubmitting}>
+                Missed
+              </Btn>
+            </div>
           </div>
-        </div>
-      )}
-      {disputeSubmitting && (
-        <div className="text-center">
-          <span className="font-display text-lg text-amber-400 tracking-wider animate-pulse">Resolving...</span>
-        </div>
-      )}
-      {!disputeSubmitting && error && lastDisputeAction !== null && (
-        <div className="mt-3">
+        )}
+        {disputeSubmitting && (
+          <div className="text-center">
+            <span className="font-display text-lg text-amber-400 tracking-wider animate-pulse">Resolving...</span>
+          </div>
+        )}
+        {!disputeSubmitting && error && lastDisputeAction !== null && (
           <Btn onClick={() => onResolve(lastDisputeAction)} variant="secondary">
             Retry
           </Btn>
-        </div>
-      )}
+        )}
+      </ActionDock>
     </div>
   );
 }

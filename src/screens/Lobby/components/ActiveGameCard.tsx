@@ -75,7 +75,7 @@ export function ActiveGameCard({
                 e.stopPropagation();
                 onViewPlayer(opponentUid);
               }}
-              className="min-h-[32px] inline-flex items-center justify-center px-2 -mx-2 rounded-md font-display text-[10px] text-brand-orange hover:text-[#FF7A1A] hover:bg-brand-orange/10 transition-colors shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              className="min-h-11 min-w-11 inline-flex items-center justify-center px-2 rounded-md font-display text-xs text-brand-orange hover:text-[#FF7A1A] hover:bg-brand-orange/10 transition-colors shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
               aria-label={`View @${opponentName}'s profile`}
             >
               Profile
@@ -83,7 +83,7 @@ export function ActiveGameCard({
           )}
           {isMyTurn && (
             <span
-              className={`px-2 py-0.5 rounded font-display text-[10px] text-white tracking-wider leading-none shrink-0 ${judgeViewer ? "bg-amber-500" : "bg-brand-orange"}`}
+              className={`px-2 py-0.5 rounded font-display text-xs text-black tracking-wider leading-none shrink-0 ${judgeViewer ? "bg-amber-500" : "bg-brand-orange"}`}
             >
               {judgeViewer ? "RULE" : "PLAY"}
             </span>
@@ -97,7 +97,7 @@ export function ActiveGameCard({
           </span>
           <LobbyTimer deadline={game.turnDeadline?.toMillis?.() ?? 0} isMyTurn={isMyTurn} />
           {showCategory && (
-            <span className="inline-flex items-center rounded-full border border-white/[0.08] px-2 py-0.5 font-body text-[10px] text-muted shrink-0">
+            <span className="inline-flex items-center rounded-full border border-white/[0.08] px-2 py-0.5 font-body text-xs text-bright shrink-0">
               {trickCategoryLabel(game.trickCategory)}
             </span>
           )}
@@ -105,7 +105,7 @@ export function ActiveGameCard({
         {judgeViewer ? (
           <div className="flex items-center gap-3 mt-2.5">
             <div className="flex items-center gap-1">
-              <span className="font-body text-[10px] text-amber-400 uppercase tracking-wider mr-0.5">
+              <span className="font-body text-xs text-amber-400 uppercase tracking-wider mr-0.5">
                 @{game.player1Username}
               </span>
               {LETTERS.map((l, i) => (
@@ -119,13 +119,13 @@ export function ActiveGameCard({
             </div>
             <div className="w-px h-3 bg-border shrink-0" aria-hidden="true" />
             <div className="flex items-center gap-1">
-              <span className="font-body text-[10px] text-amber-400 uppercase tracking-wider mr-0.5">
+              <span className="font-body text-xs text-amber-400 uppercase tracking-wider mr-0.5">
                 @{game.player2Username}
               </span>
               {LETTERS.map((l, i) => (
                 <span
                   key={i}
-                  className={`font-display text-[13px] leading-none tracking-wide ${i < game.p2Letters ? "text-brand-red" : "text-[#2E2E2E]"}`}
+                  className={`font-display text-[13px] leading-none tracking-wide ${i < game.p2Letters ? "text-brand-red" : "text-faint"}`}
                 >
                   {l}
                 </span>
@@ -135,7 +135,7 @@ export function ActiveGameCard({
         ) : (
           <div className="flex items-center gap-3 mt-2.5">
             <div className="flex items-center gap-1">
-              <span className="font-body text-[10px] text-brand-orange uppercase tracking-wider mr-0.5">You</span>
+              <span className="font-body text-xs text-brand-orange uppercase tracking-wider mr-0.5">You</span>
               {LETTERS.map((l, i) => (
                 <span
                   key={i}
@@ -147,11 +147,11 @@ export function ActiveGameCard({
             </div>
             <div className="w-px h-3 bg-border shrink-0" aria-hidden="true" />
             <div className="flex items-center gap-1">
-              <span className="font-body text-[10px] text-brand-orange uppercase tracking-wider mr-0.5">Them</span>
+              <span className="font-body text-xs text-brand-orange uppercase tracking-wider mr-0.5">Them</span>
               {LETTERS.map((l, i) => (
                 <span
                   key={i}
-                  className={`font-display text-[13px] leading-none tracking-wide ${i < theirLetters ? "text-brand-red" : "text-[#2E2E2E]"}`}
+                  className={`font-display text-[13px] leading-none tracking-wide ${i < theirLetters ? "text-brand-red" : "text-faint"}`}
                 >
                   {l}
                 </span>

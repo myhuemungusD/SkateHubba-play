@@ -124,7 +124,7 @@ export function GameReplay({ turns }: GameReplayProps) {
             playsInline
             onEnded={handleClipEnded}
             aria-label={currentClip.label}
-            className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
+            className="trick-frame rounded-2xl bg-black object-cover border border-border"
           />
 
           {/* Progress indicator */}

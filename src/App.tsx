@@ -21,6 +21,8 @@ import { useBlockedUsers } from "./hooks/useBlockedUsers";
 import { useIsAdmin } from "./hooks/useIsAdmin";
 import { firebaseReady } from "./firebase";
 import { ConsentBanner } from "./components/ConsentBanner";
+import { KeyboardInset } from "./components/KeyboardInset";
+import { ScrollToTop } from "./components/ScrollToTop";
 import { DeleteAccountRetryBanner } from "./components/DeleteAccountRetryBanner";
 import { useAnalyticsConsent } from "./hooks/useAnalyticsConsent";
 import { isDiceEnabled, isExtrasEnabled } from "./lib/featureFlags";
@@ -146,6 +148,8 @@ function AppScreens() {
 
   return (
     <>
+      <ScrollToTop />
+      <KeyboardInset />
       <OfflineBanner />
       <DeleteAccountRetryBanner />
       <GameNotificationWatcher />

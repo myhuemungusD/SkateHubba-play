@@ -42,8 +42,8 @@ export function LobbyTimer({ deadline, isMyTurn }: { deadline: number; isMyTurn:
 
   return (
     <span
-      className={`inline-flex items-center gap-1 font-display text-[10px] tracking-wider leading-none tabular-nums ${
-        urgent ? "text-brand-red animate-pulse" : isMyTurn ? "text-muted" : "text-subtle"
+      className={`inline-flex items-center gap-1 font-display text-xs tracking-wider leading-none tabular-nums ${
+        urgent ? "text-brand-red animate-pulse" : isMyTurn ? "text-bright" : "text-muted"
       }`}
       aria-label={`Time remaining: ${label}`}
     >

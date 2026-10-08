@@ -159,7 +159,7 @@ export function Leaderboard({
                           e.stopPropagation();
                           onViewPlayer(p.uid);
                         }}
-                        className="font-display text-base text-white leading-none truncate hover:text-brand-orange transition-colors"
+                        className="inline-flex min-h-11 items-center font-display text-base text-white leading-none truncate hover:text-brand-orange transition-colors"
                       >
                         <ProUsername username={p.username} isVerifiedPro={p.isVerifiedPro} />
                       </button>
@@ -171,15 +171,15 @@ export function Leaderboard({
                       />
                     )}
                     {isCurrentUser && (
-                      <span className="px-1.5 py-0.5 rounded bg-brand-orange font-display text-[9px] text-white tracking-wider leading-none shrink-0">
+                      <span className="px-1.5 py-0.5 rounded bg-brand-orange font-display text-xs text-black tracking-wider leading-none shrink-0">
                         YOU
                       </span>
                     )}
                   </div>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="font-body text-[11px] text-brand-green">{wins}W</span>
-                    <span className="font-body text-[11px] text-brand-red">{losses}L</span>
-                    <span className="font-body text-[11px] text-faint">{winRate}%</span>
+                    <span className="font-body text-xs text-brand-green">{wins}W</span>
+                    <span className="font-body text-xs text-brand-red">{losses}L</span>
+                    <span className="font-body text-xs text-bright">{winRate}%</span>
                   </div>
                 </div>
               </div>
@@ -189,7 +189,7 @@ export function Leaderboard({
                 <button
                   type="button"
                   onClick={() => onChallengeUser(p.username)}
-                  className="font-display text-xs text-brand-orange shrink-0 ml-3 hover:text-[#FF7A1A] transition-colors"
+                  className="inline-flex min-h-11 items-center font-display text-sm text-brand-orange shrink-0 ml-1 px-2 hover:text-[#FF7A1A] transition-colors rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
                 >
                   Challenge &rarr;
                 </button>
@@ -201,7 +201,7 @@ export function Leaderboard({
 
       {/* Show current user's rank if they're not in the visible list or for quick reference */}
       {currentUserRank >= 0 && ranked.length > 5 && (
-        <p className="font-body text-[11px] text-muted text-center mt-3">
+        <p className="font-body text-xs text-muted text-center mt-3">
           You are ranked <span className="text-brand-orange font-display">#{currentUserRank + 1}</span> of{" "}
           {ranked.length}
         </p>

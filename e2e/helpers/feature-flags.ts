@@ -11,5 +11,8 @@
  */
 export const EXTRAS_ENABLED = process.env.VITE_FEATURE_EXTRAS_ENABLED === "true";
 
+/** Roll Dice stays off unless the dev server was started with the flag. */
+export const DICE_ENABLED = process.env.VITE_FEATURE_DICE_ENABLED === "true";
+
 export const EXTRAS_SKIP_REASON =
   "Feature freeze: Map / Clips feed / Verified Pro are hidden unless VITE_FEATURE_EXTRAS_ENABLED=true";

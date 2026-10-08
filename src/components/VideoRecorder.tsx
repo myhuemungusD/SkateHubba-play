@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ActionDock } from "./ActionDock";
 import { Btn } from "./ui/Btn";
 import { FilmIcon, CameraIcon, RecordIcon, StopIcon, FisheyeIcon, FlipCameraIcon } from "./icons";
 import { FisheyeRenderer } from "./FisheyeRenderer";
@@ -38,6 +39,69 @@ async function queryMediaPermission(name: MediaPermissionName): Promise<Permissi
   }
 }
 
+function RecorderControls({
+  state,
+  cameraError,
+  isNative,
+  label,
+  doneLabel,
+  seconds,
+  secondsLeft,
+  maxDurationSeconds,
+  onOpen,
+  onStart,
+  onStop,
+  onRetry,
+}: {
+  state: string;
+  cameraError: string | null;
+  isNative: boolean;
+  label: string;
+  doneLabel?: string;
+  seconds: number;
+  secondsLeft: number;
+  maxDurationSeconds: number;
+  onOpen: () => void;
+  onStart: () => void;
+  onStop: () => void;
+  onRetry: () => void;
+}) {
+  return (
+    <>
+      {cameraError && doneLabel === undefined && (
+        <Btn onClick={onRetry} variant="secondary">
+          Retry Camera
+        </Btn>
+      )}
+      {state === "idle" && !cameraError && (
+        <Btn onClick={onOpen} variant="secondary">
+          <CameraIcon size={16} className="inline -mt-0.5" /> {isNative ? "Record Video" : "Open Camera"}
+        </Btn>
+      )}
+      {state === "preview" && (
+        <Btn onClick={onStart} variant="danger" className="text-2xl py-5">
+          <RecordIcon size={16} className="inline -mt-0.5" /> Record — {label}
+        </Btn>
+      )}
+      {state === "recording" && (
+        <>
+          <Btn onClick={onStop} variant="danger" className="text-2xl py-5 animate-rec-ring">
+            <StopIcon size={16} className="inline -mt-0.5" /> Stop Recording
+          </Btn>
+          {seconds >= maxDurationSeconds - AUTO_STOP_WARNING_SECONDS && secondsLeft > 0 && (
+            <span className="font-body text-xs text-brand-red animate-pulse">Auto-stop in {secondsLeft}s</span>
+          )}
+        </>
+      )}
+      {state === "done" && doneLabel && (
+        <div className="flex items-center gap-2 px-5 py-3 rounded-xl bg-[rgba(0,230,118,0.08)] border border-brand-green">
+          <span className="text-brand-green font-display text-lg tracking-wider">✓ {doneLabel}</span>
+        </div>
+      )}
+    </>
+  );
+}
+
 /** True only when camera AND mic are already granted, i.e. no prompt will show. */
 async function hasGrantedCameraAndMic(): Promise<boolean> {
   const [camera, microphone] = await Promise.all([queryMediaPermission("camera"), queryMediaPermission("microphone")]);
@@ -49,10 +113,18 @@ export function VideoRecorder({
   label,
   doneLabel = "Recorded",
   maxDurationSeconds = MAX_VIDEO_DURATION_SECONDS,
+  pinControls = false,
 }: {
   onRecorded: (blob: Blob | null) => void;
   label: string;
   doneLabel?: string;
+  /**
+   * Pin Open Camera / Record / Stop to the bottom of the viewport. Game turns
+   * pass this so a 9:16 preview can't hide the button that starts the take.
+   * The "recorded" confirmation stays under the video; the land/miss choice
+   * is pinned by the decision panel instead.
+   */
+  pinControls?: boolean;
   /**
    * Hard auto-stop for the take, in seconds. Defaults to the game-turn cap;
    * standalone user-clip capture passes `USER_CLIP_MAX_DURATION_SECONDS`.
@@ -133,7 +205,8 @@ export function VideoRecorder({
     <div className="w-full flex flex-col items-center gap-4">
       {/* Viewfinder */}
       <div
-        className={`w-full max-w-[360px] aspect-[9/16] bg-black rounded-2xl overflow-hidden relative transition-all duration-300
+        data-testid="trick-viewfinder"
+        className={`trick-frame bg-black rounded-2xl overflow-hidden relative transition-all duration-300
           ${state === "recording" ? "border-2 border-brand-red shadow-[0_0_30px_rgba(255,61,0,0.15)]" : "border border-border"}`}
       >
         {state === "done" && blobUrl ? (
@@ -248,45 +321,55 @@ export function VideoRecorder({
         )}
       </div>
 
-      {/* Camera error */}
+      {/* Camera error copy stays with the viewfinder. The retry is a control. */}
       {cameraError && (
         <div className="w-full max-w-[360px] p-3 rounded-xl bg-[rgba(255,61,0,0.08)] border border-brand-red text-center">
           <p className="font-body text-sm text-brand-red mb-2">{cameraError}</p>
           {/* Small print, but the part that makes a bug report actionable: the
               friendly copy above reads the same whether the browser refused the
               permission or a policy blocked the API outright. */}
-          {cameraErrorDetail && <p className="font-body text-[11px] text-subtle mb-2">{cameraErrorDetail}</p>}
-          <Btn onClick={openCamera} variant="secondary">
-            Retry Camera
-          </Btn>
+          {cameraErrorDetail && <p className="font-body text-xs text-bright mb-2">{cameraErrorDetail}</p>}
+          {!pinControls && (
+            <Btn onClick={openCamera} variant="secondary">
+              Retry Camera
+            </Btn>
+          )}
         </div>
       )}
 
-      {/* Controls */}
-      {state === "idle" && !cameraError && (
-        <Btn onClick={isNative ? startNativeRec : openCamera} variant="secondary">
-          <CameraIcon size={16} className="inline -mt-0.5" /> {isNative ? "Record Video" : "Open Camera"}
-        </Btn>
-      )}
-      {state === "preview" && (
-        <Btn onClick={startRec} variant="danger" className="text-2xl py-5">
-          <RecordIcon size={16} className="inline -mt-0.5" /> Record — {label}
-        </Btn>
-      )}
-      {state === "recording" && (
-        <>
-          <Btn onClick={isNative ? stopNativeRec : stopRec} variant="danger" className="text-2xl py-5 animate-rec-ring">
-            <StopIcon size={16} className="inline -mt-0.5" /> Stop Recording
-          </Btn>
-          {seconds >= maxDurationSeconds - AUTO_STOP_WARNING_SECONDS && secondsLeft > 0 && (
-            <span className="font-body text-xs text-brand-red animate-pulse">Auto-stop in {secondsLeft}s</span>
-          )}
-        </>
-      )}
-      {state === "done" && (
-        <div className="flex items-center gap-2 px-5 py-3 rounded-xl bg-[rgba(0,230,118,0.08)] border border-brand-green">
-          <span className="text-brand-green font-display text-lg tracking-wider">✓ {doneLabel}</span>
-        </div>
+      {/* Controls. On a game turn these are pinned so the take can be started
+          without scrolling past the preview. */}
+      {pinControls && state !== "done" ? (
+        <ActionDock testId="recorder-actions">
+          <RecorderControls
+            state={state}
+            cameraError={cameraError}
+            isNative={isNative}
+            label={label}
+            seconds={seconds}
+            secondsLeft={secondsLeft}
+            maxDurationSeconds={maxDurationSeconds}
+            onOpen={isNative ? startNativeRec : openCamera}
+            onStart={startRec}
+            onStop={isNative ? stopNativeRec : stopRec}
+            onRetry={openCamera}
+          />
+        </ActionDock>
+      ) : (
+        <RecorderControls
+          state={state}
+          cameraError={cameraError}
+          isNative={isNative}
+          label={label}
+          seconds={seconds}
+          secondsLeft={secondsLeft}
+          maxDurationSeconds={maxDurationSeconds}
+          onOpen={isNative ? startNativeRec : openCamera}
+          onStart={startRec}
+          onStop={isNative ? stopNativeRec : stopRec}
+          onRetry={openCamera}
+          doneLabel={doneLabel}
+        />
       )}
     </div>
   );

@@ -74,7 +74,7 @@ export function PlayerDirectory({ players, loading, canChallenge, onViewPlayer, 
             <button
               type="button"
               onClick={() => onViewPlayer?.(p.uid)}
-              className="flex flex-1 items-center gap-3 min-w-0 text-left cursor-pointer hover:opacity-80 transition-opacity focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              className="flex flex-1 min-h-11 items-center gap-3 min-w-0 text-left cursor-pointer hover:opacity-80 transition-opacity focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
               aria-label={`View @${p.username}'s profile`}
             >
               <div className="w-10 h-10 rounded-full bg-surface-alt border border-white/[0.06] flex items-center justify-center shrink-0">
@@ -86,7 +86,7 @@ export function PlayerDirectory({ players, loading, canChallenge, onViewPlayer, 
                   isVerifiedPro={(p as UserProfile).isVerifiedPro}
                   className="font-display text-base text-white block leading-none truncate"
                 />
-                <span className="font-body text-[11px] text-muted block mt-1.5 truncate">
+                <span className="font-body text-xs text-muted block mt-1.5 truncate">
                   {p.stance}
                   {` · ${gamesLabel(p)}`}
                 </span>

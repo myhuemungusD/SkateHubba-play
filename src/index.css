@@ -161,8 +161,32 @@
 @layer components {
   .touch-target {
     min-height: 2.75rem;
+    min-width: 2.75rem;
     padding-left: 0.75rem;
     padding-right: 0.75rem;
+  }
+
+  /* 9:16 clip capped so the land/miss (or record) bar can stay on screen.
+     Width tracks the height cap so the frame doesn't stretch. */
+  .trick-frame {
+    width: min(100%, 360px, calc(55dvh * 9 / 16));
+    max-height: 55dvh;
+    aspect-ratio: 9 / 16;
+    margin-inline: auto;
+  }
+
+  /* Turn-sending actions (record, landed/missed, roll). Fixed, not sticky:
+     sticky cannot pull a control up into view when it starts below the fold. */
+  .action-dock {
+    position: fixed;
+    z-index: 30;
+    inset-inline: 0;
+    bottom: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(10, 10, 10, 0.95);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    padding: 0.75rem 1.25rem max(env(safe-area-inset-bottom), 0.75rem);
   }
 }
 
@@ -292,13 +316,13 @@
 }
 
 /* ── Scale-in for modals / cards ─────────────────────── */
+/* Transform only. An opacity:0 start made /auth report no Largest Contentful
+   Paint — Chrome never counts a fully transparent node as painted. */
 @keyframes scale-in {
   from {
-    opacity: 0;
     transform: scale(0.96) translateY(8px);
   }
   to {
-    opacity: 1;
     transform: scale(1) translateY(0);
   }
 }
@@ -568,8 +592,36 @@
    already includes the safe-area inset) while it is on screen, so the end of
    every page — e.g. the "Create Account" button on /auth — can always be
    scrolled clear of the fixed banner instead of hiding underneath it. */
+/* Focused fields sit above the keyboard. visualViewport publishes the overlap
+   as --keyboard-inset (see KeyboardInset); 45dvh of scroll-margin covers
+   browsers that don't resize the layout viewport (mobile Safari). */
+input,
+textarea,
+select {
+  scroll-margin-top: 6rem;
+  scroll-margin-bottom: 45dvh;
+}
+
+body {
+  padding-bottom: var(--keyboard-inset, 0px);
+}
+
+html.consent-banner-open {
+  /* scrollIntoView (and the browser's "focused field" scroll) honor this, so
+     a tap on Sign in or a date field lands above the fixed banner. */
+  scroll-padding-bottom: var(--consent-banner-space, calc(5rem + env(safe-area-inset-bottom)));
+}
+
 html.consent-banner-open body {
-  padding-bottom: var(--consent-banner-space, calc(5rem + env(safe-area-inset-bottom)));
+  padding-bottom: calc(
+    var(--consent-banner-space, calc(5rem + env(safe-area-inset-bottom))) + var(--keyboard-inset, 0px)
+  );
+}
+
+/* While the lobby tour card is up, leave room to scroll the finished-games
+   row clear of the bubble (the bubble is fixed above the bottom nav). */
+html.tour-open .lobby-root {
+  padding-bottom: calc(20rem + env(safe-area-inset-bottom));
 }
 
 /* ── Reduced motion ────────────────────────────────── */

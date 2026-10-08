@@ -37,7 +37,7 @@ export function MatcherTrickViewer({
           playsInline
           preload="metadata"
           aria-label={`Video of ${game.currentTrickName || "trick"} set by ${setterUsername}`}
-          className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
+          className="trick-frame rounded-2xl bg-black object-cover border border-border"
         />
       ) : (
         <p className="font-body text-sm text-subtle text-center py-4">No video recorded — just match the trick!</p>

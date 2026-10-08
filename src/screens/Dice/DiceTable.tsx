@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
+import { ActionDock } from "../../components/ActionDock";
 import { Btn } from "../../components/ui/Btn";
 import { Die } from "../../components/dice/Die";
 import { useAuthContext } from "../../context/AuthContext";
@@ -56,7 +57,11 @@ export function DiceTable() {
     return (
       <div className="px-5 pt-8">
         <p className="font-body text-sm text-muted">That match is gone.</p>
-        <button type="button" onClick={() => navigate("/dice")} className="mt-4 font-body text-sm text-brand-orange">
+        <button
+          type="button"
+          onClick={() => navigate("/dice")}
+          className="mt-4 inline-flex min-h-11 items-center font-body text-sm text-brand-orange"
+        >
           Back to Roll Dice
         </button>
       </div>
@@ -73,8 +78,12 @@ export function DiceTable() {
   const scoreRight = game.roundsWon[game.player2Uid] ?? 0;
 
   return (
-    <div className="min-h-dvh bg-background px-5 pt-8 pb-24 max-w-[430px] mx-auto">
-      <button type="button" onClick={() => navigate("/dice")} className="font-body text-sm text-muted">
+    <div className="mx-auto min-h-dvh max-w-[430px] bg-background px-5 pb-[calc(14rem+env(safe-area-inset-bottom))] pt-[max(env(safe-area-inset-top),2rem)]">
+      <button
+        type="button"
+        onClick={() => navigate("/dice")}
+        className="inline-flex min-h-11 items-center font-body text-sm text-bright"
+      >
         Back
       </button>
       <h1 className="mt-4 font-display text-3xl tracking-wider text-white">Roll Dice</h1>
@@ -95,47 +104,47 @@ export function DiceTable() {
           {error}
         </p>
       ) : null}
-      {mine ? (
-        <div className="mt-8">
-          <Btn onClick={() => void run(() => rollDice(game.id), true)} disabled={busy}>
-            ROLL
-          </Btn>
-        </div>
-      ) : null}
       {game.status === "active" && !mine ? (
         <p className="mt-8 text-center font-body text-sm text-muted">Waiting on @{name || "them"}.</p>
       ) : null}
-      {canDecline ? (
-        <button
-          type="button"
-          className="mt-4 w-full font-body text-sm text-muted"
-          onClick={() => void run(() => declineDice(game.id), false)}
-        >
-          Decline
-        </button>
-      ) : null}
-      {game.status === "active" ? (
-        <button
-          type="button"
-          className="mt-3 w-full font-body text-sm text-muted"
-          onClick={() => void run(() => quitDice(game.id), false)}
-        >
-          Leave the match
-        </button>
-      ) : (
-        <button
-          type="button"
-          className="mt-6 w-full rounded-2xl border border-white/[0.08] py-3 font-display tracking-wider text-white"
-          onClick={() =>
-            void run(async () => {
-              const next = await createDiceGame(opponentUid(game.player1Uid, game.player2Uid, uid));
-              navigate(`/dice/${next.gameId}`);
-            }, false)
-          }
-        >
-          Run it back
-        </button>
-      )}
+      <ActionDock testId="dice-actions">
+        {mine ? (
+          <Btn onClick={() => void run(() => rollDice(game.id), true)} disabled={busy}>
+            ROLL
+          </Btn>
+        ) : null}
+        {canDecline ? (
+          <button
+            type="button"
+            className="mt-2 inline-flex min-h-11 w-full items-center justify-center font-body text-sm text-bright"
+            onClick={() => void run(() => declineDice(game.id), false)}
+          >
+            Decline
+          </button>
+        ) : null}
+        {game.status === "active" ? (
+          <button
+            type="button"
+            className="mt-1 inline-flex min-h-11 w-full items-center justify-center font-body text-sm text-bright"
+            onClick={() => void run(() => quitDice(game.id), false)}
+          >
+            Leave the match
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-white/20 py-3 font-display tracking-wider text-white"
+            onClick={() =>
+              void run(async () => {
+                const next = await createDiceGame(opponentUid(game.player1Uid, game.player2Uid, uid));
+                navigate(`/dice/${next.gameId}`);
+              }, false)
+            }
+          >
+            Run it back
+          </button>
+        )}
+      </ActionDock>
     </div>
   );
 }
