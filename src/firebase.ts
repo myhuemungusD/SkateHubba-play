@@ -1,5 +1,5 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
-import { getAuth, connectAuthEmulator, type Auth } from "firebase/auth";
+import { browserLocalPersistence, connectAuthEmulator, getAuth, initializeAuth, type Auth } from "firebase/auth";
 import {
   connectFirestoreEmulator,
   initializeFirestore,
@@ -121,7 +121,11 @@ if (env) {
     }
   }
 
-  auth = getAuth(app);
+  // getAuth() opens IndexedDB. On iOS that open can sit forever (same
+  // WKWebView deadlock as the Firestore persistent cache), which keeps the
+  // shell on the boot spinner. localStorage persistence starts immediately.
+  auth =
+    Capacitor.getPlatform() === "ios" ? initializeAuth(app, { persistence: browserLocalPersistence }) : getAuth(app);
   storage = getStorage(app);
 
   // Firebase App Check — blocks non-app traffic (bots, scrapers, abuse).

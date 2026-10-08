@@ -5,6 +5,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // pattern below type-checks under vitest 4's stricter `vi.fn()` signature.
 const mockInitializeApp = vi.fn((..._: unknown[]) => ({ name: "test-app" }));
 const mockGetAuth = vi.fn((..._: unknown[]) => ({ name: "test-auth" }));
+const mockInitializeAuth = vi.fn((..._: unknown[]) => ({ name: "test-auth-local" }));
+const mockBrowserLocalPersistence = { kind: "browser-local" };
 const mockGetStorage = vi.fn((..._: unknown[]) => ({ name: "test-storage" }));
 const mockInitializeFirestore = vi.fn((..._: unknown[]) => ({ name: "test-db" }));
 const mockConnectAuthEmulator = vi.fn((..._: unknown[]) => undefined);
@@ -37,6 +39,8 @@ vi.mock("firebase/app", () => ({
 
 vi.mock("firebase/auth", () => ({
   getAuth: (...args: unknown[]) => mockGetAuth(...args),
+  initializeAuth: (...args: unknown[]) => mockInitializeAuth(...args),
+  browserLocalPersistence: mockBrowserLocalPersistence,
   connectAuthEmulator: (...args: unknown[]) => mockConnectAuthEmulator(...args),
 }));
 
@@ -205,6 +209,10 @@ describe("firebase module", () => {
     expect(mockMemoryLocalCache).toHaveBeenCalledTimes(1);
     expect(mockPersistentLocalCache).not.toHaveBeenCalled();
     expect(mockPersistentMultipleTabManager).not.toHaveBeenCalled();
+    expect(mockInitializeAuth).toHaveBeenCalledWith(expect.anything(), {
+      persistence: mockBrowserLocalPersistence,
+    });
+    expect(mockGetAuth).not.toHaveBeenCalled();
   });
 
   it("keeps the multi-tab persistent cache on Android", async () => {

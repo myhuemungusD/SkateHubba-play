@@ -54,10 +54,11 @@ There is no Podfile. `npx cap sync ios` refreshes the Capacitor package only.
 On a device with the plist installed, launch should not crash and App Check
 should attest (no `App Check token` errors in the console).
 
-The iPhone shell uses Firestore's in-memory cache. The persistent cache
-deadlocks WKWebView during startup and leaves the app on the boot spinner.
-Game data still syncs while the app is open. It does not stay on disk across
-a restart. Android and the website keep the persistent cache.
+The iPhone shell keeps Firestore in memory and keeps the Firebase Auth
+session in local storage. The IndexedDB-backed versions deadlock WKWebView
+during startup and leave the app on the boot spinner. Game data still syncs
+while the app is open. A force-quit drops the Firestore cache; the auth
+session stays. Android and the website keep the IndexedDB versions.
 
 ## 3. Push tokens
 
