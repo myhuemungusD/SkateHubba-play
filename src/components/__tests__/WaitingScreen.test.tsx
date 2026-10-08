@@ -6,7 +6,7 @@ import type { GameDoc } from "../../services/games";
 import type { UserProfile } from "../../services/users";
 
 vi.mock("../../utils/helpers", () => ({
-  isFirebaseStorageUrl: (url: string) => url?.startsWith("https://firebasestorage.googleapis.com"),
+  isFirebaseStorageUrl: (url: string) => url?.startsWith("https://firebasestorage.googleapis.com/"),
   LETTERS: ["S", "K", "A", "T", "E"],
 }));
 

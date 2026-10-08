@@ -21,6 +21,21 @@ function isValidPhotoUrl(url: string): boolean {
 }
 
 /**
+ * Sink-side guard for the photo preview `<img src>`. `addPhotoUrl` already
+ * rejects non-https input, but the preview renders straight from component
+ * state, so the sink re-checks rather than trusting every future writer of
+ * `photoUrls`. Only an https URL, a local `blob:` object URL, or an inline
+ * raster `data:image/...` URL passes; anything else (javascript:,
+ * data:text/html, SVG data URLs, …) yields `undefined`, so the `<img>`
+ * renders with no `src` and never loads it.
+ */
+const SAFE_PREVIEW_SRC = /^(?:https:\/\/|blob:|data:image\/(?:png|jpeg|gif|webp|avif)[;,])/i;
+export function safePhotoPreviewSrc(url: string): string | undefined {
+  if (!SAFE_PREVIEW_SRC.test(url)) return undefined;
+  return url;
+}
+
+/**
  * Parse a coordinate input string into a number, or NaN when the parse
  * fails (empty, "-", etc.). NaN is intentional — callers keep it in
  * state so the submit guard's Number.isFinite check rejects empty input
@@ -398,7 +413,11 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                 <div className="flex gap-2 overflow-x-auto pb-2">
                   {photoUrls.map((url, i) => (
                     <div key={i} className="relative flex-shrink-0">
-                      <img src={url} alt={`Spot photo ${i + 1}`} className="w-20 h-20 object-cover rounded-lg" />
+                      <img
+                        src={safePhotoPreviewSrc(url)}
+                        alt={`Spot photo ${i + 1}`}
+                        className="w-20 h-20 object-cover rounded-lg"
+                      />
                       <button
                         type="button"
                         onClick={() => removePhoto(i)}
