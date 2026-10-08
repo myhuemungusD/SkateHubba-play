@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, runTransaction, serverTimestamp, Timestamp } from "firebase/firestore";
+import { doc, getDoc, runTransaction, serverTimestamp, Timestamp, writeBatch } from "firebase/firestore";
 import { requireAuth, requireDb } from "../firebase";
 import {
   normalizeTrickCategory,
@@ -8,8 +8,7 @@ import {
 } from "../constants/trickCategories";
 import { addBreadcrumb } from "../lib/sentry";
 import { withRetry } from "../utils/retry";
-import { parseFirebaseError } from "../utils/helpers";
-import { logger, metrics } from "./logger";
+import { metrics } from "./logger";
 import { writeNotification } from "./notifications";
 import {
   toGameDoc,
@@ -160,19 +159,24 @@ export async function createGame(
   // Generate the game ID client-side so a retry after a perceived network
   // failure re-sends the exact same write (idempotent at a fixed ID) instead
   // of creating a second game. addDoc would be non-deterministic here.
+  //
+  // The game and the challenger's 30s cooldown anchor
+  // (users/{uid}.lastGameCreatedAt = serverTimestamp()) commit in ONE batch.
+  // The /games create rule checks the anchor with getAfter() and denies a
+  // create that doesn't stamp it in the same write, so the cooldown can't be
+  // skipped by never sending the anchor update.
+  const db = requireDb();
   const newGameId = doc(gamesRef()).id;
-  await withRetry(() => setDoc(doc(gamesRef(), newGameId), gameData));
+  const gameRef = doc(gamesRef(), newGameId);
+  const challengerRef = doc(db, "users", challengerUid);
+  await withRetry(() => {
+    const batch = writeBatch(db);
+    batch.set(gameRef, gameData);
+    batch.set(challengerRef, { lastGameCreatedAt: serverTimestamp() }, { merge: true });
+    return batch.commit();
+  });
   recordGameCreation();
   metrics.gameCreated(newGameId, challengerUid);
-  // Update rate-limit timestamp on user profile (best effort — game is already created).
-  setDoc(doc(requireDb(), "users", challengerUid), { lastGameCreatedAt: serverTimestamp() }, { merge: true }).catch(
-    (err) => {
-      logger.warn("rate_limit_timestamp_write_failed", {
-        uid: challengerUid,
-        error: parseFirebaseError(err),
-      });
-    },
-  );
   // Notify opponent about the new challenge.
   //
   // AWAITED (and the push dispatch with it). It cannot ride the game write's
