@@ -41,7 +41,7 @@ const analyticsMock = vi.mocked(analytics);
 const trackEventMock = vi.mocked(trackEvent);
 
 vi.mock("../../utils/helpers", () => ({
-  isFirebaseStorageUrl: (value: string) => value?.startsWith("https://firebasestorage.googleapis.com"),
+  isFirebaseStorageUrl: (value: string) => value?.startsWith("https://firebasestorage.googleapis.com/"),
   LETTERS: ["S", "K", "A", "T", "E"],
 }));
 

@@ -67,6 +67,53 @@ describe("games service", () => {
     });
   });
 
+  describe("subscribeToGame permission-denied", () => {
+    it("hands an access denial to onAccessDenied instead of retaining a dead listener", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      mockOnSnapshot.mockImplementation((_ref: unknown, _onNext: unknown, onError: Function) => {
+        onError(Object.assign(new Error("Missing or insufficient permissions."), { code: "permission-denied" }));
+        return vi.fn();
+      });
+
+      const onUpdate = vi.fn();
+      const onAccessDenied = vi.fn();
+      subscribeToGame("g1", onUpdate, onAccessDenied);
+
+      expect(onAccessDenied).toHaveBeenCalledTimes(1);
+      // Denied is not "deleted": null stays reserved for a missing document.
+      expect(onUpdate).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith("[WARN]", "game_access_denied", { gameId: "g1" });
+      warnSpy.mockRestore();
+    });
+
+    it("tolerates a permission-denied error when the caller passes no onAccessDenied", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      mockOnSnapshot.mockImplementation((_ref: unknown, _onNext: unknown, onError: Function) => {
+        onError(Object.assign(new Error("denied"), { code: "permission-denied" }));
+        return vi.fn();
+      });
+
+      const onUpdate = vi.fn();
+      expect(() => subscribeToGame("g1", onUpdate)).not.toThrow();
+      expect(onUpdate).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
+    it("does not treat other listener errors as an access denial", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      mockOnSnapshot.mockImplementation((_ref: unknown, _onNext: unknown, onError: Function) => {
+        onError(Object.assign(new Error("offline"), { code: "unavailable" }));
+        return vi.fn();
+      });
+
+      const onAccessDenied = vi.fn();
+      subscribeToGame("g1", vi.fn(), onAccessDenied);
+
+      expect(onAccessDenied).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+  });
+
   describe("subscribeToMyGames", () => {
     it("sets up three snapshot listeners (p1, p2, and judge queries)", () => {
       mockOnSnapshot.mockReturnValue(vi.fn());

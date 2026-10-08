@@ -6,7 +6,8 @@ import { Component, type ReactNode } from "react";
 import { useGameContext } from "../GameContext";
 import { AuthProvider } from "../AuthContext";
 import { NavigationProvider } from "../NavigationContext";
-import { NotificationProvider } from "../NotificationContext";
+import { NotificationProvider, useNotifications } from "../NotificationContext";
+import { useNavigationContext } from "../NavigationContext";
 import type { GameDoc } from "../../services/games";
 
 const mockUseAuth = vi.fn();
@@ -32,7 +33,8 @@ vi.mock("../../services/games", () => ({
   forfeitExpiredTurn: (gameId: string, callerUid: string | null) => mockForfeitExpiredTurn(gameId, callerUid),
   subscribeToMyGames: (uid: string, cb: (games: GameDoc[]) => void, limit?: number) =>
     mockSubscribeToMyGames(uid, cb, limit),
-  subscribeToGame: (gameId: string, cb: (g: GameDoc | null) => void) => mockSubscribeToGame(gameId, cb),
+  subscribeToGame: (gameId: string, cb: (g: GameDoc | null) => void, onAccessDenied?: () => void) =>
+    mockSubscribeToGame(gameId, cb, onAccessDenied),
 }));
 vi.mock("../../services/analytics", () => ({
   analytics: { signIn: vi.fn(), gameCreated: vi.fn() },
@@ -123,32 +125,26 @@ describe("useGameContext", () => {
     expect(getByTestId("games").textContent).toBe("0");
   });
 
-  it("clears an open game when its document is authoritatively deleted", async () => {
+  /** Signed-in u1 + a provider tree around a consumer that can open `game`. */
+  async function renderOpenableGame(game: GameDoc) {
     mockUseAuth.mockReturnValue({
       loading: false,
       user: { uid: "u1", emailVerified: true },
       profile: { uid: "u1", username: "sk8r" },
       refreshProfile: vi.fn(),
     });
-    let gameUpdate: ((game: GameDoc | null) => void) | undefined;
-    mockSubscribeToGame.mockImplementation((_id: string, cb: (game: GameDoc | null) => void) => {
-      gameUpdate = cb;
-      return vi.fn();
-    });
-    const game = {
-      id: "deleted-game",
-      status: "active",
-      player1Uid: "u1",
-      player2Uid: "u2",
-      player1Username: "sk8r",
-      player2Username: "rival",
-    } as GameDoc;
 
     function Consumer() {
       const ctx = useGameContext();
+      const { screen: current } = useNavigationContext();
+      const { notifications } = useNotifications();
       return (
         <>
           <span data-testid="active-game">{ctx.activeGame?.id ?? "none"}</span>
+          <span data-testid="screen">{current}</span>
+          <span data-testid="toast">
+            {notifications[0] ? `${notifications[0].type}: ${notifications[0].title}` : ""}
+          </span>
           <button onClick={() => ctx.openGame(game)}>Open</button>
         </>
       );
@@ -168,11 +164,54 @@ describe("useGameContext", () => {
         </AuthProvider>
       </MemoryRouter>,
     );
-
     await userEvent.click(screen.getByText("Open"));
-    expect(screen.getByTestId("active-game")).toHaveTextContent("deleted-game");
+    expect(screen.getByTestId("active-game")).toHaveTextContent(game.id);
+  }
+
+  it("clears an open game when its document is authoritatively deleted", async () => {
+    let gameUpdate: ((game: GameDoc | null) => void) | undefined;
+    mockSubscribeToGame.mockImplementation((_id: string, cb: (game: GameDoc | null) => void) => {
+      gameUpdate = cb;
+      return vi.fn();
+    });
+
+    await renderOpenableGame({
+      id: "deleted-game",
+      status: "active",
+      player1Uid: "u1",
+      player2Uid: "u2",
+      player1Username: "sk8r",
+      player2Username: "rival",
+    } as GameDoc);
+
     act(() => gameUpdate?.(null));
     expect(screen.getByTestId("active-game")).toHaveTextContent("none");
+  });
+
+  it("sends the user back to the lobby with an error toast when the game read is denied", async () => {
+    let denyAccess: (() => void) | undefined;
+    mockSubscribeToGame.mockImplementation((_id: string, _cb: unknown, onAccessDenied?: () => void) => {
+      denyAccess = onAccessDenied;
+      return vi.fn();
+    });
+
+    await renderOpenableGame({
+      id: "forbidden-game",
+      status: "active",
+      player1Uid: "u2",
+      player2Uid: "u3",
+      player1Username: "rival",
+      player2Username: "other",
+    } as GameDoc);
+
+    expect(screen.getByTestId("screen")).toHaveTextContent("game");
+    expect(denyAccess).toBeTypeOf("function");
+
+    act(() => denyAccess?.());
+
+    expect(screen.getByTestId("active-game")).toHaveTextContent("none");
+    expect(screen.getByTestId("screen")).toHaveTextContent("lobby");
+    expect(screen.getByTestId("toast")).toHaveTextContent("error: You can't open that game");
   });
 });
 
