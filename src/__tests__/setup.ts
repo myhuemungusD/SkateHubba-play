@@ -1,4 +1,48 @@
 import "@testing-library/jest-dom/vitest";
+import { Blob as NodeBlob } from "node:buffer";
+import { createRequire } from "node:module";
+
+// jsdom 30.1 moved a wrapper's impl object from an own `Symbol(impl)`
+// property to a private field (and renamed its byte store `_buffer` →
+// `_bytes`). Vitest 4's jsdom compat `URL.createObjectURL` still reads
+// `blob[Symbol(impl)]._buffer`, so every createObjectURL on a jsdom Blob threw
+// "Cannot read properties of undefined (reading '_buffer')" — which is what
+// broke the recorder, avatar, clip-upload and gameplay suites on jsdom 30.
+// Route jsdom Blobs through jsdom's own `implForWrapper` instead, which is the
+// same fix Vitest 5 ships. Self-disabling: it only installs when the stock
+// shim actually fails, so it is inert on older jsdom and can be deleted once
+// the repo is on Vitest 5.
+{
+  const probeUrl = (() => {
+    try {
+      return URL.createObjectURL(new Blob([]));
+    } catch {
+      return null;
+    }
+  })();
+  if (probeUrl !== null) {
+    URL.revokeObjectURL(probeUrl);
+  } else {
+    const requireFromHere = createRequire(import.meta.url);
+    const { implForWrapper } = requireFromHere("jsdom/lib/generated/idl/utils.js") as {
+      implForWrapper: (wrapper: unknown) => { _bytes?: Uint8Array } | null;
+    };
+    // Vitest's compat class extends Node's URL; its parent holds the native
+    // createObjectURL that accepts a Node Blob.
+    const NodeURL = Object.getPrototypeOf(URL) as typeof URL;
+    const compatCreateObjectURL = URL.createObjectURL.bind(URL);
+    URL.createObjectURL = (obj: Blob | MediaSource): string => {
+      if (obj instanceof Blob) {
+        const bytes = implForWrapper(obj)?._bytes;
+        if (bytes) {
+          const nodeBlob = new NodeBlob([new Uint8Array(bytes)], { type: obj.type });
+          return NodeURL.createObjectURL(nodeBlob as unknown as Blob);
+        }
+      }
+      return compatCreateObjectURL(obj);
+    };
+  }
+}
 
 // Mock Firebase Messaging — jsdom lacks Service Worker and Push APIs required
 // by the Firebase Messaging SDK, which throws "unsupported-browser" on init.
