@@ -5,14 +5,17 @@ import {
   __resetLandingBootForTest,
   afterLandingPainted,
   clearBootAuthMode,
+  hasBootAppleSignIn,
   hasBootGoogleSignIn,
   isLandingBooted,
   peekBootAuthMode,
+  requestBootAppleSignIn,
   requestBootGoogleSignIn,
   runWhenIdle,
   setBootAuthMode,
   setLandingBooted,
   shouldBootLanding,
+  takeBootAppleSignIn,
   takeBootGoogleSignIn,
   writeAuthHint,
 } from "../landingBoot";
@@ -88,6 +91,14 @@ describe("boot state and intents", () => {
     expect(hasBootGoogleSignIn()).toBe(true);
     expect(takeBootGoogleSignIn()).toBe(true);
     expect(takeBootGoogleSignIn()).toBe(false);
+  });
+
+  it("hands out an Apple sign-in request exactly once", () => {
+    expect(takeBootAppleSignIn()).toBe(false);
+    requestBootAppleSignIn();
+    expect(hasBootAppleSignIn()).toBe(true);
+    expect(takeBootAppleSignIn()).toBe(true);
+    expect(hasBootAppleSignIn()).toBe(false);
   });
 });
 

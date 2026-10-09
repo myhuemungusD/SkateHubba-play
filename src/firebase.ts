@@ -1,5 +1,5 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
-import { getAuth, connectAuthEmulator, type Auth } from "firebase/auth";
+import { browserLocalPersistence, connectAuthEmulator, getAuth, initializeAuth, type Auth } from "firebase/auth";
 import {
   connectFirestoreEmulator,
   initializeFirestore,
@@ -83,34 +83,49 @@ if (env) {
     // ancient Android WebViews where IndexedDB is unavailable. Catching that
     // here prevents the whole app from crashing on module load (H-F13) and
     // lets us fall back to an in-memory cache.
-    try {
-      db = initializeFirestore(
-        app,
-        {
-          localCache: persistentLocalCache({
-            tabManager: persistentMultipleTabManager(),
-          }),
-        },
-        FIRESTORE_DB_NAME,
-      );
-      firestoreCacheMode = "persistent";
-    } catch (err) {
-      // Never silently swallow — always breadcrumb + log so ops can see
-      // the fallback was triggered in the field.
-      logger.warn("firestore_persistent_cache_failed", {
-        message: err instanceof Error ? err.message : String(err),
-      });
-      addBreadcrumb({
-        category: "lifecycle",
-        message: "firestore_persistent_cache_failed",
-        data: { error: String(err) },
-      });
-      db = initializeFirestore(app, { localCache: memoryLocalCache() }, FIRESTORE_DB_NAME);
+    // iOS WKWebView deadlocks inside the persistent IndexedDB cache (the
+    // multi-tab lease never settles, and a killed webview leaves the next
+    // launch waiting on it). The shell then never gets past the boot
+    // spinner. Memory cache cannot hang launch. Offline Firestore data
+    // does not survive an iOS restart; Android and the website keep the
+    // persistent multi-tab cache.
+    if (Capacitor.getPlatform() === "ios") {
       firestoreCacheMode = "memory";
+      db = initializeFirestore(app, { localCache: memoryLocalCache() }, FIRESTORE_DB_NAME);
+    } else {
+      try {
+        db = initializeFirestore(
+          app,
+          {
+            localCache: persistentLocalCache({
+              tabManager: persistentMultipleTabManager(),
+            }),
+          },
+          FIRESTORE_DB_NAME,
+        );
+        firestoreCacheMode = "persistent";
+      } catch (err) {
+        // Never silently swallow — always breadcrumb + log so ops can see
+        // the fallback was triggered in the field.
+        logger.warn("firestore_persistent_cache_failed", {
+          message: err instanceof Error ? err.message : String(err),
+        });
+        addBreadcrumb({
+          category: "lifecycle",
+          message: "firestore_persistent_cache_failed",
+          data: { error: String(err) },
+        });
+        db = initializeFirestore(app, { localCache: memoryLocalCache() }, FIRESTORE_DB_NAME);
+        firestoreCacheMode = "memory";
+      }
     }
   }
 
-  auth = getAuth(app);
+  // getAuth() opens IndexedDB. On iOS that open can sit forever (same
+  // WKWebView deadlock as the Firestore persistent cache), which keeps the
+  // shell on the boot spinner. localStorage persistence starts immediately.
+  auth =
+    Capacitor.getPlatform() === "ios" ? initializeAuth(app, { persistence: browserLocalPersistence }) : getAuth(app);
   storage = getStorage(app);
 
   // Firebase App Check — blocks non-app traffic (bots, scrapers, abuse).

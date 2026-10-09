@@ -36,18 +36,65 @@ platform :ios do
     end
   end
 
+  # One App Store Connect API key for match, TestFlight, and deliver.
+  # Accepts the .p8 text (newlines as real newlines or the two characters
+  # \n) or a base64 blob of that text. Memoized so a lane does not parse
+  # the key twice.
+  def skatehubba_asc_api_key
+    return @skatehubba_asc_api_key if @skatehubba_asc_api_key
+
+    raw = ENV["APP_STORE_CONNECT_API_KEY"].to_s
+    UI.user_error!("APP_STORE_CONNECT_API_KEY is empty") if raw.empty?
+    key = raw.gsub("\\n", "\n")
+    unless key.include?("BEGIN PRIVATE KEY")
+      require "base64"
+      key = Base64.decode64(raw)
+    end
+    UI.user_error!("APP_STORE_CONNECT_API_KEY is not a .p8 private key") unless key.include?("BEGIN PRIVATE KEY")
+    @skatehubba_asc_api_key = app_store_connect_api_key(
+      key_id: ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
+      issuer_id: ENV.fetch("APP_STORE_CONNECT_API_KEY_ISSUER_ID"),
+      key_content: key,
+      duration: 1200,
+      in_house: false,
+    )
+  end
+
+  # Marketing version stays the package.json / release-please version.
+  # The build number is a UTC timestamp so each TestFlight upload is unique
+  # without committing a bump. Info.plist stores the short version as a
+  # literal (release-please edits that literal), so both the plist and the
+  # Xcode build settings are set here.
+  def apply_store_version!
+    version = package_version
+    build_number = Time.now.utc.strftime("%Y%m%d%H%M")
+    update_info_plist(
+      xcodeproj: "ios/App/App.xcodeproj",
+      plist_path: "App/Info.plist",
+      block: proc do |plist|
+        plist["CFBundleShortVersionString"] = version
+        plist["CFBundleVersion"] = build_number
+      end,
+    )
+    [version, build_number]
+  end
+
   desc "Sync Apple signing certs + provisioning profiles via fastlane match"
   lane :certificates do
     match(
       type: "appstore",
       app_identifier: ["com.skatehubba.app"],
-      readonly: is_ci,
+      readonly: ENV["MATCH_READONLY"] != "false",
+      api_key: skatehubba_asc_api_key,
     )
   end
 
   desc "Build a signed TestFlight build from the current commit"
   lane :beta do
+    team = ENV["APPLE_TEAM_ID"].to_s
+    UI.user_error!("APPLE_TEAM_ID env var is required for manual signing") if team.empty?
     certificates
+    version, build_number = apply_store_version!
     build_app(
       # The Capacitor iOS project uses SPM (CapApp-SPM), not CocoaPods —
       # there is no .xcworkspace to build; the shared App scheme lives in
@@ -57,27 +104,24 @@ platform :ios do
       configuration: "Release",
       clean: true,
       output_directory: "ios/build",
-      export_method: "app-store",
+      export_method: "app-store-connect",
       # Release signs manually (see project.pbxproj): the team comes from the
       # environment so no developer identity is hardcoded in the repo, and the
       # profile is the match-managed App Store profile synced by :certificates.
       # NOTE: the profile name below must stay in lockstep with
       # PROVISIONING_PROFILE_SPECIFIER in ios/App/App.xcodeproj/project.pbxproj.
-      xcargs: "DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID'] || UI.user_error!('APPLE_TEAM_ID env var is required for manual signing')}",
-      export_team_id: ENV["APPLE_TEAM_ID"],
+      xcargs: "DEVELOPMENT_TEAM=#{team} CURRENT_PROJECT_VERSION=#{build_number} MARKETING_VERSION=#{version}",
+      export_team_id: team,
       export_options: {
         provisioningProfiles: {
           "com.skatehubba.app" => "match AppStore com.skatehubba.app",
         },
       },
-      # Required by App Store Connect to dedupe submissions for the same
-      # marketing version — CI increments from the package.json value.
-      include_bitcode: false,
     )
     upload_to_testflight(
       skip_waiting_for_build_processing: true,
-      changelog: "Build #{package_version} — see CHANGELOG.md for details.",
-      api_key_path: ENV["APP_STORE_CONNECT_API_KEY_PATH"],
+      changelog: "Build #{version} (#{build_number}) — see CHANGELOG.md for details.",
+      api_key: skatehubba_asc_api_key,
     )
   end
 
@@ -99,7 +143,7 @@ platform :ios do
         content_rights_contains_third_party_content: false,
       },
       precheck_include_in_app_purchases: false,
-      api_key_path: ENV["APP_STORE_CONNECT_API_KEY_PATH"],
+      api_key: skatehubba_asc_api_key,
     )
   end
 end

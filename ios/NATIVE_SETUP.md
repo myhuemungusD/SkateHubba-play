@@ -8,11 +8,11 @@ Capacitor workflow.
 
 Status of the three audit blockers:
 
-| #   | Blocker                                              | State                                                                                                                                   |
-| --- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | App-level privacy manifest (`PrivacyInfo.xcprivacy`) | **DONE** — committed at `ios/App/App/PrivacyInfo.xcprivacy` and wired into the App target's Copy Bundle Resources phase. Nothing to do. |
-| 2   | Firebase native init (`FirebaseApp.configure()`)     | **BLOCKED on secret** — needs `GoogleService-Info.plist`. See §1–§3 below.                                                              |
-| 3   | Google Sign-In URL scheme (`REVERSED_CLIENT_ID`)     | **BLOCKED on secret** — needs `GoogleService-Info.plist`. See §4 below.                                                                 |
+| #   | Blocker                                              | State                                                                                                                                                                                                                                                                                                                 |
+| --- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | App-level privacy manifest (`PrivacyInfo.xcprivacy`) | **DONE** — committed at `ios/App/App/PrivacyInfo.xcprivacy` and wired into the App target's Copy Bundle Resources phase. Nothing to do.                                                                                                                                                                               |
+| 2   | Firebase native init                                 | **Guarded in code.** `AppDelegate` calls `SkatehubbaFcm.configureIfPossible()`, which no-ops when `GoogleService-Info.plist` is absent so the simulator still launches. A store build supplies the plist via the `GOOGLE_SERVICE_INFO_PLIST_BASE64` secret. Do not add a second, unguarded `FirebaseApp.configure()`. |
+| 3   | Google Sign-In URL scheme (`REVERSED_CLIENT_ID`)     | **BLOCKED on secret** — add it as a second URL type. The `skatehubba` scheme is already in Info.plist. See §4 below.                                                                                                                                                                                                  |
 
 > **Why these are not fixed in this PR:** `GoogleService-Info.plist`
 > contains real project credentials (API key, bundle/client IDs,
@@ -40,64 +40,32 @@ Status of the three audit blockers:
 > commit it. Distribute it to teammates and CI (fastlane match / a secure
 > file) out of band.
 
-## 2. Call `FirebaseApp.configure()` in `AppDelegate.swift`
+## 2. Firebase is already configured, and it will not crash without the plist
 
-`ios/App/App/AppDelegate.swift` currently never configures Firebase. Add
-the import and configure call as the **first line** of
-`didFinishLaunchingWithOptions` (before Capacitor / plugins touch Firebase):
+`AppDelegate` calls `SkatehubbaFcm.configureIfPossible()` on launch. That
+helper lives in the local Swift package `ios/App/SkatehubbaFcm` and calls
+`FirebaseApp.configure()` only when `GoogleService-Info.plist` is in the
+bundle. The Capacitor Firebase plugins do the same. Do not add another
+`FirebaseApp.configure()` call.
 
-```swift
-import UIKit
-import Capacitor
-import FirebaseCore   // add this
+The project uses Swift Package Manager (`CapApp-SPM` plus `SkatehubbaFcm`).
+There is no Podfile. `npx cap sync ios` refreshes the Capacitor package only.
 
-@UIApplicationMain
-class AppDelegate: UIResponder, UIApplicationDelegate {
+On a device with the plist installed, launch should not crash and App Check
+should attest (no `App Check token` errors in the console).
 
-    var window: UIWindow?
+The iPhone shell keeps Firestore in memory and keeps the Firebase Auth
+session in local storage. The IndexedDB-backed versions deadlock WKWebView
+during startup and leave the app on the boot spinner. Game data still syncs
+while the app is open. A force-quit drops the Firestore cache; the auth
+session stays. Android and the website keep the IndexedDB versions.
 
-    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        FirebaseApp.configure()   // must run before any Firebase / App Check usage
-        // Override point for customization after application launch.
-        return true
-    }
+## 3. Push tokens
 
-    // ... rest of the delegate unchanged ...
-}
-```
-
-Only add the two lines marked above (`import FirebaseCore` and
-`FirebaseApp.configure()`). Leave the remaining delegate methods as-is.
-
-## 3. Confirm the Firebase iOS SDK native deps are installed
-
-> ⚠️ **Unverified CocoaPods flow.** The tracked Xcode project uses Swift
-> Package Manager (`ios/App/CapApp-SPM/Package.swift`) and has no `Podfile`.
-> The `pod install` steps below have not been confirmed against the current
-> project — resolve the SPM-vs-CocoaPods question (see `ios/README.md`) with
-> Xcode on a Mac before relying on them. If the project stays on SPM, the
-> Firebase frameworks resolve through the Swift package and there is no
-> `Podfile.lock` to check.
-
-`@capacitor-firebase/authentication` and `@capacitor-firebase/app-check`
-ship CocoaPods podspecs that pull the Firebase iOS SDK. After adding the
-plist and code:
-
-```bash
-npm ci
-npm run build
-npx cap sync ios          # regenerates Podfile + runs pod install
-cd ios/App && pod install --repo-update   # if sync didn't install pods
-```
-
-Verify:
-
-1. `ios/App/Podfile.lock` contains `FirebaseCore`, `FirebaseAuth`, and
-   `FirebaseAppCheck` (transitive via the Capacitor Firebase plugins).
-2. In Xcode, **App → Frameworks, Libraries, and Embedded Content** lists
-   the Firebase frameworks.
-3. On a device, launch does **not** crash and App Check attests
-   successfully (no `App Check token` errors in the console).
+iOS push registration returns an APNs token. `SkatehubbaFcm` exchanges it
+for an FCM token and the JavaScript stores only that FCM token. This stays
+idle until the APNs key is uploaded to Firebase. The steps are in
+[`docs/IOS_RELEASE.md`](../docs/IOS_RELEASE.md).
 
 ---
 
@@ -111,21 +79,16 @@ to the app.
 1. Open the downloaded `GoogleService-Info.plist` and copy the value of the
    `REVERSED_CLIENT_ID` key (looks like
    `com.googleusercontent.apps.1234567890-abcdef...`).
-2. Add this `CFBundleURLTypes` block to `ios/App/App/Info.plist` inside the
-   top-level `<dict>` (replace `<REVERSED_CLIENT_ID>` with the real value):
+2. Add a **second** dictionary inside the existing `CFBundleURLTypes` array
+   in `ios/App/App/Info.plist`. Do not remove the `skatehubba` scheme.
 
 ```xml
-<key>CFBundleURLTypes</key>
-<array>
-    <dict>
-        <key>CFBundleTypeRole</key>
-        <string>Editor</string>
-        <key>CFBundleURLSchemes</key>
-        <array>
-            <string><REVERSED_CLIENT_ID></string>
-        </array>
-    </dict>
-</array>
+<dict>
+    <key>CFBundleURLSchemes</key>
+    <array>
+        <string>REVERSED_CLIENT_ID</string>
+    </array>
+</dict>
 ```
 
 > The real `REVERSED_CLIENT_ID` is a secret tied to the OAuth client —
@@ -137,56 +100,17 @@ to the app.
 
 ---
 
-## 5. Publish the deep-link association files (iOS **and** Android)
+## 5. Association files
 
-The app code and the native config for universal / App Links are already in
-place:
+Both Debug and Release entitlements claim `applinks:skatehubba.com` and
+`applinks:www.skatehubba.com`. The site serves the files from
+`api/well-known/` when `APPLE_TEAM_ID` and `ANDROID_SHA256_CERT_FINGERPRINTS`
+are set on Vercel. Until then those URLs 404. The www host does not redirect
+`/.well-known`, because Apple rejects an association file that redirects.
 
-- `src/services/nativeApp.ts` → `subscribeToDeepLinks` turns an `appUrlOpen`
-  for a `skatehubba.com` https URL into an in-app path; `/game/<id>` reuses
-  the existing `OPEN_GAME_EVENT` bridge, other routes navigate.
-- `ios/App/App/AppRelease.entitlements` declares
-  `com.apple.developer.associated-domains` = `applinks:skatehubba.com`.
-- `android/app/src/main/AndroidManifest.xml` has an `android:autoVerify="true"`
-  VIEW intent-filter for `https://skatehubba.com` and `https://www.skatehubba.com`.
-
-**Both remaining steps need maintainer-only secrets, so they are NOT in the
-repo.** Until they are done, tapped links keep opening the browser.
-
-1. **Apple App Site Association** — create
-   `public/.well-known/apple-app-site-association` (no file extension, served
-   as `application/json`, no redirect) containing the real **Team ID**:
-
-   ```json
-   { "applinks": { "details": [{ "appID": "<TEAMID>.com.skatehubba.app", "paths": ["*"] }] } }
-   ```
-
-   Also enable the **Associated Domains** capability on the App ID /
-   provisioning profile in the Apple Developer portal — the entitlement alone
-   fails code signing without it.
-
-2. **Android asset links** — create `public/.well-known/assetlinks.json` with
-   the **release keystore's SHA-256 certificate fingerprint** (and Play App
-   Signing's fingerprint if enrolled, both entries):
-
-   ```json
-   [
-     {
-       "relation": ["delegate_permission/common.handle_all_urls"],
-       "target": {
-         "namespace": "android_app",
-         "package_name": "com.skatehubba.app",
-         "sha256_cert_fingerprints": ["<SHA256>"]
-       }
-     }
-   ]
-   ```
-
-   Verify afterwards with
-   `adb shell pm verify-app-links --re-verify com.skatehubba.app`.
-
-Check `vercel.json` serves `/.well-known/*` untouched by the SPA rewrite
-before shipping either file.
+Enable Associated Domains on the App ID or the signed profile will not
+include the entitlement. The full order is in
+[`docs/IOS_RELEASE.md`](../docs/IOS_RELEASE.md).
 
 ---
 

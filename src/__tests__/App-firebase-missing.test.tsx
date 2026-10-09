@@ -17,6 +17,7 @@ vi.mock("../services/auth", () => ({
   resetPassword: vi.fn(),
   resendVerification: vi.fn(),
   signInWithGoogle: vi.fn(),
+  signInWithApple: vi.fn(),
   resolveGoogleRedirect: vi.fn().mockResolvedValue(null),
 }));
 

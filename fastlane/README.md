@@ -19,18 +19,19 @@ Fastlane reads every credential from environment variables. In CI these
 come from GitHub Actions secrets; locally export them in your shell or use
 `.env` with `direnv` (never commit the file).
 
-| Variable                              | Purpose                                           | Where to get it                                             |
-| ------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------- |
-| `APPLE_ID`                            | Apple Developer account email                     | Your account                                                |
-| `APPLE_TEAM_ID`                       | 10-char Apple team identifier                     | Apple Developer → Membership                                |
-| `APP_STORE_CONNECT_API_KEY_ID`        | App Store Connect API key id                      | App Store Connect → Users & Access → Integrations           |
-| `APP_STORE_CONNECT_API_KEY_ISSUER_ID` | Issuer UUID                                       | Same page                                                   |
-| `APP_STORE_CONNECT_API_KEY_CONTENT`   | Contents of the `.p8` file (paste as-is)          | Same page — **download once, save immediately**             |
-| `APP_STORE_CONNECT_API_KEY_PATH`      | Absolute path to the .p8 file on CI runners       | CI step writes `APP_STORE_CONNECT_API_KEY_CONTENT` to disk  |
-| `MATCH_PASSWORD`                      | Symmetric passphrase for signing-cert encryption  | You choose — keep in a password manager                     |
-| `MATCH_GIT_URL`                       | Private Git repo for encrypted certs              | Create empty private GitHub repo; use its SSH URL           |
-| `MATCH_READONLY`                      | `false` on your laptop, unset in CI               | Override for cert rotation days                             |
-| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`    | Google Play Console service-account JSON (pasted) | Play Console → API access → create svc acct → download JSON |
+| Variable                              | Purpose                                                 | Where to get it                                             |
+| ------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------- |
+| `APPLE_ID`                            | Apple Developer account email                           | Your account                                                |
+| `APPLE_TEAM_ID`                       | 10-char Apple team identifier                           | Apple Developer → Membership                                |
+| `APP_STORE_CONNECT_API_KEY_ID`        | App Store Connect API key id                            | App Store Connect → Users & Access → Integrations           |
+| `APP_STORE_CONNECT_API_KEY_ISSUER_ID` | Issuer UUID                                             | Same page                                                   |
+| `APP_STORE_CONNECT_API_KEY`           | Contents of the `.p8` file (paste as-is, or base64)     | Same page — **download once, save immediately**             |
+| `MATCH_PASSWORD`                      | Symmetric passphrase for signing-cert encryption        | You choose — keep in a password manager                     |
+| `MATCH_GIT_URL`                       | Private Git repo for encrypted certs                    | Create empty private GitHub repo; use its HTTPS URL         |
+| `MATCH_GIT_BASIC_AUTHORIZATION`       | Base64 of `username:token` that can read the match repo | GitHub personal access token                                |
+| `GOOGLE_SERVICE_INFO_PLIST_BASE64`    | Base64 of `GoogleService-Info.plist`                    | Firebase Console → Project settings → iOS app               |
+| `MATCH_READONLY`                      | `false` on your laptop, unset in CI                     | Override for cert rotation days                             |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`    | Google Play Console service-account JSON (pasted)       | Play Console → API access → create svc acct → download JSON |
 
 ## Lanes
 
@@ -70,11 +71,14 @@ bundle exec fastlane android release           # promote beta → production (10
   and, when its `publish_internal` dispatch input is set, runs
   `bundle exec fastlane android publish_internal` to upload it to the Play
   internal track.
-- **iOS** — `.github/workflows/ios-build.yml` covers the CI-side iOS build.
-  The signing/upload lanes (`ios beta`, `ios release`) are still run
-  manually from a Mac, deliberately: GitHub-hosted `macos-latest` minutes
-  bill 10x `ubuntu-latest`, so those minutes are spent on deliberate
-  releases, not every `main` push.
+- **iOS simulator** — `.github/workflows/ios-build.yml` is the unsigned
+  simulator build. It also boots a notched iPhone and an iPhone SE and
+  uploads screenshots. It does not sign.
+- **iOS TestFlight** — `.github/workflows/ios-release.yml` is
+  `workflow_dispatch` only. It reads the secrets in
+  [`docs/IOS_RELEASE.md`](../docs/IOS_RELEASE.md) and stops with a list of
+  missing names before it signs or uploads. `bundle exec fastlane ios release`
+  (submit for review) stays a manual Mac step.
 
 The `ios/` Xcode project is committed (`ios/App/App.xcodeproj/`), so the
 iOS lanes run against the real project — see `ios/README.md` for the

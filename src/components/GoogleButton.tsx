@@ -1,9 +1,17 @@
-export function GoogleButton({ onClick, loading }: { onClick: () => void; loading: boolean }) {
+export function GoogleButton({
+  onClick,
+  loading,
+  disabled = false,
+}: {
+  onClick: () => void;
+  loading: boolean;
+  disabled?: boolean;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={loading}
+      disabled={loading || disabled}
       className="group w-full flex items-center justify-center gap-3 rounded-xl bg-white text-[#1f1f1f] font-body text-sm font-semibold py-3.5 px-6 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] hover:bg-[#f5f5f5] shadow-[0_1px_3px_rgba(0,0,0,0.12)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.15)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
     >
       {loading ? (

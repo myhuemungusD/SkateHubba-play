@@ -6,6 +6,7 @@ import {
   sendEmailVerification,
   onAuthStateChanged,
   GoogleAuthProvider,
+  OAuthProvider,
   signInWithCredential,
   signInWithPopup,
   signInWithRedirect,
@@ -349,6 +350,93 @@ export async function signInWithGoogle(): Promise<User | null> {
       return null;
     }
     logger.error("google_sign_in_popup_error", { code, message: parseFirebaseError(err) });
+    throw err;
+  }
+}
+
+/**
+ * Apple's native cancel is ASAuthorizationError.canceled (code 1001). The
+ * Capacitor plugin does not map that onto a Firebase auth code, so the JS
+ * error is either code 1001 or a message that mentions 1001 / "cancel".
+ * The UI already treats `auth/popup-closed-by-user` as a silent dismiss.
+ */
+function isAppleUserCancel(err: unknown): boolean {
+  const code = getErrorCode(err);
+  if (code === "1001" || code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
+    return true;
+  }
+  if (typeof err === "object" && err !== null && "code" in err && (err as { code: unknown }).code === 1001) {
+    return true;
+  }
+  const text = parseFirebaseError(err);
+  return /\b1001\b/.test(text) || /cancel/i.test(text);
+}
+
+function appleCancelError(err: unknown): Error {
+  const wrapped = new Error("Apple sign-in was cancelled");
+  return Object.assign(wrapped, { code: "auth/popup-closed-by-user", cause: err });
+}
+
+function makeAppleProvider(): OAuthProvider {
+  const provider = new OAuthProvider("apple.com");
+  provider.addScope("email");
+  provider.addScope("name");
+  return provider;
+}
+
+/**
+ * Sign in with Apple.
+ *
+ * Required by App Store guideline 4.8 wherever Google sign-in is offered.
+ * Native uses `@capacitor-firebase/authentication` (AuthenticationServices
+ * plus the plugin's nonce) and exchanges the Apple identity token for a
+ * Firebase credential. Web uses the same popup-then-redirect fallback as
+ * Google. No Cloud Function or Firestore rule change: this is Firebase's
+ * built-in `apple.com` provider, and the user document path is unchanged.
+ *
+ * Returns the signed-in User, or null when a web redirect was started.
+ */
+export async function signInWithApple(): Promise<User | null> {
+  const a = requireAuth();
+
+  if (Capacitor.isNativePlatform()) {
+    logger.info("apple_sign_in_native_attempt");
+    try {
+      const { credential } = await FirebaseAuthentication.signInWithApple();
+      const idToken = credential?.idToken;
+      const nonce = credential?.nonce;
+      if (!idToken || !nonce) {
+        throw new Error("Apple sign-in returned no idToken");
+      }
+      const appleCred = makeAppleProvider().credential({ idToken, rawNonce: nonce });
+      const result = await signInWithCredential(a, appleCred);
+      logger.info("apple_sign_in_native_success", { uid: result.user.uid, email: result.user.email });
+      return result.user;
+    } catch (err: unknown) {
+      if (isAppleUserCancel(err)) {
+        logger.info("apple_sign_in_native_dismissed", { code: getErrorCode(err) || "1001" });
+        throw appleCancelError(err);
+      }
+      const code = getErrorCode(err);
+      logger.error("apple_sign_in_native_error", { code, message: parseFirebaseError(err) });
+      throw err;
+    }
+  }
+
+  const provider = makeAppleProvider();
+  logger.info("apple_sign_in_popup_attempt");
+  try {
+    const cred = await signInWithPopup(a, provider);
+    logger.info("apple_sign_in_popup_success", { uid: cred.user.uid, email: cred.user.email });
+    return cred.user;
+  } catch (err: unknown) {
+    const code = getErrorCode(err);
+    if (POPUP_FALLBACK_CODES.has(code)) {
+      logger.info("apple_sign_in_popup_fallback_redirect", { code });
+      await signInWithRedirect(a, provider);
+      return null;
+    }
+    logger.error("apple_sign_in_popup_error", { code, message: parseFirebaseError(err) });
     throw err;
   }
 }

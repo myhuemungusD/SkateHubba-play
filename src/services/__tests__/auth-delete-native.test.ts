@@ -41,6 +41,7 @@ const { mockIsNativePlatform, mockSignOut, mockFetch, firebaseAuthStub, sentrySt
         "onAuthStateChanged",
         "getRedirectResult",
         "GoogleAuthProvider",
+        "OAuthProvider",
         "signInWithPopup",
         "signInWithRedirect",
         "signInWithCredential",

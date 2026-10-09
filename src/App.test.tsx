@@ -16,6 +16,7 @@ vi.mock("./services/auth", () => ({
   resetPassword: vi.fn(),
   resendVerification: vi.fn(),
   signInWithGoogle: vi.fn(),
+  signInWithApple: vi.fn(),
   resolveGoogleRedirect: vi.fn().mockResolvedValue(null),
   getAdminClaim: vi.fn().mockResolvedValue(false),
 }));
@@ -111,7 +112,7 @@ vi.mock("@sentry/react", () => ({
 }));
 
 import App from "./App";
-import { signInWithGoogle } from "./services/auth";
+import { signInWithApple, signInWithGoogle } from "./services/auth";
 import {
   AUTH_HINT_KEY,
   __resetLandingBootForTest,
@@ -120,6 +121,7 @@ import {
   isBootShellActive,
   peekBootAuthMode,
   releaseBootShell,
+  requestBootAppleSignIn,
   requestBootGoogleSignIn,
   setBootAuthMode,
   setLandingBooted,
@@ -461,6 +463,15 @@ describe("App — boot landing handoff", () => {
     mockUseAuth.mockReturnValue(signedOut(false));
     renderApp("/");
     await waitFor(() => expect(signInWithGoogle).toHaveBeenCalledTimes(1));
+  });
+
+  it("replays an Apple tap made on the boot landing once auth resolves", async () => {
+    setLandingBooted(true);
+    requestBootAppleSignIn();
+    vi.mocked(signInWithApple).mockResolvedValue(null);
+    mockUseAuth.mockReturnValue(signedOut(false));
+    renderApp("/");
+    await waitFor(() => expect(signInWithApple).toHaveBeenCalledTimes(1));
   });
 
   it("opens /auth in the mode chosen on the boot landing", async () => {

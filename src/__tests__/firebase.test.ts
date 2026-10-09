@@ -5,6 +5,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // pattern below type-checks under vitest 4's stricter `vi.fn()` signature.
 const mockInitializeApp = vi.fn((..._: unknown[]) => ({ name: "test-app" }));
 const mockGetAuth = vi.fn((..._: unknown[]) => ({ name: "test-auth" }));
+const mockInitializeAuth = vi.fn((..._: unknown[]) => ({ name: "test-auth-local" }));
+const mockBrowserLocalPersistence = { kind: "browser-local" };
 const mockGetStorage = vi.fn((..._: unknown[]) => ({ name: "test-storage" }));
 const mockInitializeFirestore = vi.fn((..._: unknown[]) => ({ name: "test-db" }));
 const mockConnectAuthEmulator = vi.fn((..._: unknown[]) => undefined);
@@ -14,6 +16,14 @@ const mockMemoryLocalCache = vi.fn((..._: unknown[]) => ({ __cache: "memory" }))
 const mockPersistentLocalCache = vi.fn((..._: unknown[]) => ({ __cache: "persistent" }));
 const mockPersistentMultipleTabManager = vi.fn((..._: unknown[]) => ({}));
 const mockAddBreadcrumb = vi.fn((..._: unknown[]) => undefined);
+
+const capacitorState = vi.hoisted(() => ({ platform: "web" }));
+vi.mock("@capacitor/core", () => ({
+  Capacitor: {
+    isNativePlatform: () => capacitorState.platform !== "web",
+    getPlatform: () => capacitorState.platform,
+  },
+}));
 
 vi.mock("../lib/sentry", () => ({
   addBreadcrumb: (...args: unknown[]) => mockAddBreadcrumb(...args),
@@ -29,6 +39,8 @@ vi.mock("firebase/app", () => ({
 
 vi.mock("firebase/auth", () => ({
   getAuth: (...args: unknown[]) => mockGetAuth(...args),
+  initializeAuth: (...args: unknown[]) => mockInitializeAuth(...args),
+  browserLocalPersistence: mockBrowserLocalPersistence,
   connectAuthEmulator: (...args: unknown[]) => mockConnectAuthEmulator(...args),
 }));
 
@@ -59,6 +71,7 @@ describe("firebase module", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetModules();
+    capacitorState.platform = "web";
   });
 
   afterEach(() => {
@@ -184,6 +197,34 @@ describe("firebase module", () => {
       ([arg]) => (arg as { category?: string } | undefined)?.category === "lifecycle",
     );
     expect(lifecycleCrumbs).toHaveLength(0);
+  });
+
+  it("uses the in-memory Firestore cache on the iOS shell", async () => {
+    capacitorState.platform = "ios";
+    stubFirebaseEnv();
+    vi.stubEnv("VITE_USE_EMULATORS", "false");
+
+    const mod = await import("../firebase");
+    expect(mod.firestoreCacheMode).toBe("memory");
+    expect(mockMemoryLocalCache).toHaveBeenCalledTimes(1);
+    expect(mockPersistentLocalCache).not.toHaveBeenCalled();
+    expect(mockPersistentMultipleTabManager).not.toHaveBeenCalled();
+    expect(mockInitializeAuth).toHaveBeenCalledWith(expect.anything(), {
+      persistence: mockBrowserLocalPersistence,
+    });
+    expect(mockGetAuth).not.toHaveBeenCalled();
+  });
+
+  it("keeps the multi-tab persistent cache on Android", async () => {
+    capacitorState.platform = "android";
+    stubFirebaseEnv();
+    vi.stubEnv("VITE_USE_EMULATORS", "false");
+
+    await import("../firebase");
+    expect(mockPersistentMultipleTabManager).toHaveBeenCalledTimes(1);
+    expect(mockPersistentLocalCache).toHaveBeenCalledWith({
+      tabManager: mockPersistentMultipleTabManager.mock.results[0]?.value,
+    });
   });
 
   it("falls back to memory cache when persistent cache init throws (Safari private / broken WebView)", async () => {

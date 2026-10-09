@@ -612,6 +612,24 @@ describe("native universal-link bridge", () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
+  it("navigates a debug screenshot route of / back to the landing page", () => {
+    render(<GameNotificationWatcher />);
+    window.dispatchEvent(new CustomEvent("skatehubba:screenshot-route", { detail: "/" }));
+    expect(mockNavigate).toHaveBeenCalledWith("/");
+  });
+
+  it("navigates a debug screenshot route event", () => {
+    render(<GameNotificationWatcher />);
+    window.dispatchEvent(new CustomEvent("skatehubba:screenshot-route", { detail: "/privacy" }));
+    expect(mockNavigate).toHaveBeenCalledWith("/privacy");
+  });
+
+  it("ignores a screenshot route that is not a string", () => {
+    render(<GameNotificationWatcher />);
+    window.dispatchEvent(new CustomEvent("skatehubba:screenshot-route", { detail: { path: "/privacy" } }));
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   it("navigates a Roll Dice universal link", () => {
     deliver("/dice/g-dice");
     expect(mockNavigate).toHaveBeenCalledWith("/dice/g-dice");

@@ -42,6 +42,14 @@ vi.mock("firebase/auth", () => {
   }
   return {
     GoogleAuthProvider: MockGoogleAuthProvider,
+    OAuthProvider: class {
+      addScope(): this {
+        return this;
+      }
+      credential(): object {
+        return {};
+      }
+    },
     signInWithPopup: (...args: unknown[]) => mockSignInWithPopup(...args),
     signInWithRedirect: (...args: unknown[]) => mockSignInWithRedirect(...args),
     signInWithCredential: (...args: unknown[]) => mockSignInWithCredential(...args),

@@ -79,6 +79,7 @@ export async function shouldBootLanding(
 let booted = false;
 let pendingAuthMode: "signup" | "signin" | null = null;
 let pendingGoogle = false;
+let pendingApple = false;
 
 /** Called once by main.tsx with the boot decision. */
 export function setLandingBooted(value: boolean): void {
@@ -118,6 +119,21 @@ export function takeBootGoogleSignIn(): boolean {
   return was;
 }
 
+export function requestBootAppleSignIn(): void {
+  pendingApple = true;
+}
+
+export function hasBootAppleSignIn(): boolean {
+  return pendingApple;
+}
+
+/** Returns true (once) if an Apple sign-in was requested before App loaded. */
+export function takeBootAppleSignIn(): boolean {
+  const was = pendingApple;
+  pendingApple = false;
+  return was;
+}
+
 /* ── Shell bridge (boot landing ⇄ App) ───────────────── */
 
 /** Landing handlers App provides while the boot landing is on screen. */
@@ -125,6 +141,8 @@ export interface LandingBridge {
   onGo: (mode: "signup" | "signin") => void;
   onGoogle: () => void;
   googleLoading: boolean;
+  onApple: () => void;
+  appleLoading: boolean;
   onNav: (screen: "privacy" | "terms" | "datadeletion") => void;
 }
 
@@ -168,6 +186,7 @@ export function __resetLandingBootForTest(): void {
   booted = false;
   pendingAuthMode = null;
   pendingGoogle = false;
+  pendingApple = false;
   shellActive = true;
   bridge = null;
   listeners.clear();

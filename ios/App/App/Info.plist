@@ -25,15 +25,28 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>SkateHubba needs camera access to record your tricks, capture skate spots, and take a profile picture.</string>
+	<string>SkateHubba uses the camera to record a trick and to take a profile photo. The camera stays on only while you are recording or taking that photo.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>SkateHubba records audio along with your tricks.</string>
+	<string>SkateHubba uses the microphone only while you are recording a trick, so the clip has sound.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>SkateHubba saves your recorded clips to your library and lets you choose a profile picture from your photos.</string>
+	<string>SkateHubba lets you choose a profile photo from your photo library.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>SkateHubba saves your recorded clips to your library.</string>
+	<string>SkateHubba can save a profile photo you choose to keep. Trick clips are uploaded to your account and are not saved to your camera roll.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>SkateHubba shows nearby skate spots on the map.</string>
+	<string>SkateHubba uses your location while you are using the app to show skate spots near you. Your location is not saved on your profile.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.skatehubba.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>skatehubba</string>
+			</array>
+		</dict>
+	</array>
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<false/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UILaunchStoryboardName</key>

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Landing, __resetHeroEntranceForTest } from "../Landing";
@@ -19,10 +19,13 @@ describe("Landing", () => {
     onGo: vi.fn(),
     onGoogle: vi.fn(),
     googleLoading: false,
+    onApple: vi.fn(),
+    appleLoading: false,
     onNav: vi.fn(),
   };
 
   beforeEach(() => vi.clearAllMocks());
+  afterEach(() => vi.unstubAllEnvs());
 
   it("renders hero content", () => {
     render(<Landing {...defaultProps} />);
@@ -80,6 +83,25 @@ describe("Landing", () => {
     render(<Landing {...defaultProps} onGoogle={onGoogle} />);
     await userEvent.click(screen.getByText("Continue with Google"));
     expect(onGoogle).toHaveBeenCalled();
+  });
+
+  it("hides Sign in with Apple unless the flag is the literal true", () => {
+    render(<Landing {...defaultProps} />);
+    expect(screen.queryByRole("button", { name: "Continue with Apple" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue with Google" })).toBeEnabled();
+
+    vi.stubEnv("VITE_FEATURE_APPLE_SIGNIN_ENABLED", "TRUE");
+    render(<Landing {...defaultProps} appleLoading />);
+    expect(screen.queryByRole("button", { name: "Continue with Apple" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Continue with Google" }).at(-1)).toBeEnabled();
+  });
+
+  it("calls onApple when Apple button is clicked", async () => {
+    vi.stubEnv("VITE_FEATURE_APPLE_SIGNIN_ENABLED", "true");
+    const onApple = vi.fn();
+    render(<Landing {...defaultProps} onApple={onApple} />);
+    await userEvent.click(screen.getByRole("button", { name: "Continue with Apple" }));
+    expect(onApple).toHaveBeenCalled();
   });
 
   it("renders features section", () => {

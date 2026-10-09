@@ -1,6 +1,12 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import { useAuth } from "../hooks/useAuth";
-import { signOut as fbSignOut, signInWithGoogle, resolveGoogleRedirect, deleteAccount } from "../services/auth";
+import {
+  signOut as fbSignOut,
+  signInWithGoogle,
+  signInWithApple,
+  resolveGoogleRedirect,
+  deleteAccount,
+} from "../services/auth";
 import { writeAuthHint } from "../boot/landingBoot";
 import { getMfaChallenge, type MfaChallenge } from "../services/mfa";
 import { removeCurrentFcmToken, refreshWebPushTokenIfGranted } from "../services/fcm";
@@ -51,7 +57,7 @@ function clearPendingDeleteUid(): void {
 /** Which sign-in surface produced a pending second-factor challenge. Carried
  *  alongside the challenge so the completion event is attributed to the method
  *  the user actually used, not a guess. */
-export type MfaMethod = "google" | "email";
+export type MfaMethod = "google" | "apple" | "email";
 
 export interface AuthContextValue {
   loading: boolean;
@@ -62,6 +68,8 @@ export interface AuthContextValue {
   reloadAuthUser: () => Promise<boolean>;
   handleGoogleSignIn: () => Promise<void>;
   googleLoading: boolean;
+  handleAppleSignIn: () => Promise<void>;
+  appleLoading: boolean;
   googleError: string;
   setGoogleError: (e: string) => void;
   /**
@@ -122,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (profile) setActiveProfile(profile);
   }
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
   const [googleError, setGoogleError] = useState("");
   const [mfaChallenge, setMfaChallenge] = useState<MfaChallenge | null>(null);
   // Set in the same commit as the challenge above; only read while one is
@@ -142,9 +151,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     resolveGoogleRedirect()
       .then((redirectUser) => {
         if (redirectUser) {
-          logger.info("google_redirect_resolved", { uid: redirectUser.uid });
-          analytics.signIn("google");
-          metrics.signIn("google", redirectUser.uid);
+          // Apple's web fallback uses the same Firebase redirect. A user with
+          // no providerData (existing mocks, and every Google account) stays
+          // attributed to Google.
+          const apple = redirectUser.providerData?.some((p) => p.providerId === "apple.com") === true;
+          const method = apple ? "apple" : "google";
+          logger.info(apple ? "apple_redirect_resolved" : "google_redirect_resolved", { uid: redirectUser.uid });
+          analytics.signIn(method);
+          metrics.signIn(method, redirectUser.uid);
         }
       })
       .catch((err) => {
@@ -180,20 +194,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
   }, []);
 
-  const handleGoogleSignIn = useCallback(async () => {
+  const handleSocialSignIn = useCallback(async (method: "google" | "apple") => {
+    const brand = method === "google" ? "Google" : "Apple";
+    const signIn = method === "google" ? signInWithGoogle : signInWithApple;
+    const setLoading = method === "google" ? setGoogleLoading : setAppleLoading;
     setGoogleError("");
-    setGoogleLoading(true);
-    logger.info("google_sign_in_started");
-    analytics.signInAttempt("google");
-    metrics.signInAttempt("google");
+    setLoading(true);
+    logger.info(`${method}_sign_in_started`);
+    analytics.signInAttempt(method);
+    metrics.signInAttempt(method);
     try {
-      const googleUser = await signInWithGoogle();
-      if (googleUser) {
-        logger.info("google_sign_in_completed", { uid: googleUser.uid });
-        analytics.signIn("google");
-        metrics.signIn("google", googleUser.uid);
+      const signedIn = await signIn();
+      if (signedIn) {
+        logger.info(`${method}_sign_in_completed`, { uid: signedIn.uid });
+        analytics.signIn(method);
+        metrics.signIn(method, signedIn.uid);
       } else {
-        logger.info("google_sign_in_redirect_initiated");
+        logger.info(`${method}_sign_in_redirect_initiated`);
       }
     } catch (err: unknown) {
       const code = getErrorCode(err);
@@ -204,44 +221,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // challenge clears.
       const challenge = getMfaChallenge(err);
       if (challenge) {
-        logger.info("google_sign_in_mfa_required", { factorCount: challenge.hints.length });
-        setMfaMethod("google");
+        logger.info(`${method}_sign_in_mfa_required`, { factorCount: challenge.hints.length });
+        setMfaMethod(method);
         setMfaChallenge(challenge);
         return;
       }
-      analytics.signInFailure("google", code || "unknown");
-      metrics.signInFailure("google", code || "unknown");
+      analytics.signInFailure(method, code || "unknown");
+      metrics.signInFailure(method, code || "unknown");
       // User-driven dismissals don't warrant any UI — just breadcrumb.
       if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
-        logger.info("google_sign_in_dismissed", { code });
+        logger.info(`${method}_sign_in_dismissed`, { code });
       } else if (code === "auth/account-exists-with-different-credential") {
-        logger.warn("google_sign_in_credential_conflict", { code });
-        captureException(err, { extra: { context: "handleGoogleSignIn", code } });
+        logger.warn(`${method}_sign_in_credential_conflict`, { code });
+        captureException(err, { extra: { context: `handle${brand}SignIn`, code } });
         setGoogleError("This email is linked to a password account. Sign in with email/password instead.");
       } else if (code === "auth/unauthorized-domain") {
         // Ops fix, not user fix — surface the runbook hint and page Sentry.
-        logger.error("google_sign_in_unauthorized_domain", { code, origin: window.location.origin });
-        captureException(err, { extra: { context: "handleGoogleSignIn", code, origin: window.location.origin } });
+        logger.error(`${method}_sign_in_unauthorized_domain`, { code, origin: window.location.origin });
+        captureException(err, { extra: { context: `handle${brand}SignIn`, code, origin: window.location.origin } });
         setGoogleError(
-          "This domain isn't authorized for Google sign-in. " +
+          `This domain isn't authorized for ${brand} sign-in. ` +
             "Add it in Firebase Console → Authentication → Settings → Authorized domains.",
         );
       } else {
         const mapped = getAuthErrorMessage(code);
         if (mapped) {
-          logger.warn("google_sign_in_known_error", { code });
+          logger.warn(`${method}_sign_in_known_error`, { code });
         } else {
-          logger.error("google_sign_in_error", { code, message: parseFirebaseError(err) });
+          logger.error(`${method}_sign_in_error`, { code, message: parseFirebaseError(err) });
         }
         if (!isBenignAuthCode(code)) {
-          captureException(err, { extra: { context: "handleGoogleSignIn", code, origin: window.location.origin } });
+          captureException(err, { extra: { context: `handle${brand}SignIn`, code, origin: window.location.origin } });
         }
-        setGoogleError(mapped ?? (err instanceof Error ? parseFirebaseError(err) : "Google sign-in failed"));
+        setGoogleError(mapped ?? (err instanceof Error ? parseFirebaseError(err) : `${brand} sign-in failed`));
       }
     } finally {
-      setGoogleLoading(false);
+      setLoading(false);
     }
   }, []);
+
+  const handleGoogleSignIn = useCallback(() => handleSocialSignIn("google"), [handleSocialSignIn]);
+  const handleAppleSignIn = useCallback(() => handleSocialSignIn("apple"), [handleSocialSignIn]);
 
   const beginMfaChallenge = useCallback((err: unknown, method: MfaMethod): boolean => {
     const challenge = getMfaChallenge(err);
@@ -532,6 +552,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     reloadAuthUser,
     handleGoogleSignIn,
     googleLoading,
+    handleAppleSignIn,
+    appleLoading,
     googleError,
     setGoogleError,
     mfaChallenge,

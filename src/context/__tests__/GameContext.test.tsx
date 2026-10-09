@@ -17,6 +17,7 @@ vi.mock("../../hooks/useAuth", () => ({ useAuth: () => mockUseAuth() }));
 vi.mock("../../services/auth", () => ({
   signOut: vi.fn(),
   signInWithGoogle: vi.fn(),
+  signInWithApple: vi.fn(),
   resolveGoogleRedirect: vi.fn().mockResolvedValue(null),
   deleteAccount: vi.fn(),
 }));

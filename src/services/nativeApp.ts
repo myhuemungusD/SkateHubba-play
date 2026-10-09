@@ -47,9 +47,11 @@ const DEEP_LINK_HOSTS = new Set(["skatehubba.com", "www.skatehubba.com"]);
  * swallowed. No-op on web.
  *
  * `Style.Dark` = light text on a dark background (the enum names the
- * background, not the text). Background color + overlay control are
- * Android-only APIs — iOS derives both from the WebView, guarded here so the
- * iOS bridge doesn't throw "unimplemented".
+ * background, not the text). Android keeps a solid status-bar background and
+ * does not overlay the webview. iOS overlays so the webview is edge-to-edge
+ * and CSS `env(safe-area-inset-*)` is the only inset — `contentInset` is
+ * `"never"` in capacitor.config.ts, so the scroll view does not add a second
+ * one. Safari is unchanged: this runs only inside the Capacitor shell.
  */
 export async function initStatusBar(): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
@@ -58,6 +60,8 @@ export async function initStatusBar(): Promise<void> {
     if (Capacitor.getPlatform() === "android") {
       await StatusBar.setBackgroundColor({ color: SHELL_BACKGROUND });
       await StatusBar.setOverlaysWebView({ overlay: false });
+    } else if (Capacitor.getPlatform() === "ios") {
+      await StatusBar.setOverlaysWebView({ overlay: true });
     }
   } catch (err) {
     logger.warn("status_bar_init_failed", { error: parseFirebaseError(err) });
@@ -103,10 +107,14 @@ export function subscribeToBackButton(): () => void {
  * Reduce an `appUrlOpen` URL to the in-app path the caller should route to,
  * or `null` when the URL is not an actionable deep link.
  *
- * Rejects, in order: unparseable URLs, non-http(s) schemes (custom-scheme
- * OAuth callbacks are Capacitor's business, not ours), foreign hosts, and
- * bare-origin links (`https://skatehubba.com/`) which carry no destination —
- * those should just open the app on whatever screen it was already on.
+ * Rejects, in order: unparseable URLs, OAuth custom schemes (those are
+ * Capacitor's business), foreign hosts, and bare-origin links
+ * (`https://skatehubba.com/`) which carry no destination — those should just
+ * open the app on whatever screen it was already on.
+ *
+ * `skatehubba://app/<path>` is the in-app scheme (simulator screenshots and
+ * a link that should open a screen). Host must be `app` and the path must
+ * be a real route, so `com.skatehubba.app://oauth/callback` stays ignored.
  */
 function deepLinkPath(url: string): string | null {
   let parsed: URL;
@@ -115,6 +123,11 @@ function deepLinkPath(url: string): string | null {
   } catch {
     logger.warn("deep_link_unparseable");
     return null;
+  }
+  if (parsed.protocol === "skatehubba:") {
+    if (parsed.hostname !== "app") return null;
+    if (parsed.pathname === "/" || parsed.pathname === "" || parsed.pathname.startsWith("//")) return null;
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
   }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
   if (!DEEP_LINK_HOSTS.has(parsed.hostname)) return null;

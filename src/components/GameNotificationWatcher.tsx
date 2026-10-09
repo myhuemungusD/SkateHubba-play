@@ -278,20 +278,42 @@ const ROUTABLE_SEGMENTS = new Set([
  * known route is a plain react-router navigation. Not auth-gated — the route
  * guards in App.tsx already bounce a signed-out user to /auth.
  */
+/** Debug-only route the iOS simulator build injects via a launch argument. */
+const SCREENSHOT_ROUTE_EVENT = "skatehubba:screenshot-route";
+
+function routeNativePath(path: string, navigate: (to: string) => void): void {
+  const [pathname] = path.split(/[?#]/);
+  const [segment, ...rest] = pathname.replace(/^\//, "").split("/");
+  // `/` is the marketing landing. The simulator asks for it explicitly
+  // because a Firebase redirect error on the placeholder CI config would
+  // otherwise leave the shell on the sign-in screen.
+  if (segment === "" || segment === "landing") {
+    navigate("/");
+    return;
+  }
+  if (segment === "game" && rest[0]) {
+    window.dispatchEvent(new CustomEvent(OPEN_GAME_EVENT, { detail: { gameId: rest[0] } }));
+    return;
+  }
+  if (!ROUTABLE_SEGMENTS.has(segment)) return;
+  navigate(path);
+}
+
 function useNativeDeepLink() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    return subscribeToDeepLinks((path) => {
-      const [pathname] = path.split(/[?#]/);
-      const [segment, ...rest] = pathname.replace(/^\//, "").split("/");
-      if (segment === "game" && rest[0]) {
-        window.dispatchEvent(new CustomEvent(OPEN_GAME_EVENT, { detail: { gameId: rest[0] } }));
-        return;
-      }
-      if (!ROUTABLE_SEGMENTS.has(segment)) return;
-      navigate(path);
-    });
+    const onScreenshotRoute = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      if (typeof detail !== "string") return;
+      routeNativePath(detail, navigate);
+    };
+    window.addEventListener(SCREENSHOT_ROUTE_EVENT, onScreenshotRoute);
+    const unsubscribe = subscribeToDeepLinks((path) => routeNativePath(path, navigate));
+    return () => {
+      window.removeEventListener(SCREENSHOT_ROUTE_EVENT, onScreenshotRoute);
+      unsubscribe();
+    };
   }, [navigate]);
 }
 
