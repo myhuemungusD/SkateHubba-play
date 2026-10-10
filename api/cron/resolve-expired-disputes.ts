@@ -40,7 +40,16 @@
 
 import { timingSafeEqual } from "node:crypto";
 import { cert, getApps, initializeApp, type App, type ServiceAccount } from "firebase-admin/app";
-import { getFirestore, FieldValue, Timestamp, type Firestore, type Transaction } from "firebase-admin/firestore";
+import {
+  getFirestore,
+  FieldPath,
+  FieldValue,
+  Timestamp,
+  type Firestore,
+  type Query,
+  type QueryDocumentSnapshot,
+  type Transaction,
+} from "firebase-admin/firestore";
 import { parseServiceAccountJson } from "./_serviceAccount.js";
 // Relative imports in this file's traced graph need explicit .js extensions:
 // Vercel compiles each file separately (no bundling) and the ESM loader does
@@ -425,6 +434,9 @@ function counterOf(raw: unknown): number {
   return typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
 }
 
+/** Votes read per page. The old cap of 30 left later voters unpaid. */
+const VOTE_PAGE = 100;
+
 /**
  * 10 XP for each vote still on the dispute, inside the same transaction that
  * closes it. Reads happen before any write. Missing profiles are skipped.
@@ -434,13 +446,26 @@ async function readVoteAwards(db: Firestore, tx: Transaction, disputeId: string,
   const gate = voteXpAudience();
   if (!gate.enabled && gate.testers.size === 0) return [];
 
-  const votesSnap = await tx.get(db.collection("disputeVotes").where("disputeId", "==", disputeId).limit(30));
   const uids: string[] = [];
-  for (const vote of votesSnap.docs) {
-    const uid = vote.data().uid;
-    if (typeof uid !== "string" || uid.length === 0) continue;
-    if (!gate.enabled && !gate.testers.has(uid)) continue;
-    if (!uids.includes(uid)) uids.push(uid);
+  let cursor: QueryDocumentSnapshot | undefined;
+  for (;;) {
+    let votesQuery: Query = db
+      .collection("disputeVotes")
+      .where("disputeId", "==", disputeId)
+      .orderBy(FieldPath.documentId())
+      .limit(VOTE_PAGE);
+    if (cursor) votesQuery = votesQuery.startAfter(cursor);
+    const votesSnap = await tx.get(votesQuery);
+    for (const vote of votesSnap.docs) {
+      const uid = vote.data().uid;
+      if (typeof uid !== "string" || uid.length === 0) continue;
+      if (!gate.enabled && !gate.testers.has(uid)) continue;
+      if (!uids.includes(uid)) uids.push(uid);
+    }
+    if (votesSnap.docs.length < VOTE_PAGE) break;
+    const next = votesSnap.docs[votesSnap.docs.length - 1];
+    if (!next || next.id === cursor?.id) break;
+    cursor = next;
   }
 
   const day = utcDayFromMs(nowMs);

@@ -15,6 +15,9 @@ vi.mock("firebase/firestore", () => ({
   where: (field: string, op: string, value: unknown) => ({ field, op, value }),
   orderBy: (field: string, direction: string) => ({ orderBy: field, direction }),
   limit: (n: number) => ({ n }),
+  startAfter: (...values: unknown[]) => ({ startAfter: values }),
+  documentId: () => "__name__",
+  Timestamp: { fromMillis: (ms: number) => ({ ms }) },
   getDocs: vi.fn(async () => ({ docs: state.docs })),
 }));
 
@@ -144,9 +147,52 @@ describe("fetchClipsInReview", () => {
       },
       { id: "bad", data: () => ({ moderation: "approved" }) },
     ];
-    const clips = await fetchClipsInReview();
-    expect(clips.map((clip) => clip.id)).toEqual(["good"]);
-    expect(getDocs).toHaveBeenCalled();
+    const page = await fetchClipsInReview();
+    expect(page.clips.map((clip) => clip.id)).toEqual(["good"]);
+    expect(page.cursor).toBeNull();
+    const built = vi.mocked(getDocs).mock.calls[0]?.[0] as { __query?: unknown[] };
+    expect(built.__query).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: "moderation", op: "==", value: "review" }),
+        expect.objectContaining({ orderBy: "moderationUpdatedAt", direction: "desc" }),
+      ]),
+    );
+  });
+
+  it("pages with a cursor once a full page comes back", async () => {
+    state.docs = Array.from({ length: 30 }, (_, index) => ({
+      id: `c${index}`,
+      data: () => ({
+        moderation: "review",
+        videoUrl: "v",
+        playerUid: "u",
+        trickName: "kickflip",
+        playerUsername: "a",
+        moderationUpdatedAt: { toMillis: () => 1_700_000_000_000 - index },
+      }),
+    }));
+    const first = await fetchClipsInReview();
+    expect(first.cursor).toEqual({ moderationUpdatedAtMs: 1_700_000_000_000 - 29, id: "c29" });
+    await fetchClipsInReview(first.cursor);
+    const built = vi.mocked(getDocs).mock.calls[1]?.[0] as { __query?: unknown[] };
+    expect(built.__query).toEqual(
+      expect.arrayContaining([expect.objectContaining({ startAfter: [{ ms: 1_700_000_000_000 - 29 }, "c29"] })]),
+    );
+
+    state.docs = Array.from({ length: 30 }, (_, index) => ({
+      id: `plain${index}`,
+      data: () => ({
+        moderation: "review",
+        videoUrl: "v",
+        playerUid: "u",
+        trickName: "kickflip",
+        playerUsername: "a",
+      }),
+    }));
+    expect((await fetchClipsInReview()).cursor).toBeNull();
+
+    state.docs = [];
+    expect((await fetchClipsInReview()).clips).toEqual([]);
   });
 
   it("wraps a read failure", async () => {

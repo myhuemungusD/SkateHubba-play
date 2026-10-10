@@ -315,6 +315,10 @@ describe("createUserClip", () => {
         expect.anything(),
         expect.objectContaining({ moderationStatus: "pending", moderation: "pending" }),
       );
+      expect(cap.observed().update).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.not.objectContaining({ clipsPosted: expect.anything() }),
+      );
     } finally {
       vi.unstubAllEnvs();
     }

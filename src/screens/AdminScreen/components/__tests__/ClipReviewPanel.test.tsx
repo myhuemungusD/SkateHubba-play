@@ -27,9 +27,13 @@ const clip = {
   grounds: "no skateboard detected",
 };
 
+function page(clips: (typeof clip)[], cursor: { moderationUpdatedAtMs: number; id: string } | null = null) {
+  return { clips, cursor };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
-  fetchClipsInReview.mockResolvedValue([]);
+  fetchClipsInReview.mockResolvedValue(page([]));
   decideClipModeration.mockResolvedValue(undefined);
 });
 
@@ -47,10 +51,12 @@ describe("ClipReviewPanel", () => {
 
   it("keeps a clip and removes one after a reason", async () => {
     const user = userEvent.setup();
-    fetchClipsInReview.mockResolvedValue([
-      clip,
-      { ...clip, id: "c2", skateDetected: true, skateLabels: ["skateboard"], reportReasons: [], grounds: "" },
-    ]);
+    fetchClipsInReview.mockResolvedValue(
+      page([
+        clip,
+        { ...clip, id: "c2", skateDetected: true, skateLabels: ["skateboard"], reportReasons: [], grounds: "" },
+      ]),
+    );
     renderWithToasts(<ClipReviewPanel />);
 
     expect(await screen.findByTestId("review-c1")).toHaveTextContent("no skateboard");
@@ -75,12 +81,12 @@ describe("ClipReviewPanel", () => {
 
   it("surfaces a failed decision and reloads", async () => {
     const user = userEvent.setup();
-    const pending = deferred<unknown[]>();
-    fetchClipsInReview.mockReturnValueOnce(pending.promise).mockResolvedValue([clip]);
+    const pending = deferred<ReturnType<typeof page>>();
+    fetchClipsInReview.mockReturnValueOnce(pending.promise).mockResolvedValue(page([clip]));
     decideClipModeration.mockRejectedValueOnce(new Error("nope"));
     renderWithToasts(<ClipReviewPanel />);
     expect(screen.getByText("Loading…")).toBeInTheDocument();
-    pending.resolve([clip]);
+    pending.resolve(page([clip]));
     expect(await screen.findByTestId("review-c1")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Keep" }));
@@ -88,5 +94,17 @@ describe("ClipReviewPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "Refresh clips" }));
     await waitFor(() => expect(fetchClipsInReview).toHaveBeenCalledTimes(2));
+  });
+
+  it("loads the next page after the first", async () => {
+    const user = userEvent.setup();
+    const cursor = { moderationUpdatedAtMs: 10, id: "c1" };
+    fetchClipsInReview.mockResolvedValueOnce(page([clip], cursor)).mockResolvedValueOnce(page([{ ...clip, id: "c2" }]));
+    renderWithToasts(<ClipReviewPanel />);
+    expect(await screen.findByTestId("review-c1")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+    expect(await screen.findByTestId("review-c2")).toBeInTheDocument();
+    expect(fetchClipsInReview).toHaveBeenLastCalledWith(cursor);
+    expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
   });
 });

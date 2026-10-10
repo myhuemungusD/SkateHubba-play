@@ -6,7 +6,17 @@
  * `moderation` themselves.
  */
 
-import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
+import {
+  collection,
+  documentId,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  startAfter,
+  Timestamp,
+  where,
+} from "firebase/firestore";
 import { connectFunctionsEmulator, getFunctions, httpsCallable } from "firebase/functions";
 import app, { isEmulatorMode, requireDb } from "../firebase";
 import { logger } from "./logger";
@@ -136,18 +146,46 @@ function requireClipId(clipId: string): void {
   }
 }
 
-/** Clips waiting on a person. Admins can read every clip. */
-export async function fetchClipsInReview(): Promise<ReviewClip[]> {
+/** Page token for the review queue. Newest moderationUpdatedAt first. */
+export interface ReviewCursor {
+  moderationUpdatedAtMs: number;
+  id: string;
+}
+
+export interface ReviewPage {
+  clips: ReviewClip[];
+  /** Present when another page may exist. */
+  cursor: ReviewCursor | null;
+}
+
+/** Clips waiting on a person, newest decision first. Admins can read every clip. */
+export async function fetchClipsInReview(cursor?: ReviewCursor | null): Promise<ReviewPage> {
   try {
     const snap = await getDocs(
-      query(collection(requireDb(), "clips"), where("moderation", "==", "review"), limit(REVIEW_LIMIT)),
+      query(
+        collection(requireDb(), "clips"),
+        where("moderation", "==", "review"),
+        orderBy("moderationUpdatedAt", "desc"),
+        orderBy(documentId(), "desc"),
+        ...(cursor ? [startAfter(Timestamp.fromMillis(cursor.moderationUpdatedAtMs), cursor.id)] : []),
+        limit(REVIEW_LIMIT),
+      ),
     );
     const clips: ReviewClip[] = [];
     for (const row of snap.docs) {
       const parsed = parseReviewClip(row.id, row.data());
       if (parsed) clips.push(parsed);
     }
-    return clips;
+    const last = snap.docs[snap.docs.length - 1];
+    const updatedAt = last
+      ? (last.data() as { moderationUpdatedAt?: { toMillis?: () => number } }).moderationUpdatedAt
+      : undefined;
+    const millis = updatedAt && typeof updatedAt.toMillis === "function" ? updatedAt.toMillis() : null;
+    const next =
+      snap.docs.length === REVIEW_LIMIT && last && typeof millis === "number"
+        ? { moderationUpdatedAtMs: millis, id: last.id }
+        : null;
+    return { clips, cursor: next };
   } catch (err) {
     logger.warn("clip_review_queue_failed", { error: parseFirebaseError(err) });
     throw new Error("Couldn't load clips in review.");
