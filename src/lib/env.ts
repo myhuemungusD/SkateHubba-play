@@ -45,7 +45,7 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
-  // Feature-freeze switch for the Map, Clips feed and Verified Pro surfaces.
+  // Extras switch for the Map, Clips feed and Verified Pro surfaces.
   // DEFAULTS TO OFF — only the literal string "true" re-enables them. Read at
   // call sites via isExtrasEnabled() in src/lib/featureFlags.ts.
   VITE_FEATURE_EXTRAS_ENABLED: z

@@ -45,7 +45,7 @@ The unsigned simulator job boots a notched iPhone and an iPhone SE and uploads s
 ## Not changed
 
 - Game rules, Firestore rules, and Cloud Functions.
-- Map, Feed, and Verified Pro stay behind the feature freeze.
+- Map, Feed, and Verified Pro gating (the feature freeze was lifted 2026-10-10; they are live in production).
 - Lazy-loading Firebase Auth, App Check, and reCAPTCHA (the landing page's main thread time). That touches first paint of sign-in and was left alone.
 - Content-Security-Policy in `vercel.json`, aside from the Apple sign-in hosts added so Sign in with Apple can load.
 - Decorative 8–10px type on admin, clips, and map screens, and the legal-copy / image-dimension nits from the review.

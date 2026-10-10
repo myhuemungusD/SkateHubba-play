@@ -1,12 +1,12 @@
-# SKATEHUBBA™ CHIEF ENGINEER OPERATING CHARTER (PRODUCTION v6.1)
+# SKATEHUBBA™ CHIEF ENGINEER OPERATING CHARTER (PRODUCTION v6.2)
 
 **Owner:** Design Mainline LLC
 **Product:** SkateHubba™ (USPTO SN 99356919)
 **Repo:** `myhuemungusD/SkateHubba-play` (production)
 **Live:** skatehubba.com
 **Authority Level:** Final technical authority
-**Effective:** May 16, 2026
-**Supersedes:** Production v6 (April 25, 2026) — aligned with shipped repo state
+**Effective:** October 10, 2026
+**Supersedes:** Production v6.1 (May 16, 2026) — aligned with shipped repo state
 
 ---
 
@@ -21,6 +21,10 @@
 - Plain writing. Short sentences. No filler, no hype, no AI-sounding phrases. Direct. No follow-up questions after giving an answer.
 
 ---
+
+## CHANGELOG FROM v6.1 (v6.2, October 10, 2026)
+
+- **Launch feature freeze lifted.** Map (`/map`, `/spots/:id`), the Clips feed (`/feed`, including the community LAND/BAIL vote lane) and Verified Pro are visible in production. `VITE_FEATURE_EXTRAS_ENABLED=true` is set for Production and Preview in Vercel. §2.1 lists them as shipped; §2.2 lists the only features still off.
 
 ## CHANGELOG FROM v6
 
@@ -84,6 +88,11 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 ### 2.2 In review
 
 - _(nothing currently in review)_ — the referee system shipped in **v1.1.0** (2026-04-19); see §2.1.
+
+**Still off in production (the only features not visible on skatehubba.com):**
+
+- **Roll Dice** (`VITE_FEATURE_DICE_ENABLED`) — built, but the `diceAction` / `diceSweep` server functions are not yet deployed. Goes to testers first. See `docs/DICE.md`.
+- **Sign in with Apple** (`VITE_FEATURE_APPLE_SIGNIN_ENABLED`) — waiting on Apple account setup (Firebase Apple provider). Web and Android stay on Google + email until then.
 
 ### 2.3 Active focus
 

@@ -114,14 +114,14 @@ No custom backend for game logic — the client talks directly to Firebase with 
 
 - **Invite & share** — SMS, link copy, and native share for invites and trick clips
 - **Push notifications** — FCM "your turn" alerts that deep-link into the game
-- **Cross-game clips feed** — every landed trick rolls into a global, scrollable feed; the top slot autoplays muted with tap-to-unmute and rotates through visible clips _(frozen: hidden unless `VITE_FEATURE_EXTRAS_ENABLED=true`, see [Feature freeze](#environment-variables))_
-- **Clip upvotes** — single-tap, no-undo upvotes; one vote per user per clip enforced by rules, with a Top/New toggle over upvote-ranked results _(frozen: hidden unless `VITE_FEATURE_EXTRAS_ENABLED=true`, see [Feature freeze](#environment-variables))_
+- **Cross-game clips feed** — every landed trick rolls into a global, scrollable feed; the top slot autoplays muted with tap-to-unmute and rotates through visible clips
+- **Clip upvotes** — single-tap, no-undo upvotes; one vote per user per clip enforced by rules, with a Top/New toggle over upvote-ranked results
 - **Leaderboard** — ranked players by wins
 - **Player profiles** — public per-user pages with full game history
-- **Spots map** — geo-tagged skate spots with gnar rating + bust risk, filters, a nearby-spots dropdown (closest spots within 10 km), and challenge-from-spot _(frozen: hidden unless `VITE_FEATURE_EXTRAS_ENABLED=true`, see [Feature freeze](#environment-variables))_
+- **Spots map** — geo-tagged skate spots with gnar rating + bust risk, filters, a nearby-spots dropdown (closest spots within 10 km), and challenge-from-spot
 - **Achievements & badges** — earned badges (century club, streaks, OG, …) shown on profiles
 - **Hubba Locker** — collectible locker items with a profile showcase (economy Phase A)
-- **Verified Pro** — gold username treatment for verified professional skaters _(frozen: hidden unless `VITE_FEATURE_EXTRAS_ENABLED=true`, see [Feature freeze](#environment-variables))_
+- **Verified Pro** — gold username treatment for verified professional skaters
 - **Admin console** — in-app moderation surface for bans, badge awards, and dispute oversight
 
 ### Platform
@@ -237,40 +237,37 @@ Copy `.env.example` to `.env.local` and fill in the values. The full template (w
 
 **Required**
 
-| Variable                            | Source                                                                                                                   |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `VITE_FIREBASE_API_KEY`             | Firebase Console → Project Settings → General → Your Apps                                                                |
-| `VITE_FIREBASE_AUTH_DOMAIN`         | "                                                                                                                        |
-| `VITE_FIREBASE_PROJECT_ID`          | "                                                                                                                        |
-| `VITE_FIREBASE_STORAGE_BUCKET`      | "                                                                                                                        |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID` | "                                                                                                                        |
-| `VITE_FIREBASE_APP_ID`              | "                                                                                                                        |
-| `VITE_MAPBOX_TOKEN`                 | Mapbox Dashboard → Access Tokens (required for the `/map` page — only reachable when `VITE_FEATURE_EXTRAS_ENABLED=true`) |
+| Variable                            | Source                                                          |
+| ----------------------------------- | --------------------------------------------------------------- |
+| `VITE_FIREBASE_API_KEY`             | Firebase Console → Project Settings → General → Your Apps       |
+| `VITE_FIREBASE_AUTH_DOMAIN`         | "                                                               |
+| `VITE_FIREBASE_PROJECT_ID`          | "                                                               |
+| `VITE_FIREBASE_STORAGE_BUCKET`      | "                                                               |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | "                                                               |
+| `VITE_FIREBASE_APP_ID`              | "                                                               |
+| `VITE_MAPBOX_TOKEN`                 | Mapbox Dashboard → Access Tokens (required for the `/map` page) |
 
 **Optional (recommended in production)**
 
-| Variable                       | Purpose                                                                             |
-| ------------------------------ | ----------------------------------------------------------------------------------- |
-| `VITE_FIREBASE_MEASUREMENT_ID` | Firebase Analytics                                                                  |
-| `VITE_FIREBASE_VAPID_KEY`      | FCM web push (Firebase Console → Cloud Messaging → Web Push certificates)           |
-| `VITE_RECAPTCHA_SITE_KEY`      | App Check via reCAPTCHA v3 (blocks bot/API-abuse traffic)                           |
-| `VITE_APPCHECK_ENABLED`        | App Check master switch; set to `true` to activate alongside the site key           |
-| `VITE_SENTRY_DSN`              | Sentry error tracking; without it, errors only appear in the browser console        |
-| `VITE_POSTHOG_KEY`             | PostHog product analytics; consent-gated, omit to disable                           |
-| `VITE_POSTHOG_HOST`            | PostHog ingestion host; defaults to the US cloud when unset                         |
-| `VITE_APP_URL`                 | Production domain for Firebase email action links + invite URLs                     |
-| `VITE_MAPBOX_STYLE_URL`        | Custom Mapbox Studio style; falls back to `mapbox://styles/mapbox/dark-v11`         |
-| `VITE_USE_EMULATORS=true`      | Local-only — point the client at the Firebase emulator suite                        |
-| `VITE_FEATURE_EXTRAS_ENABLED`  | Feature-freeze switch for Map / Clips feed / Verified Pro — default OFF (see below) |
+| Variable                       | Purpose                                                                       |
+| ------------------------------ | ----------------------------------------------------------------------------- |
+| `VITE_FIREBASE_MEASUREMENT_ID` | Firebase Analytics                                                            |
+| `VITE_FIREBASE_VAPID_KEY`      | FCM web push (Firebase Console → Cloud Messaging → Web Push certificates)     |
+| `VITE_RECAPTCHA_SITE_KEY`      | App Check via reCAPTCHA v3 (blocks bot/API-abuse traffic)                     |
+| `VITE_APPCHECK_ENABLED`        | App Check master switch; set to `true` to activate alongside the site key     |
+| `VITE_SENTRY_DSN`              | Sentry error tracking; without it, errors only appear in the browser console  |
+| `VITE_POSTHOG_KEY`             | PostHog product analytics; consent-gated, omit to disable                     |
+| `VITE_POSTHOG_HOST`            | PostHog ingestion host; defaults to the US cloud when unset                   |
+| `VITE_APP_URL`                 | Production domain for Firebase email action links + invite URLs               |
+| `VITE_MAPBOX_STYLE_URL`        | Custom Mapbox Studio style; falls back to `mapbox://styles/mapbox/dark-v11`   |
+| `VITE_USE_EMULATORS=true`      | Local-only — point the client at the Firebase emulator suite                  |
+| `VITE_FEATURE_EXTRAS_ENABLED`  | Switch for Map / Clips feed / Verified Pro — `true` in production (see below) |
 
-**Feature freeze (`VITE_FEATURE_EXTRAS_ENABLED`)**
+**Extras switch (`VITE_FEATURE_EXTRAS_ENABLED`)**
 
-The app is in a feature freeze focused on the core S.K.A.T.E. Challenge loop (lobby → challenge → record → game → result → rematch). The Map (`/map`, `/spots/:id`), the Clips feed (`/feed`) and Verified Pro are still in the codebase but hidden unless `VITE_FEATURE_EXTRAS_ENABLED` is the literal string `true`:
+The launch feature freeze was lifted on 2026-10-10. The Map (`/map`, `/spots/:id`), the Clips feed (`/feed`) and Verified Pro are live on skatehubba.com, with `VITE_FEATURE_EXTRAS_ENABLED=true` set for Production and Preview in Vercel. The code still requires the literal string `true` (see [`src/lib/featureFlags.ts`](src/lib/featureFlags.ts)), so a local build or fork without it falls back to the core game loop only: those routes redirect to `/lobby` (signed in) or `/` (signed out) and the Clips/Map tabs, "Add a spot" CTA and Verified Pro treatment are hidden. `VITE_*` values are inlined at build time, so changing it needs a redeploy. The landing-page Map teaser was removed outright (not gated) so mapbox-gl never loads on `/`.
 
-- **Unset / anything else (default):** `/map`, `/spots/:id` and `/feed` redirect to `/lobby` (signed in) or `/` (signed out) instead of 404'ing; the Clips and Map bottom-nav tabs, the profile "Add a spot" CTA, the Verified Pro badge/shimmer and the admin Verify Pro panel are hidden.
-- **`true`:** everything renders exactly as before the freeze.
-
-To re-enable, set `VITE_FEATURE_EXTRAS_ENABLED=true` in Vercel → Project Settings → Environment Variables (or `.env.local`) and redeploy — `VITE_*` values are inlined at build time. The flag lives in [`src/lib/featureFlags.ts`](src/lib/featureFlags.ts). The landing-page Map teaser was removed outright (not gated) so mapbox-gl never loads on `/`.
+Still off in production: Roll Dice (`VITE_FEATURE_DICE_ENABLED` — server functions not yet deployed, testers first) and Sign in with Apple (`VITE_FEATURE_APPLE_SIGNIN_ENABLED` — waiting on Apple account setup).
 
 **Server-only (Vercel project env, never `VITE_`-prefixed — see `.env.example`)**
 
