@@ -26,6 +26,20 @@ export interface DisputeSlidesProps {
 }
 
 /**
+ * Pages {@link DisputeSlides} mounts ahead of the clips. A load or a failure
+ * is one page — counting `disputes.length` while that page is showing puts
+ * the playing clip N slides away from the one on screen.
+ */
+export function disputeSlideCount(state: {
+  loading: boolean;
+  error: string | null;
+  disputes: readonly unknown[];
+}): number {
+  if (state.loading || state.error) return 1;
+  return state.disputes.length;
+}
+
+/**
  * Open disputes as snap pages. Renders nothing when there are none — an empty
  * page here would be a blank swipe before the clips. Loading and failure
  * take a single page so the call is never a silent miss.

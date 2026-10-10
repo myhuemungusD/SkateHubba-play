@@ -121,6 +121,21 @@ function makeClip(overrides: Partial<ClipDoc> = {}): ClipDoc {
   });
 }
 
+/** A feed clip whose video URL is a Firebase Storage object named after `id`. */
+function storageClip(
+  id: string,
+  trickName: string,
+  player: { playerUid: string; playerUsername: string } = { playerUid: "p1", playerUsername: "alice" },
+): ClipDoc {
+  return makeClip({
+    id,
+    trickName,
+    playerUid: player.playerUid,
+    playerUsername: player.playerUsername,
+    videoUrl: `https://firebasestorage.googleapis.com/v0/b/x/o/${id}.webm?alt=media`,
+  });
+}
+
 /** Vote-state fixture — spelled out so tests only state what they care about. */
 function voteState(overrides: Partial<ClipVoteState> = {}): ClipVoteState {
   return { upvoteCount: 0, downvoteCount: 0, myVote: null, ...overrides };
@@ -913,25 +928,9 @@ describe("ClipsFeed", () => {
 
   it("unloads videos more than one slide away and prefetches the next clip", async () => {
     mockFetchClipsFeed.mockResolvedValueOnce([
-      makeClip({
-        id: "a",
-        trickName: "TrickA",
-        videoUrl: "https://firebasestorage.googleapis.com/v0/b/x/o/a.webm?alt=media",
-      }),
-      makeClip({
-        id: "b",
-        trickName: "TrickB",
-        playerUid: "p2",
-        playerUsername: "bob",
-        videoUrl: "https://firebasestorage.googleapis.com/v0/b/x/o/b.webm?alt=media",
-      }),
-      makeClip({
-        id: "c",
-        trickName: "TrickC",
-        playerUid: "p3",
-        playerUsername: "cara",
-        videoUrl: "https://firebasestorage.googleapis.com/v0/b/x/o/c.webm?alt=media",
-      }),
+      storageClip("a", "TrickA"),
+      storageClip("b", "TrickB", { playerUid: "p2", playerUsername: "bob" }),
+      storageClip("c", "TrickC", { playerUid: "p3", playerUsername: "cara" }),
     ]);
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("TrickA")).toBeInTheDocument());
@@ -970,6 +969,33 @@ describe("ClipsFeed", () => {
     expect(document.querySelector("[data-active='true']")).toHaveAccessibleName(/community call on switch heel/i);
     expect(screen.queryByText("Kickflip")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Land — @bob landed it/i })).not.toBeInTheDocument();
+  });
+
+  it("plays the first clip after the dispute error page, not the one N slides ahead", async () => {
+    mockFetchOpenDisputes.mockRejectedValueOnce(new Error("unavailable"));
+    mockFetchClipsFeed.mockResolvedValueOnce([
+      storageClip("a", "TrickA"),
+      storageClip("b", "TrickB", { playerUid: "p2", playerUsername: "bob" }),
+    ]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+
+    expect(await screen.findByText(/Couldn't load the calls waiting on the community/i)).toBeInTheDocument();
+    // The error page is slide 0, so the clip behind it must not be the one playing.
+    expect(screen.queryByText("TrickA")).not.toBeInTheDocument();
+    expect(screen.queryByText("TrickB")).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      const prefetched = document.querySelector("video[aria-hidden='true']") as HTMLVideoElement | null;
+      expect(prefetched?.src).toContain("a.webm");
+    });
+
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    expect(await screen.findByText("TrickA")).toBeInTheDocument();
+    expect(screen.queryByText("TrickB")).not.toBeInTheDocument();
+    await waitFor(() => {
+      const prefetched = document.querySelector("video[aria-hidden='true']") as HTMLVideoElement | null;
+      expect(prefetched?.src).toContain("b.webm");
+    });
   });
 });
 

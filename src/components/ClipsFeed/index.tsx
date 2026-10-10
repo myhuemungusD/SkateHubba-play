@@ -9,7 +9,7 @@ const ClipComments = lazy(() => import("./ClipComments").then((m) => ({ default:
 import { ClipsFeedEmpty, ClipsFeedError, ClipsFeedExhausted, ClipsFeedSkeleton } from "./ClipsFeedStates";
 import { OwnClipModeration } from "./OwnClipModeration";
 import { ClipsFeedHeader } from "./ClipsFeedHeader";
-import { DisputeSlides } from "./DisputeLane";
+import { DisputeSlides, disputeSlideCount } from "./DisputeLane";
 import { isNearSlide } from "./feedLayout";
 import { NextClipPrefetcher } from "./NextClipPrefetcher";
 import { SpotlightCard } from "./SpotlightCard";
@@ -43,8 +43,8 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
   const pendingTarget = useRef<number | null>(null);
   const wasLoadingMore = useRef(false);
   const wasBlocking = useRef(true);
-  // Error takes one leading page; open disputes take one each.
-  const leading = disputes.error ? 1 : disputes.disputes.length;
+  // Match the pages DisputeSlides mounts: one for loading or error, else one per dispute.
+  const leading = disputeSlideCount(disputes);
   const leadingRef = useRef(leading);
   const clipCountRef = useRef(clips.visibleClips.length);
   useEffect(() => {
@@ -84,7 +84,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
   const showEmpty = !blocking && !clips.error && !disputes.error && !hasSlides && !clips.exhausted;
   const showExhausted =
     !blocking && !clips.error && !disputes.error && clips.exhausted && disputes.disputes.length === 0;
-  const nextSrc = nextSlideSrc(disputes.disputes, clips.visibleClips, activeIndex);
+  const nextSrc = nextSlideSrc(leading, disputes.disputes, clips.visibleClips, activeIndex);
 
   return (
     <section className="relative h-full" aria-label="Community feed">
@@ -133,7 +133,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
           <DisputeSlides state={disputes} activeIndex={activeIndex} muted={muted} onToggleMute={toggleMute} />
           {!disputes.loading &&
             clips.visibleClips.map((clip, index) => {
-              const slideIndex = disputes.disputes.length + index;
+              const slideIndex = leading + index;
               return (
                 <SpotlightCard
                   key={clip.id}
@@ -211,15 +211,16 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
 }
 
 function nextSlideSrc(
+  leadingSlides: number,
   disputeList: readonly { matchVideoUrl: string }[],
   clipList: readonly { videoUrl: string }[],
   activeIndex: number,
 ): string | null {
   const next = activeIndex + 1;
-  if (next < disputeList.length) {
+  if (next < leadingSlides) {
     const url = disputeList[next]?.matchVideoUrl;
     return url && isFirebaseStorageUrl(url) ? url : null;
   }
-  const clip = clipList[next - disputeList.length];
+  const clip = clipList[next - leadingSlides];
   return clip?.videoUrl ?? null;
 }
