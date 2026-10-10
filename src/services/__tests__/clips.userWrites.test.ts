@@ -268,6 +268,20 @@ describe("createUserClip", () => {
     warn.mockRestore();
   });
 
+  it("starts the clip as pending when clip moderation is on", async () => {
+    vi.stubEnv("VITE_FEATURE_CLIP_MODERATION_ENABLED", "true");
+    try {
+      const cap = wireTx({});
+      await createUserClip(params());
+      expect(cap.observed().set).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ moderationStatus: "pending", moderation: "pending" }),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("does not mask a typed refusal as a generic failure", async () => {
     wireTx({ banned: true });
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});

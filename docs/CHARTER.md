@@ -94,6 +94,7 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 
 - **Referee on new games** (`VITE_FEATURE_REFEREE_ENABLED`) — hidden for launch simplicity, so every dispute on a new game goes to the community vote. The challenge screen does not offer a referee, and `createGame` will not stamp one. Games already in flight keep their judge: invites, `disputable`, `setReview`, the Judge / No Judge badge, notifications, stats, and `api/cron` referee sweeps are unchanged. `firestore.rules` is unchanged.
 - **Roll Dice** (`VITE_FEATURE_DICE_ENABLED`) — built, but the `diceAction` / `diceSweep` server functions are not yet deployed. Goes to testers first. See `docs/DICE.md`.
+- **Public clip moderation** (`VITE_FEATURE_CLIP_MODERATION_ENABLED`) — built, but `moderateNewClip`, `moderateClipReport`, and `decideClipModeration` are not deployed, and the Video Intelligence API is not enabled. Goes to testers first. See `docs/CLIP_MODERATION.md`.
 - **Sign in with Apple** (`VITE_FEATURE_APPLE_SIGNIN_ENABLED`) — waiting on Apple account setup (Firebase Apple provider). Web and Android stay on Google + email until then.
 
 ### 2.3 Active focus
@@ -192,7 +193,7 @@ Delivery semantics of the drain: **at-least-once**. A dispatch doc is deleted on
 
 Types permitted on the push path are `your_turn`, `new_challenge`, `game_won`, `game_lost`, `judge_invite`, and `nudge`. `nudge` is push-only — it has no `/notifications` feed entry — and is bounded far harder than the generic 5s dispatch cooldown by the 1-hour `/nudge_limits` window on the originating `/nudges` write.
 
-The `verify-no-cloud-functions` CI gate scopes to `^functions/src/` — the drain endpoint lives under `api/`, alongside the auto-referee sweep, so the gate remains in force against application-authored Cloud Functions. As of 2026-07 the gate is an allowlist: it permits the maintainer-approved stats close-out file set (see §4.14) and, as of 2026-10, Roll Dice under `functions/src/dice/` (`diceAction` plus `diceSweep` — see `docs/DICE.md`). It hard-fails any other `functions/src/` addition. Reintroducing further authored functions still requires maintainer sign-off.
+The `verify-no-cloud-functions` CI gate scopes to `^functions/src/` — the drain endpoint lives under `api/`, alongside the auto-referee sweep, so the gate remains in force against application-authored Cloud Functions. As of 2026-07 the gate is an allowlist: it permits the maintainer-approved stats close-out file set (see §4.14) and, as of 2026-10, Roll Dice under `functions/src/dice/` (`diceAction` plus `diceSweep` — see `docs/DICE.md`). As of 2026-10-10 it also permits public clip moderation under `functions/src/moderation/` (Jason approved; see `docs/CLIP_MODERATION.md`). It hard-fails any other `functions/src/` addition. Reintroducing further authored functions still requires maintainer sign-off.
 
 Auto-forfeit runs on two paths: the client's `forfeitExpiredTurn` on game open, and `api/cron/sweep-expired-turns.ts` on a 15-minute GitHub Actions schedule. Both share the `decideExpiredForfeit` helper in `src/services/turnForfeit.shared.ts`, so they cannot diverge.
 
@@ -341,12 +342,12 @@ These are the approved majors. Minors and patches track upstream via the caret r
 
 ```
 API.md, APPCHECK_ROLLOUT.md, ARCHITECTURE.md, CHARTER.md (this file),
-DATABASE.md, DECISIONS.md, DEPLOYMENT.md, DEVELOPMENT.md,
+CLIP_MODERATION.md, DATABASE.md, DECISIONS.md, DEPLOYMENT.md, DEVELOPMENT.md,
 DISPUTE_BINDING_DESIGN.md, DSA_COMPLIANCE.md, ECONOMY.md,
 GAME_MECHANICS.md, GAME_STATE_MACHINE.md, GAPS.md, MAPBOX_STYLE.md,
 NOTIFICATION_AUDIT.md, PERMISSION_DENIED_RUNBOOK.md, SENTRY_ALERTS.md,
 STATS.md, STATUS_REPORT.md, STORE_PRIVACY_ANSWERS.md, TESTING.md
-(22 files)
+(23 files)
 
 archive/   — superseded audits and plans; history only, never a current
              risk register:
@@ -363,7 +364,7 @@ screenshots/
 ### 4.14 Prohibited
 
 - Custom backend / API server (no Express, no Next.js routes, no Vercel serverless functions for app logic)
-- Application-authored Cloud Functions in PRs (CI rejects new code under `functions/src/`; reintroduction requires maintainer sign-off and a tightened gate). Two approved exceptions exist. (1) The `api/` serverless endpoints, which live outside the `functions/src/` gate: the `api/cron/**` auto-referee sweeps and push drain (signed off as referee/courier roles that write only transitions a client could legally have written itself), plus server-side account deletion (`api/account/delete.ts`) and `/player` social-card metadata (`api/player-meta.ts`). (2) The **stats close-out function** under `functions/src/` — maintainer-approved 2026-07 under exactly the sign-off + tightened-gate procedure this bullet defines. It moved win/loss stat writes server-side after a client-side stats-replay path corrupted production win/loss counters. The tightened gate (`verify-no-cloud-functions` in `pr-gate.yml`) pins its exact file set — `functions/src/index.ts`, `functions/src/index.test.ts`, `functions/src/applyGameStats.ts`, `functions/src/applyGameStats.test.ts` — plus, approved 2026-10, every file under `functions/src/dice/` (Roll Dice: the `diceAction` callable and the `diceSweep` schedule; the server rolls every die and clients never write dice data). It hard-fails any other `functions/src/` addition; the `build-functions` job type-checks, builds, and tests the package on every PR that touches `functions/**`.
+- Application-authored Cloud Functions in PRs (CI rejects new code under `functions/src/`; reintroduction requires maintainer sign-off and a tightened gate). Two approved exceptions exist. (1) The `api/` serverless endpoints, which live outside the `functions/src/` gate: the `api/cron/**` auto-referee sweeps and push drain (signed off as referee/courier roles that write only transitions a client could legally have written itself), plus server-side account deletion (`api/account/delete.ts`) and `/player` social-card metadata (`api/player-meta.ts`). (2) The **stats close-out function** under `functions/src/` — maintainer-approved 2026-07 under exactly the sign-off + tightened-gate procedure this bullet defines. It moved win/loss stat writes server-side after a client-side stats-replay path corrupted production win/loss counters. The tightened gate (`verify-no-cloud-functions` in `pr-gate.yml`) pins its exact file set — `functions/src/index.ts`, `functions/src/index.test.ts`, `functions/src/applyGameStats.ts`, `functions/src/applyGameStats.test.ts` — plus, approved 2026-10, every file under `functions/src/dice/` (Roll Dice: the `diceAction` callable and the `diceSweep` schedule; the server rolls every die and clients never write dice data), plus, approved by Jason on 2026-10-10, every file under `functions/src/moderation/` (public clip moderation: Video Intelligence on upload, community auto-hide, and the admin keep/remove callable `decideClipModeration`; see `docs/CLIP_MODERATION.md`). It hard-fails any other `functions/src/` addition; the `build-functions` job type-checks, builds, and tests the package on every PR that touches `functions/**`.
 - PostgreSQL / Neon / Drizzle (Firestore is the datastore — final)
 - React Native / Expo (Capacitor wraps the PWA — final)
 - Redux / Zustand / MobX / TanStack Query (Context + hooks is sufficient)

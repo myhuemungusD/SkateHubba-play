@@ -503,6 +503,7 @@ function AppRoutes() {
                     gamesLoading={game.gamesLoading}
                     onViewPlayer={nav.navigateToPlayer}
                     onOpenDice={(id) => navigate(`/dice/${id}`)}
+                    onOpenAppeal={(path) => navigate(path)}
                   />
                 ) : (
                   <Navigate to="/" replace />

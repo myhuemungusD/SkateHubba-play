@@ -52,9 +52,10 @@ vi.mock("../../services/clips.upvotes", () => ({
 // tests never pull the capture stack or the comments service; their own
 // suites own their behavior.
 vi.mock("../UserClipUpload", () => ({
-  UserClipUploadModal: ({ onClose }: { onClose: () => void }) => (
+  UserClipUploadModal: ({ onClose, onPosted }: { onClose: () => void; onPosted?: () => void }) => (
     <div role="dialog" aria-label="upload-modal">
       <button onClick={onClose}>__close_upload__</button>
+      <button onClick={() => onPosted?.()}>__posted__</button>
     </div>
   ),
 }));
@@ -66,6 +67,10 @@ vi.mock("../ClipsFeed/ClipComments", () => ({
       {onReport && <button onClick={onReport}>__report_from_comments__</button>}
     </div>
   ),
+}));
+
+vi.mock("../../services/clipModeration", () => ({
+  fetchOwnClipModeration: vi.fn(async () => []),
 }));
 
 vi.mock("../../services/analytics", () => ({
@@ -1071,13 +1076,15 @@ describe("ClipsFeed — user clips and comments", () => {
 
   it("opens the upload modal from the POST button in the header", async () => {
     const user = userEvent.setup();
-    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+    mockFetchClipsFeed.mockResolvedValue([makeClip()]);
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
 
     await user.click(screen.getByRole("button", { name: /post a clip to the feed/i }));
 
     expect(await screen.findByRole("dialog", { name: /upload-modal/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "__posted__" }));
+    expect(screen.queryByRole("dialog", { name: /upload-modal/i })).not.toBeInTheDocument();
   });
 
   /** Render the feed, wait for its one clip, and open the comment sheet. */

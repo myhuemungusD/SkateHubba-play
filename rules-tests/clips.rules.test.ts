@@ -340,6 +340,10 @@ describe("clips — create", () => {
     await assertFails(setDoc(clipRef(asP1(), deterministicId()), makeValidClip({ moderationStatus: "hidden" })));
   });
 
+  it("rejects a game clip that carries a moderation workflow field", async () => {
+    await assertFails(setDoc(clipRef(asP1(), deterministicId()), makeValidClip({ moderation: "pending" })));
+  });
+
   it("rejects a clip missing the moderationStatus field", async () => {
     const clip = makeValidClip();
     delete (clip as Record<string, unknown>).moderationStatus;

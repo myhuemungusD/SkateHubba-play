@@ -48,6 +48,7 @@ vi.mock("firebase-functions/v2/firestore", () => ({
     // a side effect — the exported symbol just has to exist.
     return { __registered: true };
   },
+  onDocumentCreated: () => ({ __registered: true }),
 }));
 
 vi.mock("./applyGameStats.js", () => ({

@@ -64,6 +64,14 @@ describe("reports — user-clip reason + nullable gameId", () => {
     await assertSucceeds(submitReport({ reason: "inappropriate_video" }));
   });
 
+  it("accepts not_skating", async () => {
+    await assertSucceeds(submitReport({ reason: "not_skating" }));
+  });
+
+  it("accepts inappropriate", async () => {
+    await assertSucceeds(submitReport({ reason: "inappropriate" }));
+  });
+
   it("attack: a made-up reason is still rejected", async () => {
     await assertFails(submitReport({ reason: "i_dont_like_them" }));
   });

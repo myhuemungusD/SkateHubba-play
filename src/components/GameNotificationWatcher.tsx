@@ -88,6 +88,7 @@ function useNotificationDocListener(uid: string | null, gated: boolean, notify: 
           gameId: notif.gameId,
           firestoreId: notif.firestoreId,
           sourceType: notif.type,
+          ...(notif.appealPath ? { appealPath: notif.appealPath } : {}),
         });
       },
       // Seed → bell, never toast. Note this deliberately does NOT apply

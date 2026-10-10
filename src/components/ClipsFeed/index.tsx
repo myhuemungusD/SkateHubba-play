@@ -7,6 +7,7 @@ const ReportModal = lazy(() => import("../ReportModal").then((m) => ({ default: 
 const UserClipUploadModal = lazy(() => import("../UserClipUpload").then((m) => ({ default: m.UserClipUploadModal })));
 const ClipComments = lazy(() => import("./ClipComments").then((m) => ({ default: m.ClipComments })));
 import { ClipsFeedEmpty, ClipsFeedError, ClipsFeedExhausted, ClipsFeedSkeleton } from "./ClipsFeedStates";
+import { OwnClipModeration } from "./OwnClipModeration";
 import { ClipsFeedHeader } from "./ClipsFeedHeader";
 import { DisputeSlides } from "./DisputeLane";
 import { isNearSlide } from "./feedLayout";
@@ -37,6 +38,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
   const [reportTarget, setReportTarget] = useState<ClipDoc | null>(null);
   const [commentsTarget, setCommentsTarget] = useState<ClipDoc | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [moderationRefresh, setModerationRefresh] = useState(0);
 
   const pendingTarget = useRef<number | null>(null);
   const wasLoadingMore = useRef(false);
@@ -96,6 +98,8 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         position={showSlides && slideCount > 0 ? { index: activeIndex, total: slideCount } : undefined}
         onPostClip={() => setUploadOpen(true)}
       />
+
+      <OwnClipModeration uid={profile.uid} refreshKey={moderationRefresh} />
 
       {blocking && <ClipsFeedSkeleton />}
 
@@ -179,6 +183,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
             onClose={() => setUploadOpen(false)}
             onPosted={() => {
               setUploadOpen(false);
+              setModerationRefresh((key) => key + 1);
               void clips.loadPool();
             }}
           />

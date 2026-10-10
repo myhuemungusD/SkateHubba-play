@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-import { onDocumentUpdated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onCall } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { defineBoolean, defineString } from "firebase-functions/params";
@@ -8,6 +8,7 @@ import { applyGameStats } from "./applyGameStats.js";
 import { handleDiceCall } from "./dice/callable.js";
 import { sweepExpiredDiceGames } from "./dice/handlers.js";
 import { adminDiceDb } from "./dice/store.js";
+import { handleClipCreated, handleClipReport, handleDecideClip } from "./moderation/handlers.js";
 
 /**
  * The app uses the named Firestore database "skatehubba", NOT the (default)
@@ -69,3 +70,56 @@ export const diceAction = onCall({ region: "us-central1", enforceAppCheck: false
 export const diceSweep = onSchedule({ schedule: "every 15 minutes", region: "us-central1" }, async () => {
   await sweepExpiredDiceGames(adminDiceDb(getFirestore(DATABASE_ID)), Date.now());
 });
+
+/**
+ * Public-clip screener. Default off. While off, pending clips are left
+ * alone (the client flag stays off too, so new clips are not pending).
+ * Video Intelligence can run for a few minutes on a short clip.
+ */
+const moderationEnabled = defineBoolean("MODERATION_ENABLED", { default: false });
+const moderationSentryDsn = defineString("SENTRY_DSN", { default: "" });
+
+export const moderateNewClip = onDocumentCreated(
+  {
+    document: "clips/{clipId}",
+    database: DATABASE_ID,
+    region: "us-central1",
+    timeoutSeconds: 300,
+    memory: "512MiB",
+  },
+  async (event): Promise<void> => {
+    await handleClipCreated(
+      {
+        db: getFirestore(DATABASE_ID),
+        enabled: moderationEnabled.value(),
+        sentryDsn: moderationSentryDsn.value(),
+      },
+      event.params.clipId,
+      event.data?.data(),
+    );
+  },
+);
+
+/** Count distinct reporters and auto-hide a public clip once the threshold is met. */
+export const moderateClipReport = onDocumentCreated(
+  { document: "reports/{reportId}", database: DATABASE_ID, region: "us-central1", timeoutSeconds: 60 },
+  async (event): Promise<void> => {
+    await handleClipReport(
+      {
+        db: getFirestore(DATABASE_ID),
+        enabled: moderationEnabled.value(),
+        sentryDsn: moderationSentryDsn.value(),
+      },
+      event.data?.data(),
+      Date.now(),
+    );
+  },
+);
+
+/**
+ * Admin keep / remove. Not gated by MODERATION_ENABLED so a clip already in
+ * review can still be cleared after the screener is switched off.
+ */
+export const decideClipModeration = onCall({ region: "us-central1", enforceAppCheck: false }, (request) =>
+  handleDecideClip(request, getFirestore(DATABASE_ID)),
+);

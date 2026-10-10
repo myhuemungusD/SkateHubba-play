@@ -42,6 +42,9 @@ interface ImportMetaEnv {
    *  createGame stamp a judge. Unset (default) forces the honor system.
    *  Read via isRefereeEnabled(). Does not affect games that already have one. */
   readonly VITE_FEATURE_REFEREE_ENABLED?: string;
+  /** Public-clip moderation. "true" starts user uploads as pending.
+   *  Unset (default) leaves uploads visible immediately. */
+  readonly VITE_FEATURE_CLIP_MODERATION_ENABLED?: string;
   readonly VITE_MAPBOX_TOKEN?: string;
   /** Optional Mapbox Studio style URL. Falls back to mapbox://styles/mapbox/dark-v11. */
   readonly VITE_MAPBOX_STYLE_URL?: string;

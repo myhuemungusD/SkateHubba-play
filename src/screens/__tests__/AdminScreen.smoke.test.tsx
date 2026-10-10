@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 
 const mockFetchReports = vi.fn();
+const mockFetchClipsInReview = vi.fn();
 
 vi.mock("../../services/admin", () => ({
   fetchReports: (...args: unknown[]) => mockFetchReports(...args),
@@ -19,6 +20,11 @@ vi.mock("../../services/admin", () => ({
 vi.mock("../../services/users", () => ({
   getUidByUsername: vi.fn(),
   getUserProfile: vi.fn(),
+}));
+
+vi.mock("../../services/clipModeration", () => ({
+  fetchClipsInReview: (...args: unknown[]) => mockFetchClipsInReview(...args),
+  decideClipModeration: vi.fn(),
 }));
 
 vi.mock("../../services/achievements", () => ({ fetchAchievements: vi.fn().mockResolvedValue([]) }));
@@ -38,6 +44,7 @@ function Wrapper({ children }: { children: ReactNode }) {
 beforeEach(() => {
   vi.clearAllMocks();
   mockFetchReports.mockResolvedValue([]);
+  mockFetchClipsInReview.mockResolvedValue([]);
 });
 
 describe("AdminScreen", () => {
@@ -53,7 +60,7 @@ describe("AdminScreen", () => {
     expect(mockFetchReports).not.toHaveBeenCalled();
   });
 
-  it("switches between the three sections", async () => {
+  it("switches between the admin sections", async () => {
     const user = userEvent.setup();
     render(<AdminScreen adminUid="admin1" onBack={vi.fn()} />, { wrapper: Wrapper });
 
@@ -65,6 +72,11 @@ describe("AdminScreen", () => {
     expect(screen.getByRole("region", { name: "Reports" })).toBeInTheDocument();
     await waitFor(() => expect(mockFetchReports).toHaveBeenCalledWith("pending"));
     expect(await screen.findByTestId("reports-empty")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "CLIPS" }));
+    expect(screen.getByRole("region", { name: "Clips in review" })).toBeInTheDocument();
+    await waitFor(() => expect(mockFetchClipsInReview).toHaveBeenCalled());
+    expect(await screen.findByTestId("clip-review-empty")).toBeInTheDocument();
   });
 
   it("calls onBack from the header control", async () => {
@@ -87,5 +99,6 @@ describe("AdminScreen — feature freeze (VITE_FEATURE_EXTRAS_ENABLED unset, the
     expect(screen.getByRole("button", { name: "AWARDS" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("region", { name: "Awards" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "REPORTS" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "CLIPS" })).toBeInTheDocument();
   });
 });

@@ -74,6 +74,13 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Public-clip moderation. DEFAULTS TO OFF until the server function is
+  // deployed. Read via isClipModerationEnabled() in featureFlags.ts.
+  VITE_FEATURE_CLIP_MODERATION_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // ── Optional: third-party integrations ──────────────────────────────
   VITE_MAPBOX_TOKEN: z.string().optional(),
   // Format validation (mapbox://styles/ prefix or https URL) deliberately

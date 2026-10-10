@@ -383,6 +383,8 @@ export interface NotificationEvent {
   gameId: string;
   /** Server `createdAt` in epoch millis. 0 when the timestamp hasn't resolved. */
   createdAtMs: number;
+  /** In-app path, such as a clip appeal. Omitted when the doc has none. */
+  appealPath?: string;
 }
 
 /** Cap on the emitted-id set. Safe to trim: see the note in the snapshot handler. */
@@ -397,7 +399,14 @@ function createdAtMillis(data: Record<string, unknown>): number {
   return 0;
 }
 
+function appealPathFrom(data: Record<string, unknown>): string | undefined {
+  const path = data.appealPath;
+  if (typeof path !== "string" || !path.startsWith("/")) return undefined;
+  return path;
+}
+
 function toNotificationEvent(id: string, data: Record<string, unknown>): NotificationEvent {
+  const appealPath = appealPathFrom(data);
   return {
     firestoreId: id,
     type: typeof data.type === "string" ? data.type : "",
@@ -405,6 +414,7 @@ function toNotificationEvent(id: string, data: Record<string, unknown>): Notific
     body: typeof data.body === "string" ? data.body : "",
     gameId: typeof data.gameId === "string" ? data.gameId : "",
     createdAtMs: createdAtMillis(data),
+    ...(appealPath ? { appealPath } : {}),
   };
 }
 

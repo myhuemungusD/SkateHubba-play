@@ -87,24 +87,24 @@ either one.
 
 In addition to GitHub's branch protection settings, the following CI checks run on every PR to `main` (plus the out-of-band `audit-nightly` job at the bottom of the table, which runs on a schedule rather than per PR):
 
-| Check                             | Workflow                    | Purpose                                                                                                                               |
-| --------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `enforce-pr-policy`               | `pr-gate.yml`               | Confirms the change arrived via PR                                                                                                    |
-| `verify-no-cloud-functions`       | `pr-gate.yml`               | Enforces the `functions/src/` **allowlist** — the stats close-out files and `functions/src/dice/*.ts` pass, anything else is rejected |
-| `verify-workflow-changes`         | `pr-gate.yml`               | Warns when `.github/workflows/` files are modified                                                                                    |
-| `Validate Firebase rules changes` | `pr-gate.yml`               | Runs emulator rules tests when Firestore/Storage rules change (job id `validate-firebase-rules`)                                      |
-| `guard-as-any-casts`              | `pr-gate.yml`               | Rejects `as any` in `src/`, `functions/src/` and `api/` production code                                                               |
-| `guard-todo-fixme-hack`           | `pr-gate.yml`               | Rejects `TODO` / `FIXME` / `HACK` in `src/` and `api/`                                                                                |
-| `check-test-duplication`          | `pr-gate.yml`               | Flags duplicated test blocks                                                                                                          |
-| `check-file-length`               | `pr-gate.yml`               | Reports files over the LOC budgets (`continue-on-error: true` — non-blocking)                                                         |
-| `Build and test Cloud Functions`  | `pr-gate.yml`               | Builds, tests and audits (high+) the approved Cloud Functions codebase when it changes                                                |
-| `e2e`                             | `main.yml`                  | Playwright end-to-end suite against the Firebase emulators                                                                            |
-| `build-and-test`                  | `main.yml`                  | Lint, type check, tests, build (blocking `npm audit` when this PR touches deps; report-only otherwise)                                |
-| `lighthouse`                      | `main.yml`                  | Performance regression check                                                                                                          |
-| Rules deploy                      | `firebase-rules-deploy.yml` | Pushes `firestore.rules` / `storage.rules` / indexes to production on merge to `main`                                                 |
-| Infra setup                       | `firebase-infra-setup.yml`  | Manual workflow for daily Firestore backups + 90-day Storage lifecycle (`workflow_dispatch`)                                          |
-| `audit-nightly`                   | `main.yml`                  | Nightly `npm audit` of main's root lockfile (moderate+) and `functions/` lockfile (high+)                                             |
-| CodeQL                            | `codeql.yml`                | Static analysis (JS/TS, Actions, Python) on PRs, pushes to main and weekly. Not required yet                                          |
+| Check                             | Workflow                    | Purpose                                                                                                                                                                 |
+| --------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enforce-pr-policy`               | `pr-gate.yml`               | Confirms the change arrived via PR                                                                                                                                      |
+| `verify-no-cloud-functions`       | `pr-gate.yml`               | Enforces the `functions/src/` **allowlist** — the stats close-out files, `functions/src/dice/*.ts`, and `functions/src/moderation/*.ts` pass, anything else is rejected |
+| `verify-workflow-changes`         | `pr-gate.yml`               | Warns when `.github/workflows/` files are modified                                                                                                                      |
+| `Validate Firebase rules changes` | `pr-gate.yml`               | Runs emulator rules tests when Firestore/Storage rules change (job id `validate-firebase-rules`)                                                                        |
+| `guard-as-any-casts`              | `pr-gate.yml`               | Rejects `as any` in `src/`, `functions/src/` and `api/` production code                                                                                                 |
+| `guard-todo-fixme-hack`           | `pr-gate.yml`               | Rejects `TODO` / `FIXME` / `HACK` in `src/` and `api/`                                                                                                                  |
+| `check-test-duplication`          | `pr-gate.yml`               | Flags duplicated test blocks                                                                                                                                            |
+| `check-file-length`               | `pr-gate.yml`               | Reports files over the LOC budgets (`continue-on-error: true` — non-blocking)                                                                                           |
+| `Build and test Cloud Functions`  | `pr-gate.yml`               | Builds, tests and audits (high+) the approved Cloud Functions codebase when it changes                                                                                  |
+| `e2e`                             | `main.yml`                  | Playwright end-to-end suite against the Firebase emulators                                                                                                              |
+| `build-and-test`                  | `main.yml`                  | Lint, type check, tests, build (blocking `npm audit` when this PR touches deps; report-only otherwise)                                                                  |
+| `lighthouse`                      | `main.yml`                  | Performance regression check                                                                                                                                            |
+| Rules deploy                      | `firebase-rules-deploy.yml` | Pushes `firestore.rules` / `storage.rules` / indexes to production on merge to `main`                                                                                   |
+| Infra setup                       | `firebase-infra-setup.yml`  | Manual workflow for daily Firestore backups + 90-day Storage lifecycle (`workflow_dispatch`)                                                                            |
+| `audit-nightly`                   | `main.yml`                  | Nightly `npm audit` of main's root lockfile (moderate+) and `functions/` lockfile (high+)                                                                               |
+| CodeQL                            | `codeql.yml`                | Static analysis (JS/TS, Actions, Python) on PRs, pushes to main and weekly. Not required yet                                                                            |
 
 ---
 
@@ -124,8 +124,9 @@ enforced while there is a single maintainer (see §1).
 4. **Do not add Cloud Functions outside the allowlist** — the app is a serverless
    Firebase SPA by design. `pr-gate.yml` permits the maintainer-approved stats
    close-out files under `functions/src/` (`index.ts`, `index.test.ts`,
-   `applyGameStats.ts`, `applyGameStats.test.ts`, approved 2026-07) and Roll Dice
-   under `functions/src/dice/*.ts` (approved 2026-10). Editing those is fine;
+   `applyGameStats.ts`, `applyGameStats.test.ts`, approved 2026-07), Roll Dice
+   under `functions/src/dice/*.ts` (approved 2026-10), and public clip moderation
+   under `functions/src/moderation/*.ts` (approved 2026-10-10). Editing those is fine;
    adding any other file there hard-fails the gate
 5. **Do not rewrite existing game logic** without a linked issue and approval
 

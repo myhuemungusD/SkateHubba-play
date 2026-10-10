@@ -110,6 +110,15 @@ describe("safeParseEnv", () => {
     },
   );
 
+  it.each(flagCases)(
+    "parses VITE_FEATURE_CLIP_MODERATION_ENABLED=%j as %s (clip moderation, default off)",
+    (raw, expected) => {
+      const result = safeParseEnv({ ...validEnv, VITE_FEATURE_CLIP_MODERATION_ENABLED: raw });
+      expect(result).not.toBeNull();
+      expect(result?.VITE_FEATURE_CLIP_MODERATION_ENABLED).toBe(expected);
+    },
+  );
+
   it("accepts every optional var when provided with a valid string", () => {
     const result = safeParseEnv({
       ...validEnv,
