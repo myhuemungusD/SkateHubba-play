@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { PlayIcon } from "../icons";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
+import { CLIP_POSTER } from "../../lib/clipPoster";
 import { BELOW_HEADER, RAIL_BTN } from "./feedLayout";
 
 /**
@@ -12,7 +13,8 @@ import { BELOW_HEADER, RAIL_BTN } from "./feedLayout";
  * never autoplays; the center control is an explicit play button.
  *
  * Far slides unmount this entirely (see `isNearSlide`). The next slide stays
- * mounted so its bytes are in flight, but `active` is false so it stays paused.
+ * mounted and paused, with `preload="metadata"`. `NextClipPrefetcher` is what
+ * pulls that clip's media bytes.
  */
 
 export interface SpotlightVideoProps {
@@ -179,7 +181,8 @@ function SpotlightVideoImpl({ src, active = true, mediaLabel, muted: mutedProp, 
         muted={muted}
         loop
         playsInline
-        preload="auto"
+        poster={CLIP_POSTER}
+        preload={active ? "auto" : "metadata"}
         onPlay={handlePlay}
         onPause={handlePause}
         onError={handleError}

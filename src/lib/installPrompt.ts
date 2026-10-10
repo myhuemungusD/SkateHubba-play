@@ -13,9 +13,9 @@
  * Safari (iOS + macOS) and Firefox never fire the event — there the UI falls
  * back to manual "Add to Home Screen" instructions.
  *
- * There is deliberately no app service worker: `public/sw-cleanup.js`
- * unregisters everything except the FCM push worker, and Chrome 120+ no
- * longer requires a service worker for installability.
+ * Chrome 120+ no longer requires a service worker for installability.
+ * `public/asset-cache-sw.js` caches hashed assets; `public/sw-cleanup.js`
+ * keeps that worker and the FCM push worker, and drops anything else.
  */
 import { analytics } from "../services/analytics";
 

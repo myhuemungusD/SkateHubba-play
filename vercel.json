@@ -48,6 +48,15 @@
   ],
   "headers": [
     {
+      "source": "/(logonew.webp|sh-video-poster.webp|sh-graffiti.webp|og-image.png|favicon.ico|apple-touch-icon.png|icon-192.png|icon-512.png|icon-maskable-192.png|icon-maskable-512.png|favicon-16.png|favicon-32.png|default-skater.svg)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=2592000, stale-while-revalidate=31536000"
+        }
+      ]
+    },
+    {
       "source": "/assets/(.*)",
       "headers": [
         {

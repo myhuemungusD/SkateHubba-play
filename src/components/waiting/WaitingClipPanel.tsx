@@ -2,6 +2,7 @@ import type { GameDoc } from "../../services/games";
 import type { UserProfile } from "../../services/users";
 import { isFirebaseStorageUrl } from "../../utils/helpers";
 import { ClipShareButtons } from "./ClipShareButtons";
+import { CLIP_POSTER } from "../../lib/clipPoster";
 
 interface WaitingClipPanelProps {
   game: GameDoc;
@@ -30,6 +31,7 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
               src={game.matchVideoUrl}
               controls
               playsInline
+              poster={CLIP_POSTER}
               preload="metadata"
               aria-label={`Your attempt at ${game.currentTrickName || "trick"}`}
               className="trick-frame rounded-2xl bg-black object-cover border border-border"
@@ -53,6 +55,7 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
               src={game.currentTrickVideoUrl}
               controls
               playsInline
+              poster={CLIP_POSTER}
               preload="metadata"
               aria-label={`Video of ${game.currentTrickName || "trick"} you set`}
               className="trick-frame rounded-2xl bg-black object-cover border border-border"
@@ -87,6 +90,7 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
           src={clipUrl}
           controls
           playsInline
+          poster={CLIP_POSTER}
           preload="metadata"
           aria-label={clipLabel}
           className="trick-frame rounded-2xl bg-black object-cover border border-border"

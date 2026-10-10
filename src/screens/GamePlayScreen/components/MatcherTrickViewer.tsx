@@ -2,6 +2,7 @@ import { ProUsername } from "../../../components/ProUsername";
 import { Btn } from "../../../components/ui/Btn";
 import type { GameDoc } from "../../../services/games";
 import { isFirebaseStorageUrl } from "../../../utils/helpers";
+import { CLIP_POSTER } from "../../../lib/clipPoster";
 
 interface Props {
   game: GameDoc;
@@ -35,6 +36,7 @@ export function MatcherTrickViewer({
           src={game.currentTrickVideoUrl}
           controls
           playsInline
+          poster={CLIP_POSTER}
           preload="metadata"
           aria-label={`Video of ${game.currentTrickName || "trick"} set by ${setterUsername}`}
           className="trick-frame rounded-2xl bg-black object-cover border border-border"

@@ -4,6 +4,7 @@ import { isFirebaseStorageUrl } from "../utils/helpers";
 import { trackEvent } from "../services/analytics";
 import { shareText } from "../services/nativeBridge";
 import { captureException } from "../lib/sentry";
+import { CLIP_POSTER } from "../lib/clipPoster";
 
 interface TurnHistoryViewerProps {
   turns: TurnRecord[];
@@ -33,6 +34,7 @@ function ClipVideo({ url, label }: { url: string; label: string }) {
       src={url}
       controls
       playsInline
+      poster={CLIP_POSTER}
       preload="metadata"
       aria-label={label}
       onError={(e) => {

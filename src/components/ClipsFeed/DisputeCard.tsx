@@ -4,6 +4,7 @@ import { Timer } from "../Timer";
 import { isFirebaseStorageUrl } from "../../utils/helpers";
 import { landShare, totalVotes, type Dispute, type DisputeTally, type DisputeVerdict } from "../../types/dispute";
 import { ABOVE_NAV, BELOW_HEADER, FEED_SLIDE, RAIL_BTN } from "./feedLayout";
+import { CLIP_POSTER } from "../../lib/clipPoster";
 import { SpotlightVideo } from "./SpotlightVideo";
 
 export interface DisputeCardProps {
@@ -67,7 +68,15 @@ export const DisputeCard = memo(function DisputeCard({
           mediaLabel={`${dispute.matcherUsername}'s attempt at ${dispute.trickName}`}
         />
       ) : (
-        <div className="absolute inset-0 bg-black" />
+        <img
+          src={CLIP_POSTER}
+          alt=""
+          width={360}
+          height={640}
+          decoding="async"
+          loading="lazy"
+          className="absolute inset-0 h-full w-full bg-black object-cover"
+        />
       )}
 
       {active && (
@@ -115,6 +124,7 @@ export const DisputeCard = memo(function DisputeCard({
                   src={setUrl}
                   controls
                   playsInline
+                  poster={CLIP_POSTER}
                   preload="none"
                   aria-label={`${dispute.setterUsername}'s ${dispute.trickName} set video`}
                   className="mt-2 max-h-[240px] w-full rounded-xl border border-white/10 bg-black object-cover"

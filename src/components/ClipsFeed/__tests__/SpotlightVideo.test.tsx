@@ -48,6 +48,8 @@ describe("SpotlightVideo reduced motion", () => {
     const { container } = render(<SpotlightVideo src="clip.webm" />);
     const video = container.querySelector("video") as HTMLVideoElement;
     expect(video.autoplay).toBe(true);
+    expect(video.getAttribute("poster")).toBe("/sh-video-poster.webp");
+    expect(video.getAttribute("preload")).toBe("auto");
     fireIntersect(video, true);
     expect(play).toHaveBeenCalled();
   });
@@ -75,6 +77,8 @@ describe("SpotlightVideo reduced motion", () => {
     const video = container.querySelector("video") as HTMLVideoElement;
     expect(video.loop).toBe(true);
     expect(video.autoplay).toBe(false);
+    expect(video.getAttribute("preload")).toBe("metadata");
+    expect(video.getAttribute("poster")).toBe("/sh-video-poster.webp");
     expect(ioCallback).toBeNull();
     expect(play).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: /play clip/i })).not.toBeInTheDocument();

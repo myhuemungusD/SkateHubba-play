@@ -3,6 +3,7 @@ import { Btn } from "../../../components/ui/Btn";
 import { Timer } from "../../../components/Timer";
 import type { GameDoc } from "../../../services/games";
 import { isFirebaseStorageUrl } from "../../../utils/helpers";
+import { CLIP_POSTER } from "../../../lib/clipPoster";
 
 interface Props {
   game: GameDoc;
@@ -66,6 +67,7 @@ export function PendingReviewPanel({
             src={attemptUrl}
             controls
             playsInline
+            poster={CLIP_POSTER}
             preload="metadata"
             aria-label={`${matcherUsername}'s match attempt video`}
             className="trick-frame rounded-2xl bg-black object-cover border border-border"

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AvatarImage } from "../../../components/AvatarImage";
 import { ProUsername } from "../../../components/ProUsername";
 import { AvatarPicker } from "../../../components/AvatarPicker";
 import { getAvatarFallbackUrl } from "../../../services/avatars";
@@ -70,13 +71,13 @@ export function ProfileIdentityCard({
           {showCustom && (
             // Hero avatar is above-the-fold — `loading="lazy"` (audit
             // C-ISSUE-1) would defer the request unnecessarily and
-            // delay paint on the most prominent element.
-            <img src={effectiveUrl as string} alt="" decoding="async" className="w-full h-full object-cover" />
+            // delay paint on the most prominent element. 80px is the w-20 slot.
+            <AvatarImage src={effectiveUrl as string} size={80} className="w-full h-full object-cover" />
           )}
           {showInitial && <span className="font-display text-3xl text-white/80 leading-none">{initial}</span>}
           {showFallbackSvg && (
             // Hero fallback also above-the-fold (audit C-ISSUE-1).
-            <img src={getAvatarFallbackUrl()} alt="" decoding="async" className="w-full h-full object-cover" />
+            <AvatarImage src={getAvatarFallbackUrl()} size={80} className="w-full h-full object-cover" />
           )}
         </div>
         {isOwnProfile && uid && (

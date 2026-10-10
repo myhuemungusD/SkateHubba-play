@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import type { TurnRecord } from "../services/games";
 import { isFirebaseStorageUrl } from "../utils/helpers";
 import { useReducedMotion } from "../hooks/useReducedMotion";
+import { CLIP_POSTER } from "../lib/clipPoster";
 import { Btn } from "./ui/Btn";
 import { PlayIcon, ReplayIcon } from "./icons";
 
@@ -122,6 +123,8 @@ export function GameReplay({ turns }: GameReplayProps) {
             ref={videoRef}
             controls
             playsInline
+            poster={CLIP_POSTER}
+            preload="metadata"
             onEnded={handleClipEnded}
             aria-label={currentClip.label}
             className="trick-frame rounded-2xl bg-black object-cover border border-border"
