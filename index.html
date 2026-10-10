@@ -12,6 +12,10 @@
     <meta name="robots" content="index, follow" />
     <meta name="author" content="SkateHubba" />
     <title>SkateHubba™ S.K.A.T.E.</title>
+    <!-- Shell paint. The production build marks the app stylesheet media=print
+         and withholds the entry module until /lcp-shell.js, so this file is
+         the only render-blocking CSS for the first frame. -->
+    <link rel="stylesheet" href="/lcp.css" />
     <link rel="canonical" href="https://skatehubba.com/" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
@@ -92,7 +96,19 @@
     </script>
   </head>
   <body class="bg-[#0A0A0A] text-white antialiased grain">
+    <div class="lcp-shell lcp-shell-home" aria-hidden="true">
+      <h1 class="lcp-title"><span class="lcp-word">SKATEHUBBA</span></h1>
+      <p class="lcp-sub">For the love of the game.</p>
+    </div>
+    <div class="lcp-shell lcp-shell-auth" aria-hidden="true">
+      <h1 class="lcp-title"><span class="lcp-word">Create Account</span></h1>
+      <p class="lcp-sub">Join the crew. It's free. We collect your DOB to comply with COPPA &amp; CCPA.</p>
+    </div>
+      <div class="lcp-shell lcp-shell-feed" aria-hidden="true">
+        <p class="lcp-fill">SKATEHUBBA SKATEHUBBA SKATEHUBBA SKATEHUBBA SKATEHUBBA SKATEHUBBA</p>
+      </div>
     <div id="root"></div>
+    <script src="/lcp-shell.js" defer></script>
     <script src="/sw-cleanup.js" defer></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>

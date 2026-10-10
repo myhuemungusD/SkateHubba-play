@@ -45,22 +45,35 @@ for (const budget of budgets) {
   }
 }
 
-/** JS linked from dist/index.html (entry + modulepreload). ~150 KB gzip. */
+/**
+ * JS the first load needs. The entry may be a module script, a modulepreload,
+ * or the `app-entry` meta (public/lcp-shell.js injects it after first paint).
+ * Static imports of the entry are part of that graph — Vite used to emit
+ * them as modulepreloads.
+ */
 const html = readFileSync(join(process.cwd(), "dist", "index.html"), "utf8");
-const initial = [...html.matchAll(/(?:src|href)="\/assets\/([^"]+\.js)"/g)].map((match) => match[1]);
+const initial = [...html.matchAll(/(?:src|href|content)="\/assets\/([^"]+\.js)"/g)].map((match) => match[1]);
 const uniqueInitial = [...new Set(initial)];
-if (uniqueInitial.length === 0) {
+for (const name of [...uniqueInitial]) {
+  if (!name.startsWith("index-")) continue;
+  const source = readFileSync(join(assetsDir, name), "utf8");
+  for (const dep of source.matchAll(/from"\.\/([^"]+\.js)"/g)) {
+    uniqueInitial.push(dep[1]);
+  }
+}
+const dedupedInitial = [...new Set(uniqueInitial)];
+if (dedupedInitial.length === 0) {
   console.error("bundle budget: no initial JS in dist/index.html");
   failed = true;
 } else {
   let total = 0;
-  for (const name of uniqueInitial) {
+  for (const name of dedupedInitial) {
     total += gzipSync(readFileSync(join(assetsDir, name))).length;
   }
   const maxInitial = 150 * 1024;
   const kib = (total / 1024).toFixed(1);
   if (total > maxInitial) {
-    console.error(`bundle budget: initial JS ${kib} KiB gzip (limit 150.0 KiB) [${uniqueInitial.join(", ")}]`);
+    console.error(`bundle budget: initial JS ${kib} KiB gzip (limit 150.0 KiB) [${dedupedInitial.join(", ")}]`);
     failed = true;
   } else {
     console.log(`bundle budget: initial JS ${kib} KiB gzip (limit 150.0 KiB)`);

@@ -193,9 +193,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
             id="hero-heading"
             className="hero-lcp font-display tracking-wide text-white mb-5 leading-[0.9] text-[clamp(3rem,2.2rem_+_4.5vw,6.5rem)] [@media(max-height:500px)]:mb-2 [@media(max-height:500px)]:text-[2.25rem]"
           >
-            <span className="block text-brand-orange [text-shadow:0_0_60px_rgba(255,107,0,0.35),0_0_120px_rgba(255,107,0,0.15)]">
-              SKATEHUBBA
-            </span>
+            <span className="block text-brand-orange">SKATEHUBBA</span>
             <span className="block text-[clamp(1.2rem,0.8rem_+_2vw,2.5rem)] [@media(max-height:500px)]:text-lg">
               FOR THE LOVE OF THE GAME.
             </span>
@@ -289,7 +287,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
         className="max-w-6xl mx-auto px-6 py-16 md:py-28 scroll-mt-20"
       >
         <div className="text-center mb-14 md:mb-20">
-          <span className="font-display text-xs tracking-[0.3em] text-brand-orange/60 mb-3 block">THE DEAL</span>
+          <span className="font-display text-xs tracking-[0.3em] text-brand-orange/80 mb-3 block">THE DEAL</span>
           <h2 className="font-display text-fluid-3xl text-white tracking-wider">HOW IT WORKS</h2>
         </div>
 
@@ -358,7 +356,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
 
           {/* Text content */}
           <div className="flex-1 text-center md:text-left">
-            <span className="font-display text-xs tracking-[0.3em] text-brand-orange/60 mb-4 block">THE GAME</span>
+            <span className="font-display text-xs tracking-[0.3em] text-brand-orange/80 mb-4 block">THE GAME</span>
             <h2 className="font-display text-fluid-3xl text-white tracking-wider mb-4 leading-[1.1]">
               NO EDITS.
               <br />
@@ -388,7 +386,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
       {/* ─── Features Grid ──────────────────────────────── */}
       <section id="features" aria-label="Features" className="max-w-6xl mx-auto px-6 py-16 md:py-28 scroll-mt-20">
         <div className="text-center mb-14 md:mb-20">
-          <span className="font-display text-xs tracking-[0.3em] text-brand-orange/60 mb-3 block">WHAT YOU GET</span>
+          <span className="font-display text-xs tracking-[0.3em] text-brand-orange/80 mb-3 block">WHAT YOU GET</span>
           <h2 className="font-display text-fluid-3xl text-white tracking-wider">BUILT DIFFERENT</h2>
         </div>
 

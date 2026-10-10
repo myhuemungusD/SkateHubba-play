@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
+import { deferAppEntry, deferAppStylesheet } from "./scripts/deferAppCss";
 
 /**
  * Vite plugin that injects real Firebase config values into the service worker
@@ -11,6 +12,19 @@ import { resolve } from "path";
  * tokens that this plugin replaces with VITE_FIREBASE_* env vars when copying
  * the file into dist/.
  */
+function deferAppCssPlugin(): Plugin {
+  return {
+    name: "defer-app-css",
+    apply: "build",
+    transformIndexHtml: {
+      order: "post",
+      handler(html) {
+        return deferAppEntry(deferAppStylesheet(html));
+      },
+    },
+  };
+}
+
 function firebaseSwPlugin(): Plugin {
   return {
     name: "firebase-sw-config",
@@ -78,7 +92,7 @@ const browserSentryDsnFallback =
   !process.env.VITE_SENTRY_DSN && process.env.VERCEL_ENV === "production" ? (process.env.SENTRY_DSN ?? "").trim() : "";
 
 export default defineConfig({
-  plugins: [tailwindcss(), react(), firebaseSwPlugin()],
+  plugins: [tailwindcss(), react(), firebaseSwPlugin(), deferAppCssPlugin()],
   define: {
     ...(browserSentryDsnFallback
       ? { "import.meta.env.VITE_SENTRY_DSN": JSON.stringify(browserSentryDsnFallback) }
