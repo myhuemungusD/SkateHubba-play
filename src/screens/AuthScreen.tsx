@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { signUp, signIn, resetPassword, type SignUpResult } from "../services/auth";
+import { loadSignupPasswordPolicy } from "../services/passwordPolicy";
 import { EMAIL_RE, getErrorCode, parseFirebaseError, getUserMessage } from "../utils/helpers";
+import { MIRRORED_PASSWORD_POLICY, passwordPolicyMessage, type SignupPasswordPolicy } from "../utils/passwordPolicy";
 import { isMinorDob, parseDob } from "../utils/age";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
@@ -98,6 +100,17 @@ export function AuthScreen({
   // Reset one-shot UI state when the parent toggles mode, but preserve typed
   // email/password/DOB so the user doesn't have to retype. Skip on first mount
   // so a parent passing initial state isn't silently wiped.
+  const [passwordPolicy, setPasswordPolicy] = useState<SignupPasswordPolicy>(MIRRORED_PASSWORD_POLICY);
+  useEffect(() => {
+    let live = true;
+    void loadSignupPasswordPolicy().then((next) => {
+      if (live) setPasswordPolicy(next);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
   const didMount = useRef(false);
   useEffect(() => {
     if (!didMount.current) {
@@ -123,8 +136,14 @@ export function AuthScreen({
       setError("Enter a valid email");
       return;
     }
-    if (password.length < 6) {
-      setError("Password must be 6+ characters");
+    if (isSignup) {
+      const policyError = passwordPolicyMessage(password, passwordPolicy);
+      if (policyError) {
+        setError(policyError);
+        return;
+      }
+    } else if (password.length === 0) {
+      setError("Please fill in both email and password.");
       return;
     }
     if (isSignup && password !== confirm) {
@@ -369,7 +388,7 @@ export function AuthScreen({
             autoComplete={isSignup ? "new-password" : "current-password"}
             enterKeyHint={isSignup ? "next" : "go"}
           />
-          {isSignup && <PasswordStrengthMeter password={password} />}
+          {isSignup && <PasswordStrengthMeter password={password} policy={passwordPolicy} />}
           {isSignup && (
             <Field
               label="Confirm"

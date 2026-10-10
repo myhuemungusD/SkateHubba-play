@@ -25,16 +25,7 @@ export function isFirebaseStorageUrl(url: string): boolean {
   }
 }
 
-/** Returns 1 (weak) | 2 (fair) | 3 (strong) — used for signup password indicator. */
-export function pwStrength(pw: string): 1 | 2 | 3 {
-  if (pw.length < 8) return 1;
-  const hasUpper = /[A-Z]/.test(pw);
-  const hasDigit = /[0-9]/.test(pw);
-  const hasSymbol = /[^a-zA-Z0-9]/.test(pw);
-  if (pw.length >= 12 && (hasUpper || hasDigit) && hasSymbol) return 3;
-  if (pw.length >= 8 && (hasUpper || hasDigit || hasSymbol)) return 2;
-  return 1;
-}
+export { passwordStrength as pwStrength } from "./passwordPolicy";
 
 /** Build a placeholder GameDoc for optimistic UI before the real-time listener syncs. */
 export function newGameShell(

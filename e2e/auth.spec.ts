@@ -81,7 +81,7 @@ test("sign up form rejects short passwords", async ({ page }) => {
   await pwFields.nth(1).fill("abc");
   await page.getByRole("button", { name: "Create Account" }).click();
 
-  await expect(page.getByText("Password must be 6+ characters")).toBeVisible();
+  await expect(page.getByText("Password must be at least 6 characters")).toBeVisible();
 });
 
 test("email verification banner visible after sign up, hidden after verification", async ({ page }) => {

@@ -187,7 +187,7 @@ describe("AuthScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Password too weak (6+ chars)")).toBeInTheDocument();
+      expect(screen.getByText("Password must include a number and be at most 20 characters.")).toBeInTheDocument();
     });
   });
 
@@ -251,18 +251,27 @@ describe("AuthScreen", () => {
     renderWithProviders(<AuthScreen {...defaultProps} mode="signup" />);
 
     const pw = screen.getAllByPlaceholderText(/•/)[0];
-    await userEvent.type(pw, "abcdef");
+    await userEvent.type(pw, "abc");
 
-    expect(screen.getByText("Weak")).toBeInTheDocument();
+    expect(screen.getByText("Too short")).toBeInTheDocument();
   });
 
-  it("password strength shows Fair for a mixed-case password", async () => {
+  it("password strength shows Fair for a password that meets the policy", async () => {
+    renderWithProviders(<AuthScreen {...defaultProps} mode="signup" />);
+
+    const pw = screen.getAllByPlaceholderText(/•/)[0];
+    await userEvent.type(pw, "Abcdefg1");
+
+    expect(screen.getByText("Fair")).toBeInTheDocument();
+  });
+
+  it("password strength does not call a numberless password Fair", async () => {
     renderWithProviders(<AuthScreen {...defaultProps} mode="signup" />);
 
     const pw = screen.getAllByPlaceholderText(/•/)[0];
     await userEvent.type(pw, "Abcdefgh");
 
-    expect(screen.getByText("Fair")).toBeInTheDocument();
+    expect(screen.getByText("Needs a number")).toBeInTheDocument();
   });
 
   it("password strength shows Strong for complex password", async () => {
