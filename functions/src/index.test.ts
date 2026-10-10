@@ -28,7 +28,7 @@ const captured: {
   options: Record<string, unknown> | null;
 } = { handler: null, options: null };
 
-const applyGameStatsMock = vi.fn<(db: unknown, gameId: string) => Promise<string>>();
+const applyGameStatsMock = vi.fn<(...args: unknown[]) => Promise<string>>();
 const initializeAppMock = vi.fn();
 const getFirestoreMock = vi.fn((dbId: string): { __db: string } => ({ __db: dbId }));
 
@@ -52,7 +52,7 @@ vi.mock("firebase-functions/v2/firestore", () => ({
 }));
 
 vi.mock("./applyGameStats.js", () => ({
-  applyGameStats: (db: unknown, gameId: string) => applyGameStatsMock(db, gameId),
+  applyGameStats: (...args: unknown[]) => applyGameStatsMock(...args),
 }));
 
 const GAME_ID = "game-1";
@@ -140,12 +140,18 @@ describe("onGameCompleted trigger", () => {
     await captured.handler?.(event({ status: "complete", winner: "uid-1" }));
     expect(getFirestoreMock).toHaveBeenCalledWith("skatehubba");
     expect(applyGameStatsMock).toHaveBeenCalledTimes(1);
-    expect(applyGameStatsMock).toHaveBeenCalledWith({ __db: "skatehubba" }, GAME_ID);
+    expect(applyGameStatsMock).toHaveBeenCalledWith({ __db: "skatehubba" }, GAME_ID, {
+      enabled: false,
+      testers: "",
+    });
   });
 
   it("dispatches to applyGameStats on a forfeit with a valid winner", async () => {
     await captured.handler?.(event({ status: "forfeit", winner: "uid-2" }));
     expect(applyGameStatsMock).toHaveBeenCalledTimes(1);
-    expect(applyGameStatsMock).toHaveBeenCalledWith({ __db: "skatehubba" }, GAME_ID);
+    expect(applyGameStatsMock).toHaveBeenCalledWith({ __db: "skatehubba" }, GAME_ID, {
+      enabled: false,
+      testers: "",
+    });
   });
 });

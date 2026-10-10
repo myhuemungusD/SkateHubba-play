@@ -52,6 +52,7 @@ import {
   type DisputeGameUpdate,
 } from "../../src/services/dispute.resolution.shared.js";
 import { toGameDoc, type GameDoc } from "../../src/services/games.mappers.js";
+import { ACHIEVEMENTS, CALL_XP, DAILY_XP_CAP, levelForXp, utcDayFromMs } from "../../src/constants/xp.js";
 import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
 
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
@@ -404,6 +405,75 @@ async function resolvePendingReview(
  * `resolutionApplied`/`status=='closed'` flag is the second. Either alone
  * makes a re-run a no-op, so a stat increment can never double-count.
  */
+interface VoteAward {
+  uid: string;
+  data: Record<string, unknown>;
+  grants: { id: string; reason: string }[];
+}
+
+function voteXpAudience(): { enabled: boolean; testers: Set<string> } {
+  const testers = new Set(
+    (process.env.XP_TESTER_UIDS ?? "")
+      .split(",")
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0),
+  );
+  return { enabled: process.env.XP_ENABLED === "true", testers };
+}
+
+function counterOf(raw: unknown): number {
+  return typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
+}
+
+/**
+ * 10 XP for each vote still on the dispute, inside the same transaction that
+ * closes it. Reads happen before any write. Missing profiles are skipped.
+ * Returns nothing when the server switch is off and the tester list is empty.
+ */
+async function readVoteAwards(db: Firestore, tx: Transaction, disputeId: string, nowMs: number): Promise<VoteAward[]> {
+  const gate = voteXpAudience();
+  if (!gate.enabled && gate.testers.size === 0) return [];
+
+  const votesSnap = await tx.get(db.collection("disputeVotes").where("disputeId", "==", disputeId).limit(30));
+  const uids: string[] = [];
+  for (const vote of votesSnap.docs) {
+    const uid = vote.data().uid;
+    if (typeof uid !== "string" || uid.length === 0) continue;
+    if (!gate.enabled && !gate.testers.has(uid)) continue;
+    if (!uids.includes(uid)) uids.push(uid);
+  }
+
+  const day = utcDayFromMs(nowMs);
+  const awards: VoteAward[] = [];
+  for (const uid of uids) {
+    const userRef = db.collection("users").doc(uid);
+    const snap = await tx.get(userRef);
+    if (!snap.exists) continue;
+    const data = snap.data() ?? {};
+    const sameDay = data.xpDay === day;
+    const used = sameDay ? counterOf(data.xpToday) : 0;
+    const kept = Math.min(CALL_XP, Math.max(0, DAILY_XP_CAP - used));
+    const nextVotes = counterOf(data.disputeVotesCast) + 1;
+    const write: Record<string, unknown> = { disputeVotesCast: FieldValue.increment(1) };
+    if (kept > 0) {
+      const nextXp = counterOf(data.xp) + kept;
+      write.xp = nextXp;
+      write.level = levelForXp(nextXp);
+      write.xpDay = day;
+      write.xpToday = used + kept;
+    }
+    const grants: { id: string; reason: string }[] = [];
+    for (const achievement of ACHIEVEMENTS) {
+      if (achievement.counter !== "disputeVotesCast" || nextVotes < achievement.threshold) continue;
+      const achRef = userRef.collection("achievements").doc(achievement.id);
+      const achSnap = await tx.get(achRef);
+      if (!achSnap.exists) grants.push({ id: achievement.id, reason: achievement.requirement });
+    }
+    awards.push({ uid, data: write, grants });
+  }
+  return awards;
+}
+
 async function resolveCommunityReview(
   db: Firestore,
   gameId: string,
@@ -444,6 +514,11 @@ async function resolveCommunityReview(
 
     if (dryRun) return { resolved: true, push: null };
 
+    // Vote XP is off unless XP_ENABLED is the literal "true" or the voter is
+    // listed in XP_TESTER_UIDS. The default (unset) never queries votes, so
+    // a closed switch cannot change this transaction.
+    const voteAwards = await readVoteAwards(db, tx, disputeRef.id, nowMs);
+
     const tally = { landVotes: coerceVotes(dispute.landVotes), bailVotes: coerceVotes(dispute.bailVotes) };
     const decision = decideDisputeResolution(game, tally, nowMs);
     const matcherUid = game.reviewFor ?? opponentOf(game, game.currentSetter);
@@ -452,21 +527,31 @@ async function resolveCommunityReview(
     tx.update(gameRef, toAdminDisputeUpdate(decision.gameUpdate));
 
     // ── The four public §2 stat counters (admin-only) ──
+    // Vote XP folds into the same user write. A transaction cannot write one
+    // document twice, and a voter can also be the claimer or the disputer.
     const { claimer, disputer } = decision.statDeltas;
-    tx.set(
-      db.collection("users").doc(claimer.uid),
-      { tricksDisputed: FieldValue.increment(claimer.tricksDisputed) },
-      { merge: true },
-    );
-    tx.set(
-      db.collection("users").doc(disputer.uid),
-      {
-        disputesRaised: FieldValue.increment(disputer.disputesRaised),
-        disputesRight: FieldValue.increment(disputer.disputesRight),
-        disputesWrong: FieldValue.increment(disputer.disputesWrong),
-      },
-      { merge: true },
-    );
+    const userMerges = new Map<string, Record<string, unknown>>();
+    const mergeUser = (uid: string, data: Record<string, unknown>): void => {
+      userMerges.set(uid, { ...(userMerges.get(uid) ?? {}), ...data });
+    };
+    mergeUser(claimer.uid, { tricksDisputed: FieldValue.increment(claimer.tricksDisputed) });
+    mergeUser(disputer.uid, {
+      disputesRaised: FieldValue.increment(disputer.disputesRaised),
+      disputesRight: FieldValue.increment(disputer.disputesRight),
+      disputesWrong: FieldValue.increment(disputer.disputesWrong),
+    });
+    for (const award of voteAwards) mergeUser(award.uid, award.data);
+    for (const [uid, data] of userMerges) {
+      tx.set(db.collection("users").doc(uid), data, { merge: true });
+    }
+    for (const award of voteAwards) {
+      for (const grant of award.grants) {
+        tx.set(db.collection("users").doc(award.uid).collection("achievements").doc(grant.id), {
+          earnedAt: FieldValue.serverTimestamp(),
+          reason: grant.reason,
+        });
+      }
+    }
 
     // ── Landed clips only when the matcher's claim stood ──
     if (decision.verdict === "land" || decision.verdict === "none") {

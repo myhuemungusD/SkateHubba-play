@@ -60,6 +60,13 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // XP, levels, and the achievements ribbon. DEFAULTS TO OFF, and it is not
+  // part of the extras switch. Read via isXpEnabled() in featureFlags.ts.
+  VITE_FEATURE_XP_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // Sign in with Apple button. DEFAULTS TO OFF until the Firebase Apple
   // provider is enabled. Read via isAppleSignInEnabled() in featureFlags.ts.
   VITE_FEATURE_APPLE_SIGNIN_ENABLED: z

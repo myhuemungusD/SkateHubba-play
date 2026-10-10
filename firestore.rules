@@ -388,6 +388,19 @@ service cloud.firestore {
         && (!('gamesWithDuration' in request.resource.data) || request.resource.data.gamesWithDuration == 0)
         && (!('gamesJudged' in request.resource.data) || request.resource.data.gamesJudged == 0)
         && (!('turnsJudged' in request.resource.data) || request.resource.data.turnsJudged == 0)
+        // XP counters are server-written. A signup that omits them is fine;
+        // a signup that seeds a non-zero value is not. `level` may only start
+        // at 1. `xpDay` and the clip-binding id stay absent.
+        && (!('xp' in request.resource.data) || request.resource.data.xp == 0)
+        && (!('level' in request.resource.data) || request.resource.data.level == 1)
+        && !('xpDay' in request.resource.data)
+        && (!('xpToday' in request.resource.data) || request.resource.data.xpToday == 0)
+        && (!('uniqueOpponents' in request.resource.data) || request.resource.data.uniqueOpponents == 0)
+        && (!('spotsPlayed' in request.resource.data) || request.resource.data.spotsPlayed == 0)
+        && (!('gamesAtMySpots' in request.resource.data) || request.resource.data.gamesAtMySpots == 0)
+        && (!('disputeVotesCast' in request.resource.data) || request.resource.data.disputeVotesCast == 0)
+        && (!('clipsPosted' in request.resource.data) || request.resource.data.clipsPosted == 0)
+        && !('clipsPostedClipId' in request.resource.data)
         // recentResults is a rolling "W"/"L" list (max 10), not a counter — the
         // zero-seed equivalent is an empty list.
         && (!('recentResults' in request.resource.data) || request.resource.data.recentResults == [])
@@ -478,7 +491,30 @@ service cloud.firestore {
                      'tricksDisputed', 'disputesRaised', 'disputesRight', 'disputesWrong',
                      'cleanWins', 'tricksLanded', 'tricksFailed', 'forfeitLosses',
                      'comebackWins', 'totalGameDurationMs', 'gamesWithDuration',
-                     'recentResults', 'gamesJudged', 'turnsJudged']))
+                     'recentResults', 'gamesJudged', 'turnsJudged',
+                     'xp', 'level', 'xpDay', 'xpToday',
+                     'uniqueOpponents', 'spotsPlayed', 'gamesAtMySpots',
+                     'disputeVotesCast']))
+        // clipsPosted is the one client-writable exception: exactly +1, and
+        // only in the same write as a brand-new user-source clip whose
+        // playerUid is the caller. clipsPostedClipId names that clip so the
+        // rule can see it. Any other change to either field is denied.
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['clipsPosted', 'clipsPostedClipId'])
+          || (
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasAll(['clipsPosted', 'clipsPostedClipId'])
+            && request.resource.data.clipsPosted is int
+            && request.resource.data.clipsPosted == resource.data.get('clipsPosted', 0) + 1
+            && request.resource.data.clipsPostedClipId is string
+            && request.resource.data.clipsPostedClipId.size() > 0
+            && request.resource.data.clipsPostedClipId.size() <= 128
+            && !exists(/databases/$(database)/documents/clips/$(request.resource.data.clipsPostedClipId))
+            && getAfter(/databases/$(database)/documents/clips/$(request.resource.data.clipsPostedClipId)).data.source == 'user'
+            && getAfter(/databases/$(database)/documents/clips/$(request.resource.data.clipsPostedClipId)).data.playerUid == request.auth.uid
+          )
+        )
         // Cannot change username or uid after creation
         && request.resource.data.username == resource.data.username
         && request.resource.data.uid == resource.data.uid
@@ -787,6 +823,15 @@ service cloud.firestore {
         allow update: if false;
         // Owner: GDPR erasure batch. Admin: revoke a wrongly-awarded badge.
         allow delete: if isOwner(uid) || isAdmin();
+      }
+
+      // ── XP markers (opponent and spot first-seen flags) ──
+      // Server-written. The owner can list and delete them so account erasure
+      // still works. Clients cannot create or edit.
+      match /xpMarkers/{markerId} {
+        allow read: if isOwner(uid);
+        allow create, update: if false;
+        allow delete: if isOwner(uid);
       }
 
       // ── Locker (subcollection) ──

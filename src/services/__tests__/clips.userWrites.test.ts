@@ -108,7 +108,25 @@ describe("createUserClip", () => {
     // optimisation, it is the rate limit.
     expect(tx.update).toHaveBeenCalledWith(expect.objectContaining({ __path: "users/me" }), {
       lastClipCreatedAt: "SERVER_TS",
+      clipsPosted: 1,
+      clipsPostedClipId: "uc1",
     });
+  });
+
+  it("adds one to a positive clipsPosted and treats a non-positive count as zero", async () => {
+    const counted = wireTx({ username: "alice", clipsPosted: 4 });
+    await expect(createUserClip(params())).resolves.toBe("uc1");
+    expect(counted.observed().update).toHaveBeenCalledWith(
+      expect.objectContaining({ __path: "users/me" }),
+      expect.objectContaining({ clipsPosted: 5, clipsPostedClipId: "uc1" }),
+    );
+
+    const zeroed = wireTx({ username: "alice", clipsPosted: 0 });
+    await expect(createUserClip(params({ clipId: "uc2" }))).resolves.toBe("uc2");
+    expect(zeroed.observed().update).toHaveBeenCalledWith(
+      expect.objectContaining({ __path: "users/me" }),
+      expect.objectContaining({ clipsPosted: 1, clipsPostedClipId: "uc2" }),
+    );
   });
 
   it("posts when the previous clip is older than the cooldown", async () => {

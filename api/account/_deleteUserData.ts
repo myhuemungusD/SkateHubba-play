@@ -87,6 +87,8 @@ export interface DeletionSummary {
   appeals: number;
   achievements: number;
   locker: number;
+  /** Opponent and spot markers under users/{uid}/xpMarkers. */
+  xpMarkers: number;
   blockedUsers: number;
   avatarObjects: number;
   usernameReleased: boolean;
@@ -123,6 +125,7 @@ function emptySummary(): DeletionSummary {
     appeals: 0,
     achievements: 0,
     locker: 0,
+    xpMarkers: 0,
     blockedUsers: 0,
     avatarObjects: 0,
     usernameReleased: false,
@@ -569,6 +572,7 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   // any future subcollection added under users/{uid} must be added here too.
   const achievements = await scanAll(db.collection("users").doc(uid).collection("achievements"));
   const locker = await scanAll(db.collection("users").doc(uid).collection("locker"));
+  const xpMarkers = await scanAll(db.collection("users").doc(uid).collection("xpMarkers"));
   // The reservation is released first and separately, because it is the one
   // delete here that needs an ownership check (see `releaseUsername`) and so
   // cannot ride along in an unconditional batch.
@@ -578,6 +582,7 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   const identityRefs: FirebaseFirestore.DocumentReference[] = [
     ...achievements.map((d) => d.ref),
     ...locker.map((d) => d.ref),
+    ...xpMarkers.map((d) => d.ref),
     ...blocked.map((d) => d.ref),
     db.collection("users").doc(uid).collection("private").doc(PRIVATE_PROFILE_DOC_ID),
     db.collection("users").doc(uid),
@@ -585,6 +590,7 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   await deleteRefs(db, identityRefs);
   summary.achievements = achievements.length;
   summary.locker = locker.length;
+  summary.xpMarkers = xpMarkers.length;
   summary.blockedUsers = blocked.length;
 
   // ── Phase 5: avatar binaries ──
