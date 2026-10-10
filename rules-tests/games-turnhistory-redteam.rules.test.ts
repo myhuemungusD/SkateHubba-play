@@ -145,6 +145,34 @@ function seedMatching(existingHistory: unknown[] = [], extraOverrides: Record<st
   });
 }
 
+function missedResolution(turnHistory: unknown, matchVideoUrl: string | null = null): Record<string, unknown> {
+  return {
+    p2Letters: 1,
+    phase: "setting",
+    currentTurn: P1_UID,
+    turnNumber: 2,
+    currentTrickName: null,
+    currentTrickVideoUrl: null,
+    matchVideoUrl,
+    turnDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
+    turnHistory,
+    updatedAt: serverTimestamp(),
+  };
+}
+
+function honorLandedSwap(turnHistory: unknown): Record<string, unknown> {
+  return {
+    matchVideoUrl: VALID_MATCH_URL,
+    phase: "setting",
+    currentSetter: P2_UID,
+    currentTurn: P2_UID,
+    turnNumber: 2,
+    turnDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
+    turnHistory,
+    updatedAt: serverTimestamp(),
+  };
+}
+
 describe("games.turnHistory — growth caps", () => {
   describe("match-resolution branch (missed)", () => {
     it("legitimate: matcher can append exactly ONE TurnRecord on a missed attempt", async () => {
@@ -169,20 +197,7 @@ describe("games.turnHistory — growth caps", () => {
 
     it("attack: CANNOT append TWO TurnRecords in a single write", async () => {
       await seedMatching([]);
-      await assertFails(
-        updateDoc(gameRef(asP2()), {
-          p2Letters: 1,
-          phase: "setting",
-          currentTurn: P1_UID,
-          currentTrickName: null,
-          currentTrickVideoUrl: null,
-          matchVideoUrl: null,
-          turnDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
-          // Two fabricated records at once — growth == +2, must reject.
-          turnHistory: arrayUnion(makeTurnRecord(1), makeTurnRecord(2)),
-          updatedAt: serverTimestamp(),
-        }),
-      );
+      await assertFails(updateDoc(gameRef(asP2()), missedResolution(arrayUnion(makeTurnRecord(1), makeTurnRecord(2)))));
     });
 
     it("attack: CANNOT balloon turnHistory past 200 entries", async () => {
@@ -248,22 +263,38 @@ describe("games.turnHistory — growth caps", () => {
   });
 
   describe("match-resolution branch (landed, honor system)", () => {
-    it("legitimate: landed path can append a single TurnRecord", async () => {
+    it("denied: a no-letter matching write cannot append a landed TurnRecord", async () => {
+      await seedMatching([]);
+      const landed = arrayUnion(makeTurnRecord(1, { landed: true, letterTo: null }));
+      await assertFails(updateDoc(gameRef(asP2()), honorLandedSwap(landed)));
+    });
+
+    it("denied: a miss cannot append a landed TurnRecord", async () => {
+      await seedMatching([]);
+      const forgedLand = arrayUnion(makeTurnRecord(1, { landed: true, letterTo: null }));
+      await assertFails(updateDoc(gameRef(asP2()), missedResolution(forgedLand, VALID_MATCH_URL)));
+    });
+
+    it("legitimate: the setter accept appends one landed record for the matcher", async () => {
       await seedGame({
+        phase: "pendingReview",
         currentTurn: P2_UID,
         currentSetter: P1_UID,
-        phase: "matching",
-        currentTrickName: "kickflip",
-        currentTrickVideoUrl: VALID_TRICK_URL,
+        reviewFor: P2_UID,
+        reviewDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
+        matchVideoUrl: VALID_MATCH_URL,
+        turnNumber: 1,
         turnHistory: [],
       });
       await assertSucceeds(
-        updateDoc(gameRef(asP2()), {
-          matchVideoUrl: VALID_MATCH_URL,
+        updateDoc(gameRef(asP1()), {
           phase: "setting",
           currentSetter: P2_UID,
           currentTurn: P2_UID,
           turnNumber: 2,
+          reviewFor: null,
+          reviewDeadline: null,
+          matchVideoUrl: VALID_MATCH_URL,
           turnDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
           turnHistory: arrayUnion(makeTurnRecord(1, { landed: true, letterTo: null })),
           updatedAt: serverTimestamp(),
@@ -272,29 +303,12 @@ describe("games.turnHistory — growth caps", () => {
     });
 
     it("attack: landed path CANNOT bypass the +1 cap", async () => {
-      await seedGame({
-        currentTurn: P2_UID,
-        currentSetter: P1_UID,
-        phase: "matching",
-        currentTrickName: "kickflip",
-        currentTrickVideoUrl: VALID_TRICK_URL,
-        turnHistory: [],
-      });
-      await assertFails(
-        updateDoc(gameRef(asP2()), {
-          matchVideoUrl: VALID_MATCH_URL,
-          phase: "setting",
-          currentSetter: P2_UID,
-          currentTurn: P2_UID,
-          turnNumber: 2,
-          turnDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
-          turnHistory: arrayUnion(
-            makeTurnRecord(1, { landed: true, letterTo: null }),
-            makeTurnRecord(2, { landed: true, letterTo: null }),
-          ),
-          updatedAt: serverTimestamp(),
-        }),
+      await seedMatching([]);
+      const twoLands = arrayUnion(
+        makeTurnRecord(1, { landed: true, letterTo: null }),
+        makeTurnRecord(2, { landed: true, letterTo: null }),
       );
+      await assertFails(updateDoc(gameRef(asP2()), honorLandedSwap(twoLands)));
     });
   });
 
