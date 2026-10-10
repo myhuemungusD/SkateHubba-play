@@ -59,10 +59,19 @@ export function ReportsPanel({ adminUid }: { adminUid: string }) {
     // status's rows until the new fetch resolves.
   }, [reloadKey, view]);
 
-  const decide = async (report: AdminReport, verdict: Verdict): Promise<void> => {
+  const decide = async (report: AdminReport, verdict: Verdict, explanation?: string): Promise<void> => {
     setActing(report.id);
     try {
-      await resolveReport(adminUid, report.id, verdict);
+      if (verdict === "resolved") {
+        await resolveReport(adminUid, report.id, verdict, {
+          subjectUid: report.reportedUid,
+          explanation: explanation ?? "",
+          contentRef: report.clipId ?? report.gameId ?? "account",
+          reason: report.reason,
+        });
+      } else {
+        await resolveReport(adminUid, report.id, verdict);
+      }
       notify({
         type: "success",
         title: verdict === "resolved" ? "Report resolved" : "Report dismissed",
@@ -161,7 +170,7 @@ export function ReportsPanel({ adminUid }: { adminUid: string }) {
               key={report.id}
               report={report}
               acting={acting === report.id}
-              onResolve={(r) => void decide(r, "resolved")}
+              onResolve={(r, explanation) => void decide(r, "resolved", explanation)}
               onDismiss={(r) => void decide(r, "dismissed")}
               onBan={(r) => void ban(r)}
             />

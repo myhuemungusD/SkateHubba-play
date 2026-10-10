@@ -39,6 +39,15 @@ vi.mock("../services/storage", () => mocks.storage.module);
 vi.mock("../services/fcm", () => mocks.fcm.module);
 vi.mock("../services/blocking", () => mocks.blocking.module);
 vi.mock("../services/analytics", () => mocks.analytics.module);
+// The own-profile route lists spots the player added. This file pins route
+// wiring, not the query — an empty list keeps the ADD A SPOT empty state.
+vi.mock("../services/spots", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/spots")>();
+  return {
+    ...actual,
+    listSpotsByCreator: vi.fn().mockResolvedValue([]),
+  };
+});
 
 /** Surfaces the live URL so route-level navigation can be asserted on. */
 function LocationProbe() {

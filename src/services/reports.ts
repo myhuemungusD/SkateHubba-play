@@ -4,12 +4,10 @@ import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 
 export type ReportReason =
-  | "inappropriate_video"
-  | "abusive_behavior"
-  | "cheating"
-  | "spam"
-  | "non_skate_content"
-  | "other";
+  "inappropriate_video" | "abusive_behavior" | "cheating" | "spam" | "non_skate_content" | "illegal_content" | "other";
+
+/** DSA Art. 16 notices have to explain what is illegal. Shorter text is rejected. */
+export const ILLEGAL_CONTENT_MIN_EXPLANATION = 20;
 
 export const REPORT_REASON_LABELS: Record<ReportReason, string> = {
   inappropriate_video: "Inappropriate video content",
@@ -21,6 +19,7 @@ export const REPORT_REASON_LABELS: Record<ReportReason, string> = {
   // user-posted clip needs to come down, so it gets its own bucket instead
   // of being buried under "other" where moderators can't triage it.
   non_skate_content: "Not skateboarding",
+  illegal_content: "Illegal content",
   other: "Other",
 };
 
@@ -69,6 +68,10 @@ export async function submitReport(params: SubmitReportParams): Promise<string> 
   if (targetGameId === null && targetClipId === null) {
     throw new Error("Nothing to report — no game or clip was identified.");
   }
+  const trimmedDescription = description.trim().slice(0, 500);
+  if (reason === "illegal_content" && trimmedDescription.length < ILLEGAL_CONTENT_MIN_EXPLANATION) {
+    throw new Error("Illegal-content reports need an explanation of at least 20 characters.");
+  }
 
   try {
     const db = requireDb();
@@ -81,7 +84,7 @@ export async function submitReport(params: SubmitReportParams): Promise<string> 
       reportedUsername,
       gameId: targetGameId,
       reason,
-      description: description.trim().slice(0, 500),
+      description: trimmedDescription,
       status: "pending",
       createdAt: serverTimestamp(),
     };

@@ -1,7 +1,12 @@
 import { useState, useId, useRef } from "react";
 import { Btn } from "./ui/Btn";
 import { ErrorBanner } from "./ui/ErrorBanner";
-import { submitReport, REPORT_REASON_LABELS, type ReportReason } from "../services/reports";
+import {
+  submitReport,
+  REPORT_REASON_LABELS,
+  ILLEGAL_CONTENT_MIN_EXPLANATION,
+  type ReportReason,
+} from "../services/reports";
 import { useFocusTrap } from "../hooks/useFocusTrap";
 
 const REASONS = Object.keys(REPORT_REASON_LABELS) as ReportReason[];
@@ -34,6 +39,7 @@ export function ReportModal({
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [receiptId, setReceiptId] = useState<string | null>(null);
   const selectId = useId();
   const descId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -47,7 +53,7 @@ export function ReportModal({
     setSubmitting(true);
     setError("");
     try {
-      await submitReport({
+      const id = await submitReport({
         reporterUid,
         reportedUid,
         reportedUsername,
@@ -56,12 +62,50 @@ export function ReportModal({
         description,
         ...(clipId ? { clipId } : {}),
       });
-      onSubmitted();
+      setReceiptId(id);
+      setSubmitting(false);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to submit report");
       setSubmitting(false);
     }
   };
+
+  const illegal = reason === "illegal_content";
+  const detailsLabel = illegal ? "EXPLANATION (REQUIRED)" : "DETAILS (OPTIONAL)";
+
+  if (receiptId) {
+    return (
+      <div
+        className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-6 z-50"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="report-modal-title"
+        onClick={onSubmitted}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onSubmitted();
+        }}
+      >
+        <div
+          ref={panelRef}
+          className="glass-card rounded-2xl p-6 max-w-sm w-full animate-scale-in"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h3 id="report-modal-title" className="font-display text-xl text-white mb-1">
+            We received your report
+          </h3>
+          <p className="font-body text-sm text-muted mb-2">
+            We&apos;ll review it. You can check the status in Settings.
+          </p>
+          <p className="font-body text-sm text-white mb-4" data-testid="report-receipt-id">
+            Reference {receiptId}
+          </p>
+          <Btn onClick={onSubmitted} variant="primary" autoFocus>
+            Done
+          </Btn>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -114,7 +158,7 @@ export function ReportModal({
         {/* Description */}
         <div className="mb-4">
           <label htmlFor={descId} className="block font-display text-sm tracking-[0.12em] text-dim mb-2">
-            DETAILS (OPTIONAL)
+            {detailsLabel}
           </label>
           <textarea
             id={descId}
@@ -143,7 +187,11 @@ export function ReportModal({
           >
             Cancel
           </Btn>
-          <Btn onClick={handleSubmit} variant="danger" disabled={submitting || !reason}>
+          <Btn
+            onClick={handleSubmit}
+            variant="danger"
+            disabled={submitting || !reason || (illegal && description.trim().length < ILLEGAL_CONTENT_MIN_EXPLANATION)}
+          >
             {submitting ? "Sending..." : "Submit Report"}
           </Btn>
         </div>

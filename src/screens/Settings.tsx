@@ -24,7 +24,9 @@ import { useOnboardingContext } from "../context/OnboardingContext";
 import { AvatarPicker } from "../components/AvatarPicker";
 import { InstallAppCard } from "../components/InstallAppCard";
 import { AccountActions } from "../components/AccountActions";
+import { TwoFactorSection } from "../components/TwoFactorSection";
 import { SOCIAL_LINKS } from "../constants/socialLinks";
+import { SafetyReportsSection } from "../components/SafetyReportsSection";
 
 type PushState = "unsupported" | "default" | "granted" | "denied";
 
@@ -473,7 +475,7 @@ export function Settings({
       <div className="px-5 pt-7 max-w-[430px] mx-auto">
         <h1 className="font-display text-fluid-4xl text-white mb-2 tracking-wide">Settings</h1>
         <p className="font-body text-sm text-muted mb-6">
-          Notifications, sound, haptics, install, and blocked players.
+          Security, notifications, sound, haptics, install, and blocked players.
         </p>
 
         {/* Profile picture */}
@@ -490,6 +492,9 @@ export function Settings({
             </p>
           </button>
         </div>
+
+        <SectionHeader title="SECURITY" />
+        <TwoFactorSection />
 
         {/* Notifications */}
         <SectionHeader title="NOTIFICATIONS" />
@@ -681,6 +686,9 @@ export function Settings({
             <p className="font-body text-xs text-faint mt-1">Run Hubz&apos;s welcome tour again from the top.</p>
           </button>
         </div>
+
+        <SectionHeader title="REPORTS & ACTIONS" />
+        <SafetyReportsSection uid={profile.uid} />
 
         {/* Legal */}
         <SectionHeader title="LEGAL" />

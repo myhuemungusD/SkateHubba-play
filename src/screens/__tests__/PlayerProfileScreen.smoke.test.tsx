@@ -59,6 +59,11 @@ vi.mock("../../services/blocking", () => ({
 vi.mock("../../services/achievements", () => ({ fetchAchievements: vi.fn().mockResolvedValue([]) }));
 vi.mock("../../services/locker", () => ({ fetchLockerItems: vi.fn().mockResolvedValue([]) }));
 
+const listSpotsByCreator = vi.fn();
+vi.mock("../../services/spots", () => ({
+  listSpotsByCreator: (...args: unknown[]) => listSpotsByCreator(...args),
+}));
+
 const fetchedProfile = vi.fn();
 vi.mock("../../hooks/usePlayerProfile", () => ({
   usePlayerProfile: (...args: unknown[]) => fetchedProfile(...args),
@@ -74,6 +79,7 @@ const props = buildBaseProps();
 describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    listSpotsByCreator.mockResolvedValue([]);
     fetchedProfile.mockReturnValue(fetchedState());
   });
 
@@ -191,11 +197,12 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
   describe("added spots (Map extras enabled)", () => {
     withExtrasEnabled();
 
-    it("renders the added-spots placeholder on the viewer's own profile", () => {
+    it("renders the added-spots placeholder on the viewer's own profile", async () => {
       // Kept (unlike the ribbon) because its CTA is a real, working action —
-      // it opens the map's Add Spot sheet. Only the list below it is empty.
+      // it opens the map's Add Spot sheet. The list is empty until the player
+      // has actually added a spot.
       render(<PlayerProfileScreen {...props} />);
-      expect(screen.getByTestId("added-spots-placeholder")).toBeInTheDocument();
+      expect(await screen.findByTestId("added-spots-placeholder")).toBeInTheDocument();
     });
 
     it("routes ADD A SPOT to the caller's map navigation", async () => {
@@ -204,7 +211,7 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
       // existed. Guards the wiring, not just the markup.
       const onAddSpot = vi.fn();
       render(<PlayerProfileScreen {...props} onAddSpot={onAddSpot} />);
-      const cta = screen.getByRole("button", { name: /add a spot/i });
+      const cta = await screen.findByRole("button", { name: /add a spot/i });
       expect(cta).toBeEnabled();
       await userEvent.click(cta);
       expect(onAddSpot).toHaveBeenCalledTimes(1);
@@ -213,9 +220,9 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
       });
     });
 
-    it("disables ADD A SPOT when the caller supplies no map navigation", () => {
+    it("disables ADD A SPOT when the caller supplies no map navigation", async () => {
       render(<PlayerProfileScreen {...props} />);
-      expect(screen.getByRole("button", { name: /add a spot/i })).toBeDisabled();
+      expect(await screen.findByRole("button", { name: /add a spot/i })).toBeDisabled();
     });
   });
 

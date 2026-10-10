@@ -88,6 +88,8 @@ function emptyBundle(overrides?: Partial<UserDataExport>): UserDataExport {
     nudges: [],
     blockedUsers: [],
     reports: [],
+    moderationStatements: [],
+    appeals: [],
     ...overrides,
   };
 }
@@ -137,7 +139,9 @@ describe("userData service", () => {
         .mockResolvedValueOnce({ docs: [] }) // nudges sent
         .mockResolvedValueOnce({ docs: [] }) // nudges received
         .mockResolvedValueOnce({ docs: [buildDoc("b1", "users/u1/blocked_users/b1", { blockedUid: "b1" })] })
-        .mockResolvedValueOnce({ docs: [buildDoc("r1", "reports/r1", { reporterUid: "u1", reason: "spam" })] });
+        .mockResolvedValueOnce({ docs: [buildDoc("r1", "reports/r1", { reporterUid: "u1", reason: "spam" })] })
+        .mockResolvedValueOnce({ docs: [buildDoc("st1", "moderationStatements/st1", { subjectUid: "u1" })] })
+        .mockResolvedValueOnce({ docs: [buildDoc("ap1", "appeals/ap1", { appellantUid: "u1" })] });
 
       const bundle = await exportUserData("u1", "SK8R");
 
@@ -155,6 +159,8 @@ describe("userData service", () => {
       expect(bundle.nudges).toHaveLength(0);
       expect(bundle.blockedUsers).toHaveLength(1);
       expect(bundle.reports).toHaveLength(1);
+      expect(bundle.moderationStatements).toHaveLength(1);
+      expect(bundle.appeals).toHaveLength(1);
       expect(() => new Date(bundle.exportedAt).toISOString()).not.toThrow();
     });
 
@@ -173,7 +179,9 @@ describe("userData service", () => {
         .mockResolvedValueOnce({ docs: [] }) // nudges sent
         .mockResolvedValueOnce({ docs: [] }) // nudges received
         .mockResolvedValueOnce({ docs: [] }) // blocks
-        .mockResolvedValueOnce({ docs: [] }); // reports
+        .mockResolvedValueOnce({ docs: [] }) // reports
+        .mockResolvedValueOnce({ docs: [] }) // statements
+        .mockResolvedValueOnce({ docs: [] }); // appeals
 
       const bundle = await exportUserData("u1", "sk8r");
       expect(bundle.games).toHaveLength(1);
@@ -250,7 +258,9 @@ describe("userData service", () => {
         .mockResolvedValueOnce({ docs: [sharedNudge] }) // nudges sent
         .mockResolvedValueOnce({ docs: [sharedNudge] }) // nudges received
         .mockResolvedValueOnce({ docs: [] }) // blocks
-        .mockResolvedValueOnce({ docs: [] }); // reports
+        .mockResolvedValueOnce({ docs: [] }) // reports
+        .mockResolvedValueOnce({ docs: [] }) // statements
+        .mockResolvedValueOnce({ docs: [] }); // appeals
 
       const bundle = await exportUserData("u1", "sk8r");
       expect(bundle.nudges).toHaveLength(1);

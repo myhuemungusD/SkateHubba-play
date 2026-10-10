@@ -215,6 +215,8 @@ export function createUserDataServiceMocks(): UserDataServiceMocks {
       nudges: [],
       blockedUsers: [],
       reports: [],
+      moderationStatements: [],
+      appeals: [],
     }),
     serializeUserData: vi.fn(() => "{}"),
     userDataFilename: vi.fn(() => "export.json"),
