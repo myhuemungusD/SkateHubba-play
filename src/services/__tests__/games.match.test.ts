@@ -198,6 +198,7 @@ describe("games service", () => {
       expect(updates.phase).toBe("pendingReview");
       expect(updates.reviewFor).toBe("p2"); // matcher
       expect(updates.reviewDeadline).toBeDefined();
+      expect(updates.turnDeadline).toBeDefined();
       expect(updates.matchVideoUrl).toBe("https://vid.url/match.webm");
       // Roles/turn/letters/turnHistory stay pinned — nothing written for them.
       expect(updates.currentSetter).toBeUndefined();

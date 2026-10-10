@@ -16,8 +16,8 @@
  * and the most extreme "permanent lockout" shape that can actually reach the
  * rules engine. A rules-layer denial here proves the cap is doing the work.
  *
- * Rules now enforce `turnDeadline < request.time + duration.value(48, 'h')`
- * on every write path that sets a fresh deadline:
+ * Rules now pin a fresh turnDeadline to request.time + 24h, ±1h
+ * (`aboutOneDayAhead`) on every write path that sets a fresh deadline:
  *
  *   (a) /games create
  *   (b) setting-phase turn update
@@ -54,8 +54,12 @@ const JUDGE_UID = "j-charlie";
 const GAME_ID = "g-deadline";
 
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+const ONE_HOUR_MS = 60 * 60 * 1000;
 // A legitimate, production-shaped future deadline.
 const validFutureDeadline = () => new Date(Date.now() + TWENTY_FOUR_HOURS_MS);
+// Inside the old "> now && < 48h" window, outside the 24h ±1h pin.
+const oneHourDeadline = () => new Date(Date.now() + ONE_HOUR_MS);
+const oneSecondDeadline = () => new Date(Date.now() + 1000);
 // Bucket-pinned trick/match URLs — required by the audit-P2 host pin on
 // currentTrickVideoUrl + matchVideoUrl writes.
 const VALID_TRICK_URL = "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/set.webm";
@@ -189,6 +193,14 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
         createGameWithAnchor(gameRef(asP1()), makeValidGame({ turnDeadline: validFutureDeadline() })),
       );
     });
+
+    it("attack: create CANNOT use a one-second turnDeadline", async () => {
+      await assertFails(createGameWithAnchor(gameRef(asP1()), makeValidGame({ turnDeadline: oneSecondDeadline() })));
+    });
+
+    it("attack: create CANNOT use a one-hour turnDeadline", async () => {
+      await assertFails(createGameWithAnchor(gameRef(asP1()), makeValidGame({ turnDeadline: oneHourDeadline() })));
+    });
   });
 
   // (b) Setting-phase turn update
@@ -216,6 +228,20 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
           currentTrickVideoUrl: VALID_TRICK_URL,
           currentTurn: P2_UID,
           turnDeadline: validFutureDeadline(),
+          updatedAt: serverTimestamp(),
+        }),
+      );
+    });
+
+    it("attack: setting→matching CANNOT hand the matcher a one-second clock", async () => {
+      await seedGame({ currentTurn: P1_UID, phase: "setting" });
+      await assertFails(
+        updateDoc(gameRef(asP1()), {
+          phase: "matching",
+          currentTrickName: "kickflip",
+          currentTrickVideoUrl: VALID_TRICK_URL,
+          currentTurn: P2_UID,
+          turnDeadline: oneSecondDeadline(),
           updatedAt: serverTimestamp(),
         }),
       );
@@ -418,6 +444,60 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
           phase: "matching",
           currentTurn: P2_UID,
           turnDeadline: validFutureDeadline(),
+          updatedAt: serverTimestamp(),
+        }),
+      );
+    });
+  });
+
+  describe("forfeit only after a real expiry", () => {
+    it("attack: forfeit is denied while the 24h clock is still running", async () => {
+      await seedGame({
+        currentTurn: P2_UID,
+        currentSetter: P1_UID,
+        phase: "matching",
+        currentTrickName: "kickflip",
+        currentTrickVideoUrl: VALID_TRICK_URL,
+        turnDeadline: validFutureDeadline(),
+      });
+      await assertFails(
+        updateDoc(gameRef(asP1()), {
+          status: "forfeit",
+          winner: P1_UID,
+          updatedAt: serverTimestamp(),
+        }),
+      );
+    });
+
+    it("legitimate: either player CAN forfeit once the stored clock has passed", async () => {
+      await seedGame({
+        currentTurn: P2_UID,
+        currentSetter: P1_UID,
+        phase: "matching",
+        currentTrickName: "kickflip",
+        currentTrickVideoUrl: VALID_TRICK_URL,
+        turnDeadline: new Date(Date.now() - 60_000),
+      });
+      await assertSucceeds(
+        updateDoc(gameRef(asP1()), {
+          status: "forfeit",
+          winner: P1_UID,
+          updatedAt: serverTimestamp(),
+        }),
+      );
+    });
+
+    it("attack: a forfeit cannot rewrite the clock it claims has expired", async () => {
+      await seedGame({
+        currentTurn: P2_UID,
+        phase: "setting",
+        turnDeadline: new Date(Date.now() - 60_000),
+      });
+      await assertFails(
+        updateDoc(gameRef(asP1()), {
+          status: "forfeit",
+          winner: P1_UID,
+          turnDeadline: oneSecondDeadline(),
           updatedAt: serverTimestamp(),
         }),
       );
