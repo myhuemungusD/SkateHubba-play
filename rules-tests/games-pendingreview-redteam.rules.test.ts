@@ -187,6 +187,20 @@ describe("matching → pendingReview (landed claim freezes the game)", () => {
     );
   });
 
+  it("DENIED: a one-second review window cannot open the accept clock", async () => {
+    await seedMatching();
+    await assertFails(
+      updateDoc(gameDoc(asP2(), "g"), {
+        phase: "pendingReview",
+        reviewFor: P2_UID,
+        reviewDeadline: new Date(Date.now() + 1000),
+        matchVideoUrl: VALID_MATCH_URL,
+        turnDeadline: future(),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
   it("DENIED: reviewFor naming the SETTER instead of the matcher", async () => {
     await seedMatching();
     await assertFails(

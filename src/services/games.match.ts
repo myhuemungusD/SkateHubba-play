@@ -217,6 +217,9 @@ export async function submitMatchAttempt(
         phase: "pendingReview",
         reviewFor: matcherUid,
         reviewDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
+        // Phase change refreshes the play clock to ~24h. Rules reject a shorter
+        // clock, and the previous turn's remaining time is often under that floor.
+        turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
         matchVideoUrl,
         updatedAt: serverTimestamp(),
       });

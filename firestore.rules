@@ -1025,8 +1025,7 @@ service cloud.firestore {
               && nxt.p1Letters == cur.p1Letters
               && nxt.p2Letters == cur.p2Letters
               && nxt.turnHistory == cur.turnHistory
-              && nxt.reviewDeadline is timestamp
-              && nxt.reviewDeadline > request.time
+              && aboutOneDayAhead(nxt.reviewDeadline)
               && !judgeActive(cur))
           // Judge-active landed→disputable OR Call BS→setReview — letters
           // unchanged, currentSetter + turnNumber UNCHANGED, currentTurn → judge.
@@ -1157,6 +1156,15 @@ service cloud.firestore {
       );
     }
 
+    // Product window is 24h (TURN_DURATION_MS). ±1h absorbs client clock skew.
+    // A shorter clock is an instant forfeit or an instant auto-accept; a longer
+    // one locks the opponent out of the forfeit path.
+    function aboutOneDayAhead(ts) {
+      return ts is timestamp
+        && ts > request.time + duration.value(23, 'h')
+        && ts < request.time + duration.value(25, 'h');
+    }
+
     // ── Games ──
     match /games/{gameId} {
       // Players AND the nominated judge can read the game document.
@@ -1180,18 +1188,10 @@ service cloud.firestore {
         && request.resource.data.currentTurn == request.auth.uid
         && request.resource.data.phase == 'setting'
         && request.resource.data.currentSetter == request.auth.uid
-        // turnDeadline must be a future timestamp (prevents instant-forfeit attack:
-        // without this, a malicious client could set turnDeadline in the past,
-        // currentTurn to the opponent, and immediately forfeit them).
-        // Upper bound prevents the inverse attack: without a cap, a client
-        // could set turnDeadline to Timestamp.fromMillis(Number.MAX_SAFE_INTEGER)
-        // and permanently block the opponent's forfeit path (forfeit needs
-        // request.time > resource.data.turnDeadline). 48h is 2× the production
-        // TURN_DURATION_MS (24h) — tight enough to prevent abuse, loose enough
-        // to tolerate clock skew and retry windows.
-        && request.resource.data.turnDeadline is timestamp
-        && request.resource.data.turnDeadline > request.time
-        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
+        // Play clock is request.time + 24h (±1h). A one-second deadline lets
+        // either player forfeit the opponent immediately; a year-9999 deadline
+        // never expires. Forfeit still requires request.time past the stored clock.
+        && aboutOneDayAhead(request.resource.data.turnDeadline)
         // Trick/video fields must start empty
         && request.resource.data.currentTrickName == null
         && request.resource.data.currentTrickVideoUrl == null
@@ -1378,12 +1378,8 @@ service cloud.firestore {
           request.resource.data.currentTurn == resource.data.player1Uid ||
           request.resource.data.currentTurn == resource.data.player2Uid
         )
-        // turnDeadline must be a timestamp bounded to a sane future window.
-        // See the create rule above for the rationale on the 48h upper bound
-        // (blocks opponent-lockout via Timestamp.fromMillis(MAX_SAFE_INTEGER)).
-        && request.resource.data.turnDeadline is timestamp
-        && request.resource.data.turnDeadline > request.time
-        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
+        // New play clock on every setting-phase transition (set trick or fail-set).
+        && aboutOneDayAhead(request.resource.data.turnDeadline)
         // Scores must not change during setting-phase updates.
         // Letters are only awarded via the match resolution rule below.
         && request.resource.data.p1Letters == resource.data.p1Letters
@@ -1512,11 +1508,14 @@ service cloud.firestore {
           || ('judgeStatus' in resource.data && 'judgeStatus' in request.resource.data
               && request.resource.data.judgeStatus == resource.data.judgeStatus)
         )
-        // turnDeadline must be a timestamp bounded to a sane future window
-        // (see create rule for rationale on the 48h cap).
-        && request.resource.data.turnDeadline is timestamp
-        && request.resource.data.turnDeadline > request.time
-        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
+        // A continuing turn (miss, judge review) writes a fresh 24h clock.
+        // Game over and nothing else may leave the stored clock alone — there
+        // is no next turn to time. A one-second clock is denied on both arms.
+        && (
+          aboutOneDayAhead(request.resource.data.turnDeadline)
+          || (request.resource.data.status == 'complete'
+              && request.resource.data.turnDeadline == resource.data.turnDeadline)
+        )
         // Letters: at most one player gains exactly one letter (missed) or none change (landed)
         && (
           // No letter change (landed path, both honor + judge)
@@ -1654,9 +1653,7 @@ service cloud.firestore {
             && request.resource.data.turnNumber == resource.data.turnNumber + 1
             && (!('reviewFor' in request.resource.data) || request.resource.data.reviewFor == null)
             && (!('reviewDeadline' in request.resource.data) || request.resource.data.reviewDeadline == null)
-            && request.resource.data.turnDeadline is timestamp
-            && request.resource.data.turnDeadline > request.time
-            && request.resource.data.turnDeadline < request.time + duration.value(48, 'h'))
+            && aboutOneDayAhead(request.resource.data.turnDeadline))
           ||
           // (b) DISPUTE → communityReview: the game STAYS frozen. Roles,
           // turnNumber, letters and turnHistory are all pinned unchanged;
@@ -1673,8 +1670,7 @@ service cloud.firestore {
             && request.resource.data.reviewFor == resource.data.reviewFor
             && request.resource.data.turnHistory == resource.data.turnHistory
             && request.resource.data.turnDeadline == resource.data.turnDeadline
-            && request.resource.data.reviewDeadline is timestamp
-            && request.resource.data.reviewDeadline > request.time)
+            && aboutOneDayAhead(request.resource.data.reviewDeadline))
         )
         // turnHistory growth bound — accept appends exactly one landed record;
         // dispute leaves it unchanged (pinned above). Same +1 / ≤200 ceiling.
@@ -1735,11 +1731,13 @@ service cloud.firestore {
           request.resource.data.currentTurn == resource.data.player1Uid ||
           request.resource.data.currentTurn == resource.data.player2Uid
         )
-        // turnDeadline must be a timestamp bounded to a sane future window
-        // (see create rule for rationale on the 48h cap).
-        && request.resource.data.turnDeadline is timestamp
-        && request.resource.data.turnDeadline > request.time
-        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
+        // Continuing play gets a fresh 24h clock. A ruling that ends the game
+        // may leave the stored clock unchanged.
+        && (
+          aboutOneDayAhead(request.resource.data.turnDeadline)
+          || (request.resource.data.status == 'complete'
+              && request.resource.data.turnDeadline == resource.data.turnDeadline)
+        )
         // Letters: accept (no change) or overrule (the disputed turn's MATCHER
         // takes exactly one letter). The matcher is always the setter's
         // opponent — pin the +1 to opponentUid(currentSetter) so a colluding
@@ -1832,11 +1830,7 @@ service cloud.firestore {
         && request.resource.data.judgeStatus == resource.data.judgeStatus
         && request.resource.data.status == 'active'
         && request.resource.data.winner == null
-        // turnDeadline must be a timestamp bounded to a sane future window
-        // (see create rule for rationale on the 48h cap).
-        && request.resource.data.turnDeadline is timestamp
-        && request.resource.data.turnDeadline > request.time
-        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
+        && aboutOneDayAhead(request.resource.data.turnDeadline)
         && request.resource.data.p1Letters == resource.data.p1Letters
         && request.resource.data.p2Letters == resource.data.p2Letters
         && request.resource.data.currentSetter == resource.data.currentSetter
@@ -1889,6 +1883,7 @@ service cloud.firestore {
         && request.resource.data.p2Letters == resource.data.p2Letters
         && request.resource.data.winner == resource.data.winner
         && request.resource.data.turnNumber == resource.data.turnNumber
+        && request.resource.data.turnDeadline == resource.data.turnDeadline
         && (
           (!('turnHistory' in resource.data) && !('turnHistory' in request.resource.data))
           || request.resource.data.turnHistory == resource.data.turnHistory
@@ -1921,8 +1916,11 @@ service cloud.firestore {
         // Only forfeit from setting or matching (disputable auto-accepts,
         // setReview auto-clears to matching — neither is a forfeit path).
         && (resource.data.phase == 'setting' || resource.data.phase == 'matching')
-        // Turn deadline must have actually expired (prevents premature forfeits)
+        // The stored clock must have actually expired. Writes pin that clock to
+        // ~24h, so this cannot fire a second after a phase change. The forfeit
+        // itself must not rewrite the clock it is claiming has expired.
         && request.time > resource.data.turnDeadline
+        && request.resource.data.turnDeadline == resource.data.turnDeadline
         // Cannot change player UIDs, usernames, or letters
         && request.resource.data.player1Uid == resource.data.player1Uid
         && request.resource.data.player2Uid == resource.data.player2Uid
@@ -2008,13 +2006,8 @@ service cloud.firestore {
         // Without these either participant could seize the setter role out of
         // rotation in this same write.
         && autoAcceptRolePinsOk(resource.data, request.resource.data)
-        // turnDeadline must be a fresh, bounded future timestamp. This path
-        // fires only after the OLD deadline expired, but the NEW deadline
-        // written here is what governs the next turn — so it needs the same
-        // 48h cap every other write path enforces.
-        && request.resource.data.turnDeadline is timestamp
-        && request.resource.data.turnDeadline > request.time
-        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
+        // The next turn's clock is a fresh 24h, not whatever the client picks.
+        && aboutOneDayAhead(request.resource.data.turnDeadline)
         // ── matchVideoUrl bucket pin (audit P2) ──
         // Auto-accept finalises the matcher's "landed" call without judge
         // intervention. The matcher's stored matchVideoUrl is now the canonical
@@ -2069,11 +2062,7 @@ service cloud.firestore {
         && request.resource.data.winner == null
         && request.resource.data.currentSetter == resource.data.currentSetter
         && request.resource.data.currentTurn == opponentUid(resource.data, resource.data.currentSetter)
-        // turnDeadline must be a fresh, bounded future timestamp. Same
-        // rationale as the expired-dispute auto-accept above.
-        && request.resource.data.turnDeadline is timestamp
-        && request.resource.data.turnDeadline > request.time
-        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
+        && aboutOneDayAhead(request.resource.data.turnDeadline)
         // turnHistory growth bound — this path typically leaves the
         // history unchanged (no new turn was completed), but we still run
         // the helper to enforce the absolute 200-entry ceiling and block
