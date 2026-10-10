@@ -5,6 +5,7 @@ import { adminPatch, shouldApplyUploadDecision, shouldAutoHideClip, type SaveGua
 import { runReportModeration } from "./runReport.js";
 import { runUploadModeration } from "./runUpload.js";
 import { captureModerationFailure } from "./sentry.js";
+import { reconcileClipVideo, type ClipObjectStore } from "./publish.js";
 import { notificationCopy, statementIdFor, type StatementOfReasons } from "./statement.js";
 import { annotateStoredVideo } from "./video.js";
 
@@ -12,6 +13,8 @@ interface HandlerOptions {
   db: Firestore;
   enabled: boolean;
   sentryDsn: string;
+  /** Copies the video onto the approved path, or back off it. Omitted in tests. */
+  media?: ClipObjectStore;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -48,7 +51,7 @@ async function writeRestrictionStatement(
   ownerUid: string,
   statement: StatementOfReasons,
 ): Promise<void> {
-  if (statement.decision !== "rejected" && statement.decision !== "removed") return;
+  if (statement.decision !== "rejected" && statement.decision !== "removed" && statement.decision !== "review") return;
   const statementId = statementIdFor(clipId);
   await db
     .collection("moderationStatements")
@@ -63,6 +66,39 @@ async function writeRestrictionStatement(
       createdBy: "moderation",
       createdAt: FieldValue.serverTimestamp(),
     });
+}
+
+async function syncClipMedia(
+  options: HandlerOptions,
+  clipId: string,
+  ownerUid: unknown,
+  videoUrl: unknown,
+  moderation: unknown,
+): Promise<void> {
+  if (!options.media) return;
+  if (typeof ownerUid !== "string" || ownerUid.length === 0) return;
+  if (typeof videoUrl !== "string" || videoUrl.length === 0) return;
+  if (moderation !== "approved" && moderation !== "rejected" && moderation !== "removed" && moderation !== "review") {
+    return;
+  }
+  try {
+    const next = await reconcileClipVideo(options.media, {
+      ownerUid,
+      videoUrl,
+      visible: moderation === "approved",
+    });
+    if (next && next !== videoUrl) {
+      await options.db.collection("clips").doc(clipId).update({ videoUrl: next });
+    }
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        event: "clip_media_sync_failed",
+        clipId,
+        error: error instanceof Error ? error.message : "failed",
+      }),
+    );
+  }
 }
 
 async function notifyOwner(
@@ -95,7 +131,11 @@ export async function handleClipCreated(options: HandlerOptions, clipId: string,
     clipId,
     clip,
     annotate: (gcsUri) => annotateStoredVideo(gcsUri, { timeoutMs: VIDEO_API_TIMEOUT_MS, pollMs: VIDEO_API_POLL_MS }),
-    save: (patch, guard) => saveClip(options.db, clipId, patch, guard),
+    save: async (patch, guard) => {
+      const applied = await saveClip(options.db, clipId, patch, guard);
+      if (applied) await syncClipMedia(options, clipId, clip?.playerUid, clip?.videoUrl, patch.moderation);
+      return applied;
+    },
     notify: (ownerUid, statement) => notifyOwner(options.db, clipId, ownerUid, statement),
     capture: (error, extra) => captureModerationFailure(options.sentryDsn, error, extra).then(() => undefined),
   });
@@ -105,6 +145,7 @@ export async function handleClipReport(options: HandlerOptions, raw: unknown, no
   const report = asRecord(raw);
   const clipId = typeof report?.clipId === "string" ? report.clipId : "";
   const reason = typeof report?.reason === "string" ? report.reason : "";
+  let loaded: Record<string, unknown> | null = null;
   await runReportModeration({
     enabled: options.enabled,
     clipId,
@@ -113,7 +154,8 @@ export async function handleClipReport(options: HandlerOptions, raw: unknown, no
     loadClip: async () => {
       if (clipId.length === 0) return null;
       const snap = await options.db.collection("clips").doc(clipId).get();
-      return snap.exists ? (snap.data() ?? null) : null;
+      loaded = snap.exists ? (snap.data() ?? null) : null;
+      return loaded;
     },
     loadReports: async () => {
       if (clipId.length === 0) return [];
@@ -133,13 +175,19 @@ export async function handleClipReport(options: HandlerOptions, raw: unknown, no
       const ms = created.toMillis();
       return Number.isFinite(ms) ? ms : null;
     },
-    save: (patch, guard) => saveClip(options.db, clipId, patch, guard),
+    save: async (patch, guard) => {
+      const applied = await saveClip(options.db, clipId, patch, guard);
+      if (applied) await syncClipMedia(options, clipId, loaded?.playerUid, loaded?.videoUrl, patch.moderation);
+      return applied;
+    },
+    notify: (ownerUid, statement) => notifyOwner(options.db, clipId, ownerUid, statement),
   });
 }
 
 export async function handleDecideClip(
   request: CallableRequest,
   db: Firestore,
+  media?: ClipObjectStore,
 ): Promise<{ clipId: string; moderation: string }> {
   if (request.auth?.token.admin !== true) {
     throw new HttpsError("permission-denied", "Admins only.");
@@ -162,6 +210,7 @@ export async function handleDecideClip(
   }
   const snap = await db.collection("clips").doc(clipId).get();
   const ownerUid = snap.get("playerUid");
+  const videoUrl = snap.get("videoUrl");
   const applied = await saveClip(db, clipId, built.patch, built.guard);
   if (!applied) {
     throw new HttpsError("failed-precondition", "That clip cannot be moderated.");
@@ -169,5 +218,6 @@ export async function handleDecideClip(
   if (built.statement && typeof ownerUid === "string" && ownerUid.length > 0) {
     await notifyOwner(db, clipId, ownerUid, built.statement);
   }
+  await syncClipMedia({ db, enabled: true, sentryDsn: "", media }, clipId, ownerUid, videoUrl, decision);
   return { clipId, moderation: decision };
 }

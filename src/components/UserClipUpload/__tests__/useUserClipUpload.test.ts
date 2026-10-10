@@ -197,7 +197,25 @@ describe("useUserClipUpload", () => {
     expect(second.result.current.canSubmit).toBe(false);
     // Only the first post reached the services.
     expect(mockUpload).toHaveBeenCalledTimes(1);
+    expect(mockUpload.mock.calls[0]?.[6]).toBe("public");
     expect(mockCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("uploads to the private prefix when clip moderation is on", async () => {
+    vi.stubEnv("VITE_FEATURE_CLIP_MODERATION_ENABLED", "true");
+    try {
+      const hook = mount();
+      await act(async () => {
+        await hook.result.current.handleFilePicked(videoFile());
+      });
+      act(() => hook.result.current.setTrickName("Kickflip"));
+      await act(async () => {
+        await hook.result.current.submit();
+      });
+      expect(mockUpload.mock.calls.at(-1)?.[6]).toBe("private");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   /** Stage a clip and a trick name, then submit. */

@@ -1528,7 +1528,9 @@ describe("deleteUserClips (user-source clips)", () => {
     // container the clip was filmed in.
     expect(mockStorageRef).toHaveBeenCalledWith(expect.anything(), "userClips/p1/uc1.webm");
     expect(mockStorageRef).toHaveBeenCalledWith(expect.anything(), "userClips/p1/uc1.mp4");
-    expect(mockDeleteObject).toHaveBeenCalledTimes(2);
+    expect(mockStorageRef).toHaveBeenCalledWith(expect.anything(), "approvedClips/p1/uc1.webm");
+    expect(mockStorageRef).toHaveBeenCalledWith(expect.anything(), "approvedClips/p1/uc1.mp4");
+    expect(mockDeleteObject).toHaveBeenCalledTimes(4);
 
     // The comment doc and the clip doc are both deleted, comment first.
     const deleted = mockDeleteDoc.mock.calls.map(([ref]) => ref as { __path?: string; id?: string });

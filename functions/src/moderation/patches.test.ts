@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { adminPatch, failurePatch, shouldApplyUploadDecision, shouldAutoHideClip, uploadPatch } from "./patches.js";
+import {
+  adminPatch,
+  autoHidePatch,
+  failurePatch,
+  shouldApplyUploadDecision,
+  shouldAutoHideClip,
+  uploadPatch,
+} from "./patches.js";
 
 describe("clip patches", () => {
   it("only applies an upload decision while the clip is pending", () => {
@@ -59,5 +66,14 @@ describe("clip patches", () => {
     });
     expect(adminPatch("removed", "  not skating  ").statement?.grounds).toBe("not skating");
     expect(() => adminPatch("removed", "   ")).toThrow(/reason is required/);
+  });
+
+  it("writes an appealable statement when the community auto-hides a clip", () => {
+    const hidden = autoHidePatch(["not_skating", "inappropriate"]);
+    expect(hidden.guard).toBe("hide-if-open");
+    expect(hidden.statement?.appealPath).toBe("/settings#safety-reports");
+    expect(hidden.statement?.automated).toBe(true);
+    expect(hidden.patch.moderationNotice).toBe(hidden.statement);
+    expect(hidden.patch).toMatchObject({ moderation: "review", moderationStatus: "hidden" });
   });
 });

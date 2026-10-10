@@ -189,9 +189,25 @@ async function readTally(field: "landVotes" | "bailVotes"): Promise<unknown> {
  * ──────────────────────────────────────────── */
 
 describe("disputes — read", () => {
-  it("any signed-in user CAN read an open dispute (feed is app-wide)", async () => {
+  it("any signed-in user CAN read an open active dispute (feed is app-wide)", async () => {
     await seedDispute();
     await assertSucceeds(getDoc(disputeRef(as(VIEWER_UID))));
+    const feed = query(
+      collection(as(VIEWER_UID).firestore(), "disputes"),
+      where("status", "==", "open"),
+      where("moderationStatus", "==", "active"),
+    );
+    const snap = await assertSucceeds(getDocs(feed));
+    expect(snap.docs.map((row) => row.id)).toContain(DISPUTE_ID);
+  });
+
+  it("a stranger CANNOT read a hidden dispute; the players and an admin can", async () => {
+    await seedDispute({ moderationStatus: "hidden" });
+    await assertFails(getDoc(disputeRef(as(VIEWER_UID))));
+    await assertSucceeds(getDoc(disputeRef(as(P1_UID))));
+    await assertSucceeds(getDoc(disputeRef(as(P2_UID))));
+    const admin = getEnv().authenticatedContext("admin-uid", { admin: true, email_verified: true });
+    await assertSucceeds(getDoc(disputeRef(admin)));
   });
 
   it("only game participants can read a closed dispute", async () => {

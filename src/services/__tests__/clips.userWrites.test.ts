@@ -286,6 +286,26 @@ describe("createUserClip", () => {
     warn.mockRestore();
   });
 
+  it("accepts an approvedClips url when the clip is public", async () => {
+    const cap = wireTx({});
+    const publicUrl = VIDEO_URL.replace("userClips%2F", "approvedClips%2F");
+    await expect(createUserClip(params({ videoUrl: publicUrl }))).resolves.toBe("uc1");
+    expect(cap.observed().set).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ videoUrl: publicUrl, moderationStatus: "active" }),
+    );
+  });
+
+  it("rejects an approvedClips url while the clip is still pending", async () => {
+    vi.stubEnv("VITE_FEATURE_CLIP_MODERATION_ENABLED", "true");
+    try {
+      const publicUrl = VIDEO_URL.replace("userClips%2F", "approvedClips%2F");
+      await expect(createUserClip(params({ videoUrl: publicUrl }))).rejects.toThrow(/could not be attached/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("starts the clip as pending when clip moderation is on", async () => {
     vi.stubEnv("VITE_FEATURE_CLIP_MODERATION_ENABLED", "true");
     try {

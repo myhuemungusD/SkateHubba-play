@@ -62,6 +62,18 @@ export function statementForApproval(): StatementOfReasons {
   };
 }
 
+export function statementForAutoHide(reasons: readonly string[]): StatementOfReasons {
+  const appealPath = appealPathFor();
+  const listed = reasons.length > 0 ? reasons.slice(0, 4).join(", ") : "reports from other skaters";
+  return {
+    decision: "review",
+    grounds: "reported by other skaters",
+    statement: `We hid this clip because other skaters reported it (${listed}). This decision used automated means. Appeal it in Settings.`,
+    appealPath,
+    automated: true,
+  };
+}
+
 export function statementForReview(grounds: string): StatementOfReasons {
   return {
     decision: "review",

@@ -160,6 +160,18 @@ service cloud.firestore {
         );
     }
 
+    // Approved playback lives under approvedClips/{uid}/ so a signed-in
+    // reader can fetch it without a per-request Firestore lookup. Pending
+    // clips must not point here.
+    function userClipPublicUrlOk(url, uid) {
+      return url is string
+        && url.size() <= 2048
+        && url.matches(
+          '^https://firebasestorage\\.googleapis\\.com/v0/b/' + FIREBASE_BUCKET() +
+          '/o/approvedClips%2F' + uid + '%2F[A-Za-z0-9_-]+\\.(webm|mp4)(\\?.*)?$'
+        );
+    }
+
     // ── User-clip creation rate limit (30s) ──
     // Same two-part idiom as /reports + reports_limits: a pre-state read
     // proves the cooldown elapsed, and a getAfter() on the SAME batch
@@ -2931,11 +2943,16 @@ service cloud.firestore {
     //   4. Owner (playerUid) can delete their own clip — closes the GDPR /
     //      CCPA right-to-erasure loop from the account-deletion flow.
     //
-    // Reads are open to any signed-in user: blocklist filtering is applied
-    // client-side (see useBlockedUsers), matching how the rest of the app
-    // handles cross-user content.
+    // Active clips are the public feed. Pending, in-review, rejected, and
+    // removed docs (videoUrl and the explicit scores) stay with the owner
+    // and admins. Blocklist filtering of the public feed stays client-side.
     match /clips/{clipId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn()
+        && (
+          isAdmin()
+          || resource.data.playerUid == request.auth.uid
+          || resource.data.moderationStatus == 'active'
+        );
 
       // ── Game-sourced clips ──
       // Legacy clips written before the `source` field existed stay
@@ -3020,13 +3037,17 @@ service cloud.firestore {
         && request.resource.data.trickName is string
         && request.resource.data.trickName.size() >= 1
         && request.resource.data.trickName.size() <= 80
-        && userClipVideoUrlOk(request.resource.data.videoUrl, request.auth.uid)
         && (request.resource.data.spotId == null
             || (request.resource.data.spotId is string
                 && request.resource.data.spotId.size() <= 64))
         && (
-          (request.resource.data.moderationStatus == 'active' && !('moderation' in request.resource.data))
-          || (request.resource.data.moderationStatus == 'pending' && request.resource.data.moderation == 'pending')
+          (request.resource.data.moderationStatus == 'active'
+            && !('moderation' in request.resource.data)
+            && (userClipVideoUrlOk(request.resource.data.videoUrl, request.auth.uid)
+                || userClipPublicUrlOk(request.resource.data.videoUrl, request.auth.uid)))
+          || (request.resource.data.moderationStatus == 'pending'
+            && request.resource.data.moderation == 'pending'
+            && userClipVideoUrlOk(request.resource.data.videoUrl, request.auth.uid))
         )
         && !('moderationScores' in request.resource.data)
         && !('moderationNotice' in request.resource.data)
@@ -3247,13 +3268,16 @@ service cloud.firestore {
     // reads outright. This arm leaks only existence — strictly less than the
     // app-wide read it replaces.
     match /disputes/{disputeId} {
+      // Hidden disputes are a takedown. Participants and anyone who already
+      // voted can still read them; everyone else only sees open + active.
       allow read: if isSignedIn()
         && (
           resource == null
-          || resource.data.status == 'open'
+          || isAdmin()
           || request.auth.uid == resource.data.setterUid
           || request.auth.uid == resource.data.matcherUid
           || exists(/databases/$(database)/documents/disputeVotes/$(request.auth.uid + '_' + disputeId))
+          || (resource.data.status == 'open' && resource.data.moderationStatus == 'active')
         );
 
       allow create: if isSignedIn()

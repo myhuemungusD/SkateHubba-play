@@ -6,7 +6,7 @@
  * `moderation` themselves.
  */
 
-import { collection, getDocs, limit, query, where } from "firebase/firestore";
+import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
 import { connectFunctionsEmulator, getFunctions, httpsCallable } from "firebase/functions";
 import app, { isEmulatorMode, requireDb } from "../firebase";
 import { logger } from "./logger";
@@ -116,7 +116,7 @@ export function parseOwnClip(id: string, raw: unknown): OwnClipModerationRow | n
   }
   const notice = noticeOf(data);
   const appealPath =
-    moderation === "rejected" || moderation === "removed"
+    moderation === "review" || moderation === "rejected" || moderation === "removed"
       ? typeof notice?.appealPath === "string" && notice.appealPath.length > 0
         ? notice.appealPath
         : CLIP_APPEAL_PATH
@@ -154,12 +154,23 @@ export async function fetchClipsInReview(): Promise<ReviewClip[]> {
   }
 }
 
+const OWN_MODERATION = ["pending", "review", "rejected", "removed"] as const;
+
 /** The signed-in skater's clips that are not in the public feed yet. */
 export async function fetchOwnClipModeration(uid: string): Promise<OwnClipModerationRow[]> {
   requireClipId(uid);
   try {
+    // source + moderation keep game clips (and live posts) out of the page.
+    // Ordering by createdAt makes the limit the newest unfinished clips.
     const snap = await getDocs(
-      query(collection(requireDb(), "clips"), where("playerUid", "==", uid), limit(OWN_LIMIT)),
+      query(
+        collection(requireDb(), "clips"),
+        where("playerUid", "==", uid),
+        where("source", "==", "user"),
+        where("moderation", "in", [...OWN_MODERATION]),
+        orderBy("createdAt", "desc"),
+        limit(OWN_LIMIT),
+      ),
     );
     const rows: OwnClipModerationRow[] = [];
     for (const row of snap.docs) {

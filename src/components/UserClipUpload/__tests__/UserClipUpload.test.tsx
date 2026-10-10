@@ -120,7 +120,15 @@ describe("UserClipUploadModal", () => {
     await user.click(screen.getByRole("button", { name: /post clip/i }));
 
     await waitFor(() => expect(mockCreateUserClip).toHaveBeenCalled());
-    expect(mockUploadUserClip).toHaveBeenCalledWith("me", "clip123", expect.any(Blob));
+    expect(mockUploadUserClip).toHaveBeenCalledWith(
+      "me",
+      "clip123",
+      expect.any(Blob),
+      undefined,
+      2,
+      undefined,
+      "public",
+    );
     expect(mockCreateUserClip).toHaveBeenCalledWith({
       clipId: "clip123",
       playerUsername: "viewer",

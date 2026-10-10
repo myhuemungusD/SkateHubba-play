@@ -11,6 +11,7 @@ function reporter(uid: string, reason = "not_skating") {
 describe("runReportModeration", () => {
   it("ignores the switch-off path, missing clips, and clips that are not public user uploads", async () => {
     const save = vi.fn(async () => true);
+    const notify = vi.fn(async () => undefined);
     await expect(
       runReportModeration({
         enabled: false,
@@ -21,6 +22,7 @@ describe("runReportModeration", () => {
         loadCreatedAt: async () => nowMs - 2 * DAY,
         nowMs,
         save,
+        notify,
       }),
     ).resolves.toBe("ignored");
 
@@ -34,6 +36,7 @@ describe("runReportModeration", () => {
         loadCreatedAt: async () => null,
         nowMs,
         save,
+        notify,
       }),
     ).resolves.toBe("ignored");
 
@@ -47,13 +50,16 @@ describe("runReportModeration", () => {
         loadCreatedAt: async () => nowMs - 2 * DAY,
         nowMs,
         save,
+        notify,
       }),
     ).resolves.toBe("ignored");
     expect(save).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
   });
 
   it("hides a public clip once three established reporters agree, and not before", async () => {
     const save = vi.fn(async () => true);
+    const notify = vi.fn(async () => undefined);
     const base = {
       enabled: true,
       clipId: "c1",
@@ -62,6 +68,7 @@ describe("runReportModeration", () => {
       loadCreatedAt: async (uid: string) => (uid === "new" ? nowMs - 1000 : nowMs - 3 * DAY),
       nowMs,
       save,
+      notify,
     };
 
     await expect(
@@ -81,6 +88,14 @@ describe("runReportModeration", () => {
       expect.objectContaining({ moderation: "review", moderationStatus: "hidden" }),
       "hide-if-open",
     );
+    expect(notify).toHaveBeenCalledWith(
+      "owner",
+      expect.objectContaining({
+        decision: "review",
+        appealPath: "/settings#safety-reports",
+        automated: true,
+      }),
+    );
   });
 
   it("does not claim a hide when the clip was already in review", async () => {
@@ -95,6 +110,7 @@ describe("runReportModeration", () => {
         loadCreatedAt: async () => nowMs - 3 * DAY,
         nowMs,
         save,
+        notify: vi.fn(async () => undefined),
       }),
     ).resolves.toBe("ignored");
   });

@@ -1,6 +1,7 @@
 import type { DecisionResult } from "./decide.js";
 import {
   statementForApproval,
+  statementForAutoHide,
   statementForAutoReject,
   statementForRemoval,
   statementForReview,
@@ -92,14 +93,15 @@ export function failurePatch(message: string): ClipPatch {
 }
 
 export function autoHidePatch(reasons: readonly string[]): ClipPatch {
+  const statement = statementForAutoHide(reasons);
   return {
     guard: "hide-if-open",
-    statement: null,
+    statement,
     patch: {
       moderation: "review",
       moderationStatus: "hidden",
       reportReasons: [...reasons],
-      moderationNotice: statementForReview("reported by other skaters"),
+      moderationNotice: statement,
     },
   };
 }

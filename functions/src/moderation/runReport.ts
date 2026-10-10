@@ -1,6 +1,7 @@
 import { AUTO_HIDE_REPORT_THRESHOLD } from "./config.js";
 import { autoHidePatch, shouldAutoHideClip, type SaveGuard } from "./patches.js";
 import { countEligibleReporters, type ClipReportRow } from "./reporters.js";
+import type { StatementOfReasons } from "./statement.js";
 
 export interface ReportModerationInput {
   enabled: boolean;
@@ -12,6 +13,7 @@ export interface ReportModerationInput {
   nowMs: number;
   threshold?: number;
   save: (patch: Record<string, unknown>, guard: SaveGuard) => Promise<boolean>;
+  notify: (ownerUid: string, statement: StatementOfReasons) => Promise<void>;
 }
 
 /**
@@ -41,5 +43,8 @@ export async function runReportModeration(input: ReportModerationInput): Promise
   if (counted.count < threshold) return "ignored";
   const built = autoHidePatch(counted.reasons);
   const applied = await input.save(built.patch, built.guard);
+  if (applied && built.statement && ownerUid.length > 0) {
+    await input.notify(ownerUid, built.statement);
+  }
   return applied ? "hidden" : "ignored";
 }

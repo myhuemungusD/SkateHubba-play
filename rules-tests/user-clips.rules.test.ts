@@ -103,6 +103,31 @@ describe("clips — user-source create (positive)", () => {
   it("accepts a pending clip when moderation is pending", async () => {
     await assertSucceeds(createUserClip(authed(UID), UID, { moderationStatus: "pending", moderation: "pending" }));
   });
+
+  it("accepts an active clip whose video is on the approved path", async () => {
+    const publicUrl = videoUrl(UID).replace("userClips%2F", "approvedClips%2F");
+    await assertSucceeds(createUserClip(authed(UID), UID, { videoUrl: publicUrl }));
+  });
+});
+
+describe("clips — user-source read", () => {
+  it("a stranger can read an active clip and cannot read a pending one", async () => {
+    await assertSucceeds(createUserClip(authed(UID), UID));
+    await assertSucceeds(getDoc(doc(authed(OTHER_UID).firestore(), "clips", CLIP_ID)));
+
+    await getEnv().withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "clips", "pending-clip"), {
+        ...makeUserClip(UID),
+        moderationStatus: "pending",
+        moderation: "pending",
+        moderationScores: { explicitLikelihood: "VERY_LIKELY" },
+      });
+    });
+    await assertFails(getDoc(doc(authed(OTHER_UID).firestore(), "clips", "pending-clip")));
+    await assertSucceeds(getDoc(doc(authed(UID).firestore(), "clips", "pending-clip")));
+    const admin = getEnv().authenticatedContext("admin-uid", { email_verified: true, admin: true });
+    await assertSucceeds(getDoc(doc(admin.firestore(), "clips", "pending-clip")));
+  });
 });
 
 describe("clips — user-source create (red team)", () => {
@@ -112,6 +137,13 @@ describe("clips — user-source create (red team)", () => {
 
   it("attack: CANNOT publish a clip pointing at ANOTHER user's storage prefix", async () => {
     await assertFails(createUserClip(authed(UID), UID, { videoUrl: videoUrl(OTHER_UID) }));
+  });
+
+  it("attack: a pending clip CANNOT point at the approved path", async () => {
+    const publicUrl = videoUrl(UID).replace("userClips%2F", "approvedClips%2F");
+    await assertFails(
+      createUserClip(authed(UID), UID, { videoUrl: publicUrl, moderationStatus: "pending", moderation: "pending" }),
+    );
   });
 
   it("attack: CANNOT publish a clip pointing at an attacker-hosted URL", async () => {
