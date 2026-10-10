@@ -585,9 +585,7 @@ describe("users/{uid} XP counters — client writes are DENIED", () => {
     await seedUsernameReservation(testEnv, ALICE_UID, "alice");
     await assertSucceeds(
       setDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
-        uid: ALICE_UID,
-        username: "alice",
-        stance: "Regular",
+        ...ALICE_PROFILE,
         level: 1,
         xp: 0,
       }),

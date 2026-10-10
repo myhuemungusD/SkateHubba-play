@@ -42,7 +42,7 @@ export function useLevelUpMoment(
     );
 
     async function look(isFirst: boolean): Promise<void> {
-      if (cancelled || announced) return;
+      if (announced) return;
       try {
         const next = await getUserProfile(profile.uid);
         if (!next || cancelled) return;
@@ -53,16 +53,17 @@ export function useLevelUpMoment(
           if (isFirst) baselineIds = new Set(earned.map((item) => item.id));
           return;
         }
+        const priorIds = baselineIds;
         const names =
-          baselineIds === null
+          priorIds === null
             ? []
             : earned
-                .filter((item) => !baselineIds?.has(item.id))
+                .filter((item) => !priorIds.has(item.id))
                 .map((item) => achievementById(item.id)?.shortName)
                 .filter((name): name is string => typeof name === "string")
                 .slice(0, 3);
         announced = true;
-        if (!cancelled) setMoment({ level: nextLevel, names, reduceMotion });
+        setMoment({ level: nextLevel, names, reduceMotion });
         try {
           await onRefresh?.();
         } catch {

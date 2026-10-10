@@ -401,9 +401,9 @@ No new file under `functions/src/`.
 | `src/screens/GameOverScreen.tsx`                                                 | Refetch and the level-up moment                                  |
 | `scripts/backfill-xp.mjs`                                                        | The replay                                                       |
 
-## Open questions
+## Settled calls
 
-The review settled the shape: four rules, a high cap, pair-based anti-farm, a longer 50-level climb, and a tiered set with See All. These are the calls still worth a yes or a different number.
+Jason approved the defaults below, and the implementation uses them. The rules-bound clip +1 fit under the rules size limit, so the Clips family shipped with the other 33.
 
 1. **Are 50 / 50 / 10 / 10 the right four numbers?** Default: yes. Finish 50, win 50, each land 10, each call 10. A normal win with a few lands is about 140 XP, which is level 3. Level 2 is inside the first finished game.
 

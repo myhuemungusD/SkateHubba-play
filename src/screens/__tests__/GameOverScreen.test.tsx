@@ -58,8 +58,8 @@ function makeGame(overrides: Record<string, unknown> = {}) {
   } as any;
 }
 
+beforeEach(() => vi.clearAllMocks());
 beforeEach(() => {
-  vi.clearAllMocks();
   vi.mocked(useLevelUpMoment).mockReturnValue({ level: null, names: [], reduceMotion: true });
 });
 

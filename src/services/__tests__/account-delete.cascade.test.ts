@@ -226,15 +226,15 @@ describe("full cascade over a populated account", () => {
   });
 
   it("erases the identity surface last, in a single batch", async () => {
-    // achievements + locker + blocked_users + private profile + public profile.
+    // achievements + locker + xp markers + blocked_users + private profile + public profile.
     // Identity documents are what a retry needs in order to find everything
     // else, so they must outlive every other phase.
     const store = fixture();
     await deleteUserDataAsAdmin(store.deps, UID);
 
-    // 2 achievements + 2 locker items + 1 blocked user + the private profile
-    // + the public one.
-    expect(store.commitSizes.at(-1)).toBe(7);
+    // 2 achievements + 2 locker items + 1 xp marker + 1 blocked user
+    // + the private profile + the public one.
+    expect(store.commitSizes.at(-1)).toBe(8);
     expect(eventIndex(store, "delete:users/u1")).toBeGreaterThan(eventIndex(store, "delete:notifications/mine"));
     expect(eventIndex(store, "delete:users/u1/private/profile")).toBeGreaterThan(
       eventIndex(store, "delete:reports/filed"),
