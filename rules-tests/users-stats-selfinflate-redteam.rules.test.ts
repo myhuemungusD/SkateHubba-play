@@ -39,7 +39,7 @@ import {
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { doc, setDoc, updateDoc, setLogLevel } from "firebase/firestore";
+import { doc, setDoc, updateDoc, deleteDoc, setLogLevel } from "firebase/firestore";
 import { seedUsernameReservation } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-users-selfinflate";
@@ -559,5 +559,63 @@ describe("users/{uid} recentResults — client writes are DENIED", () => {
         recentResults: ["W", "L", "W"],
       }),
     );
+  });
+});
+
+describe("users/{uid} XP counters — client writes are DENIED", () => {
+  const XP_COUNTERS = [
+    "xp",
+    "xpToday",
+    "uniqueOpponents",
+    "spotsPlayed",
+    "gamesAtMySpots",
+    "disputeVotesCast",
+    "clipsPosted",
+  ] as const;
+
+  it.each(XP_COUNTERS)("denied: cannot create a profile with a non-zero %s", async (field) => {
+    await assertFails(createProfileWithCounter(field, 7));
+  });
+
+  it("denied: cannot create a profile at level 50", async () => {
+    await assertFails(createProfileWithCounter("level", 50));
+  });
+
+  it("succeeds: creating with level explicitly 1 and xp explicitly 0", async () => {
+    await seedUsernameReservation(testEnv, ALICE_UID, "alice");
+    await assertSucceeds(
+      setDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        uid: ALICE_UID,
+        username: "alice",
+        stance: "Regular",
+        level: 1,
+        xp: 0,
+      }),
+    );
+  });
+
+  it("denied: a stance edit cannot smuggle an xp bump", async () => {
+    await seedAliceProfile({ xp: 10, level: 1 });
+    await assertFails(
+      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        stance: "Goofy",
+        xp: 999,
+      }),
+    );
+  });
+
+  it("denied: owner cannot create an xp marker", async () => {
+    await seedAliceProfile();
+    await assertFails(
+      setDoc(doc(asAlice().firestore(), "users", ALICE_UID, "xpMarkers", "opp_bob"), { kind: "opponent" }),
+    );
+  });
+
+  it("succeeds: owner can delete an xp marker", async () => {
+    await seedAliceProfile();
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "users", ALICE_UID, "xpMarkers", "opp_bob"), { kind: "opponent" });
+    });
+    await assertSucceeds(deleteDoc(doc(asAlice().firestore(), "users", ALICE_UID, "xpMarkers", "opp_bob")));
   });
 });

@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GameOverScreen } from "../GameOverScreen";
+import { useLevelUpMoment } from "../../hooks/useLevelUpMoment";
+
+vi.mock("../../hooks/useLevelUpMoment", () => ({
+  useLevelUpMoment: vi.fn(() => ({ level: null, names: [], reduceMotion: true })),
+}));
 
 const { fetchResolvedDispute } = vi.hoisted(() => ({ fetchResolvedDispute: vi.fn().mockResolvedValue(null) }));
 vi.mock("../../services/disputes", () => ({ fetchResolvedDispute }));
@@ -53,9 +58,20 @@ function makeGame(overrides: Record<string, unknown> = {}) {
   } as any;
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(useLevelUpMoment).mockReturnValue({ level: null, names: [], reduceMotion: true });
+});
 
 describe("GameOverScreen", () => {
+  it("shows the level-up moment when the refetch crossed a level", () => {
+    vi.mocked(useLevelUpMoment).mockReturnValue({ level: 4, names: ["Shutout"], reduceMotion: true });
+    render(<GameOverScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
+    expect(screen.getByTestId("level-up")).toBeInTheDocument();
+    expect(screen.getByText("Level 4")).toBeInTheDocument();
+    expect(screen.getByText("Shutout unlocked")).toBeInTheDocument();
+  });
+
   it("uses the server-authored dispute turn after the game advances and omits a missing result", async () => {
     render(
       <GameOverScreen

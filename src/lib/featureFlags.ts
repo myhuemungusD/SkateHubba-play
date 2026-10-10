@@ -40,6 +40,15 @@ export function isDiceEnabled(): boolean {
 }
 
 /**
+ * XP, levels, and the achievements ribbon. Separate from the extras switch:
+ * extras are already on in production, and turning them on must not surface
+ * levels. Literal "true" only. The server switch is XP_ENABLED.
+ */
+export function isXpEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_XP_ENABLED);
+}
+
+/**
  * Sign in with Apple. Off until the Firebase Apple provider is enabled.
  * Literal "true" only — the website and Android stay on Google + email
  * until then. The iOS store build sets this so App Review sees the button.

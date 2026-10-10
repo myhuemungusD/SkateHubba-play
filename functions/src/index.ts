@@ -21,6 +21,14 @@ const DATABASE_ID = "skatehubba";
 initializeApp();
 
 /**
+ * XP kill switch. Default off. While off, only uids in XP_TESTER_UIDS
+ * (comma-separated) earn XP on their own side of a close-out. Set both at
+ * deploy time; they are not read from the client. See docs/XP_LEVELS.md.
+ */
+const xpEnabled = defineBoolean("XP_ENABLED", { default: false });
+const xpTesterUids = defineString("XP_TESTER_UIDS", { default: "" });
+
+/**
  * Reconcile win/loss counters when a game reaches a terminal state.
  *
  * Fires on every games/{gameId} update but fast-returns unless the doc is a
@@ -41,7 +49,10 @@ export const onGameCompleted = onDocumentUpdated(
 
     if (!isTerminal || !hasWinner || after.statsApplied === true) return;
 
-    await applyGameStats(getFirestore(DATABASE_ID), event.params.gameId);
+    await applyGameStats(getFirestore(DATABASE_ID), event.params.gameId, {
+      enabled: xpEnabled.value(),
+      testers: xpTesterUids.value(),
+    });
   },
 );
 

@@ -619,6 +619,7 @@ function AppRoutes() {
                         nav.setScreen("lobby");
                       }}
                       onViewPlayer={nav.navigateToPlayer}
+                      onProfileRefresh={auth.refreshProfile}
                     />
                   </ErrorBoundary>
                 ) : (

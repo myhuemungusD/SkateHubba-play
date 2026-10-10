@@ -1,4 +1,4 @@
-import { FieldValue, type Firestore } from "firebase-admin/firestore";
+import { FieldValue, type DocumentReference, type Firestore } from "firebase-admin/firestore";
 
 /**
  * Outcome of an {@link applyGameStats} run. The union exists for observability
@@ -7,12 +7,7 @@ import { FieldValue, type Firestore } from "firebase-admin/firestore";
  * doc was mutated.
  */
 export type ApplyGameStatsResult =
-  | "applied"
-  | "already-applied"
-  | "not-terminal"
-  | "no-winner"
-  | "winner-not-participant"
-  | "missing";
+  "applied" | "already-applied" | "not-terminal" | "no-winner" | "winner-not-participant" | "missing";
 
 /** The subset of the game document this reconciler reads. */
 interface GameStatsFields {
@@ -26,6 +21,7 @@ interface GameStatsFields {
   updatedAt?: unknown;
   judgeId?: unknown;
   judgeStatus?: unknown;
+  spotId?: unknown;
 }
 
 /** Per-player counters derived from a game's turnHistory in a single walk. */
@@ -203,6 +199,108 @@ function sharedIncrements(derived: PlayerDerived, durationMs: number): Record<st
 }
 
 /**
+ * Server switch for XP. Omitted (or enabled false with an empty tester list)
+ * leaves the close-out payloads exactly as they were before XP existed.
+ * `testers` is the comma-separated `XP_TESTER_UIDS` param. A tester earns on
+ * their own side only.
+ */
+export interface XpGate {
+  enabled: boolean;
+  testers: string;
+}
+
+const MAX_LEVEL = 50;
+const DAILY_XP_CAP = 3000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const FINISH_XP = 50;
+const WIN_XP = 50;
+const LAND_XP = 10;
+const CALL_XP = 10;
+
+/**
+ * Highest level with `24 × (level − 1)² <= xp`, clamped to 1..50.
+ * Integer walk so it cannot drift from `src/constants/xp.ts`.
+ */
+export function levelForXp(xp: number): number {
+  const safe = Number.isFinite(xp) && xp > 0 ? Math.floor(xp) : 0;
+  let level = 1;
+  for (let steps = 1; steps < MAX_LEVEL; steps += 1) {
+    if (24 * steps * steps <= safe) level = steps + 1;
+    else break;
+  }
+  return level;
+}
+
+/** Total XP to reach `level`. Level 1 is 0. Level 50 is 57,624. */
+export function xpToReach(level: number): number {
+  if (!Number.isFinite(level) || level <= 1) return 0;
+  const steps = Math.min(Math.floor(level), MAX_LEVEL) - 1;
+  return 24 * steps * steps;
+}
+
+/** id, profile counter, threshold, reason (<= 200 chars). Mirrors src/constants/xp.ts. */
+const XP_GRANTS: readonly [string, string, number, string][] = [
+  ["games_10", "gamesPlayed", 10, "Finish 10 games."],
+  ["games_50", "gamesPlayed", 50, "Finish 50 games."],
+  ["games_250", "gamesPlayed", 250, "Finish 250 games."],
+  ["wins_10", "wins", 10, "Win 10 games."],
+  ["wins_100", "wins", 100, "Win 100 games."],
+  ["wins_500", "wins", 500, "Win 500 games."],
+  ["streak_3", "bestWinStreak", 3, "Win 3 games in a row."],
+  ["streak_5", "bestWinStreak", 5, "Win 5 games in a row."],
+  ["streak_10", "bestWinStreak", 10, "Win 10 games in a row."],
+  ["lands_50", "tricksLanded", 50, "Land 50 tricks."],
+  ["lands_250", "tricksLanded", 250, "Land 250 tricks."],
+  ["lands_1000", "tricksLanded", 1000, "Land 1,000 tricks."],
+  ["shutout_1", "cleanWins", 1, "Win a game without taking a letter."],
+  ["shutout_10", "cleanWins", 10, "Win 10 games without taking a letter."],
+  ["shutout_25", "cleanWins", 25, "Win 25 games without taking a letter."],
+  ["comeback_1", "comebackWins", 1, "Win after falling to S.K.A.T."],
+  ["comeback_5", "comebackWins", 5, "Win 5 games after falling to S.K.A.T."],
+  ["comeback_20", "comebackWins", 20, "Win 20 games after falling to S.K.A.T."],
+  ["whistle_1", "turnsJudged", 1, "Rule 1 turn."],
+  ["whistle_25", "turnsJudged", 25, "Rule 25 turns."],
+  ["whistle_100", "turnsJudged", 100, "Rule 100 turns."],
+  ["votes_1", "disputeVotesCast", 1, "Cast 1 vote that stood."],
+  ["votes_25", "disputeVotesCast", 25, "Cast 25 votes that stood."],
+  ["votes_100", "disputeVotesCast", 100, "Cast 100 votes that stood."],
+  ["opponents_5", "uniqueOpponents", 5, "Skate 5 different people."],
+  ["opponents_25", "uniqueOpponents", 25, "Skate 25 different people."],
+  ["opponents_100", "uniqueOpponents", 100, "Skate 100 different people."],
+  ["spots_1", "spotsPlayed", 1, "Finish a game at 1 spot."],
+  ["spots_5", "spotsPlayed", 5, "Finish a game at 5 spots."],
+  ["spots_20", "spotsPlayed", 20, "Finish a game at 20 spots."],
+  ["homespot_1", "gamesAtMySpots", 1, "Finish 1 game at a spot you created."],
+  ["homespot_10", "gamesAtMySpots", 10, "Finish 10 games at a spot you created."],
+  ["homespot_50", "gamesAtMySpots", 50, "Finish 50 games at a spot you created."],
+  ["clips_1", "clipsPosted", 1, "Post 1 clip."],
+  ["clips_10", "clipsPosted", 10, "Post 10 clips."],
+  ["clips_50", "clipsPosted", 50, "Post 50 clips."],
+];
+
+function earnsXp(uid: string, gate: XpGate | undefined): boolean {
+  if (!gate) return false;
+  if (gate.enabled) return true;
+  return gate.testers.split(",").some((part) => part.trim() === uid);
+}
+
+function utcDay(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function pairMultiplier(prior: number): number {
+  if (prior <= 0) return 1;
+  if (prior === 1) return 0.5;
+  if (prior === 2) return 0.25;
+  return 0;
+}
+
+interface DocRefLike {
+  path: string;
+  collection?: (name: string) => { doc: (id: string) => DocRefLike };
+}
+
+/**
  * Idempotently apply win/loss counters for a terminal game.
  *
  * The `statsApplied` flag re-checked *inside* the transaction is the real
@@ -210,8 +308,11 @@ function sharedIncrements(derived: PlayerDerived, durationMs: number): Record<st
  * on the game doc, and only the first observes `statsApplied !== true`, writes
  * the flag, and increments. The handler's pre-check is merely a cheap fast path
  * that avoids opening a transaction for the common no-op update.
+ *
+ * XP is applied in the same transaction when `gate` says this uid earns it.
+ * An omitted gate pays no XP and does not read or write the XP fields.
  */
-export async function applyGameStats(db: Firestore, gameId: string): Promise<ApplyGameStatsResult> {
+export async function applyGameStats(db: Firestore, gameId: string, gate?: XpGate): Promise<ApplyGameStatsResult> {
   const gameRef = db.collection("games").doc(gameId);
 
   return db.runTransaction(async (tx): Promise<ApplyGameStatsResult> => {
@@ -254,13 +355,254 @@ export async function applyGameStats(db: Firestore, gameId: string): Promise<App
       typeof judgeId === "string" && judgeId.length > 0 && game.judgeStatus === "accepted" ? judgeId : null;
     const judgeRef = judgeUid === null ? null : db.collection("users").doc(judgeUid);
 
+    const winnerEarns = earnsXp(winner, gate);
+    const loserEarns = earnsXp(loser, gate);
+    const judgeEarns = judgeUid !== null && earnsXp(judgeUid, gate);
+    const anyXp = winnerEarns || loserEarns || judgeEarns;
+
     // Admin transactions require all reads before any write — the judge read is
-    // grouped here for that reason, not merely for latency.
+    // grouped here for that reason, not merely for latency. XP reads stay in
+    // this same pre-write window and only run when someone actually earns XP,
+    // so a closed switch does not add reads.
     const [winnerSnap, loserSnap, judgeSnap] = await Promise.all([
       tx.get(winnerRef),
       tx.get(loserRef),
       judgeRef === null ? Promise.resolve(null) : tx.get(judgeRef),
     ]);
+
+    const history = Array.isArray(game.turnHistory) ? game.turnHistory : [];
+    const emptyForfeit = game.status === "forfeit" && history.length < 2;
+    const dayMs = toMillis(game.updatedAt) ?? toMillis(game.createdAt);
+    const day = dayMs === null ? null : utcDay(dayMs);
+    const spotId = typeof game.spotId === "string" && game.spotId.length > 0 ? game.spotId : null;
+    const judgeIsPlayer = anyXp && judgeUid !== null && (judgeUid === winner || judgeUid === loser);
+
+    const pairId = [winner, loser].sort().join("_");
+    const pairRef = !anyXp || emptyForfeit || day === null ? null : db.collection("xpPairs").doc(pairId);
+    const spotRef = !anyXp || emptyForfeit || spotId === null ? null : db.collection("spots").doc(spotId);
+
+    const markerReads: {
+      uid: string;
+      id: string;
+      ref: ReturnType<Firestore["collection"]> extends never ? never : { path: string };
+    }[] = [];
+    // The harness and the Admin SDK both expose collection().doc() on a user ref.
+    function markerRef(uid: string, id: string): { path: string } {
+      const userRef = db.collection("users").doc(uid) as unknown as DocRefLike;
+      const nested = userRef.collection?.("xpMarkers").doc(id);
+      return nested ?? { path: `users/${uid}/xpMarkers/${id}` };
+    }
+    function achievementRef(uid: string, id: string): { path: string } {
+      const userRef = db.collection("users").doc(uid) as unknown as DocRefLike;
+      const nested = userRef.collection?.("achievements").doc(id);
+      return nested ?? { path: `users/${uid}/achievements/${id}` };
+    }
+
+    if (anyXp && !emptyForfeit) {
+      if (winnerEarns && winnerSnap.exists)
+        markerReads.push({ uid: winner, id: `opp_${loser}`, ref: markerRef(winner, `opp_${loser}`) });
+      if (loserEarns && loserSnap.exists)
+        markerReads.push({ uid: loser, id: `opp_${winner}`, ref: markerRef(loser, `opp_${winner}`) });
+      if (spotId !== null) {
+        if (winnerEarns && winnerSnap.exists)
+          markerReads.push({ uid: winner, id: `spot_${spotId}`, ref: markerRef(winner, `spot_${spotId}`) });
+        if (loserEarns && loserSnap.exists)
+          markerReads.push({ uid: loser, id: `spot_${spotId}`, ref: markerRef(loser, `spot_${spotId}`) });
+      }
+    }
+
+    const [pairSnap, spotSnap, ...markerSnaps] = anyXp
+      ? await Promise.all([
+          pairRef === null ? Promise.resolve(null) : tx.get(pairRef),
+          spotRef === null ? Promise.resolve(null) : tx.get(spotRef),
+          ...markerReads.map((m) => tx.get(m.ref as DocumentReference)),
+        ])
+      : [null, null];
+
+    const xpSets: { ref: { path: string }; data: Record<string, unknown> }[] = [];
+    const winnerPatch: Record<string, unknown> = {};
+    const loserPatch: Record<string, unknown> = {};
+    const judgePatch: Record<string, unknown> = {};
+
+    if (anyXp) {
+      const { players: derivedPlayers, judgedBy: derivedJudged } = deriveGameStats(game.turnHistory, winner, loser);
+      const gameCreated = toMillis(game.createdAt);
+      const winnerCreated = toMillis(winnerSnap.data()?.createdAt);
+      const loserCreated = toMillis(loserSnap.data()?.createdAt);
+      const oldEnough =
+        gameCreated !== null &&
+        winnerCreated !== null &&
+        loserCreated !== null &&
+        gameCreated - winnerCreated >= DAY_MS &&
+        gameCreated - loserCreated >= DAY_MS;
+
+      let priorPair = 0;
+      if (pairSnap && pairSnap.exists && day !== null && pairSnap.data()?.utcDay === day) {
+        priorPair = counter(pairSnap.data()?.count);
+      }
+      const multiplier = emptyForfeit || day === null ? (emptyForfeit ? 0 : 1) : pairMultiplier(priorPair);
+      if (pairRef !== null && day !== null) {
+        const nextCount = pairSnap && pairSnap.exists && pairSnap.data()?.utcDay === day ? priorPair + 1 : 1;
+        xpSets.push({ ref: pairRef, data: { utcDay: day, count: nextCount } });
+      }
+
+      const spotOwner = spotSnap && spotSnap.exists ? spotSnap.data()?.createdBy : null;
+      const markerExists = new Set(
+        markerReads.filter((_, i) => markerSnaps[i]?.exists === true).map((m) => `${m.uid}/${m.id}`),
+      );
+
+      const turnsFor = (uid: string): number => (emptyForfeit ? 0 : (derivedJudged[uid] ?? 0));
+
+      const applySide = (
+        uid: string,
+        snap: { exists: boolean; data: () => Record<string, unknown> | undefined } | null,
+        patch: Record<string, unknown>,
+        isWinner: boolean,
+        opponent: string,
+      ): void => {
+        if (!earnsXp(uid, gate) || snap?.exists !== true) return;
+        const data = snap.data() ?? {};
+        const lands = derivedPlayers[uid]?.tricksLanded ?? 0;
+        const play =
+          emptyForfeit || !oldEnough
+            ? 0
+            : Math.floor(
+                (FINISH_XP + (game.status === "complete" && isWinner ? WIN_XP : 0) + lands * LAND_XP) * multiplier,
+              );
+        const calls = judgeUid === uid ? turnsFor(uid) * CALL_XP : 0;
+        const award = play + calls;
+        if (day !== null && award > 0) {
+          const sameDay = data.xpDay === day;
+          const used = sameDay ? counter(data.xpToday) : 0;
+          const kept = Math.min(award, Math.max(0, DAILY_XP_CAP - used));
+          if (kept > 0) {
+            const nextXp = counter(data.xp) + kept;
+            patch.xp = nextXp;
+            patch.level = levelForXp(nextXp);
+            patch.xpDay = day;
+            patch.xpToday = used + kept;
+          }
+        } else if (award > 0) {
+          // No timestamp to name the UTC day: pay the award, skip the bucket.
+          const nextXp = counter(data.xp) + award;
+          patch.xp = nextXp;
+          patch.level = levelForXp(nextXp);
+        }
+
+        if (!emptyForfeit) {
+          const oppKey = `${uid}/opp_${opponent}`;
+          if (!markerExists.has(oppKey)) {
+            patch.uniqueOpponents = counter(data.uniqueOpponents) + 1;
+            xpSets.push({
+              ref: markerRef(uid, `opp_${opponent}`),
+              data: { kind: "opponent", createdAt: FieldValue.serverTimestamp() },
+            });
+          }
+          if (spotId !== null) {
+            const spotKey = `${uid}/spot_${spotId}`;
+            if (!markerExists.has(spotKey)) {
+              patch.spotsPlayed = counter(data.spotsPlayed) + 1;
+              xpSets.push({
+                ref: markerRef(uid, `spot_${spotId}`),
+                data: { kind: "spot", createdAt: FieldValue.serverTimestamp() },
+              });
+            }
+            if (spotOwner === uid) patch.gamesAtMySpots = counter(data.gamesAtMySpots) + 1;
+          }
+        }
+
+        const next: Record<string, number> = {
+          gamesPlayed: counter(data.gamesPlayed) + 1,
+          wins: counter(data.wins) + (isWinner ? 1 : 0),
+          bestWinStreak: isWinner
+            ? Math.max(counter(data.bestWinStreak), counter(data.currentWinStreak) + 1)
+            : counter(data.bestWinStreak),
+          tricksLanded: counter(data.tricksLanded) + lands,
+          cleanWins: counter(data.cleanWins) + (isWinner && (derivedPlayers[uid]?.lettersTaken ?? 0) === 0 ? 1 : 0),
+          comebackWins:
+            counter(data.comebackWins) +
+            (isWinner && (derivedPlayers[uid]?.peakLetters ?? 0) >= COMEBACK_LETTER_THRESHOLD ? 1 : 0),
+          turnsJudged: counter(data.turnsJudged) + (judgeUid === uid ? turnsFor(uid) : 0),
+          disputeVotesCast: counter(data.disputeVotesCast),
+          uniqueOpponents:
+            typeof patch.uniqueOpponents === "number" ? patch.uniqueOpponents : counter(data.uniqueOpponents),
+          spotsPlayed: typeof patch.spotsPlayed === "number" ? patch.spotsPlayed : counter(data.spotsPlayed),
+          gamesAtMySpots:
+            typeof patch.gamesAtMySpots === "number" ? patch.gamesAtMySpots : counter(data.gamesAtMySpots),
+          clipsPosted: counter(data.clipsPosted),
+        };
+        for (const [id, field, at, reason] of XP_GRANTS) {
+          if ((next[field] ?? 0) >= at) {
+            xpSets.push({
+              ref: achievementRef(uid, id),
+              data: { __grant: true, earnedAt: FieldValue.serverTimestamp(), reason },
+            });
+          }
+        }
+      };
+
+      applySide(winner, winnerSnap, winnerPatch, true, loser);
+      applySide(loser, loserSnap, loserPatch, false, winner);
+      if (judgeUid !== null && judgeEarns && !judgeIsPlayer && judgeSnap?.exists === true) {
+        const data = judgeSnap.data() ?? {};
+        const calls = turnsFor(judgeUid) * CALL_XP;
+        if (day !== null && calls > 0) {
+          const sameDay = data.xpDay === day;
+          const used = sameDay ? counter(data.xpToday) : 0;
+          const kept = Math.min(calls, Math.max(0, DAILY_XP_CAP - used));
+          if (kept > 0) {
+            const nextXp = counter(data.xp) + kept;
+            judgePatch.xp = nextXp;
+            judgePatch.level = levelForXp(nextXp);
+            judgePatch.xpDay = day;
+            judgePatch.xpToday = used + kept;
+          }
+        }
+        const nextTurns = counter(data.turnsJudged) + turnsFor(judgeUid);
+        const next: Record<string, number> = {
+          gamesPlayed: counter(data.gamesPlayed),
+          wins: counter(data.wins),
+          bestWinStreak: counter(data.bestWinStreak),
+          tricksLanded: counter(data.tricksLanded),
+          cleanWins: counter(data.cleanWins),
+          comebackWins: counter(data.comebackWins),
+          turnsJudged: nextTurns,
+          disputeVotesCast: counter(data.disputeVotesCast),
+          uniqueOpponents: counter(data.uniqueOpponents),
+          spotsPlayed: counter(data.spotsPlayed),
+          gamesAtMySpots: counter(data.gamesAtMySpots),
+          clipsPosted: counter(data.clipsPosted),
+        };
+        for (const [id, field, at, reason] of XP_GRANTS) {
+          if ((next[field] ?? 0) >= at) {
+            xpSets.push({
+              ref: achievementRef(judgeUid, id),
+              data: { __grant: true, earnedAt: FieldValue.serverTimestamp(), reason },
+            });
+          }
+        }
+      }
+
+      if (judgeIsPlayer && judgeUid !== null) {
+        const patch = judgeUid === winner ? winnerPatch : loserPatch;
+        const judgedTurns = derivedJudged[judgeUid] ?? 0;
+        patch.gamesJudged = FieldValue.increment(1);
+        if (judgedTurns > 0) patch.turnsJudged = FieldValue.increment(judgedTurns);
+      }
+
+      // Achievement creates only for docs that are not already there.
+      const grantSets = xpSets.filter((s) => s.data.__grant === true);
+      const otherSets = xpSets.filter((s) => s.data.__grant !== true);
+      const grantSnaps = await Promise.all(grantSets.map((s) => tx.get(s.ref as DocumentReference)));
+      xpSets.length = 0;
+      xpSets.push(...otherSets);
+      grantSets.forEach((s, i) => {
+        if (grantSnaps[i]?.exists === true) return;
+        const { __grant: _drop, ...data } = s.data;
+        void _drop;
+        xpSets.push({ ref: s.ref, data });
+      });
+    }
 
     tx.update(gameRef, { statsApplied: true });
 
@@ -289,6 +631,7 @@ export async function applyGameStats(db: Firestore, gameId: string): Promise<App
           comebackWins: players[winner].peakLetters >= COMEBACK_LETTER_THRESHOLD ? 1 : 0,
         }),
         recentResults: nextRecentResults(winnerSnap.data()?.recentResults, "W"),
+        ...winnerPatch,
       });
     } else {
       console.warn(`applyGameStats: winner profile ${winner} missing; skipping win increment for game ${gameId}`);
@@ -310,20 +653,26 @@ export async function applyGameStats(db: Firestore, gameId: string): Promise<App
         // above and is a data-integrity fault, not a normal path.
         ...increments({ forfeitLosses: game.status === "forfeit" ? 1 : 0 }),
         recentResults: nextRecentResults(loserSnap.data()?.recentResults, "L"),
+        ...loserPatch,
       });
     } else {
       console.warn(`applyGameStats: loser profile ${loser} missing; skipping loss increment for game ${gameId}`);
     }
 
-    if (judgeRef !== null && judgeUid !== null) {
+    if (judgeRef !== null && judgeUid !== null && !judgeIsPlayer) {
       if (judgeSnap?.exists === true) {
         tx.update(judgeRef, {
           gamesJudged: FieldValue.increment(1),
           ...increments({ turnsJudged: judgedBy[judgeUid] ?? 0 }),
+          ...judgePatch,
         });
       } else {
         console.warn(`applyGameStats: judge profile ${judgeUid} missing; skipping judge credit for game ${gameId}`);
       }
+    }
+
+    for (const write of xpSets) {
+      tx.set(write.ref as DocumentReference, write.data);
     }
 
     return "applied";

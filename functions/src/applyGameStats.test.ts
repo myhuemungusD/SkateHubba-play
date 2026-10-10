@@ -1,12 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Firestore } from "firebase-admin/firestore";
-import { applyGameStats, deriveGameStats, nextRecentResults, type ApplyGameStatsResult } from "./applyGameStats.js";
+import {
+  applyGameStats,
+  deriveGameStats,
+  levelForXp,
+  nextRecentResults,
+  xpToReach,
+  type ApplyGameStatsResult,
+} from "./applyGameStats.js";
 
 // Replace the real FieldValue with a deterministic sentinel so we can assert on
 // the exact payload handed to tx.update without depending on admin internals.
 vi.mock("firebase-admin/firestore", () => ({
   FieldValue: {
     increment: (by: number): { __increment: number } => ({ __increment: by }),
+    serverTimestamp: (): { __serverTimestamp: true } => ({ __serverTimestamp: true }),
   },
 }));
 
@@ -53,6 +61,20 @@ function notClean(payload: Record<string, unknown>): Record<string, unknown> {
 
 interface DocRef {
   path: string;
+  collection: (name: string) => { doc: (id: string) => DocRef };
+}
+
+function makeRef(path: string): DocRef {
+  const ref = { path } as DocRef;
+  // Non-enumerable so `toHaveBeenCalledWith({ path })` still matches. The
+  // close-out only walks into a subcollection when XP is on.
+  Object.defineProperty(ref, "collection", {
+    enumerable: false,
+    value: (name: string) => ({
+      doc: (id: string) => makeRef(`${path}/${name}/${id}`),
+    }),
+  });
+  return ref;
 }
 
 interface FakeSnap {
@@ -63,6 +85,7 @@ interface FakeSnap {
 interface TxLike {
   get: (ref: DocRef) => Promise<FakeSnap>;
   update: (ref: DocRef, data: Record<string, unknown>) => void;
+  set: (ref: DocRef, data: Record<string, unknown>) => void;
 }
 
 /** path -> document data; a missing key models a non-existent doc. */
@@ -71,19 +94,21 @@ type Store = Record<string, Record<string, unknown> | undefined>;
 function makeHarness(store: Store): {
   db: Firestore;
   update: ReturnType<typeof vi.fn>;
+  set: ReturnType<typeof vi.fn>;
   updatedPaths: () => string[];
 } {
   const update = vi.fn<(ref: DocRef, data: Record<string, unknown>) => void>();
+  const set = vi.fn<(ref: DocRef, data: Record<string, unknown>) => void>();
   const get = vi.fn(async (ref: DocRef): Promise<FakeSnap> => {
     const data = store[ref.path];
     return { exists: data !== undefined, data: () => data };
   });
 
-  const tx: TxLike = { get, update };
+  const tx: TxLike = { get, update, set };
 
   const db = {
     collection: (name: string) => ({
-      doc: (id: string): DocRef => ({ path: `${name}/${id}` }),
+      doc: (id: string): DocRef => makeRef(`${name}/${id}`),
     }),
     runTransaction: (fn: (t: TxLike) => Promise<ApplyGameStatsResult>): Promise<ApplyGameStatsResult> => fn(tx),
   };
@@ -91,6 +116,7 @@ function makeHarness(store: Store): {
   return {
     db: db as unknown as Firestore,
     update,
+    set,
     updatedPaths: () => update.mock.calls.map(([ref]) => (ref as DocRef).path),
   };
 }
@@ -688,5 +714,239 @@ describe("applyGameStats", () => {
 
     expect(result).toBe("missing");
     expect(update).not.toHaveBeenCalled();
+  });
+});
+
+const ON = { enabled: true, testers: "" };
+const DAY = 24 * 60 * 60 * 1000;
+const GAME_START = Date.UTC(2026, 5, 2, 12, 0, 0);
+const GAME_END = GAME_START + 60 * 60 * 1000;
+const OLD_ACCOUNT = GAME_START - 2 * DAY;
+
+function agedProfiles(extra: Record<string, unknown> = {}): Store {
+  return {
+    [P1_PATH]: { wins: 0, losses: 0, createdAt: OLD_ACCOUNT, ...extra },
+    [P2_PATH]: { wins: 0, losses: 0, createdAt: OLD_ACCOUNT },
+  };
+}
+
+describe("xp curve pins", () => {
+  it("pins level 2, level 10, and level 50", () => {
+    expect(xpToReach(1)).toBe(0);
+    expect(xpToReach(2)).toBe(24);
+    expect(xpToReach(10)).toBe(1944);
+    expect(xpToReach(50)).toBe(57624);
+    expect(levelForXp(0)).toBe(1);
+    expect(levelForXp(24)).toBe(2);
+    expect(levelForXp(1944)).toBe(10);
+    expect(levelForXp(57624)).toBe(50);
+    expect(levelForXp(57625)).toBe(50);
+  });
+});
+
+describe("applyGameStats xp", () => {
+  it("pays finish, win, and lands, and stays off when the gate is omitted", async () => {
+    const turns = [
+      { landed: true, matcherUid: P1 },
+      { landed: true, matcherUid: P1 },
+      { landed: true, matcherUid: P1 },
+      { landed: true, matcherUid: P1 },
+      { landed: false, matcherUid: P2, letterTo: P2 },
+      { landed: false, matcherUid: P2, letterTo: P2 },
+    ];
+    const { db, update, set } = makeHarness({
+      [GAME_PATH]: terminalGame({
+        createdAt: GAME_START,
+        updatedAt: GAME_END,
+        turnHistory: turns,
+      }),
+      ...agedProfiles(),
+    });
+
+    await applyGameStats(db, GAME_ID);
+    expect(set).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledWith({ path: P1_PATH }, expect.not.objectContaining({ xp: expect.anything() }));
+
+    const on = makeHarness({
+      [GAME_PATH]: terminalGame({
+        createdAt: GAME_START,
+        updatedAt: GAME_END,
+        turnHistory: turns,
+      }),
+      ...agedProfiles(),
+    });
+    await applyGameStats(on.db, GAME_ID, ON);
+    // A: 50 finish + 50 win + 40 lands = 140. 140 is level 3 (96 to reach).
+    expect(on.update).toHaveBeenCalledWith(
+      { path: P1_PATH },
+      expect.objectContaining({ xp: 140, level: 3, xpToday: 140, xpDay: "2026-06-02", uniqueOpponents: 1 }),
+    );
+    // B took letters, so this is not a clean win, and B's two misses are not lands.
+    expect(on.update).toHaveBeenCalledWith(
+      { path: P2_PATH },
+      expect.objectContaining({ xp: 50, level: 2, uniqueOpponents: 1 }),
+    );
+  });
+
+  it("pays nothing on an empty forfeit and does not touch the pair counter", async () => {
+    const { db, update, set } = makeHarness({
+      [GAME_PATH]: terminalGame({
+        status: "forfeit",
+        turnHistory: [],
+        createdAt: GAME_START,
+        updatedAt: GAME_END,
+      }),
+      ...agedProfiles(),
+    });
+
+    await applyGameStats(db, GAME_ID, ON);
+
+    const winnerWrite = update.mock.calls.find((c) => (c[0] as DocRef).path === P1_PATH)?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(winnerWrite.xp).toBeUndefined();
+    expect(set.mock.calls.some((call) => (call[0] as DocRef).path.startsWith("xpPairs"))).toBe(false);
+    expect(set.mock.calls.some((call) => (call[0] as DocRef).path.includes("xpMarkers"))).toBe(false);
+  });
+
+  it("pays finish and lands on a real forfeit and does not pay the win", async () => {
+    const { db, update } = makeHarness({
+      [GAME_PATH]: terminalGame({
+        status: "forfeit",
+        turnHistory: [
+          { landed: true, matcherUid: P1 },
+          { landed: true, matcherUid: P2 },
+        ],
+        createdAt: GAME_START,
+        updatedAt: GAME_END,
+      }),
+      ...agedProfiles(),
+    });
+
+    await applyGameStats(db, GAME_ID, ON);
+
+    expect(update).toHaveBeenCalledWith({ path: P1_PATH }, expect.objectContaining({ xp: 60 }));
+    expect(update).toHaveBeenCalledWith({ path: P2_PATH }, expect.objectContaining({ xp: 60 }));
+  });
+
+  it("tapers the same pair across a UTC day and leaves a different day at full", async () => {
+    const base = {
+      createdAt: GAME_START,
+      updatedAt: GAME_END,
+      turnHistory: [
+        { landed: true, matcherUid: P1 },
+        { landed: false, matcherUid: P2, letterTo: P2 },
+      ],
+    };
+    const second = makeHarness({
+      [GAME_PATH]: terminalGame(base),
+      ...agedProfiles(),
+      [`xpPairs/${P1}_${P2}`]: { utcDay: "2026-06-02", count: 1 },
+    });
+    await applyGameStats(second.db, GAME_ID, ON);
+    // 50 finish + 50 win + 10 lands = 110, halved to 55.
+    expect(second.update).toHaveBeenCalledWith({ path: P1_PATH }, expect.objectContaining({ xp: 55 }));
+    expect(second.set).toHaveBeenCalledWith({ path: `xpPairs/${P1}_${P2}` }, { utcDay: "2026-06-02", count: 2 });
+
+    const fourth = makeHarness({
+      [GAME_PATH]: terminalGame(base),
+      ...agedProfiles(),
+      [`xpPairs/${P1}_${P2}`]: { utcDay: "2026-06-02", count: 3 },
+    });
+    await applyGameStats(fourth.db, GAME_ID, ON);
+    const winnerWrite = fourth.update.mock.calls.find((c) => (c[0] as DocRef).path === P1_PATH)?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(winnerWrite.xp).toBeUndefined();
+  });
+
+  it("drops XP above the 3000 daily cap", async () => {
+    const { db, update } = makeHarness({
+      [GAME_PATH]: terminalGame({
+        createdAt: GAME_START,
+        updatedAt: GAME_END,
+        turnHistory: [{ landed: true, matcherUid: P1 }],
+      }),
+      [P1_PATH]: { createdAt: OLD_ACCOUNT, xp: 5000, xpDay: "2026-06-02", xpToday: 2950, level: 8 },
+      [P2_PATH]: { createdAt: OLD_ACCOUNT },
+    });
+
+    await applyGameStats(db, GAME_ID, ON);
+
+    // 50 + 50 + 10 = 110, but only 50 fits under the cap.
+    expect(update).toHaveBeenCalledWith(
+      { path: P1_PATH },
+      expect.objectContaining({ xp: 5050, xpToday: 3000, level: levelForXp(5050) }),
+    );
+  });
+
+  it("pays no play XP when either account is younger than a day, and still pays a call", async () => {
+    const { db, update } = makeHarness({
+      [GAME_PATH]: terminalGame({
+        createdAt: GAME_START,
+        updatedAt: GAME_END,
+        judgeId: JUDGE,
+        judgeStatus: "accepted",
+        turnHistory: [{ landed: true, matcherUid: P1, judgedBy: JUDGE }],
+      }),
+      [P1_PATH]: { createdAt: GAME_START - 60 * 60 * 1000 },
+      [P2_PATH]: { createdAt: OLD_ACCOUNT },
+      [`users/${JUDGE}`]: { createdAt: OLD_ACCOUNT },
+    });
+
+    await applyGameStats(db, GAME_ID, ON);
+
+    const winnerWrite = update.mock.calls.find((c) => (c[0] as DocRef).path === P1_PATH)?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(winnerWrite.xp).toBeUndefined();
+    expect(update).toHaveBeenCalledWith({ path: `users/${JUDGE}` }, expect.objectContaining({ xp: 10, level: 1 }));
+  });
+
+  it("is idempotent when the gate is on", async () => {
+    const { db, update, set } = makeHarness({
+      [GAME_PATH]: terminalGame({ statsApplied: true, createdAt: GAME_START, updatedAt: GAME_END }),
+      ...agedProfiles(),
+    });
+
+    const result = await applyGameStats(db, GAME_ID, ON);
+
+    expect(result).toBe("already-applied");
+    expect(update).not.toHaveBeenCalled();
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it("grants a shutout achievement once and does not grant it again", async () => {
+    const { db, set } = makeHarness({
+      [GAME_PATH]: terminalGame({
+        createdAt: GAME_START,
+        updatedAt: GAME_END,
+        turnHistory: [{ landed: true, matcherUid: P1 }],
+      }),
+      ...agedProfiles({ cleanWins: 0 }),
+    });
+
+    await applyGameStats(db, GAME_ID, ON);
+
+    expect(set).toHaveBeenCalledWith(
+      { path: `users/${P1}/achievements/shutout_1` },
+      { earnedAt: { __serverTimestamp: true }, reason: "Win a game without taking a letter." },
+    );
+  });
+
+  it("lets a tester earn without paying the other player", async () => {
+    const { db, update } = makeHarness({
+      [GAME_PATH]: terminalGame({ createdAt: GAME_START, updatedAt: GAME_END }),
+      ...agedProfiles(),
+    });
+
+    await applyGameStats(db, GAME_ID, { enabled: false, testers: P1 });
+
+    expect(update).toHaveBeenCalledWith({ path: P1_PATH }, expect.objectContaining({ xp: 100 }));
+    const loserWrite = update.mock.calls.find((c) => (c[0] as DocRef).path === P2_PATH)?.[1] as Record<string, unknown>;
+    expect(loserWrite.xp).toBeUndefined();
   });
 });

@@ -185,7 +185,7 @@ export async function createUserClip(params: CreateUserClipParams): Promise<stri
       // anchor both live here.
       const userSnap = await tx.get(userRef);
       if (!userSnap.exists()) throw new Error("Finish setting up your profile before posting a clip.");
-      const userData = userSnap.data() as { banned?: unknown; lastClipCreatedAt?: unknown };
+      const userData = userSnap.data() as { banned?: unknown; lastClipCreatedAt?: unknown; clipsPosted?: unknown };
       if (userData.banned === true) throw new UserBannedError();
 
       const lastMs = toMillisOrNull(userData.lastClipCreatedAt);
@@ -226,7 +226,13 @@ export async function createUserClip(params: CreateUserClipParams): Promise<stri
       // Mandatory companion write. `update` (not set/merge) because the
       // owner-update rule is what pins this field to `request.time`, and the
       // profile is known to exist from the read above.
-      tx.update(userRef, { lastClipCreatedAt: serverTimestamp() });
+      const priorClips =
+        typeof userData.clipsPosted === "number" && userData.clipsPosted > 0 ? userData.clipsPosted : 0;
+      tx.update(userRef, {
+        lastClipCreatedAt: serverTimestamp(),
+        clipsPosted: priorClips + 1,
+        clipsPostedClipId: clipId,
+      });
     });
     return clipId;
   } catch (err) {

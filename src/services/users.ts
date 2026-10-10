@@ -109,6 +109,27 @@ export interface UserProfile {
   gamesJudged?: number;
   /** Individual turns this player judged across those games. Server-written. */
   turnsJudged?: number;
+  /** Lifetime XP. Server-written. Absent means 0, which displays as level 1. */
+  xp?: number;
+  /** 1..50 cache rewritten with `xp`. The chip displays `levelForXp(xp)`. */
+  level?: number;
+  /** UTC day `YYYY-MM-DD` that `xpToday` belongs to. Server-written. */
+  xpDay?: string;
+  /** XP already kept today, play and calls together. Server-written. */
+  xpToday?: number;
+  /** Distinct opponents faced in a non-empty game. Server-written. */
+  uniqueOpponents?: number;
+  /** Distinct spots with a finished non-empty game. Server-written. */
+  spotsPlayed?: number;
+  /** Finished non-empty games at a spot this user created. Server-written. */
+  gamesAtMySpots?: number;
+  /** Votes still present when the dispute closed. Server-written. */
+  disputeVotesCast?: number;
+  /**
+   * User-uploaded clips. The client may add exactly 1 in the same transaction
+   * as a new user-source clip. Anything else is denied.
+   */
+  clipsPosted?: number;
   /** Whether this user is a verified pro. Only settable via Admin SDK / Firebase console. */
   isVerifiedPro?: boolean;
   /** UID of the user or admin who granted verified-pro status. */
@@ -499,18 +520,16 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   // Without this, a partial failure could leave orphan docs after the parent
   // user doc was gone — the GDPR/CCPA gap audit B10/S15 calls out.
   //
-  // Both are server-minted (Admin SDK) and owner-deletable per
-  // `firestore.rules`; they are the only two subcollections under users/{uid}
-  // that the owner can enumerate and delete, so any new one added there must
-  // be swept here too or it silently orphans personal data. Fetched in
-  // parallel — they are independent reads and the batch needs both before it
-  // can commit.
-  const [achievementsSnap, lockerSnap] = await Promise.all([
+  // Achievements, locker, and xpMarkers are owner-deletable per
+  // `firestore.rules`. A subcollection is not removed with its parent, so any
+  // new one under users/{uid} must be swept here too. Fetched in parallel.
+  const [achievementsSnap, lockerSnap, markerSnap] = await Promise.all([
     getDocs(collection(db, "users", uid, "achievements")),
     getDocs(collection(db, "users", uid, "locker")),
+    getDocs(collection(db, "users", uid, "xpMarkers")),
   ]);
   const batch = writeBatch(db);
-  for (const ownedDoc of [...achievementsSnap.docs, ...lockerSnap.docs]) {
+  for (const ownedDoc of [...achievementsSnap.docs, ...lockerSnap.docs, ...markerSnap.docs]) {
     batch.delete(ownedDoc.ref);
   }
   batch.delete(doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID));

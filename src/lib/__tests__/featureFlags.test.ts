@@ -5,6 +5,7 @@ import {
   isDiceEnabled,
   isExtrasEnabled,
   isRefereeEnabled,
+  isXpEnabled,
   parseFlag,
 } from "../featureFlags";
 
@@ -68,6 +69,29 @@ describe("isDiceEnabled (VITE_FEATURE_DICE_ENABLED)", () => {
   it("does not follow the extras flag", () => {
     vi.stubEnv("VITE_FEATURE_EXTRAS_ENABLED", "true");
     expect(isDiceEnabled()).toBe(false);
+  });
+});
+
+describe("isXpEnabled (VITE_FEATURE_XP_ENABLED)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is OFF when the env var is unset — the production default", () => {
+    expect(import.meta.env.VITE_FEATURE_XP_ENABLED).toBeUndefined();
+    expect(isXpEnabled()).toBe(false);
+  });
+
+  it("stays off for anything other than the literal string true", () => {
+    vi.stubEnv("VITE_FEATURE_XP_ENABLED", "TRUE");
+    expect(isXpEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_XP_ENABLED", "true");
+    expect(isXpEnabled()).toBe(true);
+  });
+
+  it("does not follow the extras flag", () => {
+    vi.stubEnv("VITE_FEATURE_EXTRAS_ENABLED", "true");
+    expect(isXpEnabled()).toBe(false);
   });
 });
 

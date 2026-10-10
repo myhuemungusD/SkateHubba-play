@@ -12,7 +12,8 @@ import { usePlayerProfileController } from "./usePlayerProfileController";
 import { BlockControls } from "./components/BlockControls";
 import { ChallengeButton } from "./components/ChallengeButton";
 import { RollDiceButton } from "./components/RollDiceButton";
-import { isDiceEnabled, isExtrasEnabled } from "../../lib/featureFlags";
+import { isDiceEnabled, isExtrasEnabled, isXpEnabled } from "../../lib/featureFlags";
+import { AchievementsRibbon } from "./components/AchievementsRibbon";
 import { GameHistorySection } from "./components/GameHistorySection";
 import { OpponentList } from "./components/OpponentList";
 import { PlayerProfileError } from "./components/PlayerProfileError";
@@ -101,14 +102,9 @@ interface Props {
  *     by the controller; each renders nothing when the player has earned
  *     nothing (LockerShowcase shows one hint card on your own profile).
  *
- * Deliberately NOT rendered until real data exists to back them. Rendering a
- * placeholder on a live profile reads as an unfinished product, so these stay
- * off the screen rather than shipping as visible stubs. Both components are
- * kept (with their tests) so re-enabling them is a one-line change:
- *   - AchievementsRibbon — 12 locked "???" tiles. Superseded by BadgesRow,
- *     which renders the badges actually granted under `users/{uid}/achievements`.
- *   - LevelChip (in ProfileIdentityCard) — hard-coded "L1"; `UserProfile` has
- *     no `level` field and there is no XP system. Re-add it with the XP work.
+ * The level chip, XP bar, and achievements ribbon render only when
+ * VITE_FEATURE_XP_ENABLED is the literal "true". Off, the profile looks as
+ * it does today. BadgesRow stays mounted either way.
  *
  * Signed-out visitors (`currentUserProfile` absent) reach this screen through
  * a shared `/player/:uid` link. They get the public doc's content — avatar,
@@ -262,6 +258,7 @@ export function PlayerProfileScreen({
           profileImageUrl={profile.profileImageUrl}
           isOwnProfile={isOwnProfile}
           uid={profile.uid}
+          xp={profile.xp}
         />
 
         {isOwnProfile && (
@@ -337,6 +334,8 @@ export function PlayerProfileScreen({
 
         <BadgesRow achievements={c.achievements} />
 
+        {isXpEnabled() && <AchievementsRibbon achievements={c.achievements} clipsPosted={profile.clipsPosted} />}
+
         {/* The VS-YOU row this flag unlocks is head-to-head against the
             viewer. With no viewer there is no such record to report. */}
         <ProfileStatsGrid
@@ -349,8 +348,7 @@ export function PlayerProfileScreen({
         <LockerShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} />
 
         {/* Owner-only: advertising an unbuilt feature on someone else's public
-            profile is noise to every visitor but the owner. AchievementsRibbon
-            used to sit here too — see this file's docstring for why it doesn't. */}
+            profile is noise to every visitor but the owner. */}
         {isOwnProfile && isExtrasEnabled() && (
           <AddedSpotsSection uid={viewedUid} onAddSpot={onAddSpot ? handleAddSpot : undefined} />
         )}

@@ -491,17 +491,19 @@ describe("users service", () => {
 
   describe("deleteUserData", () => {
     /**
-     * deleteUserData calls getDocs four times per invocation:
+     * deleteUserData calls getDocs five times per invocation:
      *   1. games where player1Uid == uid
      *   2. games where player2Uid == uid
      *   3. users/{uid}/achievements subcollection
      *   4. users/{uid}/locker subcollection
-     * Tests that don't care about the owned-item subcollections stub both out
+     *   5. users/{uid}/xpMarkers subcollection
+     * Tests that don't care about the owned-item subcollections stub them out
      * as empty. Order matters: Promise.all invokes them in argument order.
      */
     function stubEmptyOwnedItems(): void {
       mockGetDocs.mockResolvedValueOnce({ docs: [] }); // achievements
       mockGetDocs.mockResolvedValueOnce({ docs: [] }); // locker
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // xpMarkers
     }
 
     /** Stub the two game queries and both owned-item subcollections as empty. */
@@ -671,6 +673,7 @@ describe("users service", () => {
         docs: achievementRefs.map((ref) => ({ ref })),
       });
       mockGetDocs.mockResolvedValueOnce({ docs: [] }); // locker
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // xpMarkers
       mockDeleteDoc.mockResolvedValue(undefined);
 
       await deleteUserData("u1", "sk8r");
@@ -695,6 +698,7 @@ describe("users service", () => {
       mockGetDocs.mockResolvedValueOnce({ docs: [] }); // achievements
       const lockerRefs = [{ fullPath: "users/u1/locker/deck-1" }, { fullPath: "users/u1/locker/wheels-2" }];
       mockGetDocs.mockResolvedValueOnce({ docs: lockerRefs.map((ref) => ({ ref })) });
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // xpMarkers
       mockDeleteDoc.mockResolvedValue(undefined);
 
       await deleteUserData("u1", "sk8r");
@@ -714,6 +718,7 @@ describe("users service", () => {
       const lockerRef = { fullPath: "users/u1/locker/deck-1" };
       mockGetDocs.mockResolvedValueOnce({ docs: [{ ref: achievementRef }] });
       mockGetDocs.mockResolvedValueOnce({ docs: [{ ref: lockerRef }] });
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // xpMarkers
 
       await deleteUserData("u1", "sk8r");
 
@@ -740,6 +745,7 @@ describe("users service", () => {
       const achievementRefs = [{ fullPath: "users/u1/achievements/a1" }];
       mockGetDocs.mockResolvedValueOnce({ docs: achievementRefs.map((ref) => ({ ref })) });
       mockGetDocs.mockResolvedValueOnce({ docs: [] }); // locker
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // xpMarkers
       mockDeleteAvatar.mockResolvedValueOnce({ removed: true });
 
       await deleteUserData("u1", "sk8r");

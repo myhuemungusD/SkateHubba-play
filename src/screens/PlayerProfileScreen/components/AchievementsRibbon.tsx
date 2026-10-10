@@ -1,78 +1,110 @@
-/**
- * Achievements ribbon — PR-C placeholder (audit D2).
- *
- * Renders 12 grayscale silhouette tiles in a 4-col grid (mobile) / 6-col grid
- * (tablet+). Each tile has "???" + a lock icon overlay. PR-F replaces the
- * static placeholder with a real subscription to `users/{uid}/achievements`
- * and swaps locked → tier-colored unlocked rendering on grant.
- *
- * Why the placeholder ships now (instead of waiting for PR-F):
- *   - Profile redesign needs the visual slot for layout fidelity.
- *   - Even in placeholder state, the slot must convey "locked" via grayscale
- *     **plus** a lock icon **plus** a text label — color cannot be the sole
- *     means of conveyance per WCAG 2.1 AA §1.4.1 (audit D2 fix).
- *
- * Tap-target sizing math (audit D6):
- *   343px iPhone SE viewport / 4 cols ≈ 85px - 8px gap = 77px tappable.
- *   77px > 44pt minimum (62.6px @ 1x). ✓
- */
-
-const PLACEHOLDER_TILE_COUNT = 12;
-/** Stable indices so React keys don't churn between renders. */
-const placeholderIndices = Array.from({ length: PLACEHOLDER_TILE_COUNT }, (_, i) => i);
+import { useState } from "react";
+import {
+  achievementFamilies,
+  BRONZE_ACHIEVEMENTS,
+  type AchievementDef,
+  type AchievementTier,
+} from "../../../constants/xp";
+import type { Achievement } from "../../../services/achievements";
 
 interface Props {
-  /** Reserved for PR-F — pass `false` to keep placeholders even when the flag
-   *  is on (e.g. for testing). PR-C only renders placeholders. */
-  forcePlaceholder?: boolean;
+  achievements?: Achievement[];
+  /** Lights the Clips tiles from the counter before the achievement doc exists. */
+  clipsPosted?: number;
 }
 
-export function AchievementsRibbon(_props: Props = {}) {
-  // In PR-C the only state is "all placeholder" — the prop slot is reserved
-  // so PR-F can flip a single boolean without a component split.
-  void _props;
+const TIER_LABEL: Record<AchievementTier, string> = {
+  bronze: "Bronze",
+  silver: "Silver",
+  gold: "Gold",
+};
+
+export function AchievementsRibbon({ achievements = [], clipsPosted = 0 }: Props) {
+  const [seeAll, setSeeAll] = useState(false);
+  const earned = new Set(achievements.map((item) => item.id));
+
   return (
     <section aria-label="Achievements" data-testid="achievements-ribbon" className="mb-8 animate-fade-in">
-      <h2 className="font-display text-[10px] tracking-[0.2em] text-brand-orange mb-3">ACHIEVEMENTS</h2>
+      <div className="flex items-baseline justify-between mb-3">
+        <h2 className="font-display text-[10px] tracking-[0.2em] text-brand-orange">ACHIEVEMENTS</h2>
+        <button
+          type="button"
+          className="font-display text-[10px] tracking-wider text-muted hover:text-white min-h-[44px] px-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          onClick={() => setSeeAll(true)}
+        >
+          See all
+        </button>
+      </div>
       <ul className="grid grid-cols-4 md:grid-cols-6 gap-2">
-        {placeholderIndices.map((i) => (
-          <li key={i}>
-            <PlaceholderTile index={i} />
+        {BRONZE_ACHIEVEMENTS.map((def) => (
+          <li key={def.id}>
+            <Tile def={def} lit={isLit(def, earned, clipsPosted)} />
           </li>
         ))}
       </ul>
+      {seeAll && (
+        <div role="dialog" aria-label="All achievements" className="fixed inset-0 z-50 bg-black/80 overflow-y-auto">
+          <div className="max-w-lg mx-auto px-4 py-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-display text-sm tracking-wider text-white">ALL ACHIEVEMENTS</h2>
+              <button
+                type="button"
+                className="font-display text-xs tracking-wider text-brand-orange min-h-[44px] px-3"
+                onClick={() => setSeeAll(false)}
+              >
+                Close
+              </button>
+            </div>
+            {achievementFamilies().map((group) => (
+              <section key={group.family} className="mb-5" aria-label={group.family}>
+                <h3 className="font-display text-[10px] tracking-[0.2em] text-muted mb-2 uppercase">{group.family}</h3>
+                <ul className="grid grid-cols-3 gap-2">
+                  {group.tiers.map((def) => (
+                    <li key={def.id}>
+                      <Tile def={def} lit={isLit(def, earned, clipsPosted)} />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }
 
-/**
- * A single locked-state tile. Built so PR-F can drop in real tier color +
- * tier icon + tier text label without a component rewrite — the slots are
- * already wired for color (`bg-tier-color`), icon (`children`), and label
- * (`<span>`). Until then everything renders neutral grayscale.
- */
-function PlaceholderTile({ index }: { index: number }) {
+function isLit(def: AchievementDef, earned: Set<string>, clipsPosted: number): boolean {
+  if (earned.has(def.id)) return true;
+  return def.counter === "clipsPosted" && clipsPosted >= def.threshold;
+}
+
+function Tile({ def, lit }: { def: AchievementDef; lit: boolean }) {
+  const label = lit
+    ? `${def.shortName}, ${TIER_LABEL[def.tier]}, unlocked. ${def.requirement}`
+    : `${def.shortName}, locked. ${def.requirement}`;
   return (
     <div
       role="img"
-      data-testid={`achievement-tile-${index}`}
-      aria-label="Locked achievement"
-      className="aspect-square rounded-2xl bg-surface/60 border border-border flex flex-col items-center justify-center gap-1 grayscale select-none"
+      data-testid={`achievement-tile-${def.id}`}
+      aria-label={label}
+      className={
+        lit
+          ? "aspect-square rounded-2xl bg-brand-orange/[0.12] border border-brand-orange/40 flex flex-col items-center justify-center gap-1 px-1"
+          : "aspect-square rounded-2xl bg-surface/60 border border-border flex flex-col items-center justify-center gap-1 px-1 grayscale select-none"
+      }
     >
-      {/* Tier color slot (PR-F replaces with tier-color background). */}
-      <LockSilhouette />
-      {/* Tier text label slot (PR-F replaces with localized name). */}
-      <span className="font-display text-[10px] tracking-wider text-subtle">???</span>
+      {!lit && <LockSilhouette />}
+      <span
+        className={`font-display text-[10px] tracking-wider text-center leading-tight ${lit ? "text-brand-orange" : "text-subtle"}`}
+      >
+        {def.shortName}
+      </span>
+      <span className="font-body text-[9px] text-muted">{TIER_LABEL[def.tier]}</span>
     </div>
   );
 }
 
-/**
- * Lock-icon silhouette rendered inline so we don't pay an extra import for
- * a component used only here. The padlock outline is the audit-D2 mandated
- * "locked" affordance — color-blind users see the lock even without the
- * grayscale wash.
- */
 function LockSilhouette() {
   return (
     <svg

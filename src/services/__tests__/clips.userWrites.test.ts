@@ -108,6 +108,8 @@ describe("createUserClip", () => {
     // optimisation, it is the rate limit.
     expect(tx.update).toHaveBeenCalledWith(expect.objectContaining({ __path: "users/me" }), {
       lastClipCreatedAt: "SERVER_TS",
+      clipsPosted: 1,
+      clipsPostedClipId: "uc1",
     });
   });
 

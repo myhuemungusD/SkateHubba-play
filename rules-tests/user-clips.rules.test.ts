@@ -11,7 +11,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { assertSucceeds, assertFails, type RulesTestContext } from "@firebase/rules-unit-testing";
-import { deleteDoc, doc, getDoc, setDoc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { deleteDoc, doc, getDoc, setDoc, updateDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { seedUsernameReservation, setupRulesTestEnv } from "./_fixtures";
 
 const UID = "u-alice";
@@ -222,6 +222,47 @@ describe("clips — user-source create (red team)", () => {
       });
     });
     await assertSucceeds(createUserClip(authed(UID), UID));
+  });
+});
+
+describe("clipsPosted +1 is bound to a new user clip", () => {
+  it("allows exactly +1 in the same batch as the clip and rejects +5", async () => {
+    const ctx = authed(UID);
+    const ok = writeBatch(ctx.firestore());
+    ok.set(doc(ctx.firestore(), "clips", "clip-xp"), makeUserClip(UID));
+    ok.update(doc(ctx.firestore(), "users", UID), {
+      lastClipCreatedAt: serverTimestamp(),
+      clipsPosted: 1,
+      clipsPostedClipId: "clip-xp",
+    });
+    await assertSucceeds(ok.commit());
+
+    // Move the cooldown anchor into the past so the next denial is the +5,
+    // not the 30-second clip rate limit.
+    await getEnv().withSecurityRulesDisabled(async (admin) => {
+      await setDoc(
+        doc(admin.firestore(), "users", UID),
+        { clipsPosted: 1, lastClipCreatedAt: new Date(Date.now() - 60_000) },
+        { merge: true },
+      );
+    });
+    const bumped = writeBatch(ctx.firestore());
+    bumped.set(doc(ctx.firestore(), "clips", "clip-xp-2"), makeUserClip(UID, { videoUrl: videoUrl(UID, "clip2") }));
+    bumped.update(doc(ctx.firestore(), "users", UID), {
+      lastClipCreatedAt: serverTimestamp(),
+      clipsPosted: 6,
+      clipsPostedClipId: "clip-xp-2",
+    });
+    await assertFails(bumped.commit());
+  });
+
+  it("rejects a clipsPosted bump that does not create a clip", async () => {
+    await assertFails(
+      updateDoc(doc(authed(UID).firestore(), "users", UID), {
+        clipsPosted: 1,
+        clipsPostedClipId: "missing-clip",
+      }),
+    );
   });
 });
 
