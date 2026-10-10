@@ -971,6 +971,43 @@ describe("ClipsFeed", () => {
     expect(screen.queryByText("Kickflip")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Land — @bob landed it/i })).not.toBeInTheDocument();
   });
+
+  it("plays the first clip after the dispute error page, not the one N slides ahead", async () => {
+    mockFetchOpenDisputes.mockRejectedValueOnce(new Error("unavailable"));
+    mockFetchClipsFeed.mockResolvedValueOnce([
+      makeClip({
+        id: "a",
+        trickName: "TrickA",
+        videoUrl: "https://firebasestorage.googleapis.com/v0/b/x/o/a.webm?alt=media",
+      }),
+      makeClip({
+        id: "b",
+        trickName: "TrickB",
+        playerUid: "p2",
+        playerUsername: "bob",
+        videoUrl: "https://firebasestorage.googleapis.com/v0/b/x/o/b.webm?alt=media",
+      }),
+    ]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+
+    expect(await screen.findByText(/Couldn't load the calls waiting on the community/i)).toBeInTheDocument();
+    // The error page is slide 0, so the clip behind it must not be the one playing.
+    expect(screen.queryByText("TrickA")).not.toBeInTheDocument();
+    expect(screen.queryByText("TrickB")).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      const prefetched = document.querySelector("video[aria-hidden='true']") as HTMLVideoElement | null;
+      expect(prefetched?.src).toContain("a.webm");
+    });
+
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    expect(await screen.findByText("TrickA")).toBeInTheDocument();
+    expect(screen.queryByText("TrickB")).not.toBeInTheDocument();
+    await waitFor(() => {
+      const prefetched = document.querySelector("video[aria-hidden='true']") as HTMLVideoElement | null;
+      expect(prefetched?.src).toContain("b.webm");
+    });
+  });
 });
 
 /* ── Thumbs down ──────────────────────────────────────────────────── */

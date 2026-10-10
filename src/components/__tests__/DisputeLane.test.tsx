@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { DisputeLane } from "../ClipsFeed/DisputeLane";
+import { DisputeLane, disputeSlideCount } from "../ClipsFeed/DisputeLane";
 import type { Dispute, DisputeTally, DisputeViewerState } from "../../types/dispute";
 import { deferred } from "../../__tests__/harness/deferred";
 import { makeDispute } from "./disputeFixtures.test-helpers";
@@ -66,6 +66,15 @@ vi.mock("../../hooks/useBlockedUsers", () => ({
 }));
 
 const STORAGE_HOST = "https://firebasestorage.googleapis.com/v0/b/x/o";
+
+describe("disputeSlideCount", () => {
+  it("counts the page DisputeSlides renders, including a failed lane that still holds disputes", () => {
+    expect(disputeSlideCount({ loading: true, error: null, disputes: [] })).toBe(1);
+    expect(disputeSlideCount({ loading: false, error: "down", disputes: [{}, {}, {}] })).toBe(1);
+    expect(disputeSlideCount({ loading: false, error: null, disputes: [] })).toBe(0);
+    expect(disputeSlideCount({ loading: false, error: null, disputes: [{}, {}] })).toBe(2);
+  });
+});
 
 const CAN_VOTE: DisputeViewerState = { ownVerdict: null, canVote: true };
 
