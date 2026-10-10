@@ -344,6 +344,7 @@ service cloud.firestore {
         // One profile per UID — prevent a race condition from overwriting an existing profile
         && !exists(/databases/$(database)/documents/users/$(uid))
         && request.resource.data.uid == uid
+        && request.resource.data.createdAt == request.time
         && request.resource.data.username is string
         && request.resource.data.username.size() >= 3  // USERNAME_MIN
         && request.resource.data.username.size() <= 20 // USERNAME_MAX
@@ -1087,6 +1088,14 @@ service cloud.firestore {
             && request.resource.data.statsApplied == resource.data.statsApplied);
     }
 
+    // createdAt is request.time at create. Later writes leave it alone so a
+    // client cannot backdate a profile, a game, or a report.
+    function createdAtUnchanged() {
+      return ('createdAt' in resource.data && 'createdAt' in request.resource.data
+              && request.resource.data.createdAt == resource.data.createdAt)
+        || (!('createdAt' in resource.data) && !('createdAt' in request.resource.data));
+    }
+
     // ── Cron notification tombstones are server-only ──
     // `challengeNotifiedAt` and `turnReminderSentFor` are written EXCLUSIVELY
     // by api/cron/sweep-expired-turns.ts (Admin SDK, bypasses these rules) and
@@ -1192,6 +1201,7 @@ service cloud.firestore {
         // either player forfeit the opponent immediately; a year-9999 deadline
         // never expires. Forfeit still requires request.time past the stored clock.
         && aboutOneDayAhead(request.resource.data.turnDeadline)
+        && request.resource.data.createdAt == request.time
         // Trick/video fields must start empty
         && request.resource.data.currentTrickName == null
         && request.resource.data.currentTrickVideoUrl == null
@@ -1445,6 +1455,7 @@ service cloud.firestore {
         )
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
+        && createdAtUnchanged()
         && cronNotifyTombstonesUnchanged()
         && verifiedProBadgesUnchanged();
 
@@ -1557,6 +1568,7 @@ service cloud.firestore {
         && matchResolutionPinsOk(resource.data, request.resource.data)
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
+        && createdAtUnchanged()
         && cronNotifyTombstonesUnchanged()
         && verifiedProBadgesUnchanged();
 
@@ -1677,6 +1689,7 @@ service cloud.firestore {
         && turnHistoryGrowthOk()
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
+        && createdAtUnchanged()
         && cronNotifyTombstonesUnchanged()
         && verifiedProBadgesUnchanged();
 
@@ -1783,6 +1796,7 @@ service cloud.firestore {
         && turnHistoryGrowthOk()
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
+        && createdAtUnchanged()
         && cronNotifyTombstonesUnchanged()
         && verifiedProBadgesUnchanged();
 
@@ -1850,6 +1864,7 @@ service cloud.firestore {
         && turnHistoryGrowthOk()
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
+        && createdAtUnchanged()
         && cronNotifyTombstonesUnchanged()
         && verifiedProBadgesUnchanged();
 
@@ -1904,6 +1919,7 @@ service cloud.firestore {
         )
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
+        && createdAtUnchanged()
         && cronNotifyTombstonesUnchanged()
         && verifiedProBadgesUnchanged();
 
@@ -1957,6 +1973,7 @@ service cloud.firestore {
         && turnHistoryGrowthOk()
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
+        && createdAtUnchanged()
         && cronNotifyTombstonesUnchanged()
         && verifiedProBadgesUnchanged();
 
@@ -2021,6 +2038,7 @@ service cloud.firestore {
         && turnHistoryGrowthOk()
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
+        && createdAtUnchanged()
         && cronNotifyTombstonesUnchanged()
         && verifiedProBadgesUnchanged();
 
@@ -2070,6 +2088,7 @@ service cloud.firestore {
         && turnHistoryGrowthOk()
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
+        && createdAtUnchanged()
         && cronNotifyTombstonesUnchanged()
         && verifiedProBadgesUnchanged();
 
@@ -2683,6 +2702,7 @@ service cloud.firestore {
           || request.resource.data.description.size() >= 20
         )
         && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time
         // Optional clipId: when a report targets a clip from the feed rather
         // than an in-game video, it carries the clip's deterministic id
         // (`${gameId}_${turnNumber}_${role}`). Shape-only check here —

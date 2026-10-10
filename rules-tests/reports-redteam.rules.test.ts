@@ -118,6 +118,10 @@ describe("reports — companion write + 1h cooldown", () => {
     await assertSucceeds(submitReportBatch());
   });
 
+  it("attack: CANNOT backdate createdAt on a report", async () => {
+    await assertFails(submitReportBatch({ createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000) }));
+  });
+
   it("attack: a banned reporter CANNOT submit a report (notBanned() guard)", async () => {
     await ban(REPORTER_UID);
     await assertFails(submitReportBatch());
