@@ -57,3 +57,12 @@ export function isAppleSignInEnabled(): boolean {
 export function isRefereeEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_REFEREE_ENABLED);
 }
+
+/**
+ * Public-clip moderation. Off until the Video Intelligence function is
+ * deployed. Anything except the literal string "true" keeps uploads
+ * visible immediately, which is today's behavior.
+ */
+export function isClipModerationEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_CLIP_MODERATION_ENABLED);
+}

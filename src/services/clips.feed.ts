@@ -20,6 +20,7 @@ import {
 import { withRetry } from "../utils/retry";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
+import { isPubliclyApproved } from "./clipVisibility";
 import {
   clipsRef,
   toClipDoc,
@@ -113,8 +114,11 @@ async function runFeedQuery(
   const boundedSize = Math.max(1, Math.min(50, pageSize));
 
   // App Store Guideline 1.2 requires offensive UGC to be removable from
-  // the feed. Hidden clips (moderationStatus === 'hidden') are filtered
-  // out server-side. Paired with composite indexes in firestore.indexes.json:
+  // the feed. The query keeps moderationStatus == 'active'. Pending,
+  // hidden, rejected, and review clips are not active. isPubliclyApproved
+  // also drops a clip whose workflow field is anything but approved, so a
+  // non-approved doc cannot ride along if it is still marked active.
+  // Paired with composite indexes in firestore.indexes.json:
   //   • new: (moderationStatus, createdAt desc, __name__ desc)
   //   • top: (moderationStatus, upvoteCount desc, createdAt desc, __name__ desc)
   const constraints: QueryConstraint[] =
@@ -147,6 +151,8 @@ async function runFeedQuery(
   const clips: ClipDoc[] = [];
   for (const d of snap.docs) {
     try {
+      const raw = d.data() as { moderationStatus?: unknown; moderation?: unknown } | undefined;
+      if (raw && !isPubliclyApproved(raw)) continue;
       clips.push(toClipDoc(d));
     } catch (err) {
       logger.warn("clips_feed_doc_malformed", { docId: d.id, error: parseFirebaseError(err) });

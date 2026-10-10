@@ -99,6 +99,10 @@ describe("clips — user-source create (positive)", () => {
   it("accepts an optional spotId within the 64-char budget", async () => {
     await assertSucceeds(createUserClip(authed(UID), UID, { spotId: "x".repeat(64) }));
   });
+
+  it("accepts a pending clip when moderation is pending", async () => {
+    await assertSucceeds(createUserClip(authed(UID), UID, { moderationStatus: "pending", moderation: "pending" }));
+  });
 });
 
 describe("clips — user-source create (red team)", () => {
@@ -145,6 +149,24 @@ describe("clips — user-source create (red team)", () => {
 
   it("attack: CANNOT start a clip in 'hidden' moderation state", async () => {
     await assertFails(createUserClip(authed(UID), UID, { moderationStatus: "hidden" }));
+  });
+
+  it("attack: CANNOT mark a new clip approved or attach scores", async () => {
+    await assertFails(createUserClip(authed(UID), UID, { moderationStatus: "active", moderation: "approved" }));
+    await assertFails(
+      createUserClip(authed(UID), UID, {
+        moderationStatus: "pending",
+        moderation: "pending",
+        moderationScores: { explicitLikelihood: "UNLIKELY" },
+      }),
+    );
+    await assertFails(
+      createUserClip(authed(UID), UID, {
+        moderationStatus: "pending",
+        moderation: "pending",
+        moderationNotice: { statement: "x" },
+      }),
+    );
   });
 
   it("attack: CANNOT back-date createdAt", async () => {
@@ -320,5 +342,60 @@ describe("clips/{id}/comments", () => {
     await seedComment(OTHER_UID);
     const snap = await assertSucceeds(getDoc(commentRef(authed(UID))));
     expect(snap).toBeDefined();
+  });
+});
+
+describe("clip appeals", () => {
+  const STATEMENT_ID = "clip_random-clip-id";
+
+  async function seedStatement(subjectUid: string): Promise<void> {
+    await getEnv().withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "moderationStatements", STATEMENT_ID), {
+        subjectUid,
+        reportId: STATEMENT_ID,
+        action: "content_restricted",
+        reason: "explicit content",
+        explanation: "Removed.",
+        contentRef: CLIP_ID,
+        createdBy: "moderation",
+        createdAt: new Date(),
+      });
+    });
+  }
+
+  function appeal(uid: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      appellantUid: uid,
+      targetKind: "statement",
+      targetId: STATEMENT_ID,
+      explanation: "This is a skate clip.",
+      status: "pending",
+      createdAt: serverTimestamp(),
+      ...overrides,
+    };
+  }
+
+  it("the subject can file one appeal against their statement", async () => {
+    await seedStatement(UID);
+    await assertSucceeds(setDoc(doc(authed(UID).firestore(), "appeals", `statement_${STATEMENT_ID}`), appeal(UID)));
+  });
+
+  it("attack: someone else cannot appeal, and a client cannot write the statement", async () => {
+    await seedStatement(UID);
+    await assertFails(
+      setDoc(doc(authed(OTHER_UID).firestore(), "appeals", `statement_${STATEMENT_ID}`), appeal(OTHER_UID)),
+    );
+    await assertFails(
+      setDoc(doc(authed(UID).firestore(), "moderationStatements", "clip_other"), {
+        subjectUid: UID,
+        reportId: "clip_other",
+        action: "content_restricted",
+        reason: "x",
+        explanation: "x",
+        contentRef: "other",
+        createdBy: UID,
+        createdAt: serverTimestamp(),
+      }),
+    );
   });
 });

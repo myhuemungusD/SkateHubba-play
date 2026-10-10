@@ -71,6 +71,9 @@ const SpotDetailPage = lazy(() => import("./screens/SpotDetailPage").then((m) =>
 const Settings = lazy(() => import("./screens/Settings").then((m) => ({ default: m.Settings })));
 const MyStatsScreen = lazy(() => import("./screens/MyStatsScreen").then((m) => ({ default: m.MyStatsScreen })));
 const AdminScreen = lazy(() => import("./screens/AdminScreen").then((m) => ({ default: m.AdminScreen })));
+const ClipAppealScreen = lazy(() =>
+  import("./screens/ClipAppealScreen").then((m) => ({ default: m.ClipAppealScreen })),
+);
 const DiceHub = lazy(() => import("./screens/Dice/DiceHub").then((m) => ({ default: m.DiceHub })));
 const DiceNew = lazy(() => import("./screens/Dice/DiceNew").then((m) => ({ default: m.DiceNew })));
 const DiceTable = lazy(() => import("./screens/Dice/DiceTable").then((m) => ({ default: m.DiceTable })));
@@ -306,6 +309,12 @@ function AdminRoute({ uid, onBack }: { uid: string | null; onBack: () => void })
   return <AdminScreen adminUid={uid} onBack={onBack} />;
 }
 
+function ClipAppealRoute({ uid, onBack }: { uid: string | null; onBack: () => void }) {
+  const { statementId } = useParams<{ statementId: string }>();
+  if (!uid || !statementId) return <Navigate to={uid ? "/lobby" : "/"} replace />;
+  return <ClipAppealScreen uid={uid} statementId={statementId} onBack={onBack} />;
+}
+
 /** Shared toast fired whenever an unverified user attempts to challenge —
  *  used by directChallenge, the /challenge Navigate fallback, and the
  *  rematch button on GameOverScreen. Kept as a single string constant so
@@ -503,6 +512,7 @@ function AppRoutes() {
                     gamesLoading={game.gamesLoading}
                     onViewPlayer={nav.navigateToPlayer}
                     onOpenDice={(id) => navigate(`/dice/${id}`)}
+                    onOpenAppeal={(path) => navigate(path)}
                   />
                 ) : (
                   <Navigate to="/" replace />
@@ -800,6 +810,16 @@ function AppRoutes() {
               path="/admin"
               element={
                 <AdminRoute
+                  uid={auth.user?.uid ?? null}
+                  onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")}
+                />
+              }
+            />
+
+            <Route
+              path="/appeal/:statementId"
+              element={
+                <ClipAppealRoute
                   uid={auth.user?.uid ?? null}
                   onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")}
                 />

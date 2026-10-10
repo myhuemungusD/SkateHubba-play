@@ -26,11 +26,18 @@ export type ClipRole = "set" | "match";
 export type ClipSource = "game" | "user";
 
 /**
- * Client-writable moderation state. Clients only ever create clips with
- * `active`; transitions to `hidden` happen server-side (Admin SDK) when a
- * clip is taken down in response to a user report.
+ * Feed visibility. Clients create game clips and flag-off user clips as
+ * `active`. With clip moderation on, a public upload starts as `pending`
+ * and stays out of the feed until the server sets `active` (approved) or
+ * `hidden` (review, rejected, or removed).
  */
-export type ClipModerationStatus = "active" | "hidden";
+export type ClipModerationStatus = "active" | "hidden" | "pending";
+
+/**
+ * Workflow state for a public user clip. Absent on game clips and on
+ * uploads made while moderation is off — those stay on `moderationStatus`.
+ */
+export type ClipModeration = "pending" | "approved" | "review" | "rejected" | "removed";
 
 /**
  * Fields every clip carries regardless of where it came from.
@@ -55,6 +62,8 @@ interface ClipBase {
   spotId: string | null;
   createdAt: Timestamp | null;
   moderationStatus: ClipModerationStatus;
+  /** Present once clip moderation has touched the doc. Null when absent. */
+  moderation?: ClipModeration | null;
   upvoteCount: number;
   downvoteCount: number;
 }

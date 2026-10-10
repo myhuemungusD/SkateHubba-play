@@ -10,11 +10,14 @@ export function NotificationBell({
   games,
   onOpenGame,
   onOpenDice,
+  onOpenAppeal,
 }: {
   games?: GameDoc[];
   onOpenGame?: (g: GameDoc) => void;
   /** Roll Dice rows navigate here instead of looking up a S.K.A.T.E. game. */
   onOpenDice?: (gameId: string) => void;
+  /** Clip moderation rows open this in-app path instead of a game. */
+  onOpenAppeal?: (path: string) => void;
 }) {
   const {
     notifications,
@@ -89,6 +92,11 @@ export function NotificationBell({
   const activate = useCallback(
     async (n: AppNotification, cached: GameDoc | undefined) => {
       if (!n.read) markRead(n.id);
+      if (n.appealPath && onOpenAppeal) {
+        onOpenAppeal(n.appealPath);
+        closePanel();
+        return;
+      }
       if (n.gameId && n.sourceType && DICE_SOURCE_TYPES.has(n.sourceType)) {
         onOpenDice?.(n.gameId);
         closePanel();
@@ -111,7 +119,7 @@ export function NotificationBell({
       onOpenGame(game);
       closePanel();
     },
-    [markRead, onOpenGame, onOpenDice, closePanel],
+    [markRead, onOpenGame, onOpenDice, onOpenAppeal, closePanel],
   );
 
   return (
@@ -238,7 +246,7 @@ export function NotificationBell({
                 const game = n.gameId && games ? games.find((g) => g.id === n.gameId) : undefined;
                 // A row is interactive if there's anything for it to do:
                 // open a game, or clear its own unread state.
-                const clickable = !!(n.gameId && onOpenGame) || !n.read;
+                const clickable = !!(n.appealPath && onOpenAppeal) || !!(n.gameId && onOpenGame) || !n.read;
                 return (
                   <NotificationRow
                     key={n.id}

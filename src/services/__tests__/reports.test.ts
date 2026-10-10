@@ -215,6 +215,8 @@ describe("REPORT_REASON_LABELS", () => {
 
   it("labels the non-skate reason distinctly from 'inappropriate'", () => {
     expect(REPORT_REASON_LABELS.non_skate_content).toBe("Not skateboarding");
+    expect(REPORT_REASON_LABELS.not_skating).toBe("Not skating");
+    expect(REPORT_REASON_LABELS.inappropriate).toBe("Inappropriate");
     expect(REPORT_REASON_LABELS.non_skate_content).not.toBe(REPORT_REASON_LABELS.inappropriate_video);
   });
 });

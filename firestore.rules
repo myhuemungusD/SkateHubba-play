@@ -2622,7 +2622,7 @@ service cloud.firestore {
               && request.resource.data.clipId.size() > 0)
         )
         && request.resource.data.reason is string
-        && request.resource.data.reason in ['inappropriate_video', 'abusive_behavior', 'cheating', 'spam', 'non_skate_content', 'illegal_content', 'other']
+        && request.resource.data.reason in ['inappropriate_video', 'inappropriate', 'abusive_behavior', 'cheating', 'spam', 'non_skate_content', 'not_skating', 'illegal_content', 'other']
         && request.resource.data.description is string
         && request.resource.data.description.size() <= 500
         // DSA Art. 16: an illegal-content notice has to say what is illegal.
@@ -2745,6 +2745,8 @@ service cloud.firestore {
     // is in there). When an admin resolves a report they write one of
     // these in the same batch. The subject reads this doc; strangers do
     // not. Doc id is the report id, so a report has one statement.
+    // Clip rejection and removal write the same shape through the Admin
+    // SDK (doc id clip_{clipId}), which bypasses this client create rule.
     match /moderationStatements/{statementId} {
       allow read: if isAdmin()
         || (isSignedIn() && resource.data.subjectUid == request.auth.uid);
@@ -2936,6 +2938,7 @@ service cloud.firestore {
         // are server-side only (Admin SDK), keeping the App Store takedown
         // path out of client reach.
         && request.resource.data.moderationStatus == 'active'
+        && !('moderation' in request.resource.data)
         // upvoteCount aggregate must seed at 0; client-side ranking reads
         // this field directly so it has to start at the empty state.
         && request.resource.data.upvoteCount == 0
@@ -2976,7 +2979,12 @@ service cloud.firestore {
         && (request.resource.data.spotId == null
             || (request.resource.data.spotId is string
                 && request.resource.data.spotId.size() <= 64))
-        && request.resource.data.moderationStatus == 'active'
+        && (
+          (request.resource.data.moderationStatus == 'active' && !('moderation' in request.resource.data))
+          || (request.resource.data.moderationStatus == 'pending' && request.resource.data.moderation == 'pending')
+        )
+        && !('moderationScores' in request.resource.data)
+        && !('moderationNotice' in request.resource.data)
         && request.resource.data.upvoteCount == 0
         && request.resource.data.downvoteCount == 0
         && request.resource.data.createdAt == request.time

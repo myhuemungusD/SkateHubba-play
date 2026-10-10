@@ -27,6 +27,7 @@ interface Props {
   onLoadMore?: () => void;
   gamesLoading?: boolean;
   onViewPlayer?: (uid: string) => void;
+  onOpenAppeal?: (path: string) => void;
 }
 
 export function Lobby({
@@ -43,6 +44,7 @@ export function Lobby({
   onLoadMore,
   gamesLoading = false,
   onViewPlayer,
+  onOpenAppeal,
 }: Props) {
   const c = useLobbyController({ profile, games });
   const emailVerified = user?.emailVerified ?? false;
@@ -55,6 +57,7 @@ export function Lobby({
         onViewRecord={onViewRecord}
         onOpenGame={onOpenGame}
         onOpenDice={onOpenDice}
+        onOpenAppeal={onOpenAppeal}
         onOpenSettings={onOpenSettings}
         onSignOut={onSignOut}
       />

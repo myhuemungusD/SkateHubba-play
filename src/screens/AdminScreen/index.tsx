@@ -4,6 +4,7 @@ import { AdminTabs, type AdminTab } from "./components/AdminTabs";
 import { VerifyProPanel } from "./components/VerifyProPanel";
 import { AwardsPanel } from "./components/AwardsPanel";
 import { ReportsPanel } from "./components/ReportsPanel";
+import { ClipReviewPanel } from "./components/ClipReviewPanel";
 import { isExtrasEnabled } from "../../lib/featureFlags";
 
 interface Props {
@@ -54,6 +55,7 @@ export function AdminScreen({ adminUid, onBack }: Props) {
         {verifyProEnabled && tab === "verify" && <VerifyProPanel adminUid={adminUid} />}
         {tab === "awards" && <AwardsPanel />}
         {tab === "reports" && <ReportsPanel adminUid={adminUid} />}
+        {tab === "clips" && <ClipReviewPanel />}
       </div>
     </div>
   );

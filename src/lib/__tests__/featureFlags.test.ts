@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isAppleSignInEnabled, isDiceEnabled, isExtrasEnabled, isRefereeEnabled, parseFlag } from "../featureFlags";
+import {
+  isAppleSignInEnabled,
+  isClipModerationEnabled,
+  isDiceEnabled,
+  isExtrasEnabled,
+  isRefereeEnabled,
+  parseFlag,
+} from "../featureFlags";
 
 describe("parseFlag", () => {
   it("accepts only the literal string 'true'", () => {
@@ -116,5 +123,23 @@ describe("isRefereeEnabled (VITE_FEATURE_REFEREE_ENABLED)", () => {
     vi.stubEnv("VITE_FEATURE_DICE_ENABLED", "true");
     vi.stubEnv("VITE_FEATURE_APPLE_SIGNIN_ENABLED", "true");
     expect(isRefereeEnabled()).toBe(false);
+  });
+});
+
+describe("isClipModerationEnabled (VITE_FEATURE_CLIP_MODERATION_ENABLED)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is OFF when the env var is unset — uploads stay visible", () => {
+    expect(import.meta.env.VITE_FEATURE_CLIP_MODERATION_ENABLED).toBeUndefined();
+    expect(isClipModerationEnabled()).toBe(false);
+  });
+
+  it("stays off for anything other than the literal string true", () => {
+    vi.stubEnv("VITE_FEATURE_CLIP_MODERATION_ENABLED", "TRUE");
+    expect(isClipModerationEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_CLIP_MODERATION_ENABLED", "true");
+    expect(isClipModerationEnabled()).toBe(true);
   });
 });

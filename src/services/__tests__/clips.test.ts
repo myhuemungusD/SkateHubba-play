@@ -92,6 +92,7 @@ import {
   type LandedClipContext,
   type ClipsFeedCursor,
 } from "../clips";
+import { toClipDoc } from "../clips.mappers";
 // Not mocked: the orphan-cleanup path logs through the real logger, so the
 // test spies on the exported object to assert the event name it emits.
 import { logger } from "../logger";
@@ -289,12 +290,55 @@ describe("fetchClipsFeed (sort='new')", () => {
     expect(page.clips[0].moderationStatus).toBe("active");
   });
 
-  it("preserves 'hidden' moderationStatus when the backend surfaces one (defense in depth)", async () => {
+  it("drops a hidden or non-approved clip if one slips past the query", async () => {
     mockGetDocs.mockResolvedValueOnce({
-      docs: [makeClipSnap("g1_2_set", validClipData({ moderationStatus: "hidden" }))],
+      docs: [
+        makeClipSnap("hidden", validClipData({ moderationStatus: "hidden" })),
+        makeClipSnap("review", validClipData({ moderationStatus: "active", moderation: "review" })),
+        makeClipSnap("ok", validClipData({ moderationStatus: "active", moderation: "approved" })),
+      ],
     });
     const page = await fetchClipsFeed(null, 20, "new");
-    expect(page.clips[0].moderationStatus).toBe("hidden");
+    expect(page.clips.map((clip) => clip.id)).toEqual(["ok"]);
+  });
+
+  it("preserves pending and ignores an unknown moderation value", () => {
+    const pending = toClipDoc({
+      id: "c1",
+      data: () =>
+        validClipData({
+          source: "user",
+          gameId: null,
+          turnNumber: null,
+          role: null,
+          moderationStatus: "pending",
+          moderation: "pending",
+        }),
+    } as never);
+    expect(pending).toMatchObject({ source: "user", moderationStatus: "pending", moderation: "pending" });
+
+    const unknown = toClipDoc({
+      id: "c2",
+      data: () => validClipData({ moderation: "nope" }),
+    } as never);
+    expect(unknown.moderation).toBeNull();
+    expect(unknown.moderationStatus).toBe("active");
+
+    for (const moderation of ["approved", "review", "rejected", "removed"] as const) {
+      const clip = toClipDoc({
+        id: moderation,
+        data: () => validClipData({ moderation }),
+      } as never);
+      expect(clip.moderation).toBe(moderation);
+    }
+  });
+
+  it("keeps a pending moderationStatus from being read as active", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("pending", validClipData({ moderationStatus: "pending", moderation: "pending" }))],
+    });
+    const page = await fetchClipsFeed(null, 20, "new");
+    expect(page.clips).toEqual([]);
   });
 
   it("applies the cursor via startAfter(createdAt, id) when provided", async () => {

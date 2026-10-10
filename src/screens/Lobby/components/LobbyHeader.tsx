@@ -9,6 +9,7 @@ interface Props {
   onViewRecord: () => void;
   onOpenGame: (g: GameDoc) => void;
   onOpenDice?: (gameId: string) => void;
+  onOpenAppeal?: (path: string) => void;
   onOpenSettings?: () => void;
   onSignOut: () => void;
 }
@@ -19,6 +20,7 @@ export function LobbyHeader({
   onViewRecord,
   onOpenGame,
   onOpenDice,
+  onOpenAppeal,
   onOpenSettings,
   onSignOut,
 }: Props) {
@@ -44,7 +46,7 @@ export function LobbyHeader({
             className="font-body text-xs text-brand-orange group-hover:text-[#FF8533] transition-colors duration-300"
           />
         </button>
-        <NotificationBell games={games} onOpenGame={onOpenGame} onOpenDice={onOpenDice} />
+        <NotificationBell games={games} onOpenGame={onOpenGame} onOpenDice={onOpenDice} onOpenAppeal={onOpenAppeal} />
         {onOpenSettings && (
           <button
             type="button"

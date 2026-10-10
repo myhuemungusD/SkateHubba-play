@@ -4,21 +4,29 @@ import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 
 export type ReportReason =
-  "inappropriate_video" | "abusive_behavior" | "cheating" | "spam" | "non_skate_content" | "illegal_content" | "other";
+  | "inappropriate_video"
+  | "inappropriate"
+  | "abusive_behavior"
+  | "cheating"
+  | "spam"
+  | "non_skate_content"
+  | "not_skating"
+  | "illegal_content"
+  | "other";
 
 /** DSA Art. 16 notices have to explain what is illegal. Shorter text is rejected. */
 export const ILLEGAL_CONTENT_MIN_EXPLANATION = 20;
 
 export const REPORT_REASON_LABELS: Record<ReportReason, string> = {
   inappropriate_video: "Inappropriate video content",
+  inappropriate: "Inappropriate",
   abusive_behavior: "Abusive or threatening behavior",
   cheating: "Cheating or exploiting",
   spam: "Spam or bot activity",
   // Distinct from "inappropriate": the clip is fine, it just isn't
-  // skateboarding. Feed-only in practice, and the most common reason a
-  // user-posted clip needs to come down, so it gets its own bucket instead
-  // of being buried under "other" where moderators can't triage it.
+  // skateboarding. Kept so older reports still label correctly.
   non_skate_content: "Not skateboarding",
+  not_skating: "Not skating",
   illegal_content: "Illegal content",
   other: "Other",
 };

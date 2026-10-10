@@ -24,6 +24,7 @@
 
 import { doc, runTransaction, serverTimestamp } from "firebase/firestore";
 import { requireAuth, requireDb } from "../firebase";
+import { isClipModerationEnabled } from "../lib/featureFlags";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { clipsRef } from "./clips.mappers";
@@ -136,8 +137,9 @@ export function newUserClipId(): string {
  * `tx.set` at the pre-minted id (not `addDoc`) because the id is already
  * committed to by the storage path.
  *
- * Both vote aggregates seed at 0 and `moderationStatus` at "active" — the
- * only values the create rule accepts; takedowns are Admin SDK only.
+ * Both vote aggregates seed at 0. `moderationStatus` is "active" unless
+ * clip moderation is on, in which case the clip starts "pending" and stays
+ * out of the feed until the server approves it.
  *
  * Throws {@link ClipCooldownError} inside the cooldown window,
  * {@link UserBannedError} for a banned account, and a plain error when the
@@ -197,6 +199,7 @@ export async function createUserClip(params: CreateUserClipParams): Promise<stri
         }
       }
 
+      const moderationOn = isClipModerationEnabled();
       tx.set(clipRef, {
         // The discriminant. Present on every user clip from day one, which
         // is what lets the mapper read a MISSING source as "game" (every
@@ -214,7 +217,8 @@ export async function createUserClip(params: CreateUserClipParams): Promise<stri
         videoUrl,
         spotId: typeof spotId === "string" && spotId.length > 0 ? spotId.slice(0, MAX_SPOT_ID_LEN) : null,
         createdAt: serverTimestamp(),
-        moderationStatus: "active",
+        moderationStatus: moderationOn ? "pending" : "active",
+        ...(moderationOn ? { moderation: "pending" as const } : {}),
         upvoteCount: 0,
         downvoteCount: 0,
       });

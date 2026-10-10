@@ -36,6 +36,7 @@ import { auth } from "../../firebase";
 // Not mocked: the swallowed-failure paths log through the real logger, so
 // the tests spy on the exported object to assert the event names emitted.
 import { logger } from "../logger";
+import { toDisputeDoc } from "../disputes.mappers";
 import type { GameDoc } from "../games.mappers";
 
 /* ── Helpers ────────────────────────────────── */
@@ -477,6 +478,18 @@ describe("fetchOpenDisputes", () => {
     expect(disputes[1]).toMatchObject({ id: "g2_1", gameId: "g2" });
   });
 
+  it("drops a dispute whose moderation workflow is not approved", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        snapOf("hidden", validDisputeData({ moderationStatus: "hidden" })),
+        snapOf("review", validDisputeData({ moderation: "review" })),
+        snapOf("open", validDisputeData()),
+      ],
+    });
+    const disputes = await fetchOpenDisputes();
+    expect(disputes.map((dispute) => dispute.id)).toEqual(["open"]);
+  });
+
   it("clamps pageSize into [1, 50]", async () => {
     mockGetDocs.mockResolvedValue({ docs: [] });
 
@@ -560,8 +573,12 @@ describe("dispute doc mapping", () => {
     expect(d?.createdAt).toBeNull();
   });
 
-  it("preserves 'closed' status and 'hidden' moderation when the backend surfaces them", async () => {
-    const d = await mapOne(validDisputeData({ status: "closed", moderationStatus: "hidden" }));
+  it("preserves 'closed' status and 'hidden' moderation on a direct read", () => {
+    const d = toDisputeDoc(
+      snapOf("g1_3", validDisputeData({ status: "closed", moderationStatus: "hidden" })) as Parameters<
+        typeof toDisputeDoc
+      >[0],
+    );
     expect(d).toMatchObject({ status: "closed", moderationStatus: "hidden" });
   });
 
