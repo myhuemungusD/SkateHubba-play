@@ -1,27 +1,20 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { ClipDoc } from "../../services/clips";
 import type { UserProfile } from "../../services/users";
+import { isFirebaseStorageUrl } from "../../utils/helpers";
 
-// ReportModal pulls in submitReport + REPORT_REASON_LABELS + useFocusTrap +
-// the modal's own UI primitives. It only ever renders when a viewer taps
-// REPORT — a rare interaction. Lazy-load it so the lobby's critical
-// bundle skips the form code entirely. Suspense fallback is null because
-// the modal is already state-gated; the brief import delay (~50ms on
-// warm cache) happens AFTER the user has tapped, so it's invisible.
 const ReportModal = lazy(() => import("../ReportModal").then((m) => ({ default: m.ReportModal })));
-// Same reasoning for the two heaviest optional surfaces in the feed. The
-// upload modal drags in the whole capture stack (VideoRecorder, the fisheye
-// renderer, MediaRecorder plumbing) and the comment sheet drags in its own
-// service + composer — neither belongs in the lobby's first paint, and both
-// only mount after an explicit tap.
 const UserClipUploadModal = lazy(() => import("../UserClipUpload").then((m) => ({ default: m.UserClipUploadModal })));
 const ClipComments = lazy(() => import("./ClipComments").then((m) => ({ default: m.ClipComments })));
 import { ClipsFeedEmpty, ClipsFeedError, ClipsFeedExhausted, ClipsFeedSkeleton } from "./ClipsFeedStates";
 import { ClipsFeedHeader } from "./ClipsFeedHeader";
-import { DisputeLane } from "./DisputeLane";
+import { DisputeSlides } from "./DisputeLane";
+import { isNearSlide } from "./feedLayout";
 import { NextClipPrefetcher } from "./NextClipPrefetcher";
 import { SpotlightCard } from "./SpotlightCard";
 import { useClipsFeedController } from "./useClipsFeedController";
+import { useDisputeLaneController } from "./useDisputeLaneController";
+import { useVerticalFeed } from "./useVerticalFeed";
 
 export interface ClipsFeedProps {
   profile: UserProfile;
@@ -32,80 +25,135 @@ export interface ClipsFeedProps {
 }
 
 /**
- * The lobby feed. Two lanes, in priority order:
- *
- *  1. **Disputes** — tricks the setter sent to the crowd instead of taking on
- *     the honor system. The attempt plays inline and any viewer who isn't in
- *     the game rules LAND or BAIL without leaving the lobby. Once ruled (or
- *     when the viewer can't vote) the card stays put and shows the live
- *     tally. Owned by {@link DisputeLane}.
- *
- *  2. **Community clips** — landed tricks from across the app plus clips
- *     skaters post directly, one at a time, ordered by `sort` (Top:
- *     `upvoteCount` desc; New: reverse-chrono). Both thumbs are persisted
- *     tallies and neither hides the clip. Comments, challenge and report sit
- *     alongside; POST in the header opens the upload flow.
+ * Full-screen vertical feed. Open disputes come first — they are the pages
+ * with a decision on them — then community clips in the active Top/New order.
+ * One scroller, CSS scroll-snap, arrow keys on desktop. A vote updates the
+ * page in place and never advances it.
  */
 export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedProps) {
-  const c = useClipsFeedController(profile.uid);
-
+  const clips = useClipsFeedController(profile.uid);
+  const disputes = useDisputeLaneController(profile.uid);
+  const [muted, setMuted] = useState(true);
   const [reportTarget, setReportTarget] = useState<ClipDoc | null>(null);
   const [commentsTarget, setCommentsTarget] = useState<ClipDoc | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
 
-  const { currentClip, nextClip } = c;
-  const isOwnClip = currentClip ? currentClip.playerUid === profile.uid : false;
+  const pendingTarget = useRef<number | null>(null);
+  const wasLoadingMore = useRef(false);
+  const wasBlocking = useRef(true);
+  // Error takes one leading page; open disputes take one each.
+  const leading = disputes.error ? 1 : disputes.disputes.length;
+  const leadingRef = useRef(leading);
+  const clipCountRef = useRef(clips.visibleClips.length);
+  useEffect(() => {
+    leadingRef.current = leading;
+    clipCountRef.current = clips.visibleClips.length;
+  }, [leading, clips.visibleClips.length]);
+
+  const onPastEnd = useCallback(() => {
+    if (!clips.hasMore || clips.loadingMore) return;
+    pendingTarget.current = leadingRef.current + clipCountRef.current;
+    void clips.loadMore();
+  }, [clips]);
+
+  const blocking = !clips.error && (clips.loading || disputes.loading);
+  const slideCount = blocking ? 0 : leading + clips.visibleClips.length;
+  const { setScroller, activeIndex, scrollToIndex, reset } = useVerticalFeed(slideCount, onPastEnd);
+
+  useEffect(() => {
+    if (wasBlocking.current && !blocking) reset();
+    wasBlocking.current = blocking;
+  }, [blocking, reset]);
+
+  useEffect(() => {
+    const finished = wasLoadingMore.current && !clips.loadingMore;
+    wasLoadingMore.current = clips.loadingMore;
+    if (!finished) return;
+    const target = pendingTarget.current;
+    pendingTarget.current = null;
+    const total = leadingRef.current + clipCountRef.current;
+    if (target !== null && target < total) scrollToIndex(target);
+  }, [clips.loadingMore, clips.visibleClips.length, scrollToIndex]);
+
+  const toggleMute = useCallback(() => setMuted((m) => !m), []);
+
+  const hasSlides = disputes.disputes.length > 0 || clips.visibleClips.length > 0;
+  const showSlides = !blocking && (hasSlides || Boolean(disputes.error));
+  const showEmpty = !blocking && !clips.error && !disputes.error && !hasSlides && !clips.exhausted;
+  const showExhausted =
+    !blocking && !clips.error && !disputes.error && clips.exhausted && disputes.disputes.length === 0;
+  const nextSrc = nextSlideSrc(disputes.disputes, clips.visibleClips, activeIndex);
 
   return (
-    <section className="mb-6" aria-label="Community feed">
-      <DisputeLane viewerUid={profile.uid} />
-
+    <section className="relative h-full" aria-label="Community feed">
+      <p className="sr-only">
+        Swipe up or down, or use the arrow keys, to move between clips. Voting stays on the clip you are watching.
+      </p>
       <ClipsFeedHeader
-        sort={c.sort}
-        onSortChange={c.handleSortChange}
-        // Lock the toggle during a load so rapid taps don't queue concurrent
-        // fetches (the latest would still win, but it wastes reads + flickers).
-        disabled={c.loading || c.loadingMore}
-        position={c.visibleClips.length > 0 ? { index: c.safeIndex, total: c.visibleClips.length } : undefined}
+        sort={clips.sort}
+        onSortChange={clips.handleSortChange}
+        disabled={clips.loading || clips.loadingMore}
+        position={showSlides && slideCount > 0 ? { index: activeIndex, total: slideCount } : undefined}
         onPostClip={() => setUploadOpen(true)}
       />
 
-      {c.error && !c.loading && <ClipsFeedError error={c.error} errorCode={c.errorCode} onRetry={c.loadPool} />}
+      {blocking && <ClipsFeedSkeleton />}
 
-      {c.loading && <ClipsFeedSkeleton />}
-
-      {!c.loading &&
-        !c.error &&
-        !currentClip &&
-        (c.exhausted ? <ClipsFeedExhausted onReload={c.hasMore ? c.loadMore : c.loadPool} /> : <ClipsFeedEmpty />)}
-
-      {!c.loading && currentClip && (
-        <>
-          <SpotlightCard
-            clip={currentClip}
-            isOwnClip={isOwnClip}
-            vote={c.voteFor(currentClip.id)}
-            voting={c.isVoting(currentClip.id)}
-            onViewPlayer={onViewPlayer}
-            onNext={c.handleNext}
-            advancing={c.loadingMore}
-            onUpvote={c.handleUpvote}
-            onDownvote={c.handleDownvote}
-            onChallenge={onChallengeUser}
-            onReport={setReportTarget}
-            onComments={setCommentsTarget}
-          />
-          {/* Warm the cache for the upcoming clip while the current one
-              plays — NEXT TRICK feels instant when the bytes are already
-              local. Gated on Data-Saver / 2g inside the prefetcher. */}
-          <NextClipPrefetcher src={nextClip?.videoUrl ?? null} />
-        </>
+      {clips.error && !clips.loading && (
+        <div className="absolute inset-x-4 top-24 z-30">
+          <ClipsFeedError error={clips.error} errorCode={clips.errorCode} onRetry={clips.loadPool} />
+        </div>
       )}
 
-      {/* Report modal — lazy-loaded; null fallback is fine because this
-          subtree only mounts after the viewer has explicitly tapped REPORT. */}
-      {/* Comment sheet — keyed on the clip so switching clips can never show
-          one clip's thread against another's header. */}
+      {showEmpty && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center px-6">
+          <ClipsFeedEmpty />
+        </div>
+      )}
+
+      {showExhausted && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center px-6">
+          <ClipsFeedExhausted onReload={clips.hasMore ? clips.loadMore : clips.loadPool} />
+        </div>
+      )}
+
+      {showSlides && (
+        <div
+          ref={setScroller}
+          tabIndex={0}
+          role="region"
+          aria-label="Clips"
+          aria-keyshortcuts="ArrowUp ArrowDown"
+          className="h-full overflow-y-auto overscroll-y-contain snap-y snap-mandatory outline-none motion-reduce:scroll-auto"
+        >
+          <DisputeSlides state={disputes} activeIndex={activeIndex} muted={muted} onToggleMute={toggleMute} />
+          {!disputes.loading &&
+            clips.visibleClips.map((clip, index) => {
+              const slideIndex = disputes.disputes.length + index;
+              return (
+                <SpotlightCard
+                  key={clip.id}
+                  clip={clip}
+                  isOwnClip={clip.playerUid === profile.uid}
+                  vote={clips.voteFor(clip.id)}
+                  voting={clips.isVoting(clip.id)}
+                  active={activeIndex === slideIndex}
+                  near={isNearSlide(slideIndex, activeIndex)}
+                  muted={muted}
+                  onToggleMute={toggleMute}
+                  onViewPlayer={onViewPlayer}
+                  onUpvote={clips.handleUpvote}
+                  onDownvote={clips.handleDownvote}
+                  onChallenge={onChallengeUser}
+                  onReport={setReportTarget}
+                  onComments={setCommentsTarget}
+                />
+              );
+            })}
+          <NextClipPrefetcher src={nextSrc} />
+        </div>
+      )}
+
       {commentsTarget && (
         <Suspense fallback={null}>
           <ClipComments
@@ -113,11 +161,9 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
             clip={commentsTarget}
             viewerUid={profile.uid}
             viewerUsername={profile.username}
-            blockedUids={c.blockedUids}
+            blockedUids={clips.blockedUids}
             onClose={() => setCommentsTarget(null)}
             onReport={() => {
-              // Close the sheet first — ReportModal shares the same fixed
-              // inset-0 overlay z-index, so both open together would stack.
               setCommentsTarget(null);
               setReportTarget(commentsTarget);
             }}
@@ -133,10 +179,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
             onClose={() => setUploadOpen(false)}
             onPosted={() => {
               setUploadOpen(false);
-              // Reload so the skater's clip is actually in the pool they're
-              // looking at — "posted!" followed by an unchanged feed reads as
-              // a failure.
-              void c.loadPool();
+              void clips.loadPool();
             }}
           />
         </Suspense>
@@ -152,7 +195,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
             clipId={reportTarget.id}
             onClose={() => setReportTarget(null)}
             onSubmitted={() => {
-              c.dismissClip(reportTarget.id);
+              clips.dismissClip(reportTarget.id);
               setReportTarget(null);
             }}
           />
@@ -160,4 +203,18 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
       )}
     </section>
   );
+}
+
+function nextSlideSrc(
+  disputeList: readonly { matchVideoUrl: string }[],
+  clipList: readonly { videoUrl: string }[],
+  activeIndex: number,
+): string | null {
+  const next = activeIndex + 1;
+  if (next < disputeList.length) {
+    const url = disputeList[next]?.matchVideoUrl;
+    return url && isFirebaseStorageUrl(url) ? url : null;
+  }
+  const clip = clipList[next - disputeList.length];
+  return clip?.videoUrl ?? null;
 }

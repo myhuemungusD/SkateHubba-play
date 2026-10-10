@@ -210,13 +210,10 @@ export function useClipsFeedController(viewerUid: string) {
   const loadingMoreRef = useRef(false);
 
   /**
-   * Fetch the next page and append it to the pool, then jump the spotlight to
-   * the first newly-added clip. Clips already in the pool are dropped so a
-   * page boundary can't repeat a row; a page that adds nothing ends the feed.
-   *
-   * Unlike `loadPool` this keeps the current card mounted — the viewer tapped
-   * NEXT TRICK on the end-of-clip overlay, and swapping in a skeleton there
-   * reads as the feed resetting.
+   * Fetch the next page and append it to the pool. The feed calls this when
+   * the viewer swipes past the last loaded clip. Clips already in the pool
+   * are dropped so a page boundary can't repeat a row; a page that adds
+   * nothing ends the feed. The current page stays mounted.
    */
   const loadMore = useCallback(async () => {
     const next = cursorRef.current;
@@ -258,20 +255,6 @@ export function useClipsFeedController(viewerUid: string) {
     }
   }, []);
 
-  const handleNext = useCallback(() => {
-    if (safeIndex + 1 >= visibleClips.length) {
-      // Page exhausted — pull the next page, or start over from the top of
-      // the feed once there is nothing left to page through.
-      if (hasMore) {
-        void loadMore();
-      } else {
-        void loadPool();
-      }
-      return;
-    }
-    setCurrentIndex(safeIndex + 1);
-  }, [safeIndex, visibleClips.length, hasMore, loadMore, loadPool]);
-
   const dismissClip = useCallback((clipId: string) => {
     setDismissedClipIds((prev) => {
       const next = new Set(prev);
@@ -286,9 +269,8 @@ export function useClipsFeedController(viewerUid: string) {
    * Both thumbs are toggles over the same single vote doc, so they share one
    * handler: tapping the thumb you already gave withdraws it, tapping the
    * other flips it. A downvote is a real, persisted negative tally now — it
-   * does NOT hide the clip. Passing on a clip is what NEXT TRICK is for, and
-   * conflating the two meant a viewer who wanted to register "that was not a
-   * make" also lost the clip they were about to comment on.
+   * does NOT hide the clip. Moving on is a swipe or an arrow key, and a
+   * rating must not take the clip the viewer was about to comment on.
    *
    * Self-votes are rejected here as well as in the UI: `isOwnClip` disables
    * the controls, but the handler is the guard that survives a stale prop.
@@ -358,7 +340,6 @@ export function useClipsFeedController(viewerUid: string) {
     voteFor: (clipId: string) => voteState.get(clipId) ?? NO_VOTE,
     isVoting: (clipId: string) => votingIds.has(clipId),
     loadPool,
-    handleNext,
     handleUpvote,
     handleDownvote,
     handleSortChange,

@@ -3,6 +3,7 @@ import type { ClipDoc } from "../../services/clips";
 import type { ClipVoteState } from "../../services/clips.upvotes";
 import { ProUsername } from "../ProUsername";
 import { ClipActions } from "./ClipActions";
+import { ABOVE_NAV, FEED_SLIDE } from "./feedLayout";
 import { SpotlightVideo } from "./SpotlightVideo";
 import { relativeClipTime } from "./utils";
 
@@ -12,10 +13,13 @@ export interface SpotlightCardProps {
   vote: ClipVoteState;
   /** True while this clip's vote write is in flight — locks both thumbs. */
   voting: boolean;
+  /** This slide is the snapped page. Only then do the controls mount. */
+  active: boolean;
+  /** Mount the media element. False for slides far from the viewport. */
+  near: boolean;
+  muted: boolean;
+  onToggleMute: () => void;
   onViewPlayer: (uid: string) => void;
-  onNext: () => void;
-  /** True while the next page is being fetched — NEXT TRICK shows a pending state. */
-  advancing?: boolean;
   onUpvote: (clip: ClipDoc) => void;
   onDownvote: (clip: ClipDoc) => void;
   onChallenge: (username: string) => void;
@@ -23,16 +27,11 @@ export interface SpotlightCardProps {
   onComments: (clip: ClipDoc) => void;
 }
 
-/**
- * Provenance badge. Game clips say which side of the turn they came from;
- * a clip a skater posted themselves has no role, so it says so rather than
- * borrowing "SET" and implying a game that never happened.
- */
 function ClipBadge({ clip }: { clip: ClipDoc }) {
   if (clip.source === "user") {
     return (
       <span
-        className="rounded-md border border-white/20 bg-white/5 px-2 py-0.5 font-display text-[10px] tracking-[0.2em] text-white/70"
+        className="rounded-md border border-white/20 bg-white/10 px-2 py-0.5 font-display text-[10px] tracking-[0.2em] text-white/80"
         aria-label="Clip posted straight to the feed"
       >
         CLIP
@@ -43,8 +42,8 @@ function ClipBadge({ clip }: { clip: ClipDoc }) {
     <span
       className={`rounded-md border px-2 py-0.5 font-display text-[10px] tracking-[0.2em] ${
         clip.role === "set"
-          ? "border-brand-orange/30 bg-brand-orange/5 text-brand-orange"
-          : "border-brand-green/30 bg-brand-green/5 text-brand-green"
+          ? "border-brand-orange/40 bg-brand-orange/15 text-brand-orange"
+          : "border-brand-green/40 bg-brand-green/15 text-brand-green"
       }`}
       aria-label={clip.role === "set" ? "Setter's landed trick" : "Matcher's landed response"}
     >
@@ -54,27 +53,20 @@ function ClipBadge({ clip }: { clip: ClipDoc }) {
 }
 
 /**
- * The lobby's "Featured Clip" surface — author chip, role badge, video,
- * trick name, and the action row (thumbs up / thumbs down / challenge /
- * report).
- *
- * Pure presentation: data + handlers in, JSX out. Lives next to ClipsFeed
- * so the parent stays inside the 250 LOC component budget.
+ * One community clip as a full-screen page. Inactive pages keep their
+ * accessible name so the scroller's length stays honest, and drop their
+ * controls so a thumbs-up off screen can't steal a tap.
  */
-// memo: ClipsFeed re-renders on every state mutation (upvote map, hydration,
-// cursor index). Without memoization those would all re-render the spotlight
-// subtree — including the video element, which is the most expensive child
-// in the tree. All props are primitives, immutable Maps/Sets, or stable
-// callbacks (see the ref-backed handler in ClipsFeed/index.tsx), so the
-// default shallow comparator is sufficient.
 export const SpotlightCard = memo(function SpotlightCard({
   clip,
   isOwnClip,
   vote,
   voting,
+  active,
+  near,
+  muted,
+  onToggleMute,
   onViewPlayer,
-  onNext,
-  advancing = false,
   onUpvote,
   onDownvote,
   onChallenge,
@@ -82,50 +74,62 @@ export const SpotlightCard = memo(function SpotlightCard({
   onComments,
 }: SpotlightCardProps) {
   return (
-    <article className="glass-card rounded-2xl overflow-hidden" aria-label="Current clip">
-      <div className="flex items-center justify-between px-4 pt-3.5 pb-3">
-        <button
-          type="button"
-          onClick={() => onViewPlayer(clip.playerUid)}
-          className="flex items-center gap-2 touch-target rounded-xl px-1.5 py-1 -ml-1.5 hover:bg-white/[0.03] transition-colors duration-200 group"
-        >
-          <div className="w-7 h-7 rounded-full bg-surface-alt border border-white/[0.06] flex items-center justify-center shrink-0">
-            <span className="font-display text-[11px] text-white/80 leading-none">
-              {clip.playerUsername[0]?.toUpperCase() ?? "?"}
-            </span>
+    <article
+      data-feed-slide
+      data-active={active ? "true" : "false"}
+      aria-current={active ? "true" : undefined}
+      aria-label={`Clip by @${clip.playerUsername}: ${clip.trickName}`}
+      className={FEED_SLIDE}
+    >
+      {near ? (
+        <SpotlightVideo
+          key={clip.id}
+          src={clip.videoUrl}
+          active={active}
+          muted={muted}
+          onToggleMute={onToggleMute}
+          mediaLabel={`${clip.playerUsername}'s ${clip.trickName}`}
+        />
+      ) : (
+        <div className="absolute inset-0 bg-black" />
+      )}
+
+      {active && (
+        <>
+          <div className={`absolute left-4 right-24 z-20 ${ABOVE_NAV}`}>
+            <div className="mb-2 flex items-center gap-2">
+              <ClipBadge clip={clip} />
+              <span className="font-body text-[11px] text-white/70">{relativeClipTime(clip.createdAt)}</span>
+            </div>
+            <h2 className="font-display text-2xl leading-tight tracking-wide text-white drop-shadow">
+              {clip.trickName}
+            </h2>
+            <button
+              type="button"
+              onClick={() => onViewPlayer(clip.playerUid)}
+              className="mt-1 flex min-h-[44px] items-center gap-2 rounded-xl px-1.5 py-1 -ml-1.5 hover:bg-white/[0.06] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/40">
+                <span className="font-display text-[11px] leading-none text-white/90">
+                  {clip.playerUsername[0]?.toUpperCase() ?? "?"}
+                </span>
+              </span>
+              <ProUsername username={clip.playerUsername} className="font-body text-sm text-white/90" />
+            </button>
           </div>
-          <ProUsername
-            username={clip.playerUsername}
-            className="font-body text-xs text-white/80 group-hover:text-brand-orange transition-colors duration-200"
+          <ClipActions
+            clip={clip}
+            isOwnClip={isOwnClip}
+            vote={vote}
+            voting={voting}
+            onUpvote={onUpvote}
+            onDownvote={onDownvote}
+            onChallenge={onChallenge}
+            onReport={onReport}
+            onComments={onComments}
           />
-        </button>
-        <div className="flex items-center gap-2">
-          <ClipBadge clip={clip} />
-          <span className="font-body text-[11px] text-faint">{relativeClipTime(clip.createdAt)}</span>
-        </div>
-      </div>
-
-      {/* Video — plays once, no loop, no auto-advance. `key={clip.id}`
-          remounts (and resets ended/muted state) on every Next. */}
-      <div className="px-4">
-        <SpotlightVideo key={clip.id} src={clip.videoUrl} onNext={onNext} advancing={advancing} />
-      </div>
-
-      <div className="px-4 pt-3">
-        <h2 className="font-display text-xl text-white tracking-wide leading-tight">{clip.trickName}</h2>
-      </div>
-
-      <ClipActions
-        clip={clip}
-        isOwnClip={isOwnClip}
-        vote={vote}
-        voting={voting}
-        onUpvote={onUpvote}
-        onDownvote={onDownvote}
-        onChallenge={onChallenge}
-        onReport={onReport}
-        onComments={onComments}
-      />
+        </>
+      )}
     </article>
   );
 });

@@ -3,6 +3,8 @@ import { GavelIcon } from "../icons";
 import { Timer } from "../Timer";
 import { isFirebaseStorageUrl } from "../../utils/helpers";
 import { landShare, totalVotes, type Dispute, type DisputeTally, type DisputeVerdict } from "../../types/dispute";
+import { ABOVE_NAV, BELOW_HEADER, FEED_SLIDE, RAIL_BTN } from "./feedLayout";
+import { SpotlightVideo } from "./SpotlightVideo";
 
 export interface DisputeCardProps {
   dispute: Dispute;
@@ -16,25 +18,20 @@ export interface DisputeCardProps {
   /** Vote-window close time (ms), or null when unknown. Derived from the dispute. */
   deadline: number | null;
   onVerdict: (dispute: Dispute, verdict: DisputeVerdict) => void;
+  /** Snapped page. Controls mount only here so an off-screen LAND can't be tapped. */
+  active?: boolean;
+  /** Mount the attempt video. False for slides far from the viewport. */
+  near?: boolean;
+  muted?: boolean;
+  onToggleMute?: () => void;
 }
 
 /**
- * A disputed trick in the lobby feed, judged LAND or BAIL by the community.
+ * A disputed trick as one full-screen page in the same scroller as clips.
  *
- * The hero is the matcher's attempt — the claim actually under judgement.
- * It uses native `controls` rather than {@link SpotlightVideo}: judging is a
- * scrub-and-rewatch job, several cards can sit in the lane at once (autoplay
- * would have them fighting over the audio channel and the network), and
- * SpotlightVideo's end-of-clip REPLAY / NEXT TRICK overlay has no meaning
- * here. The setter's clip is secondary context, collapsed behind a
- * disclosure so the card stays a single decision.
- *
- * Every `src` is gated through `isFirebaseStorageUrl` before it reaches the
- * DOM — the same defence the game screen applies to URLs read off a doc.
- *
- * memo: the lane re-renders on every tally mutation across every card; the
- * shallow comparator keeps an unrelated vote from re-rendering this card's
- * video element.
+ * The banner names the call, the tally, and the time left. LAND / BAIL sit
+ * on the side and only while `canVote` is true. Ruling replaces them with
+ * the tally and leaves the page where it is — the feed never auto-advances.
  */
 export const DisputeCard = memo(function DisputeCard({
   dispute,
@@ -44,6 +41,10 @@ export const DisputeCard = memo(function DisputeCard({
   voting,
   deadline,
   onVerdict,
+  active = true,
+  near = true,
+  muted = true,
+  onToggleMute,
 }: DisputeCardProps) {
   const showButtons = canVote && ownVerdict === null;
   const attemptUrl = isFirebaseStorageUrl(dispute.matchVideoUrl) ? dispute.matchVideoUrl : null;
@@ -51,160 +52,138 @@ export const DisputeCard = memo(function DisputeCard({
 
   return (
     <article
-      className="glass-card rounded-2xl overflow-hidden border border-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.06)]"
+      data-feed-slide
+      data-active={active ? "true" : "false"}
+      aria-current={active ? "true" : undefined}
       aria-label={`Community call on ${dispute.trickName}`}
+      className={FEED_SLIDE}
     >
-      <div className="px-4 pt-3.5 pb-2 flex items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-1.5 font-display text-[11px] tracking-[0.2em] text-amber-400">
-          <GavelIcon size={13} className="text-amber-400" />
-          COMMUNITY CALL
-        </span>
-        <span className="font-body text-[11px] text-faint">Turn {dispute.turnNumber}</span>
-      </div>
-
-      <div className="px-4">
-        <h2 className="font-display text-xl text-white tracking-wide leading-tight">{dispute.trickName}</h2>
-        <p className="font-body text-sm text-muted mt-1">
-          @{dispute.matcherUsername} says they landed @{dispute.setterUsername}&apos;s trick.{" "}
-          {/* nowrap: the question is the call to action — letting it break
-              across lines orphans "they?" and buries the ask. Two words, so
-              it can never overflow a card this wide. */}
-          <span className="text-white/80 whitespace-nowrap">Did they?</span>
-        </p>
-      </div>
-
-      {deadline !== null && (
-        <div className="px-4 pt-3 flex items-center gap-2">
-          <span className="font-body text-[11px] text-faint">Voting closes in</span>
-          <Timer deadline={deadline} />
-        </div>
-      )}
-
-      <div className="px-4 pt-3">
-        {attemptUrl ? (
-          <video
-            src={attemptUrl}
-            controls
-            playsInline
-            preload="metadata"
-            aria-label={`${dispute.matcherUsername}'s attempt at ${dispute.trickName}`}
-            className="w-full aspect-[9/16] max-h-[480px] rounded-xl bg-black object-cover border border-border"
-          />
-        ) : (
-          <p className="font-body text-sm text-faint py-6 text-center border border-dashed border-white/[0.06] rounded-xl">
-            This attempt&apos;s video is unavailable.
-          </p>
-        )}
-      </div>
-
-      {setUrl && (
-        <details className="px-4 pt-3 group">
-          <summary
-            aria-label={`Watch @${dispute.setterUsername}'s original set of ${dispute.trickName}`}
-            className="min-h-[44px] flex items-center font-display text-[11px] tracking-[0.15em] text-brand-orange cursor-pointer list-none rounded-xl px-2 -mx-2 hover:bg-white/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-          >
-            WATCH THE SET · @{dispute.setterUsername.toUpperCase()}
-          </summary>
-          <video
-            src={setUrl}
-            controls
-            playsInline
-            preload="none"
-            aria-label={`${dispute.setterUsername}'s ${dispute.trickName} set video`}
-            className="mt-2 w-full aspect-[9/16] max-h-[320px] rounded-xl bg-black object-cover border border-border"
-          />
-        </details>
-      )}
-
-      {showButtons ? (
-        <div
-          role="group"
-          aria-label={`Rule on ${dispute.trickName}`}
-          className="px-4 pt-3 pb-4 flex items-center gap-2"
-        >
-          <button
-            type="button"
-            onClick={() => onVerdict(dispute, "land")}
-            disabled={voting}
-            aria-label={`Make — @${dispute.matcherUsername} made it`}
-            className="flex-1 min-h-[44px] flex flex-col items-center justify-center rounded-xl font-display text-sm tracking-wider bg-brand-green/15 border border-brand-green/40 text-brand-green hover:bg-brand-green/25 active:scale-[0.97] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-green"
-          >
-            <span>MAKE</span>
-            <span className="font-body text-[10px] tracking-normal text-brand-green/70">They made it</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onVerdict(dispute, "bail")}
-            disabled={voting}
-            aria-label={`Bail — @${dispute.matcherUsername} did not make it`}
-            className="flex-1 min-h-[44px] flex flex-col items-center justify-center rounded-xl font-display text-sm tracking-wider bg-brand-red/15 border border-brand-red/40 text-brand-red hover:bg-brand-red/25 active:scale-[0.97] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red"
-          >
-            <span>BAIL</span>
-            <span className="font-body text-[10px] tracking-normal text-brand-red/70">Didn&apos;t make it</span>
-          </button>
-        </div>
+      {near && attemptUrl ? (
+        <SpotlightVideo
+          src={attemptUrl}
+          active={active}
+          muted={muted}
+          onToggleMute={onToggleMute}
+          mediaLabel={`${dispute.matcherUsername}'s attempt at ${dispute.trickName}`}
+        />
       ) : (
-        <DisputeTallyMeter tally={tally} ownVerdict={ownVerdict} />
+        <div className="absolute inset-0 bg-black" />
+      )}
+
+      {active && (
+        <>
+          <div className={`absolute left-4 right-20 z-20 ${BELOW_HEADER}`}>
+            <p className="inline-flex max-w-full items-center gap-1.5 rounded-2xl border border-amber-400/40 bg-black/60 px-3 py-1.5 font-display text-[11px] leading-snug tracking-[0.14em] text-amber-300 backdrop-blur-sm">
+              <GavelIcon size={13} className="shrink-0 text-amber-300" />
+              <span>Community call: Landed or bailed?</span>
+            </p>
+            <h2 className="mt-3 font-display text-2xl leading-tight tracking-wide text-white drop-shadow">
+              {dispute.trickName}
+            </h2>
+            <p className="mt-1 font-body text-sm text-white/80">
+              @{dispute.matcherUsername} says they landed @{dispute.setterUsername}&apos;s trick.{" "}
+              <span className="whitespace-nowrap text-white">Did they?</span>
+            </p>
+            <p className="mt-2 font-display text-[11px] tracking-[0.14em] text-white/80 tabular-nums">
+              <span className={ownVerdict === "land" ? "text-brand-green" : "text-brand-green/80"}>
+                LAND {tally.land}
+              </span>
+              <span className="mx-1.5 text-white/40">·</span>
+              <span className={ownVerdict === "bail" ? "text-brand-red" : "text-brand-red/80"}>BAIL {tally.bail}</span>
+              <span className="mx-1.5 text-white/40">·</span>
+              <span className="text-white/60">Turn {dispute.turnNumber}</span>
+            </p>
+            {deadline !== null && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="font-body text-[11px] text-white/70">Time left</span>
+                <Timer deadline={deadline} />
+              </div>
+            )}
+            {!showButtons && <DisputeTallyMeter tally={tally} ownVerdict={ownVerdict} />}
+            {!attemptUrl && (
+              <p className="mt-4 font-body text-sm text-white/70">This attempt&apos;s video is unavailable.</p>
+            )}
+            {setUrl && (
+              <details className="mt-3">
+                <summary
+                  aria-label={`Watch @${dispute.setterUsername}'s original set of ${dispute.trickName}`}
+                  className="flex min-h-[44px] cursor-pointer list-none items-center font-display text-[11px] tracking-[0.15em] text-brand-orange focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+                >
+                  WATCH THE SET · @{dispute.setterUsername.toUpperCase()}
+                </summary>
+                <video
+                  src={setUrl}
+                  controls
+                  playsInline
+                  preload="none"
+                  aria-label={`${dispute.setterUsername}'s ${dispute.trickName} set video`}
+                  className="mt-2 max-h-[240px] w-full rounded-xl border border-white/10 bg-black object-cover"
+                />
+              </details>
+            )}
+          </div>
+
+          {showButtons && (
+            <div
+              role="group"
+              aria-label={`Rule on ${dispute.trickName}`}
+              className={`absolute right-3 z-20 flex flex-col gap-3 ${ABOVE_NAV}`}
+            >
+              <button
+                type="button"
+                onClick={() => onVerdict(dispute, "land")}
+                disabled={voting}
+                aria-label={`Land — @${dispute.matcherUsername} landed it`}
+                className={`${RAIL_BTN} border-brand-green/50 bg-brand-green/20 text-brand-green`}
+              >
+                <span className="font-display text-[11px] tracking-wider">LAND</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onVerdict(dispute, "bail")}
+                disabled={voting}
+                aria-label={`Bail — @${dispute.matcherUsername} bailed`}
+                className={`${RAIL_BTN} border-brand-red/50 bg-brand-red/20 text-brand-red`}
+              >
+                <span className="font-display text-[11px] tracking-wider">BAIL</span>
+              </button>
+            </div>
+          )}
+        </>
       )}
     </article>
   );
 });
 
-/**
- * LAND / BAIL split meter plus the raw counts. Replaces the buttons once the
- * viewer has ruled — or straight away when they never could (they're in the
- * game, or voting has closed).
- */
 function DisputeTallyMeter({ tally, ownVerdict }: { tally: DisputeTally; ownVerdict: DisputeVerdict | null }) {
   const total = totalVotes(tally);
-  // Runtime-computed width — the one legitimate inline style on this surface.
   const landWidth = `${landShare(tally) * 100}%`;
 
   return (
-    <div className="px-4 pt-3 pb-4">
-      <div className="flex items-center justify-between mb-1.5">
-        <span
-          className={`font-display text-[11px] tracking-[0.15em] tabular-nums ${
-            ownVerdict === "land" ? "text-brand-green" : "text-brand-green/70"
-          }`}
-        >
-          MAKE {tally.land}
-        </span>
-        <span
-          className={`font-display text-[11px] tracking-[0.15em] tabular-nums ${
-            ownVerdict === "bail" ? "text-brand-red" : "text-brand-red/70"
-          }`}
-        >
-          {tally.bail} BAIL
-        </span>
-      </div>
-
+    <div className="mt-3 max-w-sm rounded-xl bg-black/50 p-2 backdrop-blur-sm">
       <div
         role="img"
-        aria-label={`${tally.land} make, ${tally.bail} bail — ${total} ${total === 1 ? "call" : "calls"} in`}
-        className="h-2 w-full rounded-full bg-brand-red/40 overflow-hidden border border-white/[0.06]"
+        aria-label={`${tally.land} land, ${tally.bail} bail — ${total} ${total === 1 ? "call" : "calls"} in`}
+        className="h-2 w-full overflow-hidden rounded-full border border-white/[0.06] bg-brand-red/40"
       >
-        {/* motion-safe: the meter snaps rather than slides for viewers who
-            asked for reduced motion. */}
         <div
           className="h-full bg-brand-green motion-safe:transition-[width] motion-safe:duration-500 ease-smooth"
           style={{ width: landWidth }}
         />
       </div>
-
-      <div className="flex items-center justify-between mt-2">
-        <p className="font-body text-[11px] text-faint tabular-nums">
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <p className="font-body text-[11px] text-white/70 tabular-nums">
           {total === 0 ? "No calls in yet" : `${total} ${total === 1 ? "call" : "calls"} in`}
         </p>
         {ownVerdict && (
           <span
-            className={`font-display text-[10px] tracking-[0.15em] px-2 py-1 rounded-md border ${
+            className={`rounded-md border px-2 py-1 font-display text-[10px] tracking-[0.15em] ${
               ownVerdict === "land"
-                ? "text-brand-green border-brand-green/40 bg-brand-green/10"
-                : "text-brand-red border-brand-red/40 bg-brand-red/10"
+                ? "border-brand-green/40 bg-brand-green/10 text-brand-green"
+                : "border-brand-red/40 bg-brand-red/10 text-brand-red"
             }`}
           >
-            YOUR CALL · {ownVerdict === "land" ? "MAKE" : "BAIL"}
+            YOUR CALL · {ownVerdict === "land" ? "LAND" : "BAIL"}
           </span>
         )}
       </div>

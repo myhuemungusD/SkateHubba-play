@@ -45,7 +45,7 @@ function fireIntersect(video: HTMLVideoElement, isIntersecting: boolean) {
 
 describe("SpotlightVideo reduced motion", () => {
   it("auto-plays on scroll-in when reduced motion is off", () => {
-    const { container } = render(<SpotlightVideo src="clip.webm" onNext={vi.fn()} />);
+    const { container } = render(<SpotlightVideo src="clip.webm" />);
     const video = container.querySelector("video") as HTMLVideoElement;
     expect(video.autoplay).toBe(true);
     fireIntersect(video, true);
@@ -54,7 +54,7 @@ describe("SpotlightVideo reduced motion", () => {
 
   it("does not auto-play on scroll-in when reduced motion is on", () => {
     reducedMotion.value = true;
-    const { container } = render(<SpotlightVideo src="clip.webm" onNext={vi.fn()} />);
+    const { container } = render(<SpotlightVideo src="clip.webm" />);
     const video = container.querySelector("video") as HTMLVideoElement;
     expect(video.autoplay).toBe(false);
     // No IntersectionObserver is registered in reduced-motion mode.
@@ -62,12 +62,22 @@ describe("SpotlightVideo reduced motion", () => {
     expect(play).not.toHaveBeenCalled();
   });
 
-  it("starts playback via the overlay tap when paused (reduced-motion play affordance)", async () => {
+  it("starts playback via the play button when paused (reduced-motion play affordance)", async () => {
     reducedMotion.value = true;
     // jsdom video elements report paused=true by default.
-    render(<SpotlightVideo src="clip.webm" onNext={vi.fn()} />);
-    await userEvent.click(screen.getByLabelText(/unmute clip/i));
+    render(<SpotlightVideo src="clip.webm" />);
+    await userEvent.click(screen.getByRole("button", { name: /play clip/i }));
     expect(play).toHaveBeenCalled();
+  });
+
+  it("loops and does not autoplay a slide that is not the active page", () => {
+    const { container } = render(<SpotlightVideo src="clip.webm" active={false} />);
+    const video = container.querySelector("video") as HTMLVideoElement;
+    expect(video.loop).toBe(true);
+    expect(video.autoplay).toBe(false);
+    expect(ioCallback).toBeNull();
+    expect(play).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /play clip/i })).not.toBeInTheDocument();
   });
 });
 
@@ -75,7 +85,7 @@ describe("SpotlightVideo playback failure", () => {
   it("RETRY clears the failure overlay and reloads the element", async () => {
     const user = userEvent.setup();
     const load = vi.spyOn(window.HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
-    const { container } = render(<SpotlightVideo src="clip.webm" onNext={vi.fn()} />);
+    const { container } = render(<SpotlightVideo src="clip.webm" />);
     const video = container.querySelector("video") as HTMLVideoElement;
 
     fireEvent.error(video);
@@ -92,14 +102,27 @@ describe("SpotlightVideo playback failure", () => {
     load.mockRestore();
   });
 
-  it("keeps the failure overlay over the ended overlay and disables NEXT while advancing", () => {
-    const { container } = render(<SpotlightVideo src="clip.webm" onNext={vi.fn()} advancing />);
+  it("offers retry without a next-trick control — moving on is a swipe", () => {
+    const { container } = render(<SpotlightVideo src="clip.webm" />);
     const video = container.querySelector("video") as HTMLVideoElement;
-    fireEvent.ended(video);
     fireEvent.error(video);
-    expect(screen.queryByText(/clip ended/i)).not.toBeInTheDocument();
-    const next = screen.getByRole("button", { name: /next trick/i });
-    expect(next).toBeDisabled();
-    expect(next).toHaveTextContent("LOADING…");
+    expect(screen.getByRole("button", { name: /retry clip/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /next trick/i })).not.toBeInTheDocument();
+    expect(video.loop).toBe(true);
+  });
+
+  it("toggles mute from its own control and pauses when the video is tapped", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<SpotlightVideo src="clip.webm" />);
+    const video = container.querySelector("video") as HTMLVideoElement;
+    const pause = vi.spyOn(video, "pause").mockImplementation(() => undefined);
+    Object.defineProperty(video, "paused", { configurable: true, value: false });
+    fireEvent.play(video);
+
+    await user.click(screen.getByRole("button", { name: /unmute clip/i }));
+    expect(screen.getByRole("button", { name: /mute clip/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /pause clip/i }));
+    expect(pause).toHaveBeenCalled();
   });
 });
