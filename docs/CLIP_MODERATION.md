@@ -25,7 +25,7 @@ Turn the client flag on only after the function is deployed and `MODERATION_ENAB
 
 A rejection or a removal writes `moderationStatements/clip_{clipId}` with `action: content_restricted`. Settings lists that statement under Reports & actions. The owner appeals there, which files `appeals/statement_clip_{clipId}`. The notification opens `/settings#safety-reports`.
 
-The Shorts-style feed pull request (#641) had not merged. The owner's "Checking…" strip is `OwnClipModeration` inside the current feed. Keep that mount if the feed file conflicts.
+The owner's "Checking…" strip is `OwnClipModeration`, floating over the full-screen feed. It stays hidden until the client flag is on.
 
 ## Deploy (do this by hand)
 
