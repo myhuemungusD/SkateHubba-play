@@ -208,6 +208,11 @@ describe("submitReport (user-clip targets)", () => {
     expect(batchSet).not.toHaveBeenCalled();
   });
 
+  it("drops a blank dispute id", async () => {
+    await submitReport({ ...base, gameId: "g1", disputeId: "   " });
+    expect(reportSetCall().disputeId).toBeUndefined();
+  });
+
   it("still carries the gameId when one is supplied", async () => {
     await submitReport({ ...base, gameId: "g1" });
 
