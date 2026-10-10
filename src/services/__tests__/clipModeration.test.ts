@@ -13,6 +13,7 @@ vi.mock("firebase/firestore", () => ({
   doc: (_db: unknown, col: string, id: string) => ({ __path: `${col}/${id}` }),
   query: (...args: unknown[]) => ({ __query: args }),
   where: (field: string, op: string, value: unknown) => ({ field, op, value }),
+  orderBy: (field: string, direction: string) => ({ orderBy: field, direction }),
   limit: (n: number) => ({ n }),
   getDocs: vi.fn(async () => ({ docs: state.docs })),
 }));
@@ -101,7 +102,10 @@ describe("parseOwnClip", () => {
       statement: "Checking…",
       appealPath: null,
     });
-    expect(parseOwnClip("c", { source: "user", moderation: "review" })).toMatchObject({ statement: "In review" });
+    expect(parseOwnClip("c", { source: "user", moderation: "review" })).toMatchObject({
+      statement: "In review",
+      appealPath: "/settings#safety-reports",
+    });
     expect(
       parseOwnClip("c", {
         source: "user",
@@ -160,6 +164,15 @@ describe("fetchOwnClipModeration", () => {
     const rows = await fetchOwnClipModeration("me");
     expect(rows).toHaveLength(1);
     expect(rows[0]?.statement).toBe("Checking…");
+    const queried = vi.mocked(getDocs).mock.calls[0]?.[0] as { __query?: unknown[] };
+    expect(queried.__query).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: "playerUid", op: "==", value: "me" }),
+        expect.objectContaining({ field: "source", op: "==", value: "user" }),
+        expect.objectContaining({ field: "moderation", op: "in", value: ["pending", "review", "rejected", "removed"] }),
+        expect.objectContaining({ orderBy: "createdAt", direction: "desc" }),
+      ]),
+    );
   });
 
   it("rejects a bad uid and a failed read", async () => {

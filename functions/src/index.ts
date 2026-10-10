@@ -9,6 +9,7 @@ import { handleDiceCall } from "./dice/callable.js";
 import { sweepExpiredDiceGames } from "./dice/handlers.js";
 import { adminDiceDb } from "./dice/store.js";
 import { handleClipCreated, handleClipReport, handleDecideClip } from "./moderation/handlers.js";
+import { adminClipStore } from "./moderation/publish.js";
 
 /**
  * The app uses the named Firestore database "skatehubba", NOT the (default)
@@ -104,6 +105,7 @@ export const moderateNewClip = onDocumentCreated(
         db: getFirestore(DATABASE_ID),
         enabled: moderationEnabled.value(),
         sentryDsn: moderationSentryDsn.value(),
+        media: adminClipStore(),
       },
       event.params.clipId,
       event.data?.data(),
@@ -120,6 +122,7 @@ export const moderateClipReport = onDocumentCreated(
         db: getFirestore(DATABASE_ID),
         enabled: moderationEnabled.value(),
         sentryDsn: moderationSentryDsn.value(),
+        media: adminClipStore(),
       },
       event.data?.data(),
       Date.now(),
@@ -132,5 +135,5 @@ export const moderateClipReport = onDocumentCreated(
  * review can still be cleared after the screener is switched off.
  */
 export const decideClipModeration = onCall({ region: "us-central1", enforceAppCheck: false }, (request) =>
-  handleDecideClip(request, getFirestore(DATABASE_ID)),
+  handleDecideClip(request, getFirestore(DATABASE_ID), adminClipStore()),
 );

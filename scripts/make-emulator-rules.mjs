@@ -74,13 +74,14 @@ out = replaceExact(
   "BUCKET_BOTH_FORMS_RE() body",
 );
 
-// 4. The concat-site prefixes (userClipVideoUrlOk + the two profile-image
-//    pins) hardcode the production host ahead of FIREBASE_BUCKET().
+// 4. The concat-site prefixes (userClipVideoUrlOk, userClipPublicUrlOk, and
+//    the two profile-image pins) hardcode the production host ahead of
+//    FIREBASE_BUCKET().
 out = replaceExact(
   out,
   "'^https://firebasestorage\\\\.googleapis\\\\.com/v0/b/' + FIREBASE_BUCKET() +",
   `'^${EMU_PREFIX}' + FIREBASE_BUCKET() +`,
-  3,
+  4,
   "concat-site URL prefix",
 );
 

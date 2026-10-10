@@ -30,6 +30,16 @@
       "collectionGroup": "clips",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "playerUid", "order": "ASCENDING" },
+        { "fieldPath": "source", "order": "ASCENDING" },
+        { "fieldPath": "moderation", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "clips",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "moderationStatus", "order": "ASCENDING" },
         { "fieldPath": "upvoteCount", "order": "DESCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" },

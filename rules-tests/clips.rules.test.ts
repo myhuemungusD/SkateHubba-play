@@ -186,6 +186,14 @@ describe("clips — read", () => {
     await seedClip();
     await assertFails(getDoc(clipRef(asAnonymous(), deterministicId())));
   });
+
+  it("a stranger CANNOT read a hidden clip; the owner and an admin can", async () => {
+    const id = await seedClip({ moderationStatus: "hidden", moderation: "removed" });
+    await assertFails(getDoc(clipRef(asStranger(), id)));
+    await assertSucceeds(getDoc(clipRef(asP1(), id)));
+    const admin = testEnv.authenticatedContext("admin-1", { email_verified: true, admin: true });
+    await assertSucceeds(getDoc(clipRef(admin, id)));
+  });
 });
 
 /* ────────────────────────────────────────────

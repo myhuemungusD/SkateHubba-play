@@ -135,11 +135,28 @@ describe("storage userClips — overwrite + delete", () => {
 });
 
 describe("storage userClips — read", () => {
-  it("any signed-in user CAN read (the feed is app-wide); anonymous CANNOT", async () => {
+  it("the owner and an admin CAN read; another signed-in user and anonymous CANNOT", async () => {
     await assertSucceeds(uploadAs(UID_A, `userClips/${UID_A}/clip1.webm`));
-    await assertSucceeds(asUser(UID_B).storage().ref(`userClips/${UID_A}/clip1.webm`).getDownloadURL());
+    await assertSucceeds(asUser(UID_A).storage().ref(`userClips/${UID_A}/clip1.webm`).getDownloadURL());
+    const admin = getEnv().authenticatedContext("admin-uid", { admin: true });
+    await assertSucceeds(admin.storage().ref(`userClips/${UID_A}/clip1.webm`).getDownloadURL());
+    await assertFails(asUser(UID_B).storage().ref(`userClips/${UID_A}/clip1.webm`).getDownloadURL());
     await assertFails(
       getEnv().unauthenticatedContext().storage().ref(`userClips/${UID_A}/clip1.webm`).getDownloadURL(),
     );
+  });
+});
+
+describe("storage approvedClips", () => {
+  it("any signed-in user CAN read an approved clip; anonymous CANNOT", async () => {
+    await assertSucceeds(uploadAs(UID_A, `approvedClips/${UID_A}/clip1.webm`));
+    await assertSucceeds(asUser(UID_B).storage().ref(`approvedClips/${UID_A}/clip1.webm`).getDownloadURL());
+    await assertFails(
+      getEnv().unauthenticatedContext().storage().ref(`approvedClips/${UID_A}/clip1.webm`).getDownloadURL(),
+    );
+  });
+
+  it("attack: CANNOT upload an approved clip under someone else's uid", async () => {
+    await assertFails(uploadAs(UID_A, `approvedClips/${UID_B}/clip1.webm`));
   });
 });

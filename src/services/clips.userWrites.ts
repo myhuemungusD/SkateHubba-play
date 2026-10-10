@@ -73,9 +73,12 @@ export class UserBannedError extends Error {
  * Checked here so a mis-plumbed upload fails with a legible message instead
  * of an opaque rejection at commit time.
  */
-function isUserClipVideoUrl(url: string, uid: string): boolean {
+function isUserClipVideoUrl(url: string, uid: string, pending: boolean): boolean {
+  // A pending clip must point at the private prefix. A public post may use
+  // that prefix (older uploads) or approvedClips/.
+  const prefix = pending ? "userClips" : "(?:userClips|approvedClips)";
   return new RegExp(
-    `^https://firebasestorage\\.googleapis\\.com/v0/b/[^/]+/o/userClips%2F${uid}%2F[A-Za-z0-9_-]+\\.(webm|mp4)(\\?.*)?$`,
+    `^https://firebasestorage\\.googleapis\\.com/v0/b/[^/]+/o/${prefix}%2F${uid}%2F[A-Za-z0-9_-]+\\.(webm|mp4)(\\?.*)?$`,
   ).test(url);
 }
 
@@ -162,11 +165,12 @@ export async function createUserClip(params: CreateUserClipParams): Promise<stri
   if (trimmedTrick.length > MAX_TRICK_NAME_LEN) {
     throw new Error(`Trick names are limited to ${MAX_TRICK_NAME_LEN} characters.`);
   }
+  const moderationOn = isClipModerationEnabled();
   if (
     typeof videoUrl !== "string" ||
     videoUrl.length === 0 ||
     videoUrl.length > MAX_VIDEO_URL_LEN ||
-    !isUserClipVideoUrl(videoUrl, uid)
+    !isUserClipVideoUrl(videoUrl, uid, moderationOn)
   ) {
     throw new Error("That video could not be attached. Please try again.");
   }
@@ -199,7 +203,6 @@ export async function createUserClip(params: CreateUserClipParams): Promise<stri
         }
       }
 
-      const moderationOn = isClipModerationEnabled();
       tx.set(clipRef, {
         // The discriminant. Present on every user clip from day one, which
         // is what lets the mapper read a MISSING source as "game" (every

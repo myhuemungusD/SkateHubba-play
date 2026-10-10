@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   notificationCopy,
   statementForApproval,
+  statementForAutoHide,
   statementForAutoReject,
   statementForRemoval,
   statementForReview,
@@ -23,6 +24,12 @@ describe("statement of reasons", () => {
 
     expect(notificationCopy(statementForApproval()).title).toBe("Clip is live");
     expect(notificationCopy(statementForReview("no skateboard detected")).title).toBe("Clip in review");
+
+    const hidden = statementForAutoHide(["not_skating"]);
+    expect(hidden.decision).toBe("review");
+    expect(hidden.appealPath).toBe("/settings#safety-reports");
+    expect(hidden.statement).toContain("Appeal it in Settings.");
+    expect(notificationCopy(hidden).title).toBe("Clip in review");
   });
 
   it("keeps the notification body inside the bell limit", () => {
