@@ -26,6 +26,8 @@ import { ScrollToTop } from "./components/ScrollToTop";
 import { DeleteAccountRetryBanner } from "./components/DeleteAccountRetryBanner";
 import { useAnalyticsConsent } from "./hooks/useAnalyticsConsent";
 import { isDiceEnabled, isExtrasEnabled } from "./lib/featureFlags";
+import { prefetchLikelyRoutes } from "./lib/routePrefetch";
+import { registerCacheWorker } from "./lib/registerCacheSw";
 import {
   hasBootAppleSignIn,
   hasBootGoogleSignIn,
@@ -129,6 +131,13 @@ function AppScreens() {
   const auth = useAuthContext();
   const { pathname } = useLocation();
   useEmailVerifiedToast(auth.user?.emailVerified);
+
+  // Warm the next route and the asset cache once the page is quiet.
+  // Both no-op under Vitest so render tests don't pull lazy screens.
+  useEffect(() => {
+    registerCacheWorker();
+    prefetchLikelyRoutes(pathname);
+  }, [pathname]);
 
   // Replay a Google tap made on the boot landing before App had loaded.
   const { loading, user, handleGoogleSignIn, handleAppleSignIn } = auth;

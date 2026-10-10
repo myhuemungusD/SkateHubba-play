@@ -4,8 +4,11 @@
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.getRegistrations().then(function (registrations) {
     registrations.forEach(function (registration) {
-      // Keep the FCM service worker — it handles background push notifications
-      if (registration.active && registration.active.scriptURL.includes("firebase-messaging-sw")) return;
+      var worker = registration.active || registration.waiting || registration.installing;
+      var url = worker ? worker.scriptURL : "";
+      // Keep push and the asset cache. An installing worker has no `active`
+      // script yet — unregistering it would drop a registration that just started.
+      if (url.indexOf("firebase-messaging-sw") !== -1 || url.indexOf("asset-cache-sw") !== -1) return;
       registration.unregister();
     });
   });

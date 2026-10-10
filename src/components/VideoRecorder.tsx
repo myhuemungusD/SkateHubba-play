@@ -5,6 +5,7 @@ import { FilmIcon, CameraIcon, RecordIcon, StopIcon, FisheyeIcon, FlipCameraIcon
 import { FisheyeRenderer } from "./FisheyeRenderer";
 import { useMediaRecorder, isIOSSafari } from "../hooks/useMediaRecorder";
 import { MAX_VIDEO_DURATION_SECONDS } from "../constants/video";
+import { CLIP_POSTER } from "../lib/clipPoster";
 
 /**
  * Seconds of lead-in for the "Auto-stop in Ns" warning. The old 60s cap warned
@@ -215,6 +216,8 @@ export function VideoRecorder({
             className="w-full h-full object-cover"
             controls
             playsInline
+            poster={CLIP_POSTER}
+            preload="metadata"
             aria-label="Your recorded trick video"
           />
         ) : (
@@ -224,6 +227,7 @@ export function VideoRecorder({
               className={`w-full h-full object-cover ${showFisheyeOverlay ? "invisible" : ""}`}
               muted
               playsInline
+              preload="none"
               aria-label="Camera preview"
             />
             {showFisheyeOverlay && (

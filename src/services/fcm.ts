@@ -5,6 +5,7 @@ import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { PRIVATE_PROFILE_DOC_ID, getPushEnabled } from "./users";
 import { PUSH_TARGETS_COLLECTION } from "./pushDispatch";
+import { claimMessagingWorker } from "../lib/swClaim";
 
 /**
  * The FCM token issued for this tab/device during the current session.
@@ -43,6 +44,9 @@ let swRegistrationPromise: Promise<ServiceWorkerRegistration> | null = null;
 
 export function getSwRegistration(): Promise<ServiceWorkerRegistration> {
   if (swRegistrationPromise) return swRegistrationPromise;
+  // Set before `register` so the asset-cache worker, which shares this
+  // scope, can see the claim on the same turn and leave push in place.
+  claimMessagingWorker();
 
   /* v8 ignore start -- env vars are always present when firebase.ts init succeeds; ?? guards are defensive */
   const params = new URLSearchParams({

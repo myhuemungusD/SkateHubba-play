@@ -78,7 +78,12 @@ describe("ProfileIdentityCard", () => {
 
   it("renders the custom avatar img when profileImageUrl is set", () => {
     renderWithAvatarUrl("https://example.com/me.webp");
-    expect(document.querySelector('img[src="https://example.com/me.webp"]')).toBeInTheDocument();
+    const img = document.querySelector('img[src="https://example.com/me.webp"]');
+    expect(img).toHaveAttribute("width", "80");
+    expect(img).toHaveAttribute("height", "80");
+    expect(img).toHaveAttribute("sizes", "80px");
+    expect(img).toHaveAttribute("srcset", "https://example.com/me.webp 400w");
+    expect(img).toHaveAttribute("decoding", "async");
   });
 
   it("falls back to the SVG asset when username is empty", () => {

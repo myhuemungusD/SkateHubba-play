@@ -4,6 +4,7 @@ import type { ClipVoteState } from "../../services/clips.upvotes";
 import { ProUsername } from "../ProUsername";
 import { ClipActions } from "./ClipActions";
 import { ABOVE_NAV, FEED_SLIDE } from "./feedLayout";
+import { CLIP_POSTER } from "../../lib/clipPoster";
 import { SpotlightVideo } from "./SpotlightVideo";
 import { relativeClipTime } from "./utils";
 
@@ -91,7 +92,15 @@ export const SpotlightCard = memo(function SpotlightCard({
           mediaLabel={`${clip.playerUsername}'s ${clip.trickName}`}
         />
       ) : (
-        <div className="absolute inset-0 bg-black" />
+        <img
+          src={CLIP_POSTER}
+          alt=""
+          width={360}
+          height={640}
+          decoding="async"
+          loading="lazy"
+          className="absolute inset-0 h-full w-full bg-black object-cover"
+        />
       )}
 
       {active && (
