@@ -244,6 +244,39 @@ service cloud.firestore {
           ))
       );
     }
+    // A clipVotes create must move the matching counter +1 in the same
+    // write. Without this, a bare create followed by a paired delete
+    // drains the tally: the delete still requires -1.
+    function clipVoteCreateTallyOk() {
+      return (
+        (request.resource.data.value == 1
+          && getAfter(/databases/$(database)/documents/clips/$(request.resource.data.clipId)).data.get('upvoteCount', 0)
+             == get(/databases/$(database)/documents/clips/$(request.resource.data.clipId)).data.get('upvoteCount', 0) + 1
+          && getAfter(/databases/$(database)/documents/clips/$(request.resource.data.clipId)).data.get('downvoteCount', 0)
+             == get(/databases/$(database)/documents/clips/$(request.resource.data.clipId)).data.get('downvoteCount', 0))
+        || (request.resource.data.value == -1
+          && getAfter(/databases/$(database)/documents/clips/$(request.resource.data.clipId)).data.get('downvoteCount', 0)
+             == get(/databases/$(database)/documents/clips/$(request.resource.data.clipId)).data.get('downvoteCount', 0) + 1
+          && getAfter(/databases/$(database)/documents/clips/$(request.resource.data.clipId)).data.get('upvoteCount', 0)
+             == get(/databases/$(database)/documents/clips/$(request.resource.data.clipId)).data.get('upvoteCount', 0))
+      );
+    }
+    // Same shape for a dispute verdict: the matching tally goes +1 and the
+    // other tally stays put. getAfter sees the dispute write in this commit.
+    function disputeVoteCreateTallyOk() {
+      return (
+        (request.resource.data.verdict == 'land'
+          && getAfter(/databases/$(database)/documents/disputes/$(request.resource.data.disputeId)).data.landVotes
+             == get(/databases/$(database)/documents/disputes/$(request.resource.data.disputeId)).data.get('landVotes', 0) + 1
+          && getAfter(/databases/$(database)/documents/disputes/$(request.resource.data.disputeId)).data.get('bailVotes', 0)
+             == get(/databases/$(database)/documents/disputes/$(request.resource.data.disputeId)).data.get('bailVotes', 0))
+        || (request.resource.data.verdict == 'bail'
+          && getAfter(/databases/$(database)/documents/disputes/$(request.resource.data.disputeId)).data.bailVotes
+             == get(/databases/$(database)/documents/disputes/$(request.resource.data.disputeId)).data.get('bailVotes', 0) + 1
+          && getAfter(/databases/$(database)/documents/disputes/$(request.resource.data.disputeId)).data.get('landVotes', 0)
+             == get(/databases/$(database)/documents/disputes/$(request.resource.data.disputeId)).data.get('landVotes', 0))
+      );
+    }
 
     // ── Stats are server-only (client fan-out lockdown) ──
     // wins/losses/lastStatsGameId used to be closed out by client writes
@@ -3163,7 +3196,8 @@ service cloud.firestore {
         // `value`, so it blocks BOTH directions — no ranking self-inflation
         // via upvote, and no self-downvote to fake humility/engagement. The
         // service-layer SelfUpvoteError is UX only.
-        && get(/databases/$(database)/documents/clips/$(request.resource.data.clipId)).data.playerUid != request.auth.uid;
+        && get(/databases/$(database)/documents/clips/$(request.resource.data.clipId)).data.playerUid != request.auth.uid
+        && clipVoteCreateTallyOk();
 
       // ── Vote flip (up ⇄ down) ──
       // A flip is issued as delete + set of the SAME voteId inside ONE
@@ -3502,7 +3536,8 @@ service cloud.firestore {
         // You never judge your own trick. This is the AUTHORITATIVE check —
         // the client's canVote flag is a UI affordance, not authorization.
         && get(/databases/$(database)/documents/disputes/$(request.resource.data.disputeId)).data.setterUid != request.auth.uid
-        && get(/databases/$(database)/documents/disputes/$(request.resource.data.disputeId)).data.matcherUid != request.auth.uid;
+        && get(/databases/$(database)/documents/disputes/$(request.resource.data.disputeId)).data.matcherUid != request.auth.uid
+        && disputeVoteCreateTallyOk();
 
       allow update: if false;
 

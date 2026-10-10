@@ -702,6 +702,22 @@ describe("disputes — delete is CLOSED to all clients (Gap B)", () => {
  * ──────────────────────────────────────────── */
 
 describe("disputeVotes", () => {
+  it("attack: a bare verdict create is denied, so a later delete cannot drain the tally", async () => {
+    await seedDispute({ landVotes: 3, bailVotes: 1 });
+    await assertFails(setDoc(voteRef(as(VIEWER_UID), VIEWER_UID), makeValidVote(VIEWER_UID)));
+    await assertFails(retractVote(as(VIEWER_UID), VIEWER_UID, { landVotes: 2 }));
+    expect(await readTally("landVotes")).toBe(3);
+    expect(await readTally("bailVotes")).toBe(1);
+  });
+
+  it("a real land vote still increments, and retracting it restores the tally", async () => {
+    await seedDispute({ landVotes: 3, bailVotes: 1 });
+    await assertSucceeds(voteAndTally(as(VIEWER_UID), VIEWER_UID, makeValidVote(VIEWER_UID), { landVotes: 4 }));
+    expect(await readTally("landVotes")).toBe(4);
+    await assertSucceeds(retractVote(as(VIEWER_UID), VIEWER_UID, { landVotes: 3 }));
+    expect(await readTally("landVotes")).toBe(3);
+    expect(await readTally("bailVotes")).toBe(1);
+  });
   it("any signed-in user CAN read a verdict doc", async () => {
     await seedDispute();
     await seedExistingVote(VIEWER_UID);
