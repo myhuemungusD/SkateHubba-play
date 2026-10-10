@@ -33,7 +33,7 @@ html[data-lcp="auth"] .lcp-shell-auth {
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 1.5rem;
+  padding: 1.5rem 0.25rem;
 }
 
 html[data-lcp="feed"] .lcp-shell-feed {
@@ -49,19 +49,23 @@ html[data-lcp="feed"] .lcp-shell-feed {
 
 .lcp-title {
   margin: 0;
-  /* Leave this box unclipped. max-width/overflow shrink the painted area
-     below the hero subtitle, and that late line becomes LCP. The shell is
-     position:fixed and overflow:hidden, so the wide word cannot scroll. */
 }
 
 .lcp-word {
   display: block;
   margin: 0;
+  white-space: nowrap;
   font-family: Impact, "Arial Black", "Nimbus Sans Narrow", sans-serif;
   font-weight: 400;
-  font-size: 4.5rem;
+  /* 4.5rem is ~508px wide and gets clipped on a 375 screen. Chrome sizes
+     text LCP from the painted glyphs, not the line box, so a smaller font
+     loses to the hero subtitle. scaleX keeps that painted area and fits
+     the word to about 90% of a phone. */
+  font-size: min(21.3vw, 5.75rem);
   line-height: 0.9;
   letter-spacing: 0.04em;
+  transform: scaleX(0.6);
+  transform-origin: center;
   color: #ff6b00;
 }
 
