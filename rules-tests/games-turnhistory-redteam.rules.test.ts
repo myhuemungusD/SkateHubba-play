@@ -248,7 +248,7 @@ describe("games.turnHistory — growth caps", () => {
   });
 
   describe("match-resolution branch (landed, honor system)", () => {
-    it("legitimate: landed path can append a single TurnRecord", async () => {
+    it("denied: a no-letter matching write cannot append a landed TurnRecord", async () => {
       await seedGame({
         currentTurn: P2_UID,
         currentSetter: P1_UID,
@@ -257,13 +257,58 @@ describe("games.turnHistory — growth caps", () => {
         currentTrickVideoUrl: VALID_TRICK_URL,
         turnHistory: [],
       });
-      await assertSucceeds(
+      await assertFails(
         updateDoc(gameRef(asP2()), {
           matchVideoUrl: VALID_MATCH_URL,
           phase: "setting",
           currentSetter: P2_UID,
           currentTurn: P2_UID,
           turnNumber: 2,
+          turnDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
+          turnHistory: arrayUnion(makeTurnRecord(1, { landed: true, letterTo: null })),
+          updatedAt: serverTimestamp(),
+        }),
+      );
+    });
+
+    it("denied: a miss cannot append a landed TurnRecord", async () => {
+      await seedMatching([]);
+      await assertFails(
+        updateDoc(gameRef(asP2()), {
+          p2Letters: 1,
+          phase: "setting",
+          currentTurn: P1_UID,
+          turnNumber: 2,
+          currentTrickName: null,
+          currentTrickVideoUrl: null,
+          matchVideoUrl: VALID_MATCH_URL,
+          turnDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
+          turnHistory: arrayUnion(makeTurnRecord(1, { landed: true, letterTo: null })),
+          updatedAt: serverTimestamp(),
+        }),
+      );
+    });
+
+    it("legitimate: the setter accept appends one landed record for the matcher", async () => {
+      await seedGame({
+        phase: "pendingReview",
+        currentTurn: P2_UID,
+        currentSetter: P1_UID,
+        reviewFor: P2_UID,
+        reviewDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
+        matchVideoUrl: VALID_MATCH_URL,
+        turnNumber: 1,
+        turnHistory: [],
+      });
+      await assertSucceeds(
+        updateDoc(gameRef(asP1()), {
+          phase: "setting",
+          currentSetter: P2_UID,
+          currentTurn: P2_UID,
+          turnNumber: 2,
+          reviewFor: null,
+          reviewDeadline: null,
+          matchVideoUrl: VALID_MATCH_URL,
           turnDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
           turnHistory: arrayUnion(makeTurnRecord(1, { landed: true, letterTo: null })),
           updatedAt: serverTimestamp(),
