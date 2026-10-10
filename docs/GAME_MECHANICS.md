@@ -24,6 +24,10 @@ This app brings that format to mobile, async. You set your trick whenever you wa
 
 Any player can challenge any other player by typing their username in the challenge screen. Self-challenges are blocked both client-side and by Firestore rules. The player who sends the challenge becomes Player 1 and sets the first trick.
 
+Nominating a referee on a **new** game is off (`VITE_FEATURE_REFEREE_ENABLED`, default off — on only when the value is the literal `true`). Owner decision, October 2026: launch simplicity, so every dispute on a new game goes to the community vote. The challenge screen hides the referee field, and `createGame` drops a judge even if the UI is bypassed. A new game therefore follows the honor system: a "landed" claim enters `pendingReview`, and a dispute from the setter enters `communityReview`.
+
+Games already in flight with a judge are unchanged. Pending invites can still be accepted or declined. `disputable`, `setReview`, the Judge / No Judge badge, notifications, stats, and the server referee cron all keep working for those games. Turning the flag on restores the optional referee picker for games created after the redeploy.
+
 ---
 
 ## Turn Structure
@@ -169,7 +173,7 @@ From the game-over screen, either player can start a rematch. A rematch creates 
 
 ## Dispute System
 
-The matcher self-judges whether they landed the trick. If the matcher claims "missed", the letter is assigned immediately and no review is needed. What happens on a claimed "landed" depends on whether the game has a judge:
+The matcher self-judges whether they landed the trick. If the matcher claims "missed", the letter is assigned immediately and no review is needed. What happens on a claimed "landed" depends on whether the game has a judge. New games do not (see Starting a Game): they always take the honor-system path below. The judge path remains for games that already have an accepted referee.
 
 ### Honor system (default — no judge)
 

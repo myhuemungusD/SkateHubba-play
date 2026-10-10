@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router";
 import { getUidByUsername, type UserProfile } from "../services/users";
 import { fetchSpotName } from "../services/spots";
 import { analytics } from "../services/analytics";
+import { isRefereeEnabled } from "../lib/featureFlags";
 import { captureException } from "../lib/sentry";
 import { getUserMessage } from "../utils/helpers";
 import type { StartChallengeOptions } from "../context/GameContext";
@@ -59,10 +60,11 @@ export function ChallengeScreen({
   const rawSpotId = searchParams.get("spot");
   const spotId = rawSpotId && UUID_SHAPE.test(rawSpotId) ? rawSpotId : null;
 
-  // Progressive disclosure gate — referee/spot/invite/rules stay hidden
-  // until the opponent field has a plausibly valid username. Drops upfront
-  // visual load so the user commits to a name before weighing the extras.
-  // Intentionally a local-only check: no directory lookup until Send.
+  // Progressive disclosure gate — spot/invite/rules stay hidden until the
+  // opponent field has a plausibly valid username. The referee picker is a
+  // further gate and renders only when isRefereeEnabled() is on. Drops
+  // upfront visual load so the user commits to a name before weighing the
+  // extras. Intentionally a local-only check: no directory lookup until Send.
   const normalizedOpponent = opponent.toLowerCase().trim();
   const usernameLooksValid =
     normalizedOpponent.length >= MIN_USERNAME_LENGTH && normalizedOpponent !== profile.username;
@@ -98,8 +100,10 @@ export function ChallengeScreen({
       return;
     }
 
-    // Referee picker is optional — only validate when the user filled it in.
-    const judgeNormalized = judge.toLowerCase().trim();
+    // Referee picker is optional, and off unless the launch flag is the
+    // literal "true". When it is off, ignore any leftover handle so a new
+    // game never nominates a judge.
+    const judgeNormalized = isRefereeEnabled() ? judge.toLowerCase().trim() : "";
     if (judgeNormalized && judgeNormalized.length < MIN_USERNAME_LENGTH) {
       setError("Referee username is too short");
       return;
@@ -303,53 +307,55 @@ export function ChallengeScreen({
                 </div>
               )}
 
-              <div className="mt-6 mb-4">
-                {!judgePickerOpen ? (
-                  <button
-                    type="button"
-                    onClick={() => setJudgePickerOpen(true)}
-                    disabled={loading}
-                    className="touch-target inline-flex items-center gap-1 font-body text-sm text-brand-orange hover:text-white transition-colors disabled:opacity-40 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-                    data-testid="add-judge-toggle"
-                  >
-                    + Add a referee? <span className="text-xs text-subtle">(optional — unlocks disputes)</span>
-                  </button>
-                ) : (
-                  <div>
-                    <Field
-                      label="Referee Username (optional)"
-                      name="referee-username"
-                      value={judge}
-                      onChange={(v) => {
-                        if (!loading) setJudge(v.replace(/[^a-zA-Z0-9_]/g, ""));
-                      }}
-                      placeholder="their_handle"
-                      icon="@"
-                      maxLength={20}
+              {isRefereeEnabled() && (
+                <div className="mt-6 mb-4">
+                  {!judgePickerOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => setJudgePickerOpen(true)}
                       disabled={loading}
-                      autoComplete="off"
-                      inputMode="text"
-                      enterKeyHint="send"
-                    />
-                    <div className="flex items-center justify-between -mt-2 mb-2">
-                      <p className="font-body text-xs text-subtle">
-                        A third player who rules on disputes and &quot;Call BS&quot; claims.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setJudge("");
-                          setJudgePickerOpen(false);
+                      className="touch-target inline-flex items-center gap-1 font-body text-sm text-brand-orange hover:text-white transition-colors disabled:opacity-40 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+                      data-testid="add-judge-toggle"
+                    >
+                      + Add a referee? <span className="text-xs text-subtle">(optional — unlocks disputes)</span>
+                    </button>
+                  ) : (
+                    <div>
+                      <Field
+                        label="Referee Username (optional)"
+                        name="referee-username"
+                        value={judge}
+                        onChange={(v) => {
+                          if (!loading) setJudge(v.replace(/[^a-zA-Z0-9_]/g, ""));
                         }}
+                        placeholder="their_handle"
+                        icon="@"
+                        maxLength={20}
                         disabled={loading}
-                        className="touch-target inline-flex items-center justify-center font-body text-xs text-subtle hover:text-brand-red transition-colors disabled:opacity-40 ml-2 shrink-0 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red"
-                      >
-                        Remove
-                      </button>
+                        autoComplete="off"
+                        inputMode="text"
+                        enterKeyHint="send"
+                      />
+                      <div className="flex items-center justify-between -mt-2 mb-2">
+                        <p className="font-body text-xs text-subtle">
+                          A third player who rules on disputes and &quot;Call BS&quot; claims.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setJudge("");
+                            setJudgePickerOpen(false);
+                          }}
+                          disabled={loading}
+                          className="touch-target inline-flex items-center justify-center font-body text-xs text-subtle hover:text-brand-red transition-colors disabled:opacity-40 ml-2 shrink-0 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
 
               <button
                 type="button"

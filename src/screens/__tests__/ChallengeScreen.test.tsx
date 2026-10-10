@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
@@ -42,6 +42,12 @@ vi.mock("../../services/blocking", () => ({
 const profile = { uid: "u1", username: "sk8r", stance: "regular", emailVerified: true, createdAt: null };
 
 beforeEach(() => vi.clearAllMocks());
+afterEach(() => vi.unstubAllEnvs());
+
+/** Turn the new-game referee picker back on. Default is off. */
+function enableReferee(): void {
+  vi.stubEnv("VITE_FEATURE_REFEREE_ENABLED", "true");
+}
 
 describe("ChallengeScreen", () => {
   const defaultProps = {
@@ -191,6 +197,23 @@ describe("ChallengeScreen", () => {
     });
   });
 
+  it("sends no judge and skips the referee lookup while the flag is off", async () => {
+    mockGetUidByUsername.mockResolvedValueOnce("u2");
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    renderWithRouter(<ChallengeScreen {...defaultProps} onSend={onSend} />);
+
+    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+    expect(screen.queryByTestId("add-judge-toggle")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /referee username/i })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByText(/Send Challenge/));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("u2", "rival", sendOptions({ judgeUid: null, judgeUsername: null }));
+    });
+    expect(mockGetUidByUsername).toHaveBeenCalledTimes(1);
+    expect(mockGetUidByUsername).toHaveBeenCalledWith("rival");
+  });
+
   it("forwards null spotId when no ?spot= URL param is present", async () => {
     mockGetUidByUsername.mockResolvedValueOnce("u2");
     const onSend = vi.fn().mockResolvedValue(undefined);
@@ -308,6 +331,7 @@ describe("ChallengeScreen", () => {
   });
 
   it("forwards judge username to onSend when a valid judge is added", async () => {
+    enableReferee();
     // Resolve opponent first, then judge.
     mockGetUidByUsername.mockResolvedValueOnce("u2").mockResolvedValueOnce("u3");
     const onSend = vi.fn().mockResolvedValue(undefined);
@@ -326,6 +350,7 @@ describe("ChallengeScreen", () => {
   });
 
   it("issues opponent + judge UID lookups in parallel (no extra latency on game start)", async () => {
+    enableReferee();
     // Both lookups must be in flight before either resolves — locks in the
     // Promise.all parallelization so a future refactor can't quietly
     // re-serialize the judge lookup and double the start-game round-trip.
@@ -400,6 +425,7 @@ describe("ChallengeScreen", () => {
   });
 
   it("surfaces a judge-specific error and lets the user retry without losing opponent state", async () => {
+    enableReferee();
     // Opponent resolves cleanly, judge lookup network-fails. The error must
     // name the judge field specifically so the user knows they can either
     // retry or remove the judge — the start flow must never be silently
@@ -430,6 +456,7 @@ describe("ChallengeScreen", () => {
   });
 
   it("opponent error wins when both lookups reject", async () => {
+    enableReferee();
     // Both rejections — opponent error takes priority because it's the
     // required field. Avoids confusing the user with two simultaneous
     // banners and keeps the feedback aligned with what they need to fix
@@ -468,6 +495,7 @@ describe("ChallengeScreen", () => {
   });
 
   it("rejects a judge that matches the opponent", async () => {
+    enableReferee();
     mockGetUidByUsername.mockResolvedValueOnce("u2").mockResolvedValueOnce("u2");
     const onSend = vi.fn().mockResolvedValue(undefined);
     renderWithRouter(<ChallengeScreen {...defaultProps} onSend={onSend} />);
@@ -509,8 +537,18 @@ describe("ChallengeScreen", () => {
       renderWithRouter(<ChallengeScreen {...defaultProps} />);
       await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
       expect(screen.getByTestId("challenge-extras")).toBeInTheDocument();
-      expect(screen.getByTestId("add-judge-toggle")).toBeInTheDocument();
+      // Referee nomination is off by default — rules and invite still show.
+      expect(screen.queryByTestId("add-judge-toggle")).not.toBeInTheDocument();
+      expect(screen.queryByText(/Add a referee/)).not.toBeInTheDocument();
       expect(screen.getByTestId("open-rules-sheet")).toBeInTheDocument();
+    });
+
+    it("shows the referee picker only when the flag is the literal true", async () => {
+      enableReferee();
+      renderWithRouter(<ChallengeScreen {...defaultProps} />);
+      await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+      expect(screen.getByTestId("add-judge-toggle")).toBeInTheDocument();
+      expect(screen.getByText(/Add a referee/)).toBeInTheDocument();
     });
 
     it("keeps the extras hidden when the opponent field matches the current user", async () => {
@@ -529,6 +567,7 @@ describe("ChallengeScreen", () => {
     });
 
     it("preserves the judge picker state when the opponent field temporarily becomes invalid", async () => {
+      enableReferee();
       renderWithRouter(<ChallengeScreen {...defaultProps} />);
       const input = screen.getByPlaceholderText("their_handle") as HTMLInputElement;
       await userEvent.type(input, "rival");

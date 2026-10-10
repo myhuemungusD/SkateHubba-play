@@ -6,6 +6,7 @@ import {
   trickCategoryHeadline,
   CUSTOM_CATEGORY_ID,
 } from "../constants/trickCategories";
+import { isRefereeEnabled } from "../lib/featureFlags";
 import { addBreadcrumb } from "../lib/sentry";
 import { withRetry } from "../utils/retry";
 import { metrics } from "./logger";
@@ -33,6 +34,9 @@ import { TURN_DURATION_MS, gamesRef, checkGameCreationRate, recordGameCreation }
  *   • rate limited: one game per `GAME_CREATE_COOLDOWN_MS` per client
  *   • if `judgeUid` is supplied, `judgeUsername` MUST also be supplied and
  *     `judgeUid` MUST differ from both players
+ *   • a judge is written only when `VITE_FEATURE_REFEREE_ENABLED` is the
+ *     literal "true". Otherwise the nomination is dropped and the game
+ *     starts on the honor system, even if a caller bypasses the UI.
  *
  * The challenger is assigned as `player1` and sets first.
  */
@@ -70,7 +74,13 @@ export async function createGame(
   // party. Silently dropping an invalid nomination lets the game fall back to
   // honor system rather than rejecting the whole creation — UI-level guards
   // surface the "can't judge yourself / your opponent" message upstream.
+  //
+  // Launch flag (owner-approved, 2026-10): new games do not get a referee
+  // unless VITE_FEATURE_REFEREE_ENABLED is the literal "true". This is the
+  // bypass guard — a crafted create still writes null judge fields and skips
+  // the invite. Games that already have a judge are not touched here.
   const hasValidJudge =
+    isRefereeEnabled() &&
     typeof judgeUid === "string" &&
     judgeUid.length > 0 &&
     judgeUid !== challengerUid &&

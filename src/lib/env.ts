@@ -67,6 +67,13 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Referee nomination on new games. DEFAULTS TO OFF so a missing env var
+  // cannot put a judge on a new game. Read via isRefereeEnabled().
+  VITE_FEATURE_REFEREE_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // ── Optional: third-party integrations ──────────────────────────────
   VITE_MAPBOX_TOKEN: z.string().optional(),
   // Format validation (mapbox://styles/ prefix or https URL) deliberately
