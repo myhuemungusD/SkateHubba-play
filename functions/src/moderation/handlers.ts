@@ -145,12 +145,14 @@ export async function handleClipReport(options: HandlerOptions, raw: unknown, no
   const report = asRecord(raw);
   const clipId = typeof report?.clipId === "string" ? report.clipId : "";
   const reason = typeof report?.reason === "string" ? report.reason : "";
+  const disputeId = typeof report?.disputeId === "string" ? report.disputeId : "";
   let loaded: Record<string, unknown> | null = null;
   await runReportModeration({
     enabled: options.enabled,
     clipId,
     reason,
     nowMs,
+    disputeId,
     loadClip: async () => {
       if (clipId.length === 0) return null;
       const snap = await options.db.collection("clips").doc(clipId).get();

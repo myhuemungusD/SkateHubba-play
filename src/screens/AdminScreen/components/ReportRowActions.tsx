@@ -8,6 +8,7 @@ export interface ReportRowActionsProps {
   onResolve: (report: AdminReport, explanation: string) => void;
   onDismiss: (report: AdminReport) => void;
   onBan: (report: AdminReport) => void;
+  onHideDispute: (report: AdminReport) => void;
 }
 
 const VERDICT_BTN =
@@ -28,7 +29,14 @@ const VERDICT_BTN =
  * itself resolve the report — the operator still records a verdict, so the
  * audit trail shows both what was decided and what was done.
  */
-export function ReportRowActions({ report, acting, onResolve, onDismiss, onBan }: ReportRowActionsProps) {
+export function ReportRowActions({
+  report,
+  acting,
+  onResolve,
+  onDismiss,
+  onBan,
+  onHideDispute,
+}: ReportRowActionsProps) {
   const [drafting, setDrafting] = useState(false);
   const [explanation, setExplanation] = useState("");
   const statementId = useId();
@@ -94,7 +102,17 @@ export function ReportRowActions({ report, acting, onResolve, onDismiss, onBan }
           {acting ? "..." : "DISMISS"}
         </button>
       </div>
-      <div className="mt-2">
+      <div className="mt-2 flex flex-col gap-2">
+        {report.disputeId && (
+          <ConfirmButton
+            label="Hide dispute"
+            question={`Hide dispute ${report.disputeId} from the feed?`}
+            confirmLabel="Hide"
+            tone="danger"
+            loading={acting}
+            onConfirm={() => onHideDispute(report)}
+          />
+        )}
         <ConfirmButton
           label="Ban user"
           question={`Ban @${report.reportedUsername}?`}

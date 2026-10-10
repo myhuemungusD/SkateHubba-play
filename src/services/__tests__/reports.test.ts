@@ -195,6 +195,19 @@ describe("submitReport (user-clip targets)", () => {
     expect(batchSet).not.toHaveBeenCalled();
   });
 
+  it("records a dispute id without turning the report into a clip report", async () => {
+    await submitReport({ ...base, gameId: "g1", disputeId: "  g1_3  " });
+    const data = reportSetCall();
+    expect(data.disputeId).toBe("g1_3");
+    expect(data.clipId).toBeUndefined();
+    expect(data.gameId).toBe("g1");
+  });
+
+  it("rejects a dispute id that contains a path separator", async () => {
+    await expect(submitReport({ ...base, gameId: "g1", disputeId: "games/g1" })).rejects.toThrow(/not valid/);
+    expect(batchSet).not.toHaveBeenCalled();
+  });
+
   it("still carries the gameId when one is supplied", async () => {
     await submitReport({ ...base, gameId: "g1" });
 

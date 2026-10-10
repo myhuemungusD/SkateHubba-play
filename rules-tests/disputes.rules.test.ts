@@ -584,9 +584,13 @@ describe("disputes — tally increment (paired vote-doc create only)", () => {
     await assertFails(updateDoc(disputeRef(as(P1_UID)), { matchVideoUrl: PINNED_SET_URL }));
   });
 
-  it("nobody can flip moderationStatus (takedown path is Admin SDK only)", async () => {
+  it("a player cannot hide a dispute; an admin can, and only that field", async () => {
     await seedDispute();
     await assertFails(updateDoc(disputeRef(as(P1_UID)), { moderationStatus: "hidden" }));
+    const admin = getEnv().authenticatedContext("admin-1", { email_verified: true, admin: true });
+    await assertFails(updateDoc(disputeRef(admin), { moderationStatus: "hidden", trickName: "rewritten" }));
+    await assertSucceeds(updateDoc(disputeRef(admin), { moderationStatus: "hidden" }));
+    await assertFails(updateDoc(disputeRef(admin), { moderationStatus: "active" }));
   });
 });
 

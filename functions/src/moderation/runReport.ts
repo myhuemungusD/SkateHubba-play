@@ -14,6 +14,11 @@ export interface ReportModerationInput {
   threshold?: number;
   save: (patch: Record<string, unknown>, guard: SaveGuard) => Promise<boolean>;
   notify: (ownerUid: string, statement: StatementOfReasons) => Promise<void>;
+  /**
+   * Set when the report is about a community dispute. Dispute videos and
+   * game videos are not auto-hidden; they wait in the admin queue.
+   */
+  disputeId?: string;
 }
 
 /**
@@ -23,6 +28,7 @@ export interface ReportModerationInput {
  */
 export async function runReportModeration(input: ReportModerationInput): Promise<"hidden" | "ignored"> {
   if (!input.enabled) return "ignored";
+  if (typeof input.disputeId === "string" && input.disputeId.length > 0) return "ignored";
   if (input.clipId.length === 0) return "ignored";
   const clip = await input.loadClip();
   if (!clip || !shouldAutoHideClip(clip)) return "ignored";

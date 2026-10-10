@@ -19,6 +19,10 @@ function voteDeadline(dispute: Dispute): number | null {
 
 export interface DisputeSlidesProps {
   state: DisputeLaneController;
+  /** Signed-in viewer. The matcher cannot report their own attempt. */
+  viewerUid?: string;
+  /** Opens the feed's report modal. Omitted in the standalone lane tests. */
+  onReport?: (dispute: Dispute) => void;
   /** Index of the snapped page in the combined feed. Disputes occupy 0..n-1. */
   activeIndex?: number;
   muted?: boolean;
@@ -44,7 +48,14 @@ export function disputeSlideCount(state: {
  * page here would be a blank swipe before the clips. Loading and failure
  * take a single page so the call is never a silent miss.
  */
-export function DisputeSlides({ state, activeIndex = 0, muted, onToggleMute }: DisputeSlidesProps) {
+export function DisputeSlides({
+  state,
+  viewerUid,
+  onReport,
+  activeIndex = 0,
+  muted,
+  onToggleMute,
+}: DisputeSlidesProps) {
   if (state.loading) {
     return (
       <div
@@ -88,6 +99,7 @@ export function DisputeSlides({ state, activeIndex = 0, muted, onToggleMute }: D
             voting={state.isVoting(dispute.id)}
             deadline={voteDeadline(dispute)}
             onVerdict={state.handleVerdict}
+            onReport={onReport && dispute.matcherUid !== viewerUid ? onReport : undefined}
             active={index === activeIndex}
             near={Math.abs(index - activeIndex) <= 1}
             muted={muted}
@@ -103,7 +115,7 @@ export function DisputeSlides({ state, activeIndex = 0, muted, onToggleMute }: D
  * Standalone entry used by the dispute lane tests. The feed mounts
  * {@link DisputeSlides} itself so disputes and clips share one scroller.
  */
-export function DisputeLane({ viewerUid }: { viewerUid: string }) {
+export function DisputeLane({ viewerUid, onReport }: { viewerUid: string; onReport?: (dispute: Dispute) => void }) {
   const state = useDisputeLaneController(viewerUid);
-  return <DisputeSlides state={state} />;
+  return <DisputeSlides state={state} viewerUid={viewerUid} onReport={onReport} />;
 }

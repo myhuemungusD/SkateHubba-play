@@ -98,8 +98,18 @@ vi.mock("../../services/logger", () => ({
 }));
 
 vi.mock("../ReportModal", () => ({
-  ReportModal: ({ onClose, onSubmitted }: { onClose: () => void; onSubmitted: () => void }) => (
-    <div role="dialog" aria-label="report-modal">
+  ReportModal: ({
+    onClose,
+    onSubmitted,
+    clipId,
+    disputeId,
+  }: {
+    onClose: () => void;
+    onSubmitted: () => void;
+    clipId?: string;
+    disputeId?: string;
+  }) => (
+    <div role="dialog" aria-label="report-modal" data-clip={clipId ?? ""} data-dispute={disputeId ?? ""}>
       <button onClick={onSubmitted}>__submit__</button>
       <button onClick={onClose}>__close__</button>
     </div>
@@ -945,6 +955,19 @@ describe("ClipsFeed", () => {
       const prefetched = document.querySelector("video[aria-hidden='true']") as HTMLVideoElement | null;
       expect(prefetched?.src).toContain("b.webm");
     });
+  });
+
+  it("reports a dispute into the same modal, without a clip id", async () => {
+    const user = userEvent.setup();
+    mockFetchOpenDisputes.mockResolvedValueOnce([makeDispute({ setVideoUrl: null })]);
+    mockFetchDisputeViewerState.mockResolvedValueOnce(new Map([["g1_3", { ownVerdict: null, canVote: false }]]));
+    mockFetchClipsFeed.mockResolvedValueOnce([]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+
+    await user.click(await screen.findByRole("button", { name: /report @bob's attempt/i }));
+    const dialog = await screen.findByRole("dialog", { name: "report-modal" });
+    expect(dialog).toHaveAttribute("data-dispute", "g1_3");
+    expect(dialog).toHaveAttribute("data-clip", "");
   });
 
   it("puts open disputes ahead of clips and stays put after a LAND vote", async () => {
