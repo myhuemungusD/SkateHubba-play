@@ -101,6 +101,15 @@ describe("safeParseEnv", () => {
     },
   );
 
+  it.each(flagCases)(
+    "parses VITE_FEATURE_REFEREE_ENABLED=%j as %s (referee on new games, default off)",
+    (raw, expected) => {
+      const result = safeParseEnv({ ...validEnv, VITE_FEATURE_REFEREE_ENABLED: raw });
+      expect(result).not.toBeNull();
+      expect(result?.VITE_FEATURE_REFEREE_ENABLED).toBe(expected);
+    },
+  );
+
   it("accepts every optional var when provided with a valid string", () => {
     const result = safeParseEnv({
       ...validEnv,

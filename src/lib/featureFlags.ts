@@ -47,3 +47,13 @@ export function isDiceEnabled(): boolean {
 export function isAppleSignInEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_APPLE_SIGNIN_ENABLED);
 }
+
+/**
+ * Nominating a referee on a NEW game. Off for launch simplicity: every new
+ * dispute goes to the community vote (pendingReview → communityReview).
+ * Literal "true" only. Existing games that already have a judge are
+ * unaffected — this flag is read only at create time.
+ */
+export function isRefereeEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_REFEREE_ENABLED);
+}
