@@ -1,0 +1,73 @@
+name: iOS signing bootstrap
+# One-time (and certificate-renewal) job. Creates the Apple Distribution
+# certificate and the App Store profile, encrypts them with MATCH_PASSWORD,
+# and pushes them to the private match repo. TestFlight runs do not do this.
+# Owner-approved: there is no Mac in this path. The runner is GitHub's macOS
+# image. Run it once from the Actions tab after the secrets in
+# docs/IOS_RELEASE.md exist. Re-run it only to renew the certificate (about
+# once a year) or if this job failed before it pushed.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-signing-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    name: Create the distribution certificate
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Require signing secrets
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          bash .github/scripts/require-github-secrets.sh \
+            ASC_KEY_ID \
+            ASC_ISSUER_ID \
+            ASC_KEY_P8 \
+            MATCH_PASSWORD \
+            MATCH_GIT_BASIC_AUTHORIZATION \
+            APPLE_TEAM_ID
+
+      - name: Show Xcode
+        run: xcodebuild -version
+
+      - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Create the App Store certificate and profile
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_KEYCHAIN_NAME: skatehubba-ci
+          MATCH_READONLY: "false"
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          FASTLANE_SKIP_UPDATE_CHECK: "true"
+          FASTLANE_HIDE_CHANGELOG: "true"
+          FASTLANE_DONT_STORE_PASSWORD: "1"
+        run: |
+          set -euo pipefail
+          # Ephemeral keychain password for this runner only. It is not the
+          # match passphrase, and it is not printed.
+          export MATCH_KEYCHAIN_PASSWORD
+          MATCH_KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          bundle exec fastlane ios certificates
