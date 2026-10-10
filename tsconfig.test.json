@@ -9,6 +9,6 @@
   // import the cron handler from `api/cron/`, type-check here. The api files are
   // also in `tsconfig.api.json`; both projects set `noEmit`, so there is no
   // duplicate-output conflict.
-  "include": ["src", "api"],
+  "include": ["src", "api", "scripts/deferAppCss.ts"],
   "exclude": []
 }

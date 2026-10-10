@@ -15,6 +15,11 @@ interface Navigator {
   contacts?: ContactsManager;
 }
 
+interface Window {
+  /** Set by public/lcp-shell.js when a pre-JS shell is on screen. */
+  __skatehubbaLcpShell?: "home" | "auth" | "feed";
+}
+
 interface ImportMetaEnv {
   readonly VITE_FIREBASE_API_KEY: string;
   readonly VITE_FIREBASE_AUTH_DOMAIN: string;

@@ -62,7 +62,7 @@ import {
   deleteAccount,
   resolveGoogleRedirect,
 } from "../auth";
-import { auth } from "../../firebase";
+import { auth, ensureAppCheck } from "../../firebase";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -586,6 +586,51 @@ describe("auth service", () => {
       const err = new Error("cross-origin");
       mockGetRedirectResult.mockRejectedValueOnce(err);
       await expect(resolveGoogleRedirect()).rejects.toBe(err);
+    });
+
+    it("warms App Check only when a Google redirect is pending", async () => {
+      const apiKey = "test-redirect-key";
+      vi.stubEnv("VITE_FIREBASE_API_KEY", apiKey);
+      const storageKey = `firebase:pendingRedirect:${apiKey}:[DEFAULT]`;
+      mockGetRedirectResult.mockResolvedValueOnce(null);
+      await resolveGoogleRedirect();
+      expect(ensureAppCheck).not.toHaveBeenCalled();
+
+      sessionStorage.setItem(storageKey, "true");
+      try {
+        mockGetRedirectResult.mockResolvedValueOnce(null);
+        await resolveGoogleRedirect();
+        expect(ensureAppCheck).toHaveBeenCalledTimes(1);
+      } finally {
+        sessionStorage.removeItem(storageKey);
+      }
+    });
+
+    it("skips the App Check warmup when sessionStorage throws", async () => {
+      vi.stubEnv("VITE_FIREBASE_API_KEY", "test-redirect-key");
+      const spy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+        throw new Error("denied");
+      });
+      mockGetRedirectResult.mockResolvedValueOnce(null);
+      try {
+        await resolveGoogleRedirect();
+        expect(ensureAppCheck).not.toHaveBeenCalled();
+        spy.mockImplementation(() => {
+          throw "denied";
+        });
+        mockGetRedirectResult.mockResolvedValueOnce(null);
+        await resolveGoogleRedirect();
+        expect(ensureAppCheck).not.toHaveBeenCalled();
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("skips the App Check warmup when the Firebase api key is empty", async () => {
+      vi.stubEnv("VITE_FIREBASE_API_KEY", "");
+      mockGetRedirectResult.mockResolvedValueOnce(null);
+      await resolveGoogleRedirect();
+      expect(ensureAppCheck).not.toHaveBeenCalled();
     });
 
     it("skips getRedirectResult in emulator mode", async () => {

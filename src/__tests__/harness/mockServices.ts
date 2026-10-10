@@ -374,6 +374,8 @@ export interface FirebaseModule {
   db: Record<string, never>;
   storage: Record<string, never>;
   default: Record<string, never>;
+  ensureAppCheck: () => Promise<void>;
+  ensureStorage: () => Promise<unknown>;
 }
 
 export interface FirebaseMocks {
@@ -391,6 +393,8 @@ export function createFirebaseMocks(): FirebaseMocks {
       db: {},
       storage: {},
       default: {},
+      ensureAppCheck: async () => undefined,
+      ensureStorage: async () => ({}),
     },
   };
 }

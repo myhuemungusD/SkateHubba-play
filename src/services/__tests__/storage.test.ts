@@ -47,6 +47,8 @@ vi.mock("../../firebase", () => ({
   // therefore expose a signed-in auth stub.
   requireAuth: () => ({ currentUser: { uid: "test-uid" } }),
   requireStorage: () => ({}),
+  ensureStorage: async () => ({}),
+  ensureAppCheck: async () => undefined,
 }));
 
 vi.mock("../analytics", () => ({
@@ -338,7 +340,9 @@ describe("storage service", () => {
       const blob = validBlob();
       const promise = uploadVideo("game1", 1, "set", blob, undefined, 0, controller.signal);
 
-      // Abort after the task has been created.
+      // Storage init is async now. Yield once so the resumable task exists,
+      // then abort the in-flight upload.
+      await Promise.resolve();
       controller.abort();
 
       await expect(promise).rejects.toMatchObject({ name: "AbortError" });

@@ -20,6 +20,7 @@ import { captureException } from "../lib/sentry";
 import { isBenignAuthCode, getAuthErrorMessage } from "../utils/authCodes";
 import { useNotifications } from "../context/NotificationContext";
 import { isAppleSignInEnabled } from "../lib/featureFlags";
+import { clearBootAuthDraft, peekBootAuthDraft } from "../boot/landingBoot";
 
 export function AuthScreen({
   mode,
@@ -70,15 +71,16 @@ export function AuthScreen({
   /** Navigate to the privacy/terms screen from inline consent links. */
   onNavLegal?: (screen: "privacy" | "terms") => void;
 }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
+  const bootDraft = peekBootAuthDraft();
+  const [email, setEmail] = useState(bootDraft.email);
+  const [password, setPassword] = useState(bootDraft.password);
+  const [confirm, setConfirm] = useState(bootDraft.confirm);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [month, setMonth] = useState("");
-  const [day, setDay] = useState("");
-  const [year, setYear] = useState("");
-  const [parentConsent, setParentConsent] = useState(false);
+  const [month, setMonth] = useState(bootDraft.month);
+  const [day, setDay] = useState(bootDraft.day);
+  const [year, setYear] = useState(bootDraft.year);
+  const [parentConsent, setParentConsent] = useState(bootDraft.parentConsent);
   const [ageBlocked, setAgeBlocked] = useState(false);
   const [error, setError] = useState("");
   // Cleared alongside `error`; drives the inline recovery affordances below.
@@ -232,6 +234,12 @@ export function AuthScreen({
       setLoading(false);
     }
   };
+
+  // Drop the boot-shell draft once this screen owns the fields. State was
+  // already seeded from it; StrictMode reuses that state.
+  useEffect(() => {
+    clearBootAuthDraft();
+  }, []);
 
   const handleReset = async () => {
     if (!EMAIL_RE.test(email.trim())) {

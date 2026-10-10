@@ -1,6 +1,6 @@
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject, listAll } from "firebase/storage";
 import { Capacitor } from "@capacitor/core";
-import { requireAuth, requireStorage } from "../firebase";
+import { ensureStorage, requireAuth, requireStorage } from "../firebase";
 import { analytics } from "./analytics";
 import { logger, metrics } from "./logger";
 import { isRetryable } from "../utils/retry";
@@ -176,6 +176,7 @@ async function runResumableUpload(req: ResumableUploadRequest): Promise<string> 
     throw new DOMException("Upload cancelled", "AbortError");
   }
 
+  await ensureStorage();
   const storageRef = ref(requireStorage(), path);
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -404,6 +405,7 @@ export async function uploadUserClip(
 export async function deleteUserClipVideo(uid: string, clipId: string): Promise<number> {
   if (!uid || uid.includes("/") || !clipId || clipId.includes("/")) return 0;
 
+  await ensureStorage();
   const storage = requireStorage();
   let deleted = 0;
 
@@ -434,6 +436,7 @@ export async function deleteUserClipVideo(uid: string, clipId: string): Promise<
  * Best-effort: logs failures but does not throw (caller handles cleanup).
  */
 export async function deleteGameVideos(gameId: string): Promise<number> {
+  await ensureStorage();
   const storage = requireStorage();
   const gameRef = ref(storage, `games/${gameId}`);
   let deleted = 0;

@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
+import { deferAppEntry, deferAppStylesheet } from "./scripts/deferAppCss";
 
 /**
  * Vite plugin that injects real Firebase config values into the service worker
@@ -11,6 +12,19 @@ import { resolve } from "path";
  * tokens that this plugin replaces with VITE_FIREBASE_* env vars when copying
  * the file into dist/.
  */
+function deferAppCssPlugin(): Plugin {
+  return {
+    name: "defer-app-css",
+    apply: "build",
+    transformIndexHtml: {
+      order: "post",
+      handler(html) {
+        return deferAppEntry(deferAppStylesheet(html));
+      },
+    },
+  };
+}
+
 function firebaseSwPlugin(): Plugin {
   return {
     name: "firebase-sw-config",
@@ -78,7 +92,7 @@ const browserSentryDsnFallback =
   !process.env.VITE_SENTRY_DSN && process.env.VERCEL_ENV === "production" ? (process.env.SENTRY_DSN ?? "").trim() : "";
 
 export default defineConfig({
-  plugins: [tailwindcss(), react(), firebaseSwPlugin()],
+  plugins: [tailwindcss(), react(), firebaseSwPlugin(), deferAppCssPlugin()],
   define: {
     ...(browserSentryDsnFallback
       ? { "import.meta.env.VITE_SENTRY_DSN": JSON.stringify(browserSentryDsnFallback) }
@@ -97,12 +111,32 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: "hidden",
+    // Modern browsers only. Drops the legacy polyfill/transform output that
+    // Lighthouse was counting as unused JavaScript.
+    target: "es2022",
     modulePreload: { polyfill: false },
     rollupOptions: {
       output: {
         manualChunks(id) {
+          // Specific packages first so auth/firestore/storage/app-check can
+          // load on the route that needs them instead of one shared chunk.
+          if (id.includes("node_modules/firebase/app-check") || id.includes("node_modules/@firebase/app-check")) {
+            return "firebase-app-check";
+          }
+          if (id.includes("node_modules/firebase/firestore") || id.includes("node_modules/@firebase/firestore")) {
+            return "firebase-firestore";
+          }
+          if (id.includes("node_modules/firebase/storage") || id.includes("node_modules/@firebase/storage")) {
+            return "firebase-storage";
+          }
+          if (id.includes("node_modules/firebase/auth") || id.includes("node_modules/@firebase/auth")) {
+            return "firebase-auth";
+          }
+          if (id.includes("node_modules/firebase/messaging") || id.includes("node_modules/@firebase/messaging")) {
+            return "firebase-messaging";
+          }
           if (id.includes("node_modules/firebase/") || id.includes("node_modules/@firebase/")) {
-            return "firebase";
+            return "firebase-core";
           }
           if (id.includes("node_modules/react-dom/") || id.includes("node_modules/react/")) {
             return "react";

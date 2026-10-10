@@ -23,6 +23,12 @@
  *     database) cannot have a session either. Anything uncertain falls back
  *     to the normal path.
  *
+ * The same fast path also paints `/auth` and `/feed`. Those routes used to
+ * wait on the App chunk plus Firebase Auth before their first text or image,
+ * which made that content the LCP element several seconds late. Signed-out
+ * visitors get a static shell immediately; App replaces it once it can render
+ * the real screen.
+ *
  * Clicks on the boot landing before App arrives are recorded here as intents
  * and replayed once App is up (auth mode for /auth, Google sign-in).
  */
@@ -31,8 +37,8 @@ export const AUTH_HINT_KEY = "sh_auth_hint";
 /** Firebase Auth's IndexedDB persistence database (browserLocalPersistence). */
 export const FIREBASE_AUTH_IDB_NAME = "firebaseLocalStorageDb";
 
-/** Paths that can be served by the boot landing. */
-const BOOT_PATHS: ReadonlySet<string> = new Set(["/"]);
+/** Paths painted before the App chunk: landing, auth shell, feed poster. */
+const BOOT_PATHS: ReadonlySet<string> = new Set(["/", "/auth", "/feed"]);
 
 export function writeAuthHint(signedIn: boolean): void {
   try {
@@ -80,6 +86,41 @@ let booted = false;
 let pendingAuthMode: "signup" | "signin" | null = null;
 let pendingGoogle = false;
 let pendingApple = false;
+
+export interface BootAuthDraft {
+  email: string;
+  password: string;
+  confirm: string;
+  month: string;
+  day: string;
+  year: string;
+  parentConsent: boolean;
+}
+
+const EMPTY_AUTH_DRAFT: BootAuthDraft = {
+  email: "",
+  password: "",
+  confirm: "",
+  month: "",
+  day: "",
+  year: "",
+  parentConsent: false,
+};
+
+let authDraft: BootAuthDraft = { ...EMPTY_AUTH_DRAFT };
+
+/** Field values typed on the auth shell before AuthScreen mounts. */
+export function peekBootAuthDraft(): BootAuthDraft {
+  return authDraft;
+}
+
+export function updateBootAuthDraft(patch: Partial<BootAuthDraft>): void {
+  authDraft = { ...authDraft, ...patch };
+}
+
+export function clearBootAuthDraft(): void {
+  authDraft = { ...EMPTY_AUTH_DRAFT };
+}
 
 /** Called once by main.tsx with the boot decision. */
 export function setLandingBooted(value: boolean): void {
@@ -187,6 +228,7 @@ export function __resetLandingBootForTest(): void {
   pendingAuthMode = null;
   pendingGoogle = false;
   pendingApple = false;
+  authDraft = { ...EMPTY_AUTH_DRAFT };
   shellActive = true;
   bridge = null;
   listeners.clear();

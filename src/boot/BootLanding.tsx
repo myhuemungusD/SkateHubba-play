@@ -2,6 +2,8 @@ import { useState, useSyncExternalStore } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Landing } from "../screens/Landing";
 import { Spinner } from "../components/ui/Spinner";
+import { BootAuth } from "./BootAuth";
+import { BootFeed } from "./BootFeed";
 import {
   getLandingBridge,
   hasBootAppleSignIn,
@@ -20,7 +22,8 @@ const LEGAL_PATHS = { privacy: "/privacy", terms: "/terms", datadeletion: "/data
  * interactions are routed or recorded as intents for App to pick up; once App
  * is mounted it publishes its real handlers through the shell bridge and this
  * same <Landing> instance keeps rendering with them (no remount). Anything
- * other than `/` shows the same spinner App would while it finishes loading.
+ * `/auth` and `/feed` paint their own shells (the auth card, the feed
+ * poster). Anything else shows the same spinner App would while it loads.
  */
 export function BootLanding() {
   const navigate = useNavigate();
@@ -29,6 +32,8 @@ export function BootLanding() {
   const [applePending, setApplePending] = useState(hasBootAppleSignIn);
   const bridge = useSyncExternalStore(subscribeBootShell, getLandingBridge);
 
+  if (pathname === "/auth") return <BootAuth />;
+  if (pathname === "/feed") return <BootFeed />;
   if (pathname !== "/") return <Spinner />;
 
   if (bridge) return <Landing {...bridge} />;

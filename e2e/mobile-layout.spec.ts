@@ -7,7 +7,7 @@
  */
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import { clearAll, createProfile, createUser, writeDoc } from "./helpers/emulator";
-import { signInViaUI, signUpAndSetupProfile } from "./helpers/auth-flow";
+import { signInViaUI, signUpAndSetupProfile, waitForAuthForm } from "./helpers/auth-flow";
 import { DICE_ENABLED } from "./helpers/feature-flags";
 import { openSetterSession } from "./helpers/game-flow";
 import { dismissBottomOverlays } from "./helpers/lobby-nav";
@@ -105,6 +105,7 @@ test("iPhone SE signup can scroll the date of birth clear of the cookie banner",
   await page.setViewportSize({ width: 375, height: 667 });
   await page.goto("/");
   await page.getByRole("button", { name: "Create account", exact: true }).click();
+  await waitForAuthForm(page);
   await expect(page.getByRole("heading", { name: "Create Account" })).toBeVisible();
   const month = page.getByLabel("Birth month");
   await month.scrollIntoViewIfNeeded();
