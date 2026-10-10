@@ -46,14 +46,6 @@
       ]
     },
     {
-      "collectionGroup": "disputeVotes",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "disputeId", "order": "ASCENDING" },
-        { "fieldPath": "__name__", "order": "ASCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "clips",
       "queryScope": "COLLECTION",
       "fields": [
