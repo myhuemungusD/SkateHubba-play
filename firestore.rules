@@ -306,6 +306,45 @@ service cloud.firestore {
       );
     }
 
+    // Same length, or both absent. A same-length rewrite is still denied by
+    // turnHistoryGrowthOk, which compares the lists only after the sizes
+    // match and skips that compare on an append. This helper must not walk
+    // the list: a full compare on every game-update branch crosses
+    // Firestore's 1000-expression cap (the forfeit write is the one that
+    // pays for the branches ahead of it).
+    function turnHistoryUnchanged() {
+      return (!('turnHistory' in resource.data) && !('turnHistory' in request.resource.data))
+        || ('turnHistory' in resource.data
+            && 'turnHistory' in request.resource.data
+            && resource.data.turnHistory is list
+            && request.resource.data.turnHistory is list
+            && request.resource.data.turnHistory.size() == resource.data.turnHistory.size());
+    }
+
+    // The three fields stats close-out trusts, read off the one new entry.
+    function appendedEntryAgrees(entry, landed, letterTo, matcherUid) {
+      return entry.landed == landed
+        && entry.letterTo == letterTo
+        && entry.matcherUid == matcherUid;
+    }
+
+    function lastTurnAgrees(landed, letterTo, matcherUid) {
+      return 'turnHistory' in request.resource.data
+        && request.resource.data.turnHistory is list
+        && request.resource.data.turnHistory.size() > 0
+        && (
+          !('turnHistory' in resource.data)
+          || (resource.data.turnHistory is list
+              && request.resource.data.turnHistory.size() == resource.data.turnHistory.size() + 1)
+        )
+        && appendedEntryAgrees(
+          request.resource.data.turnHistory[request.resource.data.turnHistory.size() - 1],
+          landed,
+          letterTo,
+          matcherUid
+        );
+    }
+
     // ── Users ──
     // The `users/{uid}` document holds ONLY fields that are safe to expose
     // cross-user (username, stance, wins/losses, isVerifiedPro, …). Any
@@ -1307,6 +1346,10 @@ service cloud.firestore {
         // budget for the request (silent PERMISSION_DENIED). Pure
         // optimization: the accepted set is unchanged.
         && resource.data.phase == 'setting'
+        // Forfeit flips status and is decided by the forfeit rule below.
+        // Reject it before the field pins so that write does not spend this
+        // rule's budget on the way there (together they cross the 1000 cap).
+        && request.resource.data.status == 'active'
         && request.auth.uid == resource.data.currentTurn
         // Rate limit: at most one turn action per 2 seconds (prevents write flooding).
         // The cooldown below compares against the STORED updatedAt; without
@@ -1448,6 +1491,10 @@ service cloud.firestore {
         && isPlayer(resource.data)
         && resource.data.status == 'active'
         && resource.data.phase == 'matching'
+        // Forfeit is not a match resolution. Fail it before the field pins
+        // and the video-url check; the forfeit rule is later in this OR-chain
+        // and the cumulative cost otherwise hits the 1000-expression cap.
+        && (request.resource.data.status == 'active' || request.resource.data.status == 'complete')
         && request.auth.uid == resource.data.currentTurn
         // Rate limit. New updatedAt must equal request.time — prevents the
         // stored-value spoof where a client writes epoch 0 to keep the 2s
@@ -1535,6 +1582,21 @@ service cloud.firestore {
         // plentiful (the O(n) full-list compare is gated behind a size check
         // and skipped on the append path — see turnHistoryGrowthOk).
         && turnHistoryGrowthOk()
+        // A new entry on this branch is a miss: the matcher (currentTurn)
+        // failed, so landed is false and the letter names that same uid.
+        // No-letter writes (freeze, judge routing) may not append.
+        && (
+          turnHistoryUnchanged()
+          || (
+            (
+              (resource.data.currentTurn == resource.data.player1Uid
+               && request.resource.data.p1Letters == resource.data.p1Letters + 1)
+              || (resource.data.currentTurn == resource.data.player2Uid
+                  && request.resource.data.p2Letters == resource.data.p2Letters + 1)
+            )
+            && lastTurnAgrees(false, resource.data.currentTurn, resource.data.currentTurn)
+          )
+        )
         // ── Turn-order seize guard (P0) ──
         // Extracted to matchResolutionPinsOk() so this rule stays under
         // Firestore's per-evaluation node ceiling once main's #373 guard and
@@ -1661,6 +1723,13 @@ service cloud.firestore {
         // turnHistory growth bound — accept appends exactly one landed record;
         // dispute leaves it unchanged (pinned above). Same +1 / ≤200 ceiling.
         && turnHistoryGrowthOk()
+        // Accept may append one landed record for the matcher. A dispute
+        // leaves history unchanged. A miss record on accept would forge a letter.
+        && (
+          turnHistoryUnchanged()
+          || (request.resource.data.phase == 'setting'
+              && lastTurnAgrees(true, null, opponentUid(resource.data, resource.data.currentSetter)))
+        )
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
         && cronNotifyTombstonesUnchanged()
@@ -1767,6 +1836,25 @@ service cloud.firestore {
         // TurnRecord with judgedBy set. Same 1-per-write + ≤200 ceiling
         // the match-resolution branch enforces.
         && turnHistoryGrowthOk()
+        // Accept (no letter) appends a land. Overrule appends a miss naming
+        // the matcher, and only when that matcher actually took the letter.
+        && (
+          turnHistoryUnchanged()
+          || (
+            request.resource.data.p1Letters == resource.data.p1Letters
+            && request.resource.data.p2Letters == resource.data.p2Letters
+            && lastTurnAgrees(true, null, opponentUid(resource.data, resource.data.currentSetter))
+          )
+          || (
+            lastTurnAgrees(false, opponentUid(resource.data, resource.data.currentSetter), opponentUid(resource.data, resource.data.currentSetter))
+            && (
+              (opponentUid(resource.data, resource.data.currentSetter) == resource.data.player1Uid
+               && request.resource.data.p1Letters == resource.data.p1Letters + 1)
+              || (opponentUid(resource.data, resource.data.currentSetter) == resource.data.player2Uid
+                  && request.resource.data.p2Letters == resource.data.p2Letters + 1)
+            )
+          )
+        )
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
         && cronNotifyTombstonesUnchanged()
@@ -1834,6 +1922,9 @@ service cloud.firestore {
         // append a TurnRecord noting the invalidated set. Same cap as the
         // other resolution branches.
         && turnHistoryGrowthOk()
+        // The client does not append on a Call BS ruling. An entry here
+        // would be a land or a letter the ruling did not award.
+        && turnHistoryUnchanged()
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
         && cronNotifyTombstonesUnchanged()
@@ -1941,6 +2032,12 @@ service cloud.firestore {
         // helper also accepts the "unchanged" shape for callers that don't
         // append (forward-compat).
         && turnHistoryGrowthOk()
+        // The closing entry records the timed-out player taking the letter.
+        // matcherUid stays the setter's opponent, matching the forfeit writer.
+        && (
+          turnHistoryUnchanged()
+          || lastTurnAgrees(false, resource.data.currentTurn, opponentUid(resource.data, resource.data.currentSetter))
+        )
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
         && cronNotifyTombstonesUnchanged()
@@ -2005,6 +2102,12 @@ service cloud.firestore {
         // turnHistory growth bound — auto-accept writes a TurnRecord for
         // the expired dispute. Same 1-per-write + ≤200 ceiling.
         && turnHistoryGrowthOk()
+        // Auto-accept stands the landed claim: no letter, matcher is the
+        // setter's opponent. A miss entry here would invent a letter.
+        && (
+          turnHistoryUnchanged()
+          || lastTurnAgrees(true, null, opponentUid(resource.data, resource.data.currentSetter))
+        )
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
         && cronNotifyTombstonesUnchanged()
@@ -2054,6 +2157,8 @@ service cloud.firestore {
         // the helper to enforce the absolute 200-entry ceiling and block
         // any sneaky append.
         && turnHistoryGrowthOk()
+        // This path does not finish a turn. History stays as stored.
+        && turnHistoryUnchanged()
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
         && cronNotifyTombstonesUnchanged()

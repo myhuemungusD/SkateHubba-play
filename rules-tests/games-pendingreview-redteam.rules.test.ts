@@ -226,7 +226,7 @@ describe("pendingReview → setting (setter ACCEPTS the claim)", () => {
     currentSetter: P2_UID, // rotate to the matcher
     currentTurn: P2_UID,
     turnNumber: TURN + 1,
-    turnHistory: [{ turnNumber: TURN, landed: true, letterTo: null }],
+    turnHistory: [{ turnNumber: TURN, landed: true, letterTo: null, matcherUid: P2_UID }],
     reviewFor: null,
     reviewDeadline: null,
     turnDeadline: future(),
@@ -379,7 +379,6 @@ describe("instant honor landed→setting swap is denied", () => {
         currentSetter: P2_UID,
         currentTurn: P2_UID,
         turnNumber: TURN + 1,
-        turnHistory: [{ turnNumber: TURN, landed: true, letterTo: null }],
         matchVideoUrl: VALID_MATCH_URL,
         turnDeadline: future(),
         updatedAt: serverTimestamp(),

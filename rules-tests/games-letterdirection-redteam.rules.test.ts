@@ -75,7 +75,7 @@ describe("games — match resolution letter direction (win forgery)", () => {
         currentSetter: P1_UID,
         currentTurn: P1_UID,
         turnNumber: 8,
-        turnHistory: [{ turnNumber: 7, landed: false, letterTo: P2_UID }],
+        turnHistory: [{ turnNumber: 7, landed: false, letterTo: P2_UID, matcherUid: P2_UID }],
         matchVideoUrl: VALID_MATCH_URL,
         turnDeadline: future(),
         updatedAt: serverTimestamp(),
