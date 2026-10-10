@@ -23,6 +23,7 @@ import { isBenignAuthCode, getAuthErrorMessage } from "../utils/authCodes";
 import { useNotifications } from "../context/NotificationContext";
 import { isAppleSignInEnabled } from "../lib/featureFlags";
 import { clearBootAuthDraft, peekBootAuthDraft } from "../boot/landingBoot";
+import { verificationFailureMessage, writeVerificationSendState } from "../utils/verificationEmail";
 
 export function AuthScreen({
   mode,
@@ -194,12 +195,18 @@ export function AuthScreen({
           // triggers a screen swap almost immediately, so any local banner
           // would render for at most a frame. The toast persists in
           // NotificationProvider state across the unmount and surfaces on
-          // the destination screen (usually ProfileSetup or Lobby).
+          // the destination screen (usually ProfileSetup or Lobby). The
+          // session flag is what the verify banner reads so it does not
+          // claim a mail is waiting when this send was rejected.
+          const code = result.verificationErrorCode ?? "";
+          writeVerificationSendState({ status: "failed", code });
           notify({
             type: "error",
-            title: "Verification email failed",
-            message: "Account created — use the Resend button to try again.",
+            title: result.throttled ? "Verification email delayed" : "Verification email failed",
+            message: verificationFailureMessage(code),
           });
+        } else {
+          writeVerificationSendState({ status: "accepted" });
         }
         analytics.signUp("email");
         metrics.signUp("email", result.user.uid);

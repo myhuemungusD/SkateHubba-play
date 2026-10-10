@@ -23,6 +23,7 @@ If you're setting up for the first time, here's the full sequence:
 2. **Add authorized domains** to Firebase Auth:
    Firebase Console → Authentication → Settings → Authorized domains
    Add: your production domain, `localhost` (for local dev), and any Vercel preview URLs you plan to use.
+   The verification email's continue URL (`VITE_APP_URL`, or the page origin) has to be one of those domains. Sender, template, and Identity Toolkit App Check are console-only — see [EMAIL_VERIFICATION.md](EMAIL_VERIFICATION.md).
 
 3. **Deploy security rules:**
 

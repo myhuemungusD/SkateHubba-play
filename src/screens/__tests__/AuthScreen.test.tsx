@@ -585,7 +585,7 @@ describe("AuthScreen", () => {
       // Toast surfaces through the mounted ToastContainer in Wrapper.
       await waitFor(() => {
         expect(screen.getByText("Verification email failed")).toBeInTheDocument();
-        expect(screen.getByText("Account created — use the Resend button to try again.")).toBeInTheDocument();
+        expect(screen.getByText(/No error code came back/)).toBeInTheDocument();
       });
       // The removed inline banner must NOT render — regression guard.
       expect(screen.queryByText(/Account created but the verification email failed to send/)).not.toBeInTheDocument();

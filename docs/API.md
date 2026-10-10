@@ -117,12 +117,15 @@ interface SignUpResult {
   user: User;
   verificationEmailSent: boolean;
   throttled: boolean;
+  verificationErrorCode: string | null;
 }
 ```
 
 Creates an email/password account and sends a verification email. Resolves with `verificationEmailSent: false` if the verification email fails (e.g. the continue-URI is not in Firebase's authorized domains) — the account is still created and the user can request another via `resendVerification`.
 
 `throttled` is `true` only when the verification email failed specifically because Firebase throttled the request (`auth/too-many-requests` or `auth/quota-exceeded`), letting the caller offer a retry-after-cooldown affordance instead of a permanent-failure message. It is only meaningful when `verificationEmailSent` is `false`; it is always `false` on a successful send.
+
+`verificationErrorCode` is the Firebase Auth code from the rejected send, or `null` when Identity Toolkit accepted it. An empty string means the rejection carried no code. Acceptance is not proof the message reached an inbox — see [EMAIL_VERIFICATION.md](EMAIL_VERIFICATION.md).
 
 **Throws:** Firebase Auth errors (`auth/email-already-in-use`, `auth/weak-password`, etc.)
 
@@ -162,7 +165,7 @@ Sends a Firebase password-reset email. The reset link redirects to `VITE_APP_URL
 resendVerification(): Promise<void>
 ```
 
-Sends a new verification email to the currently signed-in user. No-ops silently if there is no current user.
+Sends a new verification email to the currently signed-in user. Throws `auth/no-current-user` if there is no current user (a resolved call used to look like a successful send). A resolved call means Identity Toolkit accepted the request. Failures are reported to Sentry with the Auth code and the continue-URL host.
 
 ---
 

@@ -17,9 +17,20 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
-import { clearAll, createUser, createProfile, createGame, expireGameDeadline } from "./helpers/emulator";
-import { openMatcherSession, openPlayerSession, openSetterSession } from "./helpers/game-flow";
-import { openFinishedGameFromLobby } from "./helpers/lobby-nav";
+import {
+  clearAll,
+  createUser,
+  createProfile,
+  createGame,
+  expireGameDeadline,
+  verifyAuthUser,
+  verifyEmail,
+  forceTokenRefresh,
+} from "./helpers/emulator";
+import { openMatcherSession, openPlayerSession, openSetterSession, waitForPendingReview } from "./helpers/game-flow";
+import { openClipsFeed, openFinishedGameFromLobby } from "./helpers/lobby-nav";
+import { signUpAndSetupProfile } from "./helpers/auth-flow";
+import { EXTRAS_ENABLED, EXTRAS_SKIP_REASON } from "./helpers/feature-flags";
 
 // ─── Fixed test data ──────────────────────────────────────────────────────────
 
@@ -207,15 +218,8 @@ test("matcher lands → setter accepts the claim → roles swap, no letters earn
   await recordVideo(p2Page, "Match the Ollie", "Recorded");
   await p2Page.getByRole("button", { name: "✓ Landed" }).click();
 
-  // The claim freezes the game into pendingReview: P2 waits on P1's call.
-  await expect(p2Page.getByText(/Waiting for @p1skater to accept or dispute/i)).toBeVisible({
-    timeout: 15_000,
-  });
-
-  // P1's screen offers the accept/dispute window; P1 accepts the claim.
-  await expect(p1.getByRole("group", { name: "Accept the landed claim or dispute it" })).toBeVisible({
-    timeout: 15_000,
-  });
+  // The claim freezes the game into pendingReview: P2 waits, P1 can accept.
+  await waitForPendingReview(p1, p2Page, P1.username);
   // Same 2 s turn-action cooldown as the setter path: P2's claim stamped
   // updatedAt moments ago, P1's panel appears via the live snapshot almost
   // instantly, and an immediate Accept is permission-denied (observed 0.45 s
@@ -294,9 +298,11 @@ test("expired turn deadline → forfeit screen shown to both players", async ({ 
 test("completing a game shows game over screen with winner and rematch option", async ({ browser }) => {
   // Create both users
   const p1 = await createUser(P1.email, P1.password);
-  await createProfile(p1.uid, P1.username, P1.email, true);
+  await verifyAuthUser(P1.email, p1.idToken);
+  await createProfile(p1.uid, P1.username, P1.email, true, false);
   const p2 = await createUser(P2.email, P2.password);
-  await createProfile(p2.uid, P2.username, P2.email, true);
+  await verifyAuthUser(P2.email, p2.idToken);
+  await createProfile(p2.uid, P2.username, P2.email, true, false);
 
   // Seed a game where P2 already has 4 letters and it's the matching phase.
   // One more miss by P2 will end the game (P2 spells S.K.A.T.E. → P1 wins).
@@ -328,7 +334,62 @@ test("completing a game shows game over screen with winner and rematch option", 
   await openFinishedGameFromLobby(p1Page, P2.username);
   await expect(p1Page.getByText("You Win")).toBeVisible({ timeout: 10_000 });
   await expect(p1Page.getByRole("button", { name: /Rematch/i })).toBeVisible();
+  await p1Page.getByRole("button", { name: /Rematch/i }).click();
+
+  // Rematch is a new challenge. P1 is the setter of that game.
+  await expect(p1Page.getByPlaceholder("Name your trick")).toBeVisible({ timeout: 15_000 });
 
   await p1Ctx.close();
   await p2Ctx.close();
+});
+
+const P3 = { email: "p3@test.com", password: "password123", username: "p3skater" };
+
+test("landed claim → setter disputes → a third player votes bail", async ({ browser }) => {
+  // The vote buttons live on the Clips feed, which is hidden when extras are off.
+  test.skip(!EXTRAS_ENABLED, EXTRAS_SKIP_REASON);
+
+  const { ctx: p1Ctx, page: p1 } = await openSetterSession(browser, P1, P2);
+  await setterSetsTrick(p1, "Kickflip");
+
+  const { ctx: p2Ctx, page: p2 } = await openMatcherSession(browser, P2, P1.username);
+  await expect(p2.getByText(/Match @p1skater's Kickflip/i)).toBeVisible({ timeout: 10_000 });
+  await recordVideo(p2, "Match the Kickflip", "Recorded");
+  await p2.getByRole("button", { name: "✓ Landed" }).click();
+
+  await waitForPendingReview(p1, p2, P1.username);
+  // Same 2s turn-action cooldown as the accept path: the claim just stamped
+  // updatedAt, and an immediate Dispute is permission-denied.
+  await p1.waitForTimeout(2_100);
+  await p1.getByRole("button", { name: "Dispute", exact: true }).click();
+
+  await expect(p1.getByText("UNDER COMMUNITY REVIEW")).toBeVisible({ timeout: 15_000 });
+  await expect(p2.getByText("UNDER COMMUNITY REVIEW")).toBeVisible({ timeout: 15_000 });
+
+  // A third account, verified, who is neither player. Players cannot vote
+  // on their own dispute.
+  const p3Ctx = await browser.newContext();
+  const p3 = await p3Ctx.newPage();
+  await signUpAndSetupProfile(p3, P3.email, P3.password, P3.username);
+  await verifyEmail(P3.email);
+  await p3.reload();
+  // Auth has to be back before the token refresh, or the refresh no-ops and
+  // the vote is permission-denied for an unverified token.
+  await expect(p3.getByRole("link", { name: "Clips" })).toBeVisible({ timeout: 15_000 });
+  await forceTokenRefresh(p3);
+  await openClipsFeed(p3);
+
+  const call = p3.getByRole("article", { name: "Community call on Kickflip" });
+  await expect(call).toBeVisible({ timeout: 15_000 });
+  await p3.getByRole("button", { name: /Bail — @p2skater bailed/i }).click();
+  await expect(p3.getByText(/1 call/i)).toBeVisible({ timeout: 10_000 });
+
+  // One vote does not end the game. The dispute referee cron applies the
+  // verdict after the review window; that cron is not part of the emulator.
+  await expect(p1.getByText("UNDER COMMUNITY REVIEW")).toBeVisible();
+  await expect(p1.getByText("1 BAIL")).toBeVisible({ timeout: 15_000 });
+
+  await p1Ctx.close();
+  await p2Ctx.close();
+  await p3Ctx.close();
 });
