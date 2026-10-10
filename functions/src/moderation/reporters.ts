@@ -1,4 +1,7 @@
+import { preferAccountCreatedMs } from "../accountAge.js";
 import { CLIP_REPORT_REASONS, MIN_REPORTER_ACCOUNT_AGE_MS } from "./config.js";
+
+export { preferAccountCreatedMs };
 
 export interface ClipReportRow {
   reporterUid: string;

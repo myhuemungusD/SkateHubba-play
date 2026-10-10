@@ -1,4 +1,6 @@
+import { getAuth } from "firebase-admin/auth";
 import { FieldValue, type DocumentReference, type Firestore } from "firebase-admin/firestore";
+import { preferAccountCreatedMs } from "./accountAge.js";
 
 /**
  * Outcome of an {@link applyGameStats} run. The union exists for observability
@@ -312,6 +314,15 @@ interface DocRefLike {
  * XP is applied in the same transaction when `gate` says this uid earns it.
  * An omitted gate pays no XP and does not read or write the XP fields.
  */
+async function authCreationTime(uid: string): Promise<string | null> {
+  try {
+    const record = await getAuth().getUser(uid);
+    return record.metadata.creationTime || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function applyGameStats(db: Firestore, gameId: string, gate?: XpGate): Promise<ApplyGameStatsResult> {
   const gameRef = db.collection("games").doc(gameId);
 
@@ -364,10 +375,12 @@ export async function applyGameStats(db: Firestore, gameId: string, gate?: XpGat
     // grouped here for that reason, not merely for latency. XP reads stay in
     // this same pre-write window and only run when someone actually earns XP,
     // so a closed switch does not add reads.
-    const [winnerSnap, loserSnap, judgeSnap] = await Promise.all([
+    const [winnerSnap, loserSnap, judgeSnap, winnerAuth, loserAuth] = await Promise.all([
       tx.get(winnerRef),
       tx.get(loserRef),
       judgeRef === null ? Promise.resolve(null) : tx.get(judgeRef),
+      authCreationTime(winner),
+      authCreationTime(loser),
     ]);
 
     const history = Array.isArray(game.turnHistory) ? game.turnHistory : [];
@@ -427,8 +440,8 @@ export async function applyGameStats(db: Firestore, gameId: string, gate?: XpGat
     if (anyXp) {
       const { players: derivedPlayers, judgedBy: derivedJudged } = deriveGameStats(game.turnHistory, winner, loser);
       const gameCreated = toMillis(game.createdAt);
-      const winnerCreated = toMillis(winnerSnap.data()?.createdAt);
-      const loserCreated = toMillis(loserSnap.data()?.createdAt);
+      const winnerCreated = preferAccountCreatedMs(winnerAuth, toMillis(winnerSnap.data()?.createdAt));
+      const loserCreated = preferAccountCreatedMs(loserAuth, toMillis(loserSnap.data()?.createdAt));
       const oldEnough =
         gameCreated !== null &&
         winnerCreated !== null &&
