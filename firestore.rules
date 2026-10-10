@@ -972,8 +972,9 @@ service cloud.firestore {
     //       currentSetter UNCHANGED, turnNumber +1, currentTurn == currentSetter
     //   • completion (312-314): currentSetter + turnNumber UNCHANGED,
     //       winner = opponent of the player who hit 5 letters
-    //   • honor+landed (222-233): currentSetter ROTATES to the matcher
-    //       (opponentUid(currentSetter)), currentTurn follows, turnNumber +1
+    //   • honor+landed: FREEZE into pendingReview. Roles, turn, letters, and
+    //       turnHistory stay pinned. The only role swap is the setter's later
+    //       accept on the pendingReview branch. A matching→setting swap is denied.
     //   • judge landed→disputable (169-176) / Call BS→setReview
     //       (games.judge.ts 45-51): currentSetter + turnNumber UNCHANGED,
     //       currentTurn routes to the judge
@@ -981,42 +982,27 @@ service cloud.firestore {
       return (
         nxt.status == 'active' && nxt.winner == null && (
           // Missed — setter keeps the role, turnNumber +1, currentTurn pinned
-          // to the (unchanged) currentSetter.
+          // to the (unchanged) currentSetter. Letters change on this arm, so a
+          // landed claim (letters unchanged, roles swapped) cannot use it.
           (nxt.phase == 'setting'
            && nxt.currentSetter == cur.currentSetter
            && nxt.turnNumber == cur.turnNumber + 1
            && nxt.currentTurn == cur.currentSetter)
-          // Honor system + landed — roles swap; currentSetter ROTATES to the
-          // matcher, currentTurn follows, turnNumber +1, letters unchanged,
-          // judge must NOT be active.
-          //
-          // ── BACKWARD-COMPAT: today's client still uses this instant-swap arm.
-          // The binding-dispute rollout (Phase 2) ADDS the pendingReview freeze
-          // arm below alongside it; this instant-swap arm is intentionally LEFT
-          // UNCHANGED so the current production client (which resolves a landed
-          // claim by swapping roles immediately) keeps working through the
-          // rules auto-deploy. FUTURE follow-up — once the new freeze-first
-          // client has fully rolled out — remove THIS arm to make the freeze
-          // mandatory. Do NOT remove it now.
-          || (nxt.phase == 'setting'
-              && nxt.p1Letters == cur.p1Letters
-              && nxt.p2Letters == cur.p2Letters
-              && nxt.currentSetter == opponentUid(cur, cur.currentSetter)
-              && nxt.currentTurn == nxt.currentSetter
-              && nxt.turnNumber == cur.turnNumber + 1
-              && !judgeActive(cur))
-          // Honor system + landed, BINDING-DISPUTE FREEZE (Phase 2) — NEW arm.
-          // Instead of the instant swap above, the matcher's landed submission
-          // FREEZES the game in pendingReview so the setter gets a 24h
-          // accept/dispute window (resolved by the pendingReview allow-update
-          // branch below). NOTHING resolves on this write: currentSetter,
-          // currentTurn, turnNumber, letters and turnHistory are ALL pinned
-          // unchanged (no TurnRecord appended — the turn is not over).
-          // reviewFor names the matcher (opponent of the current setter, which
-          // in matching phase is cur.currentTurn); reviewDeadline is a fresh
-          // future timestamp (the 24h accept window). Honor-only: judge must
+          // Honor system + landed — BINDING-DISPUTE FREEZE.
+          // The matcher's landed submission FREEZES the game in pendingReview
+          // so the setter gets a 24h accept/dispute window (resolved by the
+          // pendingReview allow-update branch below). NOTHING resolves on this
+          // write: currentSetter, currentTurn, turnNumber, letters and
+          // turnHistory are ALL pinned unchanged (no TurnRecord appended — the
+          // turn is not over). reviewFor names the matcher (opponent of the
+          // current setter, which in matching phase is cur.currentTurn);
+          // reviewDeadline is a fresh ~24h timestamp. Honor-only: judge must
           // NOT be active. matchVideoUrl is bucket-pinned by matchVideoUrlOk in
           // the enclosing rule; statsApplied by statsAppliedUnchanged().
+          //
+          // The old matching→setting instant swap is gone. In-flight games keep
+          // every other arm (miss, complete, judge routing, and this freeze).
+          // A game already in pendingReview still accepts through that branch.
           || (nxt.phase == 'pendingReview'
               && nxt.reviewFor == opponentUid(cur, cur.currentSetter)
               && nxt.currentSetter == cur.currentSetter
@@ -1569,8 +1555,8 @@ service cloud.firestore {
       // pendingReview:
       //   (a) ACCEPT  → setting        : the deferred honor swap. Roles rotate
       //       to the matcher, currentTurn follows, turnNumber +1, ONE landed
-      //       TurnRecord appended, review fields cleared. Identical net effect
-      //       to today's instant honor-landed resolution, just deferred.
+      //       TurnRecord appended, review fields cleared. This is the only
+      //       client path that rotates roles after a landed claim.
       //   (b) DISPUTE → communityReview: hand the call to the crowd. Roles,
       //       turnNumber, letters and turnHistory ALL stay frozen; reviewFor
       //       keeps naming the matcher; reviewDeadline is reset to a fresh vote

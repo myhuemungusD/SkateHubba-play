@@ -19,8 +19,8 @@
  *     frozen;
  *   • communityReview is fully frozen to clients (letters/turn/winner/status/
  *     forfeit all denied);
- *   • BACKWARD COMPAT: today's client's instant honor landed→setting swap STILL
- *     passes (the additive change must not break in-flight clients).
+ *   • the old matching→setting instant honor swap is DENIED. In-flight games
+ *     still miss, complete, freeze, and accept from pendingReview.
  *
  * Run via:  npm run test:rules
  */
@@ -360,21 +360,20 @@ describe("communityReview is frozen (only the Admin-SDK referee resolves it)", (
 });
 
 /* ────────────────────────────────────────────
- * BACKWARD COMPAT — today's client is not broken
+ * Instant role-swap is closed. In-flight games still freeze and accept.
  * ──────────────────────────────────────────── */
 
-describe("BACKWARD COMPAT: the instant honor landed→setting swap still works", () => {
-  it("the matcher's instant landed swap (roles rotate, turnNumber +1) STILL passes", async () => {
-    // This is exactly what the current production client does on a landed
-    // claim. The pendingReview freeze is ADDITIVE — this path must keep working
-    // through the rules auto-deploy until the freeze-first client rolls out.
+describe("instant honor landed→setting swap is denied", () => {
+  it("the matcher's instant landed swap (roles rotate, turnNumber +1) is denied", async () => {
+    // A custom client used to skip the setter's window by swapping roles on
+    // the claim itself. The shipped client freezes into pendingReview first.
     await seedGameForUpdate(
       getEnv(),
       "g",
       { player1Uid: P1_UID, player2Uid: P2_UID },
       { phase: "matching", currentSetter: P1_UID, currentTurn: P2_UID, turnNumber: TURN, matchVideoUrl: null },
     );
-    await assertSucceeds(
+    await assertFails(
       updateDoc(gameDoc(asP2(), "g"), {
         phase: "setting",
         currentSetter: P2_UID,

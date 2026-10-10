@@ -254,21 +254,16 @@ describe("games create — Verified Pro badge forgery guard", () => {
 // ── Verified Pro badge immutability on update ──
 // Bound once at create time; no update branch may introduce, flip, or
 // strip either badge field afterward — Pro status changing mid-game must
-// not retroactively relabel an in-progress game. Piggybacked onto an
-// otherwise-legitimate match-resolution transition so the assertion proves
-// the update rule itself blocks it, not just the create rule.
+// not retroactively relabel an in-progress game. Piggybacked onto the
+// landed-claim freeze so the assertion proves the update rule itself
+// blocks it, not just the create rule.
 describe("games update — Verified Pro badge immutability", () => {
-  function rotatedTurnPayload(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  function freezePayload(extra: Record<string, unknown> = {}): Record<string, unknown> {
     return {
-      p1Letters: 0,
-      p2Letters: 0,
-      currentSetter: P2_UID,
-      currentTurn: P2_UID,
-      phase: "setting",
-      currentTrickName: null,
-      currentTrickVideoUrl: null,
+      phase: "pendingReview",
+      reviewFor: P2_UID,
+      reviewDeadline: FUTURE_DEADLINE(),
       matchVideoUrl: VALID_TRICK_URL,
-      turnNumber: 4,
       turnDeadline: FUTURE_DEADLINE(),
       updatedAt: serverTimestamp(),
       ...extra,
@@ -277,17 +272,17 @@ describe("games update — Verified Pro badge immutability", () => {
 
   it("rejects an otherwise-legitimate turn transition that also introduces player1IsVerifiedPro", async () => {
     await seedGame(makeMatchingGame({ p2Letters: 0 }));
-    await assertFails(updateDoc(gameRef(asP2()), rotatedTurnPayload({ player1IsVerifiedPro: true })));
+    await assertFails(updateDoc(gameRef(asP2()), freezePayload({ player1IsVerifiedPro: true })));
   });
 
   it("rejects an otherwise-legitimate turn transition that flips a stored true badge to false", async () => {
     await seedGame(makeMatchingGame({ p2Letters: 0, player1IsVerifiedPro: true }));
-    await assertFails(updateDoc(gameRef(asP2()), rotatedTurnPayload({ player1IsVerifiedPro: false })));
+    await assertFails(updateDoc(gameRef(asP2()), freezePayload({ player1IsVerifiedPro: false })));
   });
 
   it("permits the same transition when the badge field is left unchanged", async () => {
     await seedGame(makeMatchingGame({ p2Letters: 0, player1IsVerifiedPro: true }));
-    await assertSucceeds(updateDoc(gameRef(asP2()), rotatedTurnPayload({ player1IsVerifiedPro: true })));
+    await assertSucceeds(updateDoc(gameRef(asP2()), freezePayload({ player1IsVerifiedPro: true })));
   });
 });
 
@@ -419,10 +414,10 @@ describe("games update — matchVideoUrl bucket pin", () => {
   const ATTACKER_BUCKET_URL =
     "https://firebasestorage.googleapis.com/v0/b/attacker-project.firebasestorage.app/o/match.webm";
 
-  // The honor-system landed and expired-auto-accept branches both rotate roles
-  // to the matcher (P2), advance the turn to 4, and carry matchVideoUrl through
-  // a fresh deadline. They diverge only in the letter tallies, so both payload
-  // builders below delegate here and pass their own letters.
+  // The landed claim freezes in pendingReview and carries matchVideoUrl.
+  // Expired auto-accept still rotates roles to the matcher (P2) and advances
+  // the turn to 4. The two payload builders stay separate so each pins the
+  // URL on the transition that still exists.
   function rotateToSettingPayload(fields: {
     p1Letters: number;
     p2Letters: number;
@@ -446,13 +441,17 @@ describe("games update — matchVideoUrl bucket pin", () => {
       await seedGame(makeMatchingGame({ p2Letters: 0 }));
     }
 
-    // The matcher submits a landed call. Honor-system path (#373 seize
-    // guard): roles swap — currentSetter ROTATES to the matcher (P2),
-    // currentTurn follows it, turnNumber +1, letters unchanged. matchVideoUrl
-    // carries the recorded attempt. The seed's currentSetter is P1 /
-    // turnNumber 3, so the legitimate write rotates to P2 / turnNumber 4.
+    // The matcher submits a landed call. The claim freezes in pendingReview
+    // with roles and turnNumber pinned. matchVideoUrl carries the attempt.
     function landedPayload(matchVideoUrl: unknown): Record<string, unknown> {
-      return rotateToSettingPayload({ p1Letters: 0, p2Letters: 0, matchVideoUrl });
+      return {
+        phase: "pendingReview",
+        reviewFor: P2_UID,
+        reviewDeadline: FUTURE_DEADLINE(),
+        matchVideoUrl,
+        turnDeadline: FUTURE_DEADLINE(),
+        updatedAt: serverTimestamp(),
+      };
     }
 
     it("rejects matcher writing an attacker-hosted matchVideoUrl", async () => {
