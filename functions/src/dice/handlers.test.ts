@@ -65,14 +65,26 @@ class MemoryDb implements DiceDb {
 
   async runTransaction<T>(fn: (tx: DiceTx) => Promise<T>): Promise<T> {
     const snapshot = new Map(this.docs);
+    let wrote = false;
+    const rejectReadAfterWrite = () => {
+      if (wrote) throw new Error("read after write");
+    };
     const tx: DiceTx = {
-      get: (path) => this.get(path),
-      query: (q) => this.query(q),
+      get: (path) => {
+        rejectReadAfterWrite();
+        return this.get(path);
+      },
+      query: (q) => {
+        rejectReadAfterWrite();
+        return this.query(q);
+      },
       set: (path, data, merge) => {
+        wrote = true;
         const prev = merge ? this.docs.get(path) : undefined;
         this.docs.set(path, { ...(prev ?? {}), ...data });
       },
       update: (path, data) => {
+        wrote = true;
         const prev = this.docs.get(path);
         if (!prev) throw new Error(`missing ${path}`);
         this.docs.set(path, { ...prev, ...data });
