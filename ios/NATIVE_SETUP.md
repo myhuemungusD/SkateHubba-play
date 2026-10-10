@@ -1,10 +1,10 @@
 # iOS Native Setup — App Store Launch Blockers
 
-This checklist covers the native iOS steps that **cannot be completed in
-CI / on Linux** because they require the maintainer's Firebase secret
-(`GoogleService-Info.plist`). Do these on a Mac with Xcode 15+ before the
-first TestFlight / App Store build. See `ios/README.md` for the general
-Capacitor workflow.
+The TestFlight workflow installs `GoogleService-Info.plist` from a GitHub
+secret and adds the Google sign-in URL scheme while it builds. You do not
+do those steps in Xcode, and you do not need a Mac. See
+[`docs/IOS_RELEASE.md`](../docs/IOS_RELEASE.md). The notes below are what
+that workflow is doing, and what is still a portal or phone check.
 
 Status of the three audit blockers:
 
@@ -12,15 +12,12 @@ Status of the three audit blockers:
 | --- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | App-level privacy manifest (`PrivacyInfo.xcprivacy`) | **DONE** — committed at `ios/App/App/PrivacyInfo.xcprivacy` and wired into the App target's Copy Bundle Resources phase. Nothing to do.                                                                                                                                                                               |
 | 2   | Firebase native init                                 | **Guarded in code.** `AppDelegate` calls `SkatehubbaFcm.configureIfPossible()`, which no-ops when `GoogleService-Info.plist` is absent so the simulator still launches. A store build supplies the plist via the `GOOGLE_SERVICE_INFO_PLIST_BASE64` secret. Do not add a second, unguarded `FirebaseApp.configure()`. |
-| 3   | Google Sign-In URL scheme (`REVERSED_CLIENT_ID`)     | **BLOCKED on secret** — add it as a second URL type. The `skatehubba` scheme is already in Info.plist. See §4 below.                                                                                                                                                                                                  |
+| 3   | Google Sign-In URL scheme (`REVERSED_CLIENT_ID`)     | **Done at build time.** The TestFlight lane reads `REVERSED_CLIENT_ID` from the secret plist and adds a second URL type. It does not commit the value. The `skatehubba` scheme stays in Info.plist. See §4. |
 
-> **Why these are not fixed in this PR:** `GoogleService-Info.plist`
-> contains real project credentials (API key, bundle/client IDs,
-> `REVERSED_CLIENT_ID`). We do not fabricate it or invent IDs. Adding a
-> `FirebaseApp.configure()` call **without** the plist present makes the
-> launch **crash harder** — `configure()` traps when the plist is absent —
-> and `@capacitor-firebase/app-check` fails at startup. So the code change
-> and the secret must land together, on a Mac, by the maintainer.
+> The plist stays out of git. It has real Firebase credentials. The app
+> configures Firebase only when that file is in the bundle, so the
+> simulator build still launches without it. The TestFlight workflow is
+> what puts the file in the store build.
 
 ---
 
@@ -29,16 +26,14 @@ Status of the three audit blockers:
 1. Firebase console → Project **skatehubba** → Project settings → **Your
    apps** → the iOS app with bundle ID `com.skatehubba.app`.
 2. Download **`GoogleService-Info.plist`**.
-3. In Xcode, drag the file into the **`App`** group (next to `Info.plist`).
-   In the "Add Files" dialog:
-   - **Copy items if needed:** checked.
-   - **Add to targets:** **`App`** checked (Target Membership matters — the
-     plist must ship inside the app bundle).
-4. Confirm it lands on disk at `ios/App/App/GoogleService-Info.plist`.
+3. Store it as the `GOOGLE_SERVICE_INFO_PLIST_BASE64` GitHub secret (the
+   raw file or its base64). The TestFlight workflow writes
+   `ios/App/App/GoogleService-Info.plist` and adds it to the App target
+   for that build only.
 
-> This file is **git-ignored / kept out of the repo as a secret**. Do not
-> commit it. Distribute it to teammates and CI (fastlane match / a secure
-> file) out of band.
+> This file is **git-ignored**. Do not commit it. The lane copies it into
+> the app bundle so Firebase can read it. The unsigned simulator build
+> does not have it, and Firebase stays off there on purpose.
 
 ## 2. Firebase is already configured, and it will not crash without the plist
 
@@ -69,34 +64,16 @@ idle until the APNs key is uploaded to Firebase. The steps are in
 
 ---
 
-## 4. Register the Google Sign-In URL scheme in `Info.plist`
+## 4. Google Sign-In URL scheme
 
-Native `@capacitor-firebase/authentication` Google provider redirects back
-into the app via a custom URL scheme equal to the **`REVERSED_CLIENT_ID`**
-from `GoogleService-Info.plist`. Without it, Google sign-in never returns
-to the app.
+Native `@capacitor-firebase/authentication` sends the user back to the app
+with a URL scheme equal to `REVERSED_CLIENT_ID` in
+`GoogleService-Info.plist`. The TestFlight lane reads that key and adds it
+as a second entry under `CFBundleURLTypes` for the build it uploads. The
+`skatehubba` scheme stays. The lane does not commit either change.
 
-1. Open the downloaded `GoogleService-Info.plist` and copy the value of the
-   `REVERSED_CLIENT_ID` key (looks like
-   `com.googleusercontent.apps.1234567890-abcdef...`).
-2. Add a **second** dictionary inside the existing `CFBundleURLTypes` array
-   in `ios/App/App/Info.plist`. Do not remove the `skatehubba` scheme.
-
-```xml
-<dict>
-    <key>CFBundleURLSchemes</key>
-    <array>
-        <string>REVERSED_CLIENT_ID</string>
-    </array>
-</dict>
-```
-
-> The real `REVERSED_CLIENT_ID` is a secret tied to the OAuth client —
-> copy it from the plist, do not hardcode a guessed value, and do not
-> commit the resolved value if the team treats `Info.plist` client IDs as
-> sensitive. (The existing `open(url:)` handler in `AppDelegate.swift`
-> already forwards the callback to Capacitor, so no Swift change is needed
-> for the URL scheme itself.)
+The `open(url:)` handler in `AppDelegate.swift` already forwards the
+callback to Capacitor. No Swift change is required.
 
 ---
 
@@ -116,7 +93,7 @@ include the entitlement. The full order is in
 
 ## Final launch smoke test
 
-After §1–§5 on a Mac:
+After the first TestFlight build is installed on a phone:
 
 - [ ] App launches on a physical device with no Firebase / App Check crash.
 - [ ] Email/password and Google sign-in both complete and return to the app.

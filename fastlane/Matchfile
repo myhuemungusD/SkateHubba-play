@@ -1,20 +1,19 @@
-# fastlane match stores Apple signing certs + provisioning profiles in an
-# encrypted private Git repo so every developer / CI runner gets the same
-# signing identity. Never commits plaintext anywhere; MATCH_PASSWORD is the
-# symmetric key.
+# fastlane match stores the App Store certificate and provisioning profile
+# in a private git repo, encrypted with MATCH_PASSWORD. The certificate is
+# created once, on the GitHub macOS runner, by the ios-signing-bootstrap
+# workflow (MATCH_READONLY=false). Later TestFlight runs only read it.
+require_relative "ci_helpers"
 
-git_url ENV["MATCH_GIT_URL"]
+git_url(SkatehubbaCI.match_git_url)
+git_branch(SkatehubbaCI::MATCH_GIT_BRANCH)
 storage_mode "git"
 
 type "appstore"
-app_identifier ["com.skatehubba.app"]
+app_identifier [SkatehubbaCI::APP_IDENTIFIER]
 
-# The App Store Connect API key is enough for CI. A personal Apple ID is
-# only needed for a laptop that is not using the API key.
-username(ENV["APPLE_ID"]) if ENV["APPLE_ID"].to_s.length.positive?
+# API key only. Do not set an account email here; that path asks for a
+# password and a 2FA code, which the runner cannot answer.
 team_id ENV["APPLE_TEAM_ID"]
 
-# Read-only in CI: runners consume pre-generated certs, they don't generate.
-# Local developers running `bundle exec fastlane ios certificates` with
-# MATCH_READONLY=false can rotate.
+# Read-only unless the bootstrap workflow sets MATCH_READONLY=false.
 readonly ENV["MATCH_READONLY"] != "false"

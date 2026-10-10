@@ -61,7 +61,7 @@ function firebaseSwPlugin(): Plugin {
           // Store/release builds must never ship a service worker with dead
           // placeholder config — background web push would silently break.
           // REQUIRE_SW_CONFIG=1 turns the warning into a hard build failure.
-          // Set in android-aab.yml and release.yml; the Vercel production
+          // Set in android-aab.yml, ios-release.yml, and release.yml; the Vercel production
           // deploy needs it added as a project env var (dashboard) to get the
           // same guarantee. Local builds without a .env keep working with the
           // query-string fallback the SW ships.

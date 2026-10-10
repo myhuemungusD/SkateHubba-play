@@ -3,8 +3,8 @@
 # Automates beta + production releases for iOS (TestFlight + App Store) and
 # Android (internal + closed + production tracks on Google Play). All lanes
 # read credentials from GitHub Actions secrets (see `.github/workflows/
-# android-aab.yml`, which calls `android publish_internal`) so nothing
-# sensitive lives in the repo.
+# android-aab.yml`, `ios-release.yml`, and `ios-signing-bootstrap.yml`) so
+# nothing sensitive lives in the repo.
 #
 # Run a lane locally:
 #   bundle exec fastlane ios beta
@@ -13,16 +13,9 @@
 # Every lane assumes `npm run build && npx cap sync` has already produced a
 # fresh web bundle. CI jobs chain those steps explicitly.
 
-default_platform(:ios)
+require_relative "ci_helpers"
 
-# Shared version helper — reads the single source of truth from package.json
-# so fastlane, release-please, Sentry, and PostHog all report the same
-# release identifier. Avoids the "version drift" class of bug where the app
-# store shows v1.2.0 but Sentry still tags events with v1.1.9.
-def package_version
-  require "json"
-  JSON.parse(File.read(File.expand_path("../package.json", __dir__)))["version"]
-end
+default_platform(:ios)
 
 # ──────────────────────────────────────────────────────────────────────────
 # iOS
@@ -37,65 +30,121 @@ platform :ios do
   end
 
   # One App Store Connect API key for match, TestFlight, and deliver.
-  # Accepts the .p8 text (newlines as real newlines or the two characters
-  # \n) or a base64 blob of that text. Memoized so a lane does not parse
-  # the key twice.
+  # ASC_KEY_P8 is the .p8 text or the base64 of that text. Memoized so a
+  # lane does not parse the key twice. Error text never includes the key.
   def skatehubba_asc_api_key
     return @skatehubba_asc_api_key if @skatehubba_asc_api_key
 
-    raw = ENV["APP_STORE_CONNECT_API_KEY"].to_s
-    UI.user_error!("APP_STORE_CONNECT_API_KEY is empty") if raw.empty?
-    key = raw.gsub("\\n", "\n")
-    unless key.include?("BEGIN PRIVATE KEY")
-      require "base64"
-      key = Base64.decode64(raw)
+    begin
+      key = SkatehubbaCI.decode_p8(ENV["ASC_KEY_P8"])
+    rescue ArgumentError => e
+      UI.user_error!(e.message)
     end
-    UI.user_error!("APP_STORE_CONNECT_API_KEY is not a .p8 private key") unless key.include?("BEGIN PRIVATE KEY")
+    key_id = ENV["ASC_KEY_ID"].to_s.strip
+    issuer_id = ENV["ASC_ISSUER_ID"].to_s.strip
+    UI.user_error!("ASC_KEY_ID is empty") if key_id.empty?
+    UI.user_error!("ASC_ISSUER_ID is empty") if issuer_id.empty?
     @skatehubba_asc_api_key = app_store_connect_api_key(
-      key_id: ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
-      issuer_id: ENV.fetch("APP_STORE_CONNECT_API_KEY_ISSUER_ID"),
+      key_id: key_id,
+      issuer_id: issuer_id,
       key_content: key,
       duration: 1200,
       in_house: false,
     )
   end
 
-  # Marketing version stays the package.json / release-please version.
-  # The build number is a UTC timestamp so each TestFlight upload is unique
-  # without committing a bump. Info.plist stores the short version as a
-  # literal (release-please edits that literal), so both the plist and the
-  # Xcode build settings are set here.
-  def apply_store_version!
-    version = package_version
-    build_number = Time.now.utc.strftime("%Y%m%d%H%M")
+  def require_apple_team_id!
+    team = ENV["APPLE_TEAM_ID"].to_s.strip
+    UI.user_error!("APPLE_TEAM_ID is empty") if team.empty?
+    team
+  end
+
+  # Marketing version: IOS_MARKETING_VERSION when the workflow input is set,
+  # otherwise package.json (release-please bumps that). The build number is
+  # one higher than the newest TestFlight upload for that version, looked
+  # up with the API key. Nothing here is committed.
+  def resolve_store_version!
+    begin
+      version = SkatehubbaCI.marketing_version(
+        ENV["IOS_MARKETING_VERSION"],
+        File.expand_path("../package.json", __dir__),
+      )
+    rescue ArgumentError => e
+      UI.user_error!(e.message)
+    end
+    latest = latest_testflight_build_number(
+      api_key: skatehubba_asc_api_key,
+      app_identifier: SkatehubbaCI::APP_IDENTIFIER,
+      version: version,
+      platform: "ios",
+      # 0 so the first upload of a version becomes build 1 after + 1.
+      initial_build_number: 0,
+    )
+    begin
+      build_number = SkatehubbaCI.next_build_number(latest)
+    rescue ArgumentError => e
+      UI.user_error!(e.message)
+    end
+    [version, build_number]
+  end
+
+  def apply_store_version!(version, build_number)
+    google_plist = File.expand_path("../#{SkatehubbaCI::GOOGLE_SERVICE_PLIST}", __dir__)
+    unless File.exist?(google_plist)
+      UI.user_error!("GoogleService-Info.plist is missing. The TestFlight workflow writes it from GOOGLE_SERVICE_INFO_PLIST_BASE64.")
+    end
+    scheme = SkatehubbaCI.reversed_client_id(File.read(google_plist))
+    if scheme.nil?
+      UI.user_error!("GoogleService-Info.plist has no REVERSED_CLIENT_ID. Download the iOS file for com.skatehubba.app from Firebase again.")
+    end
     update_info_plist(
       xcodeproj: "ios/App/App.xcodeproj",
       plist_path: "App/Info.plist",
       block: proc do |plist|
         plist["CFBundleShortVersionString"] = version
-        plist["CFBundleVersion"] = build_number
+        plist["CFBundleVersion"] = build_number.to_s
+        plist["CFBundleURLTypes"] = SkatehubbaCI.ensure_url_scheme(plist["CFBundleURLTypes"], scheme)
       end,
     )
-    [version, build_number]
+    SkatehubbaCI.attach_google_service_plist!(File.expand_path("../ios/App/App.xcodeproj", __dir__))
   end
 
   desc "Sync Apple signing certs + provisioning profiles via fastlane match"
   lane :certificates do
-    match(
+    team = require_apple_team_id!
+    # Readonly unless MATCH_READONLY=false. The signing-bootstrap workflow
+    # is the only place that sets it false. A normal TestFlight run cannot
+    # create or replace the distribution certificate.
+    begin
+      git_url = SkatehubbaCI.match_git_url
+    rescue ArgumentError => e
+      UI.user_error!(e.message)
+    end
+    options = {
       type: "appstore",
-      app_identifier: ["com.skatehubba.app"],
+      app_identifier: [SkatehubbaCI::APP_IDENTIFIER],
       readonly: ENV["MATCH_READONLY"] != "false",
       api_key: skatehubba_asc_api_key,
-    )
+      git_url: git_url,
+      git_branch: SkatehubbaCI::MATCH_GIT_BRANCH,
+      team_id: team,
+    }
+    keychain_name = ENV["MATCH_KEYCHAIN_NAME"].to_s.strip
+    keychain_password = ENV["MATCH_KEYCHAIN_PASSWORD"].to_s
+    unless keychain_name.empty?
+      options[:keychain_name] = keychain_name
+      options[:keychain_password] = keychain_password unless keychain_password.empty?
+    end
+    match(options)
   end
 
   desc "Build a signed TestFlight build from the current commit"
   lane :beta do
-    team = ENV["APPLE_TEAM_ID"].to_s
-    UI.user_error!("APPLE_TEAM_ID env var is required for manual signing") if team.empty?
+    team = require_apple_team_id!
+    version, build_number = resolve_store_version!
+    apply_store_version!(version, build_number)
     certificates
-    version, build_number = apply_store_version!
-    build_app(
+    ipa = build_app(
       # The Capacitor iOS project uses SPM (CapApp-SPM), not CocoaPods —
       # there is no .xcworkspace to build; the shared App scheme lives in
       # App.xcodeproj/xcshareddata/xcschemes/App.xcscheme.
@@ -104,6 +153,7 @@ platform :ios do
       configuration: "Release",
       clean: true,
       output_directory: "ios/build",
+      output_name: "SkateHubba.ipa",
       export_method: "app-store-connect",
       # Release signs manually (see project.pbxproj): the team comes from the
       # environment so no developer identity is hardcoded in the repo, and the
@@ -114,15 +164,23 @@ platform :ios do
       export_team_id: team,
       export_options: {
         provisioningProfiles: {
-          "com.skatehubba.app" => "match AppStore com.skatehubba.app",
+          SkatehubbaCI::APP_IDENTIFIER => SkatehubbaCI::PROFILE_NAME,
         },
       },
     )
-    upload_to_testflight(
-      skip_waiting_for_build_processing: true,
-      changelog: "Build #{version} (#{build_number}) — see CHANGELOG.md for details.",
+    UI.user_error!("Signed IPA was not produced") if ipa.to_s.empty? || !File.exist?(ipa.to_s)
+    # No changelog: pilot waits for the build to appear before it can save
+    # "What to Test". Skipping that wait is the point of this upload.
+    pilot(
       api_key: skatehubba_asc_api_key,
+      app_identifier: SkatehubbaCI::APP_IDENTIFIER,
+      apple_id: SkatehubbaCI::ASC_APP_ID,
+      ipa: ipa.to_s,
+      skip_submission: true,
+      skip_waiting_for_build_processing: true,
+      uses_non_exempt_encryption: false,
     )
+    UI.success("Uploaded #{version} (#{build_number}) to TestFlight. Apple is still processing it.")
   end
 
   desc "Submit the latest TestFlight build for App Store review"
