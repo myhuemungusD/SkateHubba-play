@@ -21,13 +21,17 @@ interface Props {
  * list simply did not load.
  */
 export function AddedSpotsSection({ uid, onAddSpot }: Props) {
+  // Keyed remount so a uid change starts from the loading state without
+  // calling setState synchronously inside the effect (lint: set-state-in-effect).
+  return <AddedSpotsBody key={uid} uid={uid} onAddSpot={onAddSpot} />;
+}
+
+function AddedSpotsBody({ uid, onAddSpot }: Props) {
   const [spots, setSpots] = useState<Spot[] | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    setSpots(null);
-    setFailed(false);
     listSpotsByCreator(uid)
       .then((rows) => {
         if (!cancelled) setSpots(rows);
