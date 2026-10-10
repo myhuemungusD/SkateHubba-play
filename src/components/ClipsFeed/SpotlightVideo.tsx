@@ -1,127 +1,156 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { ChevronRightIcon } from "../icons";
+import { PlayIcon } from "../icons";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
+import { BELOW_HEADER, RAIL_BTN } from "./feedLayout";
 
 /**
- * Single-clip video with tap-to-unmute and a Replay / Next Trick overlay on end.
+ * Full-bleed clip player for one snapped page.
  *
- * Autoplays muted once (no loop, no auto-advance). Pauses when scrolled out of
- * the viewport — but only AFTER the first play() has resolved, because mobile
- * Safari revokes the muted-autoplay grant if pause() runs too early, which
- * surfaces as "feed loaded but clip won't play".
+ * The active clip autoplays muted and loops until the viewer swipes away.
+ * IntersectionObserver pauses it once it has actually started — an early
+ * pause() revokes the muted-autoplay grant on mobile Safari. Reduced motion
+ * never autoplays; the center control is an explicit play button.
  *
- * memo: this is the most expensive child in the spotlight subtree (video
- * element + IntersectionObserver). The parent SpotlightCard is also memoised
- * — between them every unrelated lobby state mutation skips the video JS.
+ * Far slides unmount this entirely (see `isNearSlide`). The next slide stays
+ * mounted so its bytes are in flight, but `active` is false so it stays paused.
  */
-const NEXT_BTN =
-  "min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl px-5 font-display text-sm tracking-wider bg-gradient-to-r from-brand-orange via-[#FF7A1A] to-[#FF8533] text-white active:scale-[0.97] hover:-translate-y-0.5 transition-all shadow-[0_2px_12px_rgba(255,107,0,0.18)] ring-1 ring-white/[0.08] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-wait disabled:opacity-60 disabled:hover:translate-y-0";
 
-const SECONDARY_BTN =
-  "min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl px-5 border border-border bg-surface/80 text-white/90 font-display text-sm tracking-wider hover:bg-white/[0.04] active:scale-[0.97] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
+export interface SpotlightVideoProps {
+  src: string;
+  /** False when another slide is the one on screen. */
+  active?: boolean;
+  /** Accessible name for the media element (disputes name the attempt). */
+  mediaLabel?: string;
+  /** Shared across slides so unmuting sticks as you swipe. */
+  muted?: boolean;
+  onToggleMute?: () => void;
+}
 
-/** Shared NEXT TRICK control for the ended and failed overlays. */
-function NextTrickButton({ onNext, advancing }: { onNext: () => void; advancing: boolean }) {
+function MuteGlyph({ muted }: { muted: boolean }) {
   return (
-    <button type="button" onClick={onNext} disabled={advancing} aria-label="Next trick" className={NEXT_BTN}>
-      {advancing ? "LOADING…" : "NEXT TRICK"}
-      {!advancing && <ChevronRightIcon size={14} />}
-    </button>
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      aria-hidden="true"
+    >
+      <path d="M11 5 6 9H3v6h3l5 4V5z" strokeLinejoin="round" />
+      {muted ? (
+        <path d="m22 9-6 6m0-6 6 6" strokeLinecap="round" />
+      ) : (
+        <path d="M16 9a5 5 0 0 1 0 6M19 7a8 8 0 0 1 0 10" strokeLinecap="round" />
+      )}
+    </svg>
   );
 }
 
-interface SpotlightVideoProps {
-  src: string;
-  onNext: () => void;
-  /** True while the feed is fetching the next page — NEXT TRICK shows a pending state. */
-  advancing?: boolean;
-}
-
-function SpotlightVideoImpl({ src, onNext, advancing = false }: SpotlightVideoProps) {
-  const [muted, setMuted] = useState(true);
-  const [ended, setEnded] = useState(false);
-  // The media element raised `error` — a deleted or expired file, an
-  // unsupported codec, a dead network. Without an escape hatch here the
-  // viewer is stuck: the only NEXT TRICK control lives on the ended overlay,
-  // and a clip that never loads never ends.
-  const [failed, setFailed] = useState(false);
+function SpotlightVideoImpl({ src, active = true, mediaLabel, muted: mutedProp, onToggleMute }: SpotlightVideoProps) {
+  const [localMuted, setLocalMuted] = useState(true);
+  const muted = mutedProp ?? localMuted;
+  const reducedMotion = useReducedMotion();
+  const [paused, setPaused] = useState(true);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const failed = failedSrc === src;
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hasPlayedRef = useRef(false);
-  // When the user prefers reduced motion we never auto-start the clip — the
-  // tap-to-unmute overlay doubles as an explicit play affordance instead.
-  const reducedMotion = useReducedMotion();
+  const userPausedRef = useRef(false);
+  // True on the first commit when this slide mounts already active, so the
+  // effect below leaves the autoplay attribute + IntersectionObserver in
+  // charge. A slide that mounts paused (the prefetched next one) flips this
+  // and plays only when it becomes the snapped page.
+  const wasActiveRef = useRef(active);
 
   const handlePlay = useCallback(() => {
     hasPlayedRef.current = true;
-    setEnded(false);
+    setPaused(false);
   }, []);
 
-  const handleEnded = useCallback(() => {
-    setEnded(true);
+  const handlePause = useCallback(() => {
+    setPaused(true);
   }, []);
 
   const handleError = useCallback(() => {
-    setFailed(true);
-  }, []);
+    setFailedSrc(src);
+  }, [src]);
 
   const handleRetry = useCallback(() => {
     const el = videoRef.current;
     if (!el) return;
-    setFailed(false);
-    // load() re-issues the fetch for the same src; a transient network drop
-    // recovers here without remounting the element.
+    setFailedSrc(null);
     el.load();
-    el.play().catch(() => undefined);
-  }, []);
+    if (active && !reducedMotion) el.play().catch(() => undefined);
+  }, [active, reducedMotion]);
 
   const toggleMute = useCallback(() => {
-    const el = videoRef.current;
-    // Reduced-motion clips never autoplay, so the first overlay tap is the
-    // explicit play affordance instead of a mute toggle. Once it has started
-    // (hasPlayedRef), and in all non-reduced-motion cases, the tap toggles
-    // mute exactly as before — non-reduced-motion behavior is unchanged.
-    if (reducedMotion && !hasPlayedRef.current && el) {
-      el.play().catch(() => undefined);
+    if (onToggleMute) {
+      onToggleMute();
       return;
     }
-    setMuted((prev) => {
+    setLocalMuted((prev) => {
       const next = !prev;
+      const el = videoRef.current;
       if (el) el.muted = next;
       return next;
     });
-  }, [reducedMotion]);
+  }, [onToggleMute]);
 
-  const handleReplay = useCallback(() => {
+  const togglePlayback = useCallback(() => {
     const el = videoRef.current;
     if (!el) return;
-    el.currentTime = 0;
-    setEnded(false);
-    el.play().catch(() => undefined);
+    if (el.paused) {
+      userPausedRef.current = false;
+      el.play().catch(() => undefined);
+      return;
+    }
+    userPausedRef.current = true;
+    el.pause();
   }, []);
 
-  // Reset the autoplay-grant gate when the clip changes. Without this, the
-  // ref stays `true` from the previous src and a brief out-of-viewport blip
-  // mid-load can pause the new clip before its muted-autoplay grant has
-  // resolved — exactly the failure mode the gate was designed to prevent.
-  // `ended` is cleared by handlePlay() when the new clip starts, so we
-  // only need to reset the ref here.
   useEffect(() => {
     hasPlayedRef.current = false;
+    userPausedRef.current = false;
   }, [src]);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (el) el.muted = muted;
+  }, [muted]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (!active) {
+      userPausedRef.current = false;
+      if (hasPlayedRef.current) video.pause();
+      wasActiveRef.current = false;
+      return;
+    }
+    const becameActive = !wasActiveRef.current;
+    wasActiveRef.current = true;
+    if (!becameActive || reducedMotion || userPausedRef.current) return;
+    video
+      .play()
+      .then(() => {
+        hasPlayedRef.current = true;
+      })
+      .catch(() => undefined);
+  }, [active, reducedMotion]);
 
   useEffect(() => {
     const video = videoRef.current;
     const container = containerRef.current;
-    if (!video || !container || typeof IntersectionObserver === "undefined") return;
-    // Honour prefers-reduced-motion: skip the auto-play-on-scroll entirely so
-    // the clip stays paused until the user explicitly taps the overlay.
-    if (reducedMotion) return;
+    if (!video || !container || !active || reducedMotion) return;
+    if (typeof IntersectionObserver === "undefined") return;
 
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (!entry) return;
         if (entry.isIntersecting) {
+          if (userPausedRef.current) return;
           video
             .play()
             .then(() => {
@@ -129,86 +158,77 @@ function SpotlightVideoImpl({ src, onNext, advancing = false }: SpotlightVideoPr
             })
             .catch(() => undefined);
         } else if (hasPlayedRef.current) {
-          // Gate with hasPlayedRef: an early pause revokes the muted-autoplay
-          // grant on mobile Safari, which breaks every subsequent play().
           video.pause();
         }
       },
-      { threshold: 0.25 },
+      { threshold: 0.6 },
     );
     observer.observe(container);
     return () => observer.disconnect();
-  }, [reducedMotion]);
+  }, [active, reducedMotion]);
+
+  const showPlay = paused;
 
   return (
-    <div ref={containerRef} className="relative rounded-xl overflow-hidden border border-border">
+    <div ref={containerRef} className="absolute inset-0 bg-black">
       <video
         ref={videoRef}
         src={src}
-        autoPlay={!reducedMotion}
-        muted
+        aria-label={mediaLabel}
+        autoPlay={active && !reducedMotion}
+        muted={muted}
+        loop
         playsInline
-        // preload="auto" — this video IS the LCP element; we always intend
-        // to play it immediately. "metadata" stalls between the moov-atom
-        // fetch and the first media chunk, costing a round-trip that
-        // becomes wasted latency before first frame. The bytes are
-        // immutable (storage upload sets `cacheControl: max-age=1y,
-        // immutable`) so an aggressive preload also primes browser cache
-        // for the inevitable REPLAY.
         preload="auto"
         onPlay={handlePlay}
-        onEnded={handleEnded}
+        onPause={handlePause}
         onError={handleError}
-        className="w-full aspect-[9/16] max-h-[560px] bg-black object-cover"
+        className="h-full w-full object-cover"
       />
 
-      {/* Tap-to-unmute overlay. Hidden once the clip ends (or fails) so the
-          overlay below can receive taps. */}
-      {!ended && !failed && (
+      {active && !failed && (
         <button
           type="button"
-          onClick={toggleMute}
-          aria-label={muted ? "Unmute clip" : "Mute clip"}
-          className="absolute inset-0 z-10 w-full h-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          onClick={togglePlayback}
+          aria-label={paused ? "Play clip" : "Pause clip"}
+          className="absolute inset-0 z-10 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
         >
-          {muted && (
+          {showPlay && (
             <span
               aria-hidden="true"
-              className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-display tracking-[0.2em] text-white backdrop-blur"
+              className="pointer-events-none absolute left-1/2 top-1/2 flex min-h-[44px] min-w-[44px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-white"
             >
-              MUTED · TAP
+              <PlayIcon size={22} />
             </span>
           )}
         </button>
       )}
 
-      {/* Playback failure: RETRY or NEXT TRICK. Takes precedence over the
-          ended overlay — a clip that errored mid-play is still unplayable. */}
+      {active && (
+        <button
+          type="button"
+          onClick={toggleMute}
+          aria-label={muted ? "Unmute clip" : "Mute clip"}
+          className={`absolute z-20 right-3 ${BELOW_HEADER} ${RAIL_BTN}`}
+        >
+          <MuteGlyph muted={muted} />
+        </button>
+      )}
+
       {failed && (
         <div
           role="alert"
-          className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black/70 backdrop-blur-sm p-4"
+          className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black/70 p-4 backdrop-blur-sm"
         >
           <p className="font-display text-[11px] tracking-[0.2em] text-white/70">Couldn&apos;t play this clip</p>
-          <div className="flex items-center gap-3">
-            <button type="button" onClick={handleRetry} aria-label="Retry clip" className={SECONDARY_BTN}>
-              RETRY
-            </button>
-            <NextTrickButton onNext={onNext} advancing={advancing} />
-          </div>
-        </div>
-      )}
-
-      {/* End-of-clip prompt: REPLAY or NEXT TRICK. */}
-      {ended && !failed && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black/70 backdrop-blur-sm p-4">
-          <p className="font-display text-[11px] tracking-[0.2em] text-white/70">Clip ended</p>
-          <div className="flex items-center gap-3">
-            <button type="button" onClick={handleReplay} aria-label="Replay clip" className={SECONDARY_BTN}>
-              REPLAY
-            </button>
-            <NextTrickButton onNext={onNext} advancing={advancing} />
-          </div>
+          <button
+            type="button"
+            onClick={handleRetry}
+            aria-label="Retry clip"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-border bg-surface/80 px-5 font-display text-sm tracking-wider text-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          >
+            RETRY
+          </button>
         </div>
       )}
     </div>

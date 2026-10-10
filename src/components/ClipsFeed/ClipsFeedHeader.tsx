@@ -15,11 +15,8 @@ export interface ClipsFeedHeaderProps {
 }
 
 /**
- * Header strip above the ClipsFeed spotlight. Holds the FEED label, the
- * position pill (current/total), and the Top/New toggle.
- *
- * Lives next to ClipsFeed/index.tsx so the parent stays close to the 250 LOC
- * component budget after the toggle was added.
+ * Floating header over the full-screen feed. The Top/New toggle, post action,
+ * and position stay reachable without taking a row away from the video.
  */
 export const ClipsFeedHeader = memo(function ClipsFeedHeader({
   sort,
@@ -29,28 +26,24 @@ export const ClipsFeedHeader = memo(function ClipsFeedHeader({
   onPostClip,
 }: ClipsFeedHeaderProps) {
   return (
-    <div className="flex items-center justify-between gap-2 mb-3">
-      <div className="flex items-center gap-2">
-        <h3 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">FEED</h3>
+    <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-between gap-2 px-3 pt-safe">
+      <div className="pointer-events-auto flex items-center gap-2">
+        <h2 className="font-display text-[11px] tracking-[0.2em] text-white drop-shadow">CLIPS</h2>
         {position && (
-          <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[10px] text-brand-orange leading-none tabular-nums">
+          <span className="rounded bg-black/50 px-1.5 py-0.5 font-display text-[10px] leading-none tabular-nums text-white/80">
             {position.index + 1}/{position.total}
           </span>
         )}
       </div>
-      <div className="flex items-center gap-2">
-        {/* Posting lives in the feed header rather than the lobby's main CTA
-            column: it's the same surface you're already browsing, and the
-            lobby's primary action is starting a game, which this must not
-            compete with. */}
+      <div className="pointer-events-auto flex items-center gap-2">
         <button
           type="button"
           onClick={onPostClip}
           aria-label="Post a clip to the feed"
-          className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-brand-orange/30 bg-brand-orange/[0.08] px-3 font-display text-[11px] tracking-[0.15em] text-brand-orange transition-all duration-300 hover:bg-brand-orange/15 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-black/50 px-3 font-display text-[11px] tracking-[0.15em] text-white backdrop-blur-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
         >
-          <CameraIcon size={13} />
-          POST
+          <CameraIcon size={14} />
+          <span className="sr-only sm:not-sr-only">POST</span>
         </button>
         <TopNewToggle sort={sort} onChange={onSortChange} disabled={disabled} />
       </div>

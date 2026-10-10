@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { DisputeLane } from "../ClipsFeed/DisputeLane";
 import type { Dispute, DisputeTally, DisputeViewerState } from "../../types/dispute";
 import { deferred } from "../../__tests__/harness/deferred";
+import { makeDispute } from "./disputeFixtures.test-helpers";
 
 const {
   mockFetchOpenDisputes,
@@ -66,28 +67,6 @@ vi.mock("../../hooks/useBlockedUsers", () => ({
 
 const STORAGE_HOST = "https://firebasestorage.googleapis.com/v0/b/x/o";
 
-function makeDispute(overrides: Partial<Dispute> = {}): Dispute {
-  return {
-    id: "g1_3",
-    gameId: "g1",
-    turnNumber: 3,
-    trickName: "Switch Heel",
-    setterUid: "u1",
-    setterUsername: "alice",
-    matcherUid: "u2",
-    matcherUsername: "bob",
-    setVideoUrl: `${STORAGE_HOST}/set.webm?alt=media`,
-    matchVideoUrl: `${STORAGE_HOST}/match.webm?alt=media`,
-    spotId: null,
-    createdAt: null,
-    status: "open",
-    moderationStatus: "active",
-    landVotes: 2,
-    bailVotes: 1,
-    ...overrides,
-  };
-}
-
 const CAN_VOTE: DisputeViewerState = { ownVerdict: null, canVote: true };
 
 /**
@@ -116,16 +95,15 @@ describe("DisputeLane", () => {
   it("renders an open dispute with the attempt video, the prompt, and both verdicts", async () => {
     await mountLane();
 
-    expect(screen.getByText("SETTLE IT")).toBeInTheDocument();
-    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(screen.getByText(/Community call: Landed or bailed\?/i)).toBeInTheDocument();
     expect(screen.getByText("Switch Heel")).toBeInTheDocument();
     expect(screen.getByText(/@bob says they landed @alice's trick\./i)).toBeInTheDocument();
     expect(screen.getByLabelText(/bob's attempt at Switch Heel/i)).toHaveAttribute(
       "src",
       `${STORAGE_HOST}/match.webm?alt=media`,
     );
-    expect(screen.getByRole("button", { name: /^Make — @bob made it$/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Bail — @bob did not make it$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Land — @bob landed it$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Bail — @bob bailed$/i })).toBeInTheDocument();
   });
 
   it("shows the vote-window countdown derived from the dispute's createdAt", async () => {
@@ -133,14 +111,14 @@ describe("DisputeLane", () => {
     await mountLane(CAN_VOTE, makeDispute({ createdAt }));
 
     // 24h window from createdAt, minus the elapsed minute → ~23h left.
-    expect(screen.getByText(/Voting closes in/i)).toBeInTheDocument();
+    expect(screen.getByText(/Time left/i)).toBeInTheDocument();
     expect(await screen.findByLabelText(/Turn timer: 23h/i)).toBeInTheDocument();
   });
 
   it("omits the countdown when the dispute has no resolved createdAt", async () => {
     await mountLane(CAN_VOTE, makeDispute({ createdAt: null }));
 
-    expect(screen.queryByText(/Voting closes in/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Time left/i)).not.toBeInTheDocument();
   });
 
   it("offers the setter's clip as secondary context", async () => {
@@ -164,7 +142,7 @@ describe("DisputeLane", () => {
     mockCastDisputeVerdict.mockResolvedValueOnce({ land: 3, bail: 1 } satisfies DisputeTally);
     const { user } = await mountLane();
 
-    await user.click(screen.getByRole("button", { name: /^Make — @bob made it$/i }));
+    await user.click(screen.getByRole("button", { name: /^Land — @bob landed it$/i }));
 
     await waitFor(() => expect(mockCastDisputeVerdict).toHaveBeenCalledWith("me", "g1_3", "land"));
     expect(mockTrackEvent).toHaveBeenCalledWith("dispute_verdict_cast", {
@@ -178,7 +156,7 @@ describe("DisputeLane", () => {
     mockCastDisputeVerdict.mockResolvedValueOnce({ land: 2, bail: 2 } satisfies DisputeTally);
     const { user } = await mountLane();
 
-    await user.click(screen.getByRole("button", { name: /^Bail — @bob did not make it$/i }));
+    await user.click(screen.getByRole("button", { name: /^Bail — @bob bailed$/i }));
 
     await waitFor(() => expect(mockCastDisputeVerdict).toHaveBeenCalledWith("me", "g1_3", "bail"));
   });
@@ -187,11 +165,11 @@ describe("DisputeLane", () => {
     mockCastDisputeVerdict.mockResolvedValueOnce({ land: 3, bail: 1 } satisfies DisputeTally);
     const { user } = await mountLane();
 
-    await user.click(screen.getByRole("button", { name: /^Make — @bob made it$/i }));
+    await user.click(screen.getByRole("button", { name: /^Land — @bob landed it$/i }));
 
-    await waitFor(() => expect(screen.getByText(/YOUR CALL · MAKE/i)).toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: /^Make — @bob made it$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Bail — @bob did not make it$/i })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/YOUR CALL · LAND/i)).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /^Land — @bob landed it$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Bail — @bob bailed$/i })).not.toBeInTheDocument();
     // The card stays in the lane rather than vanishing once ruled.
     expect(screen.getByRole("article", { name: /community call on Switch Heel/i })).toBeInTheDocument();
   });
@@ -201,23 +179,23 @@ describe("DisputeLane", () => {
     mockCastDisputeVerdict.mockReturnValueOnce(cast.promise);
     const { user } = await mountLane();
 
-    await user.click(screen.getByRole("button", { name: /^Make — @bob made it$/i }));
+    await user.click(screen.getByRole("button", { name: /^Land — @bob landed it$/i }));
 
     // Optimistic: seeded 2/1 becomes 3/1 before the write resolves.
-    await screen.findByRole("img", { name: /3 make, 1 bail — 4 calls in/i });
+    await screen.findByRole("img", { name: /3 land, 1 bail — 4 calls in/i });
 
     // The server counted a concurrent vote too — the card takes its number.
     cast.resolve({ land: 5, bail: 1 });
-    await screen.findByRole("img", { name: /5 make, 1 bail — 6 calls in/i });
+    await screen.findByRole("img", { name: /5 land, 1 bail — 6 calls in/i });
   });
 
   it("rolls the tally back and restores the buttons when the write fails", async () => {
     mockCastDisputeVerdict.mockRejectedValueOnce(new Error("network down"));
     const { user } = await mountLane();
 
-    await user.click(screen.getByRole("button", { name: /^Make — @bob made it$/i }));
+    await user.click(screen.getByRole("button", { name: /^Land — @bob landed it$/i }));
 
-    await waitFor(() => expect(screen.getByRole("button", { name: /^Make — @bob made it$/i })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Land — @bob landed it$/i })).toBeEnabled());
     expect(screen.queryByText(/YOUR CALL/i)).not.toBeInTheDocument();
     expect(mockTrackEvent).not.toHaveBeenCalled();
   });
@@ -226,21 +204,21 @@ describe("DisputeLane", () => {
     mockCastDisputeVerdict.mockRejectedValueOnce(new MockAlreadyRuledError("g1_3"));
     const { user } = await mountLane();
 
-    await user.click(screen.getByRole("button", { name: /^Bail — @bob did not make it$/i }));
+    await user.click(screen.getByRole("button", { name: /^Bail — @bob bailed$/i }));
 
     await waitFor(() => expect(screen.getByText(/YOUR CALL · BAIL/i)).toBeInTheDocument());
-    expect(screen.getByRole("img", { name: /2 make, 2 bail — 4 calls in/i })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /2 land, 2 bail — 4 calls in/i })).toBeInTheDocument();
   });
 
   it("locks the card without an error when the dispute turns out to be the viewer's own", async () => {
     mockCastDisputeVerdict.mockRejectedValueOnce(new MockOwnDisputeError("g1_3"));
     const { user } = await mountLane();
 
-    await user.click(screen.getByRole("button", { name: /^Make — @bob made it$/i }));
+    await user.click(screen.getByRole("button", { name: /^Land — @bob landed it$/i }));
 
     // Tally rolls back to the seeded 2/1, buttons stay gone, no alert.
-    await screen.findByRole("img", { name: /2 make, 1 bail — 3 calls in/i });
-    expect(screen.queryByRole("button", { name: /^Make — @bob made it$/i })).not.toBeInTheDocument();
+    await screen.findByRole("img", { name: /2 land, 1 bail — 3 calls in/i });
+    expect(screen.queryByRole("button", { name: /^Land — @bob landed it$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -248,32 +226,32 @@ describe("DisputeLane", () => {
     mockCastDisputeVerdict.mockRejectedValueOnce(new MockDisputeClosedError("g1_3"));
     const { user } = await mountLane();
 
-    await user.click(screen.getByRole("button", { name: /^Bail — @bob did not make it$/i }));
+    await user.click(screen.getByRole("button", { name: /^Bail — @bob bailed$/i }));
 
-    await screen.findByRole("img", { name: /2 make, 1 bail — 3 calls in/i });
+    await screen.findByRole("img", { name: /2 land, 1 bail — 3 calls in/i });
     expect(screen.queryByText(/YOUR CALL/i)).not.toBeInTheDocument();
   });
 
   it("shows the tally instead of the buttons when the viewer cannot vote", async () => {
     await mountLane({ ownVerdict: null, canVote: false });
 
-    expect(screen.getByRole("img", { name: /2 make, 1 bail — 3 calls in/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Make — @bob made it$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Bail — @bob did not make it$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /2 land, 1 bail — 3 calls in/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Land — @bob landed it$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Bail — @bob bailed$/i })).not.toBeInTheDocument();
   });
 
   it("shows a previously-cast verdict on reload", async () => {
     await mountLane({ ownVerdict: "bail", canVote: false });
 
     expect(screen.getByText(/YOUR CALL · BAIL/i)).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /2 make, 1 bail — 3 calls in/i })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /2 land, 1 bail — 3 calls in/i })).toBeInTheDocument();
   });
 
   it("reads the tally as centred and empty before anyone has ruled", async () => {
     await mountLane({ ownVerdict: null, canVote: false }, makeDispute({ landVotes: 0, bailVotes: 0 }));
 
     expect(screen.getByText(/No calls in yet/i)).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /0 make, 0 bail — 0 calls in/i })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /0 land, 0 bail — 0 calls in/i })).toBeInTheDocument();
   });
 
   it("renders nothing when there are no open disputes", async () => {
@@ -308,8 +286,8 @@ describe("DisputeLane", () => {
     render(<DisputeLane viewerUid="me" />);
 
     await screen.findByRole("article", { name: /community call on Switch Heel/i });
-    expect(screen.getByRole("img", { name: /2 make, 1 bail — 3 calls in/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Make — @bob made it$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /2 land, 1 bail — 3 calls in/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Land — @bob landed it$/i })).not.toBeInTheDocument();
   });
 
   it("abandons a load that resolves after the lobby has navigated away", async () => {
@@ -328,7 +306,7 @@ describe("DisputeLane", () => {
     const cast = deferred<DisputeTally>();
     mockCastDisputeVerdict.mockReturnValueOnce(cast.promise);
     const { user, unmount } = await mountLane();
-    await user.click(screen.getByRole("button", { name: /^Make — @bob made it$/i }));
+    await user.click(screen.getByRole("button", { name: /^Land — @bob landed it$/i }));
 
     unmount();
     await act(async () => cast.resolve({ land: 9, bail: 1 }));
@@ -342,7 +320,7 @@ describe("DisputeLane", () => {
     mockCastDisputeVerdict.mockReturnValueOnce(cast.promise);
     const { user } = await mountLane();
 
-    const land = screen.getByRole("button", { name: /^Make — @bob made it$/i });
+    const land = screen.getByRole("button", { name: /^Land — @bob landed it$/i });
     await user.click(land);
     await user.click(land);
 
