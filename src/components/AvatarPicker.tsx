@@ -40,7 +40,7 @@ const ACCEPT = "image/webp,image/jpeg,image/png";
 const SHEET_CLASS =
   "fixed inset-x-0 bottom-0 z-50 bg-[#0a0a0a] border-t border-border rounded-t-2xl px-5 pt-5 pb-8 max-h-[80dvh] overflow-y-auto motion-safe:animate-slide-up";
 const PRIMARY_BTN =
-  "min-h-[44px] rounded-xl bg-brand-orange text-white font-display text-sm disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
+  "min-h-[44px] rounded-xl bg-brand-orange text-[#1a1a1a] font-display text-sm disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
 const GHOST_BTN =
   "min-h-[44px] rounded-xl border border-border text-muted font-display text-sm hover:text-white hover:border-border-hover transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
 const MENU_BTN =

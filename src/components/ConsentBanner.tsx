@@ -33,7 +33,17 @@ function useReserveBottomSpace(ref: RefObject<HTMLElement | null>, active: boole
   }, [ref, active]);
 }
 
-export function ConsentBanner({ onNav }: { onNav: (screen: "privacy" | "terms") => void }) {
+/** Clears the fixed tab bar: row, raised Challenge disc, and the safe area. */
+const ABOVE_NAV_CLASS = "bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))]";
+
+export function ConsentBanner({
+  onNav,
+  liftAboveNav = false,
+}: {
+  onNav: (screen: "privacy" | "terms") => void;
+  /** Sit above the bottom tab bar so Privacy Policy does not cover Challenge. */
+  liftAboveNav?: boolean;
+}) {
   // Initialise synchronously from localStorage so the banner never flickers
   // in on a second render (avoids calling setState inside an effect).
   const [visible, setVisible] = useState(() => !readConsent());
@@ -59,7 +69,9 @@ export function ConsentBanner({ onNav }: { onNav: (screen: "privacy" | "terms") 
       ref={regionRef}
       role="region"
       aria-label="Cookie and analytics notice"
-      className="fixed bottom-0 left-0 right-0 z-50 max-h-[20dvh] overflow-y-auto px-3 pb-safe sm:px-4"
+      className={`fixed left-0 right-0 z-50 max-h-[20dvh] overflow-y-auto px-3 pb-safe sm:px-4 ${
+        liftAboveNav ? ABOVE_NAV_CLASS : "bottom-0"
+      }`}
     >
       <div className="max-w-lg mx-auto mb-1 overflow-y-auto rounded-2xl glass-card px-3 py-2 shadow-glass animate-scale-in sm:mb-4 sm:px-4 sm:py-3 [@media(max-height:500px)]:mb-0 [@media(max-height:500px)]:py-1.5">
         <div className="flex items-center gap-3">
@@ -68,7 +80,7 @@ export function ConsentBanner({ onNav }: { onNav: (screen: "privacy" | "terms") 
             <button
               type="button"
               onClick={() => onNav("privacy")}
-              className="text-brand-orange underline underline-offset-2"
+              className="inline-flex min-h-11 items-center rounded-md px-1 text-brand-orange underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
               Privacy&nbsp;Policy
             </button>
@@ -77,7 +89,7 @@ export function ConsentBanner({ onNav }: { onNav: (screen: "privacy" | "terms") 
             <button
               type="button"
               onClick={accept}
-              className="touch-target inline-flex items-center justify-center px-4 py-1.5 rounded-xl bg-gradient-to-r from-brand-orange to-[#FF8533] font-display text-xs text-white tracking-wider hover:shadow-glow-sm active:scale-[0.97] transition-all duration-300 ring-1 ring-white/[0.08]"
+              className="touch-target inline-flex items-center justify-center px-4 py-1.5 rounded-xl bg-gradient-to-r from-brand-orange to-[#FF8533] font-display text-xs text-[#1a1a1a] tracking-wider hover:shadow-glow-sm active:scale-[0.97] transition-all duration-300 ring-1 ring-white/[0.08]"
             >
               OK
             </button>

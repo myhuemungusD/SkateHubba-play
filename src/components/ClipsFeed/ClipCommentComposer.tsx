@@ -44,7 +44,7 @@ export function ClipCommentComposer({ draft, onDraftChange, onSubmit, posting, c
           type="button"
           onClick={onSubmit}
           disabled={!canSubmit}
-          className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-gradient-to-r from-brand-orange via-[#FF7A1A] to-[#FF8533] px-5 font-display text-sm tracking-wider text-white ring-1 ring-white/[0.08] transition-all duration-300 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-gradient-to-r from-brand-orange via-[#FF7A1A] to-[#FF8533] px-5 font-display text-sm tracking-wider text-[#1a1a1a] ring-1 ring-white/[0.08] transition-all duration-300 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
         >
           {posting ? "Posting..." : "Post"}
         </button>

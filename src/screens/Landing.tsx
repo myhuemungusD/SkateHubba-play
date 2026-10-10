@@ -145,7 +145,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
           <a
             href="#hero"
             aria-label="SkateHubba home"
-            className="inline-flex items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            className="inline-flex min-h-11 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
             <img
               src="/logonew.webp"
@@ -242,7 +242,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
         <a
           href="#demo"
           aria-label="Scroll to demo"
-          className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-scroll-hint p-2 rounded-full text-white/60 hover:text-white/85 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          className="absolute bottom-8 left-1/2 inline-flex min-h-11 min-w-11 -translate-x-1/2 items-center justify-center animate-scroll-hint rounded-full text-white/60 hover:text-white/85 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
         >
           <svg
             width="20"
