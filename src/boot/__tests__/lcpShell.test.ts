@@ -31,9 +31,24 @@ describe("lcp shell", () => {
   });
 
   it("marks the auth shell for a trailing slash", () => {
+    const link = document.createElement("link");
+    link.rel = "canonical";
+    link.href = "https://skatehubba.com/";
+    document.head.appendChild(link);
     runShell("/auth/");
     expect(document.documentElement.getAttribute("data-lcp")).toBe("auth");
     expect(window.__skatehubbaLcpShell).toBe("auth");
+    expect(link.getAttribute("href")).toBe("https://skatehubba.com/auth");
+  });
+
+  it("points privacy at its own canonical and skips the shell", () => {
+    const link = document.createElement("link");
+    link.rel = "canonical";
+    link.href = "https://skatehubba.com/";
+    document.head.appendChild(link);
+    runShell("/privacy");
+    expect(document.documentElement.getAttribute("data-lcp")).toBe("skip");
+    expect(link.getAttribute("href")).toBe("https://skatehubba.com/privacy");
   });
 
   it("marks the feed shell without injecting a poster", () => {

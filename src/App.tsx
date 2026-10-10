@@ -799,7 +799,9 @@ function AppRoutes() {
 
                 {/* Clips is its own tab again. Same auth guard as /lobby — the feed
                 reads clips as a signed-in viewer (upvotes, disputes, comments),
-                so a signed-out render has nothing to show. */}
+                so a signed-out render has nothing to show. That replace sends
+                signed-out /feed to /, so Lighthouse CI's /feed URL scores the
+                landing page rather than the clips feed. */}
                 <Route
                   path="/feed"
                   element={

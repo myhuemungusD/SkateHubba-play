@@ -351,7 +351,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
             </div>
             {/* Glow */}
             <div className="absolute -inset-12 rounded-full bg-brand-orange/[0.06] blur-3xl -z-10" />
-            <div className="absolute -inset-20 rounded-full bg-brand-orange/[0.03] blur-[80px] -z-20" />
+            <div className="absolute -inset-16 rounded-full bg-brand-orange/[0.03] blur-[80px] -z-20" />
           </div>
 
           {/* Text content */}
