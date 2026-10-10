@@ -24,6 +24,18 @@
 
   var path = location.pathname;
   if (path.length > 1 && path.charAt(path.length - 1) === "/") path = path.slice(0, -1);
+  // Same paths as src/lib/canonical.ts. Lighthouse rejects a canonical that
+  // points at the homepage from any other route.
+  var canonicalHref =
+    path === "/"
+      ? "https://skatehubba.com/"
+      : path === "/auth" || path === "/feed" || path === "/privacy" || path === "/terms" || path === "/data-deletion"
+        ? "https://skatehubba.com" + path
+        : "";
+  if (canonicalHref) {
+    var link = document.querySelector('link[rel="canonical"]');
+    if (link) link.setAttribute("href", canonicalHref);
+  }
   var shell = path === "/" ? "home" : path === "/auth" ? "auth" : path === "/feed" ? "feed" : "";
   var skip = shell === "";
   if (!skip) {

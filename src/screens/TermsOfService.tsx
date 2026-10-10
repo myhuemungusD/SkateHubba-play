@@ -7,9 +7,13 @@ export function TermsOfService({ onBack }: { onBack: () => void }) {
   return (
     <div className="min-h-dvh bg-background/90 text-white">
       <div className="px-5 pt-safe pb-4 border-b border-[#222] flex items-center gap-4">
-        <Btn onClick={onBack} variant="ghost" className="shrink-0">
-          ← Back
-        </Btn>
+        {/* Btn is w-full. In this row that width is the whole header, which
+            pushes the logo past the viewport. w-fit sizes the control to its label. */}
+        <div className="w-fit shrink-0">
+          <Btn onClick={onBack} variant="ghost">
+            ← Back
+          </Btn>
+        </div>
         <img src="/logonew.webp" alt="" draggable={false} className="h-6 w-auto select-none" aria-hidden="true" />
       </div>
 

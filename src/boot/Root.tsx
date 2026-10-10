@@ -1,6 +1,9 @@
-import { useEffect, useState, useSyncExternalStore, type ComponentType } from "react";
+import { useEffect, useLayoutEffect, useState, useSyncExternalStore, type ComponentType } from "react";
+import { useLocation } from "react-router";
 import { Spinner } from "../components/ui/Spinner";
+import { applyCanonical } from "../lib/canonical";
 import { BootLanding } from "./BootLanding";
+import { dismissLcpShell } from "./dismissLcpShell";
 import { afterLandingPainted, isBootShellActive, subscribeBootShell } from "./landingBoot";
 
 export type AppLoader = () => Promise<{ default: ComponentType }>;
@@ -21,6 +24,18 @@ export function Root({ boot, loadApp }: { boot: boolean; loadApp: AppLoader }) {
   const [App, setApp] = useState<ComponentType | null>(null);
   const [failed, setFailed] = useState(false);
   const shellActive = useSyncExternalStore(subscribeBootShell, isBootShellActive);
+  const { pathname } = useLocation();
+
+  // Same commit as the first real paint: the shells have already been the
+  // LCP text, and taking them out before the browser paints this frame
+  // keeps them from covering the UI. Fixed positioning, so nothing shifts.
+  useLayoutEffect(() => {
+    dismissLcpShell();
+  }, []);
+
+  useEffect(() => {
+    applyCanonical(pathname);
+  }, [pathname]);
 
   useEffect(() => {
     let cancelled = false;
