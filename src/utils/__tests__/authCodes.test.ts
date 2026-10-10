@@ -8,6 +8,7 @@ describe("isBenignAuthCode", () => {
     expect(isBenignAuthCode("auth/invalid-credential")).toBe(true);
     expect(isBenignAuthCode("auth/email-already-in-use")).toBe(true);
     expect(isBenignAuthCode("auth/weak-password")).toBe(true);
+    expect(isBenignAuthCode("auth/password-does-not-meet-requirements")).toBe(true);
     expect(isBenignAuthCode("auth/popup-closed-by-user")).toBe(true);
     expect(isBenignAuthCode("auth/popup-blocked")).toBe(true);
   });
@@ -40,6 +41,8 @@ describe("isBenignAuthCode", () => {
 
 describe("getAuthErrorMessage", () => {
   it("maps credential failures to a single non-enumerating message", () => {
+    expect(getAuthErrorMessage("auth/password-does-not-meet-requirements")).toMatch(/number/);
+    expect(getAuthErrorMessage("auth/weak-password")).toMatch(/20 characters/);
     expect(getAuthErrorMessage("auth/invalid-credential")).toBe("Invalid email or password");
     expect(getAuthErrorMessage("auth/wrong-password")).toBe("Invalid email or password");
   });

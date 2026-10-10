@@ -193,7 +193,7 @@ describe("Smoke: Auth", () => {
     await userEvent.type(passwordInputs[1], "12345");
 
     await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
-    expect(screen.getByText("Password must be 6+ characters")).toBeInTheDocument();
+    expect(screen.getByText("Password must be at least 6 characters")).toBeInTheDocument();
   });
 
   it("shows firebase auth error for duplicate email", async () => {
