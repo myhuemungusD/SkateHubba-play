@@ -8,10 +8,8 @@ import {
   persistentMultipleTabManager,
   type Firestore,
 } from "firebase/firestore";
-import { getStorage, connectStorageEmulator, type FirebaseStorage } from "firebase/storage";
-import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
+import type { FirebaseStorage } from "firebase/storage";
 import { Capacitor } from "@capacitor/core";
-import { FirebaseAppCheck } from "@capacitor-firebase/app-check";
 import { addBreadcrumb, captureMessage } from "./lib/sentry";
 import { env } from "./lib/env";
 import { logger } from "./services/logger";
@@ -44,6 +42,9 @@ let db: Firestore | null = null;
 let auth: Auth | null = null;
 let storage: FirebaseStorage | null = null;
 
+/** Dev-only. Hoisted so the lazy Storage init can see the same flag. */
+const useEmulators = Boolean(import.meta.env.DEV && env?.VITE_USE_EMULATORS === true);
+
 /**
  * Which Firestore local cache strategy we ended up using.
  *
@@ -73,7 +74,6 @@ if (env) {
   // Firestore — using named "skatehubba" database.
   // In emulator mode use memory cache to avoid IndexedDB/persistence issues
   // that can stall getDoc() in headless Chrome on CI.
-  const useEmulators = import.meta.env.DEV && env.VITE_USE_EMULATORS === true;
   if (useEmulators) {
     firestoreCacheMode = "memory";
     db = initializeFirestore(app, { localCache: memoryLocalCache(), experimentalForceLongPolling: true }, "skatehubba");
@@ -126,131 +126,19 @@ if (env) {
   // shell on the boot spinner. localStorage persistence starts immediately.
   auth =
     Capacitor.getPlatform() === "ios" ? initializeAuth(app, { persistence: browserLocalPersistence }) : getAuth(app);
-  storage = getStorage(app);
 
-  // Firebase App Check — blocks non-app traffic (bots, scrapers, abuse).
-  // Requires VITE_RECAPTCHA_SITE_KEY to be set (reCAPTCHA v3 site key from
-  // Firebase Console → App Check). In development the debug token is enabled
-  // automatically so Firestore still works without a real reCAPTCHA key.
-  //
-  // ⚠️ OPT-IN DEFAULT ⚠️
-  // App Check is OFF by default. Set VITE_APPCHECK_ENABLED=true in Vercel to
-  // turn it on. This default exists because a Firebase Console enforcement
-  // toggle without a matching reCAPTCHA domain allowlist silently rejects
-  // every Firestore read with permission-denied and locks every signed-in
-  // user out of the app (this happened in the Apr 22 incident — see
-  // docs/PERMISSION_DENIED_RUNBOOK.md). Once the Firebase App Check metrics
-  // show a verified-request rate > 95 % for the skatehubba.com + www
-  // domains, flip the env var to re-enable.
-  /* v8 ignore start */
-  if (useEmulators) {
-    // Expose debug token so the App Check debug provider works locally.
-    // Firebase App Check reads this off the global scope at init time.
-    // Gated on useEmulators (not import.meta.env.DEV) so a dev build that
-    // points at production Firebase never flips its real reCAPTCHA provider
-    // into debug mode — that silently fails every App Check token exchange.
-    (self as unknown as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
-  }
-  /* v8 ignore stop */
-  /* v8 ignore start -- App Check branches depend on runtime env vars not available in tests */
-  if (!env.VITE_APPCHECK_ENABLED) {
-    // Default path — App Check is not enabled by default. Log once so
-    // operators know the opt-in flag is required to turn it back on.
-    logger.info("appcheck_skipped_opt_in_required", {
-      hint: "set VITE_APPCHECK_ENABLED=true + VITE_RECAPTCHA_SITE_KEY to enable",
-    });
-  } else if (Capacitor.isNativePlatform()) {
-    // ── Native path (iOS / Android via Capacitor) ────────────────────
-    // The Firebase JS SDK only ships ReCaptchaV3Provider /
-    // ReCaptchaEnterpriseProvider / CustomProvider — none of which work
-    // inside a Capacitor WebView. Delegating to @capacitor-firebase/app-check
-    // uses the platform-native attestation SDKs (DeviceCheck on iOS,
-    // Play Integrity on Android) through the plugin bridge.
-    //
-    // In emulator / dev builds we request the debug provider so the
-    // attestation step doesn't reject a development device. In release
-    // builds the plugin auto-selects DeviceCheck (iOS) / Play Integrity
-    // (Android) — no provider option is needed on the JS side.
-    //
-    // Symmetric try/catch matches the web branch below — an attestation
-    // rejection silently breaks every Firestore/Auth request with
-    // permission-denied, so we surface it loudly (logger.error + Sentry
-    // captureMessage + lifecycle breadcrumb) and let ops route it to a
-    // user-facing retry banner via `isAppCheckInitialized()`. The init
-    // call returns a promise; we .catch instead of await to avoid
-    // blocking app startup on attestation — but the handler is the same
-    // surface a synchronous throw would reach.
-    const useDebug = useEmulators || import.meta.env.DEV;
-    try {
-      FirebaseAppCheck.initialize({
-        debug: useDebug,
-        siteKey: env.VITE_RECAPTCHA_SITE_KEY,
-      })
-        .then(() => {
-          appCheckInitialized = true;
-          addBreadcrumb({
-            category: "lifecycle",
-            message: "appcheck_native_initialized",
-            data: { debug: useDebug },
-          });
-        })
-        .catch((err: unknown) => {
-          const message = err instanceof Error ? err.message : String(err);
-          logger.error("appcheck_native_init_failed", { message });
-          addBreadcrumb({
-            category: "lifecycle",
-            message: "appcheck_native_init_failed",
-            data: { error: message },
-          });
-          captureMessage(`Native App Check init failed — Auth/Firestore requests may be rejected: ${message}`, "error");
-        });
-    } catch (err) {
-      // Plugin bridge threw synchronously (plugin not registered, wrong
-      // Capacitor version, etc). Same loud-fail surface as the async path.
-      const message = err instanceof Error ? err.message : String(err);
-      logger.error("appcheck_native_init_threw", { message });
-      addBreadcrumb({
-        category: "lifecycle",
-        message: "appcheck_native_init_threw",
-        data: { error: message },
-      });
-      captureMessage(`Native App Check init threw synchronously — plugin may not be linked: ${message}`, "error");
-    }
-  } else if (env.VITE_RECAPTCHA_SITE_KEY) {
-    try {
-      initializeAppCheck(app, {
-        provider: new ReCaptchaV3Provider(env.VITE_RECAPTCHA_SITE_KEY),
-        isTokenAutoRefreshEnabled: true,
-      });
-      appCheckInitialized = true;
-    } catch (err) {
-      // An invalid site key or blocked reCAPTCHA loader throws synchronously here.
-      // Without this catch the whole Firebase init module would crash on load,
-      // taking the app down — log loudly and let the rest of Firebase continue.
-      logger.error("appcheck_init_failed", { message: err instanceof Error ? err.message : String(err) });
-      captureMessage(
-        `App Check init failed — Auth/Firestore requests may be rejected: ${err instanceof Error ? err.message : String(err)}`,
-        "error",
-      );
-    }
-  } else {
-    // Operator set VITE_APPCHECK_ENABLED=true but forgot the site key — log
-    // loudly in every environment so the misconfiguration surfaces before
-    // the first Firestore call silently fails.
-    logger.error("appcheck_enabled_but_no_site_key", {
-      hint: "VITE_APPCHECK_ENABLED=true requires VITE_RECAPTCHA_SITE_KEY",
-    });
-    captureMessage("App Check opt-in is set but VITE_RECAPTCHA_SITE_KEY is missing — init skipped", "error");
-  }
-  /* v8 ignore stop */
+  // App Check and Storage stay off the first-paint path. Warmup starts the
+  // reCAPTCHA provider after idle or the first tap; ensureAppCheck() is what
+  // Firestore, Storage, Functions, and sign-in actually wait on.
+  scheduleAppCheckWarmup();
 
-  // Connect to emulators in development (if running)
+  // Connect to emulators in development (if running). Storage connects
+  // inside ensureStorage(), after its chunk loads.
   if (useEmulators) {
     connectAuthEmulator(auth, "http://localhost:9099", {
       disableWarnings: true,
     });
     connectFirestoreEmulator(db, "localhost", 8080);
-    connectStorageEmulator(storage, "localhost", 9199);
     // Expose auth for E2E tests to force-refresh the ID token after email
     // verification.  Only set when running against the local emulators so it
     // never leaks to production builds.
@@ -277,8 +165,142 @@ function requireAuth(): Auth {
 }
 
 function requireStorage(): FirebaseStorage {
-  if (!storage) throw new Error("Firebase not initialized — check VITE_FIREBASE_* env vars");
+  if (!app) throw new Error("Firebase not initialized — check VITE_FIREBASE_* env vars");
+  if (!storage) throw new Error("Storage not initialized — call ensureStorage() first");
   return storage;
+}
+
+/**
+ * Install Firebase App Check before the first Firestore, Storage, Functions,
+ * or Auth network call. The reCAPTCHA provider is a dynamic import so it is
+ * not on the first-paint graph. Resolves immediately when App Check is off
+ * or Firebase itself failed to init — callers still proceed, and
+ * `isAppCheckInitialized()` stays false so a later permission-denied can be
+ * told apart from a rules failure.
+ *
+ * The enabled path is ignored by coverage: it depends on VITE_APPCHECK_ENABLED
+ * plus a reCAPTCHA site key, same as the previous synchronous init.
+ */
+let appCheckPromise: Promise<void> | null = null;
+
+export function ensureAppCheck(): Promise<void> {
+  if (!env?.VITE_APPCHECK_ENABLED || !app) return Promise.resolve();
+  /* v8 ignore start -- App Check branches depend on runtime env vars not available in tests */
+  appCheckPromise ??= installAppCheck();
+  return appCheckPromise;
+  /* v8 ignore stop */
+}
+
+/* v8 ignore start -- App Check branches depend on runtime env vars not available in tests */
+async function installAppCheck(): Promise<void> {
+  if (!env || !app) return;
+  if (useEmulators) {
+    // Expose debug token so the App Check debug provider works locally.
+    // Firebase App Check reads this off the global scope at init time.
+    // Gated on useEmulators (not import.meta.env.DEV) so a dev build that
+    // points at production Firebase never flips its real reCAPTCHA provider
+    // into debug mode — that silently fails every App Check token exchange.
+    (self as unknown as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+  }
+  if (Capacitor.isNativePlatform()) {
+    // Native WebViews cannot run ReCaptchaV3Provider. The Capacitor plugin
+    // uses DeviceCheck (iOS) / Play Integrity (Android). Awaited so the
+    // provider is installed before the first Firestore/Storage/Functions call.
+    const useDebug = useEmulators || import.meta.env.DEV;
+    try {
+      const { FirebaseAppCheck } = await import("@capacitor-firebase/app-check");
+      await FirebaseAppCheck.initialize({
+        debug: useDebug,
+        siteKey: env.VITE_RECAPTCHA_SITE_KEY,
+      });
+      appCheckInitialized = true;
+      addBreadcrumb({
+        category: "lifecycle",
+        message: "appcheck_native_initialized",
+        data: { debug: useDebug },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("appcheck_native_init_failed", { message });
+      addBreadcrumb({
+        category: "lifecycle",
+        message: "appcheck_native_init_failed",
+        data: { error: message },
+      });
+      captureMessage(`Native App Check init failed — Auth/Firestore requests may be rejected: ${message}`, "error");
+    }
+    return;
+  }
+  if (env.VITE_RECAPTCHA_SITE_KEY) {
+    try {
+      const { initializeAppCheck, ReCaptchaV3Provider } = await import("firebase/app-check");
+      initializeAppCheck(app, {
+        provider: new ReCaptchaV3Provider(env.VITE_RECAPTCHA_SITE_KEY),
+        isTokenAutoRefreshEnabled: true,
+      });
+      appCheckInitialized = true;
+    } catch (err) {
+      logger.error("appcheck_init_failed", { message: err instanceof Error ? err.message : String(err) });
+      captureMessage(
+        `App Check init failed — Auth/Firestore requests may be rejected: ${err instanceof Error ? err.message : String(err)}`,
+        "error",
+      );
+    }
+    return;
+  }
+  logger.error("appcheck_enabled_but_no_site_key", {
+    hint: "VITE_APPCHECK_ENABLED=true requires VITE_RECAPTCHA_SITE_KEY",
+  });
+  captureMessage("App Check opt-in is set but VITE_RECAPTCHA_SITE_KEY is missing — init skipped", "error");
+  /* v8 ignore stop */
+}
+
+/**
+ * Start App Check after first paint. Idle covers a returning signed-in
+ * session that restores without a tap; the first pointer or key starts it
+ * sooner. Sign-in, Storage, Functions, and the profile read all await
+ * `ensureAppCheck()` so a token is attached before those calls even if this
+ * warmup has not run yet. Monitor mode is unchanged — this only moves when
+ * the provider is constructed.
+ */
+function scheduleAppCheckWarmup(): void {
+  if (!env?.VITE_APPCHECK_ENABLED) {
+    logger.info("appcheck_skipped_opt_in_required", {
+      hint: "set VITE_APPCHECK_ENABLED=true + VITE_RECAPTCHA_SITE_KEY to enable",
+    });
+    return;
+  }
+  /* v8 ignore start -- App Check branches depend on runtime env vars not available in tests */
+  let started = false;
+  const start = () => {
+    if (started) return;
+    started = true;
+    void ensureAppCheck();
+  };
+  const ric = (globalThis as { requestIdleCallback?: (fn: () => void, opts?: { timeout: number }) => number })
+    .requestIdleCallback;
+  if (typeof ric === "function") ric(start, { timeout: 4000 });
+  else setTimeout(start, 1);
+  window.addEventListener("pointerdown", start, { once: true, capture: true });
+  window.addEventListener("keydown", start, { once: true, capture: true });
+  /* v8 ignore stop */
+}
+
+let storagePromise: Promise<FirebaseStorage | null> | null = null;
+
+/** Load the Storage SDK (and App Check) the first time an upload or delete needs it. */
+export function ensureStorage(): Promise<FirebaseStorage | null> {
+  if (storage) return Promise.resolve(storage);
+  if (!app) return Promise.resolve(null);
+  storagePromise ??= (async () => {
+    await ensureAppCheck();
+    const { getStorage, connectStorageEmulator } = await import("firebase/storage");
+    const instance = getStorage(app as FirebaseApp);
+    if (useEmulators) connectStorageEmulator(instance, "localhost", 9199);
+    storage = instance;
+    return instance;
+  })();
+  return storagePromise;
 }
 
 /** True when running against local Firebase emulators */

@@ -9,7 +9,6 @@ import { NotificationProvider, useNotifications } from "./context/NotificationCo
 import { OnboardingProvider } from "./context/OnboardingContext";
 import { VerifyEmailBanner } from "./components/VerifyEmailBanner";
 import { useEmailVerifiedToast } from "./hooks/useEmailVerifiedToast";
-import { TutorialOverlay } from "./components/onboarding/TutorialOverlay";
 import { getUidByUsername } from "./services/users";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Spinner } from "./components/ui/Spinner";
@@ -42,6 +41,7 @@ import {
   takeBootGoogleSignIn,
   type LandingBridge,
 } from "./boot/landingBoot";
+import { BootFeed } from "./boot/BootFeed";
 // Eager: first-paint / onboarding path (Landing, AuthScreen, ProfileSetup)
 // plus Lobby since it's the primary destination for returning authed users.
 // DOB + parental consent are collected inline on AuthScreen (COPPA/CCPA), and
@@ -76,6 +76,11 @@ const AdminScreen = lazy(() => import("./screens/AdminScreen").then((m) => ({ de
 const DiceHub = lazy(() => import("./screens/Dice/DiceHub").then((m) => ({ default: m.DiceHub })));
 const DiceNew = lazy(() => import("./screens/Dice/DiceNew").then((m) => ({ default: m.DiceNew })));
 const DiceTable = lazy(() => import("./screens/Dice/DiceTable").then((m) => ({ default: m.DiceTable })));
+// Spotlight/onboarding is not on the first-paint path. Keeping it out of the
+// App graph drops that chunk from /auth and /feed.
+const TutorialOverlay = lazy(() =>
+  import("./components/onboarding/TutorialOverlay").then((m) => ({ default: m.TutorialOverlay })),
+);
 
 function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
   return (
@@ -148,18 +153,29 @@ function AppScreens() {
     if (!loading && !user && takeBootAppleSignIn()) void handleAppleSignIn();
   }, [loading, user, handleAppleSignIn]);
 
+  const shellActive = useSyncExternalStore(subscribeBootShell, isBootShellActive);
+
   // When the landing was painted ahead of App (signed-out visitor, see
   // boot/landingBoot.ts), keep showing it while Firebase Auth resolves rather
   // than swapping it for the full-screen spinner.
   const landingWhileLoading = auth.loading && pathname === "/" && isLandingBooted();
 
-  // The boot landing hands over to App's own screens as soon as App renders
-  // anything but `/`.
+  // `/` keeps the landing bridge. `/feed` keeps the poster until auth
+  // resolves so that image stays the LCP candidate through the signed-out
+  // redirect home. `/auth` releases immediately so AuthScreen can take the
+  // typed draft — the shell already painted the same paragraph.
   useEffect(() => {
-    if (pathname !== "/") releaseBootShell();
-  }, [pathname]);
+    if (!isBootShellActive()) return;
+    if (pathname === "/") return;
+    if (pathname === "/feed" && auth.loading) return;
+    releaseBootShell();
+  }, [pathname, auth.loading]);
 
-  if (auth.loading && !landingWhileLoading) return <Spinner />;
+  if (auth.loading && pathname === "/feed") {
+    return shellActive ? null : <BootFeed />;
+  }
+  if (auth.loading && pathname === "/auth" && shellActive) return null;
+  if (auth.loading && !landingWhileLoading && pathname !== "/auth") return <Spinner />;
 
   return (
     <>
@@ -171,7 +187,9 @@ function AppScreens() {
       <AppEmailVerifyBanner />
       <AppRoutes />
       <ToastContainer />
-      <TutorialOverlay />
+      <Suspense fallback={null}>
+        <TutorialOverlay />
+      </Suspense>
     </>
   );
 }
@@ -451,9 +469,9 @@ function AppRoutes() {
                     nav.setAuthMode(nav.authMode === "signin" ? "signup" : "signin");
                   }}
                   onGoogle={auth.handleGoogleSignIn}
-                  googleLoading={auth.googleLoading}
+                  googleLoading={auth.googleLoading || hasBootGoogleSignIn()}
                   onApple={auth.handleAppleSignIn}
-                  appleLoading={auth.appleLoading}
+                  appleLoading={auth.appleLoading || hasBootAppleSignIn()}
                   googleError={auth.googleError}
                   onGoogleErrorDismiss={() => auth.setGoogleError("")}
                   mfaChallenge={auth.mfaChallenge}

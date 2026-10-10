@@ -97,12 +97,32 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: "hidden",
+    // Modern browsers only. Drops the legacy polyfill/transform output that
+    // Lighthouse was counting as unused JavaScript.
+    target: "es2022",
     modulePreload: { polyfill: false },
     rollupOptions: {
       output: {
         manualChunks(id) {
+          // Specific packages first so auth/firestore/storage/app-check can
+          // load on the route that needs them instead of one shared chunk.
+          if (id.includes("node_modules/firebase/app-check") || id.includes("node_modules/@firebase/app-check")) {
+            return "firebase-app-check";
+          }
+          if (id.includes("node_modules/firebase/firestore") || id.includes("node_modules/@firebase/firestore")) {
+            return "firebase-firestore";
+          }
+          if (id.includes("node_modules/firebase/storage") || id.includes("node_modules/@firebase/storage")) {
+            return "firebase-storage";
+          }
+          if (id.includes("node_modules/firebase/auth") || id.includes("node_modules/@firebase/auth")) {
+            return "firebase-auth";
+          }
+          if (id.includes("node_modules/firebase/messaging") || id.includes("node_modules/@firebase/messaging")) {
+            return "firebase-messaging";
+          }
           if (id.includes("node_modules/firebase/") || id.includes("node_modules/@firebase/")) {
-            return "firebase";
+            return "firebase-core";
           }
           if (id.includes("node_modules/react-dom/") || id.includes("node_modules/react/")) {
             return "react";

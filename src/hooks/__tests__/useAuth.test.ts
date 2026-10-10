@@ -38,6 +38,7 @@ const mockIsAppCheckInitialized = vi.fn(() => false);
 vi.mock("../../firebase", () => ({
   FIRESTORE_DB_NAME: "skatehubba",
   isAppCheckInitialized: () => mockIsAppCheckInitialized(),
+  ensureAppCheck: () => Promise.resolve(),
 }));
 
 import { useAuth } from "../useAuth";

@@ -4,16 +4,19 @@ import {
   FIREBASE_AUTH_IDB_NAME,
   __resetLandingBootForTest,
   afterLandingPainted,
+  clearBootAuthDraft,
   clearBootAuthMode,
   hasBootAppleSignIn,
   hasBootGoogleSignIn,
   isLandingBooted,
+  peekBootAuthDraft,
   peekBootAuthMode,
   requestBootAppleSignIn,
   requestBootGoogleSignIn,
   runWhenIdle,
   setBootAuthMode,
   setLandingBooted,
+  updateBootAuthDraft,
   shouldBootLanding,
   takeBootAppleSignIn,
   takeBootGoogleSignIn,
@@ -28,9 +31,16 @@ beforeEach(() => {
 });
 
 describe("shouldBootLanding", () => {
-  it("never boots on native or off the landing path", async () => {
+  it("never boots on native or off the fast path", async () => {
     expect(await shouldBootLanding("/", true, idbWith())).toBe(false);
-    expect(await shouldBootLanding("/auth", false, idbWith())).toBe(false);
+    expect(await shouldBootLanding("/lobby", false, idbWith())).toBe(false);
+    expect(await shouldBootLanding("/auth", true, idbWith())).toBe(false);
+  });
+
+  it("boots the auth and feed shells for a signed-out visitor", async () => {
+    writeAuthHint(false);
+    expect(await shouldBootLanding("/auth", false, idbWith(FIREBASE_AUTH_IDB_NAME))).toBe(true);
+    expect(await shouldBootLanding("/feed", false, idbWith(FIREBASE_AUTH_IDB_NAME))).toBe(true);
   });
 
   it("follows the auth hint when present", async () => {
@@ -91,6 +101,14 @@ describe("boot state and intents", () => {
     expect(hasBootGoogleSignIn()).toBe(true);
     expect(takeBootGoogleSignIn()).toBe(true);
     expect(takeBootGoogleSignIn()).toBe(false);
+  });
+
+  it("keeps auth-shell field values until AuthScreen clears them", () => {
+    expect(peekBootAuthDraft().email).toBe("");
+    updateBootAuthDraft({ email: "a@b.co", password: "secret", month: "01" });
+    expect(peekBootAuthDraft()).toMatchObject({ email: "a@b.co", password: "secret", month: "01" });
+    clearBootAuthDraft();
+    expect(peekBootAuthDraft().email).toBe("");
   });
 
   it("hands out an Apple sign-in request exactly once", () => {

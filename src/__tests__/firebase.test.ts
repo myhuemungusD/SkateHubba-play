@@ -106,7 +106,9 @@ describe("firebase module", () => {
     expect(mockInitializeApp).toHaveBeenCalledTimes(1);
     expect(mockInitializeFirestore).toHaveBeenCalledTimes(1);
     expect(mockGetAuth).toHaveBeenCalledTimes(1);
-    expect(mockGetStorage).toHaveBeenCalledTimes(1);
+    // Storage is loaded on the first upload/delete, not at module init.
+    expect(mockGetStorage).not.toHaveBeenCalled();
+    expect(mod.storage).toBeNull();
   });
 
   it("connects to emulators when VITE_USE_EMULATORS=true in DEV mode", async () => {
@@ -114,9 +116,11 @@ describe("firebase module", () => {
     vi.stubEnv("VITE_USE_EMULATORS", "true");
     // import.meta.env.DEV is true by default in vitest
 
-    await import("../firebase");
+    const mod = await import("../firebase");
     expect(mockConnectAuthEmulator).toHaveBeenCalledTimes(1);
     expect(mockConnectFirestoreEmulator).toHaveBeenCalledTimes(1);
+    expect(mockConnectStorageEmulator).not.toHaveBeenCalled();
+    await mod.ensureStorage();
     expect(mockConnectStorageEmulator).toHaveBeenCalledTimes(1);
     // In emulator mode, memoryLocalCache is used instead of persistentLocalCache
     expect(mockMemoryLocalCache).toHaveBeenCalledTimes(1);
@@ -178,7 +182,32 @@ describe("firebase module", () => {
     vi.stubEnv("VITE_USE_EMULATORS", "false");
 
     const mod = await import("../firebase");
-    expect(mod.requireStorage()).toBeDefined();
+    expect(() => mod.requireStorage()).toThrow("call ensureStorage() first");
+    const instance = await mod.ensureStorage();
+    expect(instance).toBeDefined();
+    expect(mod.requireStorage()).toBe(instance);
+    expect(mockGetStorage).toHaveBeenCalledTimes(1);
+    await mod.ensureStorage();
+    expect(mockGetStorage).toHaveBeenCalledTimes(1);
+    expect(mod.isAppCheckInitialized()).toBe(false);
+  });
+
+  it("ensureAppCheck resolves without initializing when the flag is unset", async () => {
+    stubFirebaseEnv();
+    vi.stubEnv("VITE_USE_EMULATORS", "false");
+
+    const mod = await import("../firebase");
+    await mod.ensureAppCheck();
+    expect(mod.isAppCheckInitialized()).toBe(false);
+  });
+
+  it("ensureStorage resolves null when Firebase never initialized", async () => {
+    vi.stubEnv("VITE_FIREBASE_API_KEY", "");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const mod = await import("../firebase");
+    await expect(mod.ensureStorage()).resolves.toBeNull();
+    await expect(mod.ensureAppCheck()).resolves.toBeUndefined();
   });
 
   it("uses persistent cache and reports firestoreCacheMode='persistent' by default", async () => {

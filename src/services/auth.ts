@@ -17,7 +17,7 @@ import {
 } from "firebase/auth";
 import { Capacitor } from "@capacitor/core";
 import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
-import { auth, requireAuth, isEmulatorMode } from "../firebase";
+import { auth, ensureAppCheck, requireAuth, isEmulatorMode } from "../firebase";
 import { captureException } from "../lib/sentry";
 import { getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { logger } from "./logger";
@@ -94,6 +94,7 @@ const VERIFICATION_THROTTLED_CODES = new Set<string>(["auth/too-many-requests", 
  * weak password, etc). Callers should translate codes via `parseFirebaseError`.
  */
 export async function signUp(email: string, password: string): Promise<SignUpResult> {
+  await ensureAppCheck();
   logger.info("sign_up_attempt", { email });
   const cred = await createUserWithEmailAndPassword(requireAuth(), email, password);
   logger.info("sign_up_success", { uid: cred.user.uid, email: cred.user.email });
@@ -139,6 +140,7 @@ export async function signUp(email: string, password: string): Promise<SignUpRes
  * avoid leaking account-existence signals.
  */
 export async function signIn(email: string, password: string): Promise<User> {
+  await ensureAppCheck();
   logger.info("sign_in_attempt", { email });
   const cred = await signInWithEmailAndPassword(requireAuth(), email, password);
   logger.info("sign_in_success", { uid: cred.user.uid, emailVerified: cred.user.emailVerified });
@@ -314,6 +316,7 @@ const POPUP_FALLBACK_CODES = new Set<string>([
  * Google's OAuth page).
  */
 export async function signInWithGoogle(): Promise<User | null> {
+  await ensureAppCheck();
   const a = requireAuth();
 
   // ── Native path (iOS / Android) ─────────────────────────────────────
@@ -397,6 +400,7 @@ function makeAppleProvider(): OAuthProvider {
  * Returns the signed-in User, or null when a web redirect was started.
  */
 export async function signInWithApple(): Promise<User | null> {
+  await ensureAppCheck();
   const a = requireAuth();
 
   if (Capacitor.isNativePlatform()) {
@@ -594,6 +598,7 @@ export async function resolveGoogleRedirect(): Promise<User | null> {
     logger.debug("resolve_google_redirect_skip_emulator");
     return null;
   }
+  await ensureAppCheck();
   logger.debug("resolve_google_redirect_start");
   try {
     const result = await getRedirectResult(auth);

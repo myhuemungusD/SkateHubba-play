@@ -126,6 +126,18 @@ window.addEventListener("unhandledrejection", (event) => {
   captureException(event.reason, { extra: { type: "unhandledrejection" } });
 });
 
+// The feed shell's poster is the LCP image. Preload it only on /feed so
+// home and auth don't compete with it for bandwidth.
+if (window.location.pathname === "/feed") {
+  const poster = document.createElement("link");
+  poster.rel = "preload";
+  poster.as = "image";
+  poster.href = "/sh-video-poster.webp";
+  poster.type = "image/webp";
+  poster.setAttribute("fetchpriority", "high");
+  document.head.appendChild(poster);
+}
+
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error("Missing #root element in index.html");
 

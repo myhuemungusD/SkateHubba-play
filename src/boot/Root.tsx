@@ -8,9 +8,9 @@ export type AppLoader = () => Promise<{ default: ComponentType }>;
 /**
  * Top-level shell. Loads the full App chunk and renders it once available.
  *
- * - boot=true (signed-out visitor on `/`): paint <BootLanding> first and only
- *   start fetching App once the landing has fully painted, so App's JS
- *   (Firebase et al.) never competes with it.
+ * - boot=true (signed-out visitor on `/`, `/auth`, or `/feed`): paint
+ *   <BootLanding> first and only start fetching App once that shell has
+ *   painted, so App's JS (Firebase et al.) never competes with LCP.
  *   Once App is mounted the boot landing stays on screen (App drives it via
  *   the shell bridge) until App releases it, so the visitor's in-page state
  *   survives the handoff.
