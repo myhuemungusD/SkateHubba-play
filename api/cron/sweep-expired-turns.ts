@@ -46,6 +46,14 @@ const FIRESTORE_DB_NAME = "skatehubba";
 /** Max games to process per invocation. The cron repeats every 15 minutes. */
 const MAX_PER_RUN = 100;
 
+/**
+ * Phases this sweep can actually resolve. pendingReview and communityReview
+ * keep a past turnDeadline while a separate review clock runs, and paging
+ * through them used up the whole 100-game budget. disputable and setReview
+ * still expire on turnDeadline, so they stay in the query.
+ */
+const SWEEP_PHASES = ["setting", "matching", "disputable", "setReview"] as const;
+
 /** Minimal request/response shape — avoids a hard dep on @vercel/node types. */
 interface CronRequest {
   method?: string;
@@ -538,7 +546,8 @@ async function reconcileChallengeNotifications(
  * exactly once — and the `turnReminderSentFor` tombstone on the game doc makes a
  * double-tick a no-op instead of a second buzz.
  *
- * Reuses the existing (status, turnDeadline) composite index.
+ * Uses the (status, phase, turnDeadline) composite index. Frozen review
+ * phases are not in SWEEP_PHASES, so they cannot fill this page either.
  */
 async function remindUpcomingDeadlines(db: Firestore, nowMs: number, dryRun: boolean): Promise<NotifyPassResult> {
   const result: NotifyPassResult = { written: 0, errors: 0 };
@@ -546,6 +555,7 @@ async function remindUpcomingDeadlines(db: Firestore, nowMs: number, dryRun: boo
   const candidates = await db
     .collection("games")
     .where("status", "==", "active")
+    .where("phase", "in", [...SWEEP_PHASES])
     .where("turnDeadline", ">=", Timestamp.fromMillis(nowMs + REMINDER_LEAD_MIN_MS))
     .where("turnDeadline", "<=", Timestamp.fromMillis(nowMs + REMINDER_LEAD_MAX_MS))
     .orderBy("turnDeadline", "asc")
@@ -701,11 +711,13 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
 
   try {
     const nowTs = Timestamp.fromMillis(Date.now());
-    // Eligibility query mirrors the client's expiry check: active games whose
-    // turnDeadline is in the past. Ordered + capped so each run is time-boxed.
+    // Active games whose turnDeadline is in the past, and whose phase this
+    // sweep can resolve. Frozen review games stay out of the page. Ordered
+    // and capped so each run is time-boxed.
     const candidates = await db
       .collection("games")
       .where("status", "==", "active")
+      .where("phase", "in", [...SWEEP_PHASES])
       .where("turnDeadline", "<=", nowTs)
       .orderBy("turnDeadline", "asc")
       .limit(MAX_PER_RUN)
