@@ -23,11 +23,9 @@ Turn the client flag on only after the function is deployed and `MODERATION_ENAB
 
 ## Appeals
 
-A rejection or a removal writes `moderationStatements/clip_{clipId}` and a notification whose link is `/appeal/clip_{clipId}`. The owner files `appeals/statement_clip_{clipId}`.
+A rejection or a removal writes `moderationStatements/clip_{clipId}` with `action: content_restricted`. Settings lists that statement under Reports & actions. The owner appeals there, which files `appeals/statement_clip_{clipId}`. The notification opens `/settings#safety-reports`.
 
-That is the same pair of collections as the open DSA report/appeal pull request (#642, branch `cursor/dsa-report-controls-de8c`). That pull request had not merged on 2026-10-10, so this change does not import its code. When it merges, its Settings list can show these statements and appeals. Keep one copy of the rules if the two branches conflict.
-
-The Shorts-style feed pull request (#641) had not merged either. The owner's "Checking…" strip is `OwnClipModeration` inside the current feed. Keep that mount if the feed file conflicts.
+The Shorts-style feed pull request (#641) had not merged. The owner's "Checking…" strip is `OwnClipModeration` inside the current feed. Keep that mount if the feed file conflicts.
 
 ## Deploy (do this by hand)
 

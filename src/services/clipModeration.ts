@@ -6,7 +6,7 @@
  * `moderation` themselves.
  */
 
-import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc, where } from "firebase/firestore";
+import { collection, getDocs, limit, query, where } from "firebase/firestore";
 import { connectFunctionsEmulator, getFunctions, httpsCallable } from "firebase/functions";
 import app, { isEmulatorMode, requireDb } from "../firebase";
 import { logger } from "./logger";
@@ -14,8 +14,10 @@ import { parseFirebaseError } from "../utils/helpers";
 
 const REVIEW_LIMIT = 30;
 const OWN_LIMIT = 40;
-const MAX_APPEAL = 1000;
 const MAX_REASON = 200;
+
+/** Same screen SafetyReportsSection renders under Settings. */
+const CLIP_APPEAL_PATH = "/settings#safety-reports";
 
 export interface ReviewClip {
   id: string;
@@ -36,14 +38,6 @@ export interface OwnClipModerationRow {
   moderation: "pending" | "review" | "rejected" | "removed";
   statement: string;
   appealPath: string | null;
-}
-
-export interface ClipAppealView {
-  clipId: string;
-  trickName: string;
-  moderation: string;
-  statement: string;
-  canAppeal: boolean;
 }
 
 export type ClipDecision = "approved" | "removed";
@@ -125,7 +119,7 @@ export function parseOwnClip(id: string, raw: unknown): OwnClipModerationRow | n
     moderation === "rejected" || moderation === "removed"
       ? typeof notice?.appealPath === "string" && notice.appealPath.length > 0
         ? notice.appealPath
-        : `/appeal/${encodeURIComponent(`clip_${id}`)}`
+        : CLIP_APPEAL_PATH
       : null;
   return {
     id,
@@ -176,51 +170,6 @@ export async function fetchOwnClipModeration(uid: string): Promise<OwnClipModera
   } catch (err) {
     logger.warn("own_clip_moderation_failed", { uid, error: parseFirebaseError(err) });
     throw new Error("Couldn't load your clips.");
-  }
-}
-
-export async function loadClipAppeal(uid: string, statementId: string): Promise<ClipAppealView> {
-  requireClipId(uid);
-  requireClipId(statementId);
-  try {
-    const snap = await getDoc(doc(requireDb(), "moderationStatements", statementId));
-    if (!snap.exists()) throw new Error("That clip is gone.");
-    const data = snap.data() as Record<string, unknown>;
-    if (data.subjectUid !== uid) throw new Error("You can only appeal your own clip.");
-    const contentRef = typeof data.contentRef === "string" ? data.contentRef : "";
-    const canAppeal = data.action === "content_restricted";
-    return {
-      clipId: contentRef || statementId,
-      trickName: contentRef.length > 0 ? contentRef : "Clip",
-      moderation: canAppeal ? "removed" : "",
-      statement: typeof data.explanation === "string" ? data.explanation : "",
-      canAppeal,
-    };
-  } catch (err) {
-    if (err instanceof Error && /clip|appeal/i.test(err.message)) throw err;
-    logger.warn("clip_appeal_load_failed", { statementId, error: parseFirebaseError(err) });
-    throw new Error("Couldn't open that appeal.");
-  }
-}
-
-export async function submitClipAppeal(uid: string, statementId: string, statement: string): Promise<void> {
-  requireClipId(uid);
-  requireClipId(statementId);
-  const trimmed = statement.trim();
-  if (trimmed.length === 0) throw new Error("Tell us why this decision should change.");
-  if (trimmed.length > MAX_APPEAL) throw new Error(`Appeals are limited to ${MAX_APPEAL} characters.`);
-  try {
-    await setDoc(doc(requireDb(), "appeals", `statement_${statementId}`), {
-      appellantUid: uid,
-      targetKind: "statement",
-      targetId: statementId,
-      explanation: trimmed,
-      status: "pending",
-      createdAt: serverTimestamp(),
-    });
-  } catch (err) {
-    logger.warn("clip_appeal_submit_failed", { statementId, error: parseFirebaseError(err) });
-    throw new Error("Couldn't send your appeal. Please try again.");
   }
 }
 

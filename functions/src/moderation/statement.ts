@@ -1,10 +1,9 @@
 /**
  * Statement of reasons for a clip decision.
  *
- * The appeal link opens /appeal/:statementId. The function also writes
- * moderationStatements/{statementId} and the owner files appeals/statement_{id},
- * the same collections as the open DSA PR (#642). That PR had not merged
- * on 2026-10-10, so this does not depend on its code.
+ * A rejection or removal writes moderationStatements/{statementId}. Settings
+ * lists that doc and files appeals/statement_{statementId}. The notification
+ * opens that screen.
  */
 export interface StatementOfReasons {
   decision: "rejected" | "removed" | "approved" | "review";
@@ -18,33 +17,36 @@ export interface StatementOfReasons {
 const MAX_BODY = 200;
 const MAX_STATEMENT_ID = 128;
 
+/** Settings → Reports & actions, where the statement and its appeal live. */
+export const CLIP_APPEAL_PATH = "/settings#safety-reports";
+
 /** Doc id in moderationStatements. Fits the DSA 128-character id cap. */
 export function statementIdFor(clipId: string): string {
   const prefixed = `clip_${clipId}`;
   return prefixed.length <= MAX_STATEMENT_ID ? prefixed : clipId.slice(0, MAX_STATEMENT_ID);
 }
 
-export function appealPathFor(clipId: string): string {
-  return `/appeal/${encodeURIComponent(statementIdFor(clipId))}`;
+export function appealPathFor(): string {
+  return CLIP_APPEAL_PATH;
 }
 
-export function statementForAutoReject(clipId: string, likelihood: string): StatementOfReasons {
-  const appealPath = appealPathFor(clipId);
+export function statementForAutoReject(likelihood: string): StatementOfReasons {
+  const appealPath = appealPathFor();
   return {
     decision: "rejected",
     grounds: "explicit content",
-    statement: `We rejected this clip because automated screening found explicit content (${likelihood}). This decision used automated means. You can appeal at ${appealPath}.`,
+    statement: `We rejected this clip because automated screening found explicit content (${likelihood}). This decision used automated means. Appeal it in Settings.`,
     appealPath,
     automated: true,
   };
 }
 
-export function statementForRemoval(clipId: string, reason: string): StatementOfReasons {
-  const appealPath = appealPathFor(clipId);
+export function statementForRemoval(reason: string): StatementOfReasons {
+  const appealPath = appealPathFor();
   return {
     decision: "removed",
     grounds: reason,
-    statement: `We removed this clip because: ${reason}. You can appeal at ${appealPath}.`,
+    statement: `We removed this clip because: ${reason}. Appeal it in Settings.`,
     appealPath,
     automated: false,
   };
@@ -60,12 +62,12 @@ export function statementForApproval(): StatementOfReasons {
   };
 }
 
-export function statementForReview(clipId: string, grounds: string): StatementOfReasons {
+export function statementForReview(grounds: string): StatementOfReasons {
   return {
     decision: "review",
     grounds,
     statement: `This clip is in review (${grounds}).`,
-    appealPath: appealPathFor(clipId),
+    appealPath: appealPathFor(),
     automated: true,
   };
 }

@@ -156,7 +156,7 @@ export async function handleDecideClip(
   }
   let built;
   try {
-    built = adminPatch(clipId, decision, reason);
+    built = adminPatch(decision, reason);
   } catch (error) {
     throw new HttpsError("invalid-argument", error instanceof Error ? error.message : "Invalid decision.");
   }

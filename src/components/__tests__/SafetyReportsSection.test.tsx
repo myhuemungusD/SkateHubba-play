@@ -28,6 +28,7 @@ function ready(): void {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.location.hash = "";
   ready();
 });
 
@@ -55,6 +56,48 @@ describe("SafetyReportsSection", () => {
     expect(screen.getByTestId("my-report-r2")).toHaveTextContent("mystery");
     expect(screen.getByTestId("my-report-r3")).toHaveTextContent("Action taken");
     expect(screen.getByTestId("my-report-r4")).toHaveTextContent("No action taken");
+  });
+
+  it("lists a clip rejection in the statements the owner can appeal", async () => {
+    mockListMyStatements.mockResolvedValue([
+      {
+        id: "clip_c1",
+        reportId: "clip_c1",
+        reason: "explicit content",
+        explanation: "We rejected this clip because automated screening found explicit content.",
+        contentRef: "c1",
+        createdAt: null,
+      },
+    ]);
+    render(<SafetyReportsSection uid="u1" />);
+    const row = await screen.findByTestId("statement-clip_c1");
+    expect(row).toHaveTextContent("explicit content");
+    expect(row).toHaveTextContent("automated screening");
+    expect(screen.getByRole("button", { name: "Appeal" })).toBeInTheDocument();
+  });
+
+  it("scrolls to the statements when a clip decision opens Settings", async () => {
+    window.location.hash = "#safety-reports";
+    const original = HTMLElement.prototype.scrollIntoView;
+    const scroll = vi.fn();
+    HTMLElement.prototype.scrollIntoView = scroll;
+    const first = render(<SafetyReportsSection uid="u1" />);
+    expect(scroll).toHaveBeenCalled();
+    await screen.findByTestId("safety-reports-loading");
+    first.unmount();
+    HTMLElement.prototype.scrollIntoView = original;
+
+    const getById = vi.spyOn(document, "getElementById").mockReturnValue(null);
+    const second = render(<SafetyReportsSection uid="scroll-miss" />);
+    await screen.findByTestId("safety-reports-loading");
+    second.unmount();
+    getById.mockRestore();
+
+    Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+    const third = render(<SafetyReportsSection uid="scroll-none" />);
+    await screen.findByTestId("safety-reports-loading");
+    third.unmount();
+    HTMLElement.prototype.scrollIntoView = original;
   });
 
   it("shows a statement and files an appeal", async () => {

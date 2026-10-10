@@ -39,7 +39,7 @@ export async function runReportModeration(input: ReportModerationInput): Promise
   });
   const threshold = input.threshold ?? AUTO_HIDE_REPORT_THRESHOLD;
   if (counted.count < threshold) return "ignored";
-  const built = autoHidePatch(input.clipId, counted.reasons);
+  const built = autoHidePatch(counted.reasons);
   const applied = await input.save(built.patch, built.guard);
   return applied ? "hidden" : "ignored";
 }

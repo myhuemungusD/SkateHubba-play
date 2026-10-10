@@ -56,7 +56,7 @@ export async function runUploadModeration(input: UploadModerationInput): Promise
   try {
     const annotation = await input.annotate(gcsUri);
     const decision = decideFromAnnotation(annotation);
-    const built = uploadPatch(input.clipId, decision);
+    const built = uploadPatch(decision);
     const applied = await input.save(built.patch, built.guard);
     if (applied && built.statement && ownerUid.length > 0) {
       await input.notify(ownerUid, built.statement);

@@ -67,7 +67,17 @@ function appealFor(appeals: MyAppeal[], kind: AppealTargetKind, targetId: string
  */
 export function SafetyReportsSection({ uid }: { uid: string }) {
   const [reloadKey, setReloadKey] = useState(0);
-  return <SafetyReportsBody key={`${uid}:${reloadKey}`} uid={uid} onReload={() => setReloadKey((key) => key + 1)} />;
+  useEffect(() => {
+    if (window.location.hash !== "#safety-reports") return;
+    const node = document.getElementById("safety-reports");
+    if (!node || typeof node.scrollIntoView !== "function") return;
+    node.scrollIntoView();
+  }, []);
+  return (
+    <section id="safety-reports">
+      <SafetyReportsBody key={`${uid}:${reloadKey}`} uid={uid} onReload={() => setReloadKey((key) => key + 1)} />
+    </section>
+  );
 }
 
 function SafetyReportsBody({ uid, onReload }: { uid: string; onReload: () => void }) {

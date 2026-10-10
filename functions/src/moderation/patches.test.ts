@@ -18,7 +18,7 @@ describe("clip patches", () => {
   });
 
   it("maps each upload outcome onto the feed visibility field", () => {
-    const rejected = uploadPatch("c1", {
+    const rejected = uploadPatch({
       decision: "rejected",
       explicitLikelihood: "VERY_LIKELY",
       skateDetected: false,
@@ -26,9 +26,9 @@ describe("clip patches", () => {
       grounds: "explicit content",
     });
     expect(rejected.patch).toMatchObject({ moderation: "rejected", moderationStatus: "hidden" });
-    expect(rejected.statement?.appealPath).toBe("/appeal/clip_c1");
+    expect(rejected.statement?.appealPath).toBe("/settings#safety-reports");
 
-    const review = uploadPatch("c1", {
+    const review = uploadPatch({
       decision: "review",
       explicitLikelihood: "UNLIKELY",
       skateDetected: false,
@@ -38,7 +38,7 @@ describe("clip patches", () => {
     expect(review.patch).toMatchObject({ moderation: "review", moderationStatus: "hidden" });
     expect(review.statement).toBeNull();
 
-    const approved = uploadPatch("c1", {
+    const approved = uploadPatch({
       decision: "approved",
       explicitLikelihood: "UNLIKELY",
       skateDetected: true,
@@ -53,11 +53,11 @@ describe("clip patches", () => {
       moderation: "review",
       moderationScores: { error: "timed out" },
     });
-    expect(adminPatch("c1", "approved", "").patch).toMatchObject({
+    expect(adminPatch("approved", "").patch).toMatchObject({
       moderation: "approved",
       moderationStatus: "active",
     });
-    expect(adminPatch("c1", "removed", "  not skating  ").statement?.grounds).toBe("not skating");
-    expect(() => adminPatch("c1", "removed", "   ")).toThrow(/reason is required/);
+    expect(adminPatch("removed", "  not skating  ").statement?.grounds).toBe("not skating");
+    expect(() => adminPatch("removed", "   ")).toThrow(/reason is required/);
   });
 });

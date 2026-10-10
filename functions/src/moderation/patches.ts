@@ -31,14 +31,14 @@ export function shouldAutoHideClip(current: { source?: unknown; moderation?: unk
   return true;
 }
 
-export function uploadPatch(clipId: string, result: DecisionResult): ClipPatch {
+export function uploadPatch(result: DecisionResult): ClipPatch {
   const scores = {
     explicitLikelihood: result.explicitLikelihood,
     skateDetected: result.skateDetected,
     skateLabels: result.skateLabels,
   };
   if (result.decision === "rejected") {
-    const statement = statementForAutoReject(clipId, result.explicitLikelihood);
+    const statement = statementForAutoReject(result.explicitLikelihood);
     return {
       guard: "pending-only",
       statement,
@@ -58,7 +58,7 @@ export function uploadPatch(clipId: string, result: DecisionResult): ClipPatch {
         moderation: "review",
         moderationStatus: "hidden",
         moderationScores: scores,
-        moderationNotice: statementForReview(clipId, result.grounds),
+        moderationNotice: statementForReview(result.grounds),
       },
     };
   }
@@ -91,7 +91,7 @@ export function failurePatch(message: string): ClipPatch {
   };
 }
 
-export function autoHidePatch(clipId: string, reasons: readonly string[]): ClipPatch {
+export function autoHidePatch(reasons: readonly string[]): ClipPatch {
   return {
     guard: "hide-if-open",
     statement: null,
@@ -99,12 +99,12 @@ export function autoHidePatch(clipId: string, reasons: readonly string[]): ClipP
       moderation: "review",
       moderationStatus: "hidden",
       reportReasons: [...reasons],
-      moderationNotice: statementForReview(clipId, "reported by other skaters"),
+      moderationNotice: statementForReview("reported by other skaters"),
     },
   };
 }
 
-export function adminPatch(clipId: string, decision: "approved" | "removed", reason: string): ClipPatch {
+export function adminPatch(decision: "approved" | "removed", reason: string): ClipPatch {
   if (decision === "approved") {
     const statement = statementForApproval();
     return {
@@ -121,7 +121,7 @@ export function adminPatch(clipId: string, decision: "approved" | "removed", rea
   if (trimmed.length === 0) {
     throw new Error("A reason is required to remove a clip.");
   }
-  const statement = statementForRemoval(clipId, trimmed);
+  const statement = statementForRemoval(trimmed);
   return {
     guard: "admin",
     statement,
