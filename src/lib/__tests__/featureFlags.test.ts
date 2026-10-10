@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isAppleSignInEnabled, isDiceEnabled, isExtrasEnabled, isRefereeEnabled, parseFlag } from "../featureFlags";
+import {
+  isAppleSignInEnabled,
+  isDiceEnabled,
+  isExtrasEnabled,
+  isRefereeEnabled,
+  isTrickPickerEnabled,
+  parseFlag,
+} from "../featureFlags";
 
 describe("parseFlag", () => {
   it("accepts only the literal string 'true'", () => {
@@ -116,5 +123,29 @@ describe("isRefereeEnabled (VITE_FEATURE_REFEREE_ENABLED)", () => {
     vi.stubEnv("VITE_FEATURE_DICE_ENABLED", "true");
     vi.stubEnv("VITE_FEATURE_APPLE_SIGNIN_ENABLED", "true");
     expect(isRefereeEnabled()).toBe(false);
+  });
+});
+
+describe("isTrickPickerEnabled (VITE_FEATURE_TRICK_PICKER_ENABLED)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is OFF when the env var is unset — the production default", () => {
+    expect(import.meta.env.VITE_FEATURE_TRICK_PICKER_ENABLED).toBeUndefined();
+    expect(isTrickPickerEnabled()).toBe(false);
+  });
+
+  it("stays off for anything other than the literal string true", () => {
+    vi.stubEnv("VITE_FEATURE_TRICK_PICKER_ENABLED", "TRUE");
+    expect(isTrickPickerEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_TRICK_PICKER_ENABLED", "true");
+    expect(isTrickPickerEnabled()).toBe(true);
+  });
+
+  it("does not follow the other feature flags", () => {
+    vi.stubEnv("VITE_FEATURE_EXTRAS_ENABLED", "true");
+    vi.stubEnv("VITE_FEATURE_REFEREE_ENABLED", "true");
+    expect(isTrickPickerEnabled()).toBe(false);
   });
 });

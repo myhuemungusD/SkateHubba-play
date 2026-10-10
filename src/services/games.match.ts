@@ -1,4 +1,5 @@
 import { doc, runTransaction, serverTimestamp, Timestamp, arrayUnion } from "firebase/firestore";
+import type { TrickSelection } from "../constants/tricks";
 import { requireAuth, requireDb } from "../firebase";
 import { analytics } from "./analytics";
 import { metrics } from "./logger";
@@ -6,6 +7,8 @@ import { writeNotificationInTx } from "./notifications";
 import { createPushDispatchOutbox, drainPushDispatchOutbox, resetPushDispatchOutbox } from "./pushDispatch";
 import { writeLandedClipsInTransaction } from "./clips";
 import { toGameDoc, isJudgeActive, type TurnRecord } from "./games.mappers";
+import { clearedTrickFields, trickFieldsFromSelection, trickSnapshot } from "./trickFields";
+import { applyTrainingLabelPending } from "./trainingLabels.materialize";
 import { TURN_DURATION_MS, getOpponent, checkTurnActionRate, recordTurnAction } from "./games.turns";
 import { decidePendingReviewExpiry } from "./dispute.resolution.shared";
 
@@ -13,13 +16,22 @@ import { decidePendingReviewExpiry } from "./dispute.resolution.shared";
  * Set a trick (setter's turn)
  * ──────────────────────────────────────────── */
 
-export async function setTrick(gameId: string, trickName: string, videoUrl: string | null): Promise<void> {
-  // Sanitise at the service boundary: trim whitespace, strip control chars, cap length
-  const safeTrickName = trickName
-    .trim()
-    // eslint-disable-next-line no-control-regex -- intentionally stripping C0/C1 control characters
-    .replace(/[\x00-\x1F\x7F]/g, "")
-    .slice(0, 100);
+export async function setTrick(
+  gameId: string,
+  trickName: string,
+  videoUrl: string | null,
+  selection?: TrickSelection | null,
+): Promise<void> {
+  const picked = trickFieldsFromSelection(selection);
+  // Sanitise at the service boundary: trim whitespace, strip control chars, cap length.
+  // The picker path uses the catalog display name, already capped at 64.
+  const safeTrickName =
+    picked.displayName ??
+    trickName
+      .trim()
+      // eslint-disable-next-line no-control-regex -- intentionally stripping C0/C1 control characters
+      .replace(/[\x00-\x1F\x7F]/g, "")
+      .slice(0, 100);
   if (!safeTrickName) throw new Error("Trick name cannot be empty");
 
   checkTurnActionRate(gameId);
@@ -50,6 +62,7 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
     tx.update(gameRef, {
       phase: "matching",
       currentTrickName: safeTrickName,
+      ...picked.fields,
       currentTrickVideoUrl: videoUrl,
       currentTurn: matcherUid,
       turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
@@ -103,6 +116,7 @@ export async function failSetTrick(gameId: string): Promise<void> {
       currentSetter: nextSetter,
       currentTurn: nextSetter,
       currentTrickName: null,
+      ...clearedTrickFields(),
       currentTrickVideoUrl: null,
       turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
       turnNumber: game.turnNumber + 1,
@@ -277,6 +291,7 @@ export async function submitMatchAttempt(
       landed: false,
       letterTo: matcherUid,
       judgedBy: null,
+      ...trickSnapshot(game),
     };
 
     const updates: Record<string, unknown> = {
@@ -286,6 +301,7 @@ export async function submitMatchAttempt(
       p2Letters: newP2Letters,
       updatedAt: serverTimestamp(),
     };
+    applyTrainingLabelPending(updates, turnRecord);
 
     if (gameOver) {
       updates.status = "complete";
@@ -410,7 +426,7 @@ export async function acceptLanded(gameId: string): Promise<void> {
     // turnDeadlineMs and appendTurnRecord are guaranteed present.
     const record = decision.appendTurnRecord as TurnRecord;
 
-    tx.update(gameRef, {
+    const accepted: Record<string, unknown> = {
       phase: decision.phase,
       currentSetter: decision.currentSetter,
       currentTurn: decision.currentTurn,
@@ -422,7 +438,9 @@ export async function acceptLanded(gameId: string): Promise<void> {
       reviewFor: decision.reviewFor,
       reviewDeadline: decision.reviewDeadline,
       updatedAt: serverTimestamp(),
-    });
+    };
+    applyTrainingLabelPending(accepted, record);
+    tx.update(gameRef, accepted);
 
     // NOW denormalize the confirmed landed clips (deferred out of the freeze).
     // Every field is sourced from the shared decision's TurnRecord so the clip

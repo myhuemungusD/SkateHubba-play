@@ -13,6 +13,7 @@ import { ReportModal } from "../components/ReportModal";
 import { ProUsername } from "../components/ProUsername";
 import { DisputeResultCard } from "../components/DisputeResultCard";
 import { fetchResolvedDispute, type Dispute } from "../services/disputes";
+import { TrainingConsentPrompt } from "../components/TrainingConsentPrompt";
 
 export function GameOverScreen({
   game,
@@ -170,6 +171,8 @@ export function GameOverScreen({
               ? `@${opponentName} spelled S.K.A.T.E.`
               : `@${opponentName} outlasted you.`}
         </p>
+
+        <TrainingConsentPrompt profile={profile} />
 
         {onViewPlayer && (
           <button

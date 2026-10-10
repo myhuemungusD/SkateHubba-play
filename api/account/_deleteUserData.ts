@@ -92,6 +92,10 @@ export interface DeletionSummary {
   diceStats: number;
   /** 1 when diceCreateLimits/{uid} existed and was deleted, otherwise 0. */
   diceCreateLimits: number;
+  /** Training-label rows whose clip this user filmed. */
+  trainingLabels: number;
+  /** 1 when a pending training-consent revocation doc was deleted, otherwise 0. */
+  trainingRevocations: number;
 }
 
 /** Everything the cascade needs, injected so the unit tests can drive it with fakes. */
@@ -123,6 +127,8 @@ function emptySummary(): DeletionSummary {
     diceGames: 0,
     diceStats: 0,
     diceCreateLimits: 0,
+    trainingLabels: 0,
+    trainingRevocations: 0,
   };
 }
 
@@ -449,6 +455,13 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   summary.diceGames = await closeActiveDiceGames(db, uid, Date.now());
   summary.diceStats = await deleteIfPresent(db, "diceStats", uid);
   summary.diceCreateLimits = await deleteIfPresent(db, "diceCreateLimits", uid);
+
+  const trainingLabels = await scanAll(db.collection("trainingLabels").where("ownerUid", "==", uid));
+  summary.trainingLabels = await deleteRefs(
+    db,
+    trainingLabels.map((label) => label.ref),
+  );
+  summary.trainingRevocations = await deleteIfPresent(db, "trainingRevocations", uid);
 
   // ── Phase 3: authored community content ──
   // Ownership fields mirror the client cascade exactly: clips are keyed by

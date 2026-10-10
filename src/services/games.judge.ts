@@ -7,6 +7,8 @@ import { createPushDispatchOutbox, drainPushDispatchOutbox, resetPushDispatchOut
 import { writeLandedClipsInTransaction } from "./clips";
 import { toGameDoc, isJudgeActive, type TurnRecord } from "./games.mappers";
 import { TURN_DURATION_MS, getOpponent, checkTurnActionRate, recordTurnAction } from "./games.turns";
+import { clearedTrickFields, trickSnapshot } from "./trickFields";
+import { applyTrainingLabelPending } from "./trainingLabels.materialize";
 
 /* ────────────────────────────────────────────
  * Matcher calls BS on the setter's trick (judge-only feature)
@@ -123,6 +125,7 @@ export async function judgeRuleSetTrick(gameId: string, clean: boolean): Promise
         phase: "setting",
         currentTurn: game.currentSetter,
         currentTrickName: null,
+        ...clearedTrickFields(),
         currentTrickVideoUrl: null,
         matchVideoUrl: null,
         judgeReviewFor: null,
@@ -208,6 +211,7 @@ export async function resolveDispute(
       landed,
       letterTo: landed ? null : matcherUid,
       judgedBy: game.judgeId,
+      ...trickSnapshot(game),
     };
 
     const updates: Record<string, unknown> = {
@@ -217,6 +221,7 @@ export async function resolveDispute(
       judgeReviewFor: null,
       updatedAt: serverTimestamp(),
     };
+    applyTrainingLabelPending(updates, turnRecord);
 
     if (gameOver) {
       updates.status = "complete";

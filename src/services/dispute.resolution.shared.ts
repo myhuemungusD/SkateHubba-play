@@ -25,6 +25,7 @@
 
 import { TURN_DURATION_MS } from "./turnDuration.js";
 import type { GameDoc, TurnRecord } from "./games.mappers.js";
+import { trickSnapshot } from "./trickFields.js";
 
 /** How many letters ends the game. Reuse the pin the honor/judge paths enforce. */
 const LOSING_LETTER_COUNT = 5;
@@ -144,6 +145,7 @@ function landedTurnRecord(game: GameDoc, matcherUid: string): TurnRecord {
     landed: true,
     letterTo: null,
     judgedBy: null,
+    ...trickSnapshot(game),
   };
 }
 

@@ -10,6 +10,8 @@ import type { UserProfile } from "../../services/users";
 
 /* ── Mocks ─────────────────────────────────────────────── */
 
+vi.mock("../../services/trainingConsent", () => import("./trainingConsent.screen-test-helpers"));
+
 vi.mock("../../services/blocking", () => ({
   unblockUser: vi.fn().mockResolvedValue(undefined),
   subscribeToBlockedUsers: vi.fn((_uid: string, cb: (ids: Set<string>) => void) => {

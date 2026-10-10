@@ -38,6 +38,9 @@ interface ImportMetaEnv {
   /** Sign in with Apple switch: "true" shows the button. Unset (default)
    *  hides it. Read via isAppleSignInEnabled(). */
   readonly VITE_FEATURE_APPLE_SIGNIN_ENABLED?: string;
+  /** Trick picker switch: "true" replaces the free-text trick name. Unset
+   *  (default) keeps the text field. Read via isTrickPickerEnabled(). */
+  readonly VITE_FEATURE_TRICK_PICKER_ENABLED?: string;
   /** Referee nomination on new games: "true" shows the picker and lets
    *  createGame stamp a judge. Unset (default) forces the honor system.
    *  Read via isRefereeEnabled(). Does not affect games that already have one. */

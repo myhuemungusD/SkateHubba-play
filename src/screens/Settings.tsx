@@ -25,6 +25,7 @@ import { AvatarPicker } from "../components/AvatarPicker";
 import { InstallAppCard } from "../components/InstallAppCard";
 import { AccountActions } from "../components/AccountActions";
 import { SOCIAL_LINKS } from "../constants/socialLinks";
+import { TrainingConsentToggle } from "../components/TrainingConsentToggle";
 
 type PushState = "unsupported" | "default" | "granted" | "denied";
 
@@ -566,6 +567,11 @@ export function Settings({
               </p>
             </div>
           )}
+        </div>
+
+        <SectionHeader title="TRICK AI" />
+        <div className="space-y-2">
+          <TrainingConsentToggle uid={profile.uid} />
         </div>
 
         {/* Sound & haptics */}
