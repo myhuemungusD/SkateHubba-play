@@ -19,6 +19,12 @@ const h = vi.hoisted(() => ({
   mockWhere: vi.fn((field: unknown, op: unknown, value: unknown) => ({ __where: { field, op, value } })),
   mockRunTransaction: vi.fn(),
   mockServerTimestamp: vi.fn(() => "SERVER_TS"),
+  mockWriteBatch: vi.fn(),
+  lastBatch: null as null | {
+    update: ReturnType<typeof vi.fn>;
+    set: ReturnType<typeof vi.fn>;
+    commit: ReturnType<typeof vi.fn>;
+  },
 }));
 
 vi.mock("firebase/firestore", () => ({
@@ -33,6 +39,7 @@ vi.mock("firebase/firestore", () => ({
   where: h.mockWhere,
   runTransaction: h.mockRunTransaction,
   serverTimestamp: h.mockServerTimestamp,
+  writeBatch: h.mockWriteBatch,
 }));
 
 vi.mock("../../firebase");
@@ -141,6 +148,15 @@ beforeEach(() => {
   h.mockUpdateDoc.mockResolvedValue(undefined);
   h.mockDeleteDoc.mockResolvedValue(undefined);
   h.mockAddDoc.mockResolvedValue({ id: "new-item-id" });
+  h.mockWriteBatch.mockImplementation(() => {
+    const batch = {
+      update: vi.fn(),
+      set: vi.fn(),
+      commit: vi.fn().mockResolvedValue(undefined),
+    };
+    h.lastBatch = batch;
+    return batch;
+  });
 });
 
 describe("grantVerifiedPro / revokeVerifiedPro", () => {
@@ -653,21 +669,76 @@ describe("fetchReports — ordering", () => {
   });
 });
 
-describe("resolveReport", () => {
-  it("writes exactly { status, resolvedBy, resolvedAt } on reports/{id}", async () => {
-    await resolveReport(ADMIN, "r1", "resolved");
+const STATEMENT = {
+  subjectUid: TARGET,
+  explanation: "The landing was not the claimed trick.",
+  contentRef: "game-9",
+  reason: "cheating",
+};
 
-    expect(h.mockDoc).toHaveBeenCalledWith(expect.anything(), "reports", "r1");
-    expect(h.mockUpdateDoc).toHaveBeenCalledWith(expect.objectContaining({ __path: "reports/r1" }), {
+describe("resolveReport", () => {
+  it("resolves with a statement of reasons in the same batch", async () => {
+    await resolveReport(ADMIN, "r1", "resolved", STATEMENT);
+
+    expect(h.mockUpdateDoc).not.toHaveBeenCalled();
+    expect(h.lastBatch?.update).toHaveBeenCalledWith(expect.objectContaining({ __path: "reports/r1" }), {
       status: "resolved",
       resolvedBy: ADMIN,
       resolvedAt: "SERVER_TS",
     });
+    expect(h.lastBatch?.set).toHaveBeenCalledWith(expect.objectContaining({ __path: "moderationStatements/r1" }), {
+      subjectUid: TARGET,
+      reportId: "r1",
+      action: "content_restricted",
+      reason: "cheating",
+      explanation: "The landing was not the claimed trick.",
+      contentRef: "game-9",
+      createdBy: ADMIN,
+      createdAt: "SERVER_TS",
+    });
+    expect(h.lastBatch?.commit).toHaveBeenCalledTimes(1);
   });
 
-  it("writes the dismissed status verbatim", async () => {
+  it("writes the dismissed status with updateDoc and no statement", async () => {
     await resolveReport(ADMIN, "r1", "dismissed");
     expect(h.mockUpdateDoc.mock.calls[0][1]).toMatchObject({ status: "dismissed" });
+    expect(h.mockWriteBatch).not.toHaveBeenCalled();
+  });
+
+  it("refuses a resolve that has no statement", async () => {
+    await expect(resolveReport(ADMIN, "r1", "resolved")).rejects.toThrow(/statement of reasons is required/);
+    expect(h.mockWriteBatch).not.toHaveBeenCalled();
+  });
+
+  it("refuses a statement about the admin's own uid", async () => {
+    await expect(resolveReport(ADMIN, "r1", "resolved", { ...STATEMENT, subjectUid: ADMIN })).rejects.toThrow(
+      /Invalid statement subject/,
+    );
+    expect(h.mockWriteBatch).not.toHaveBeenCalled();
+  });
+
+  it("refuses a blank explanation", async () => {
+    await expect(resolveReport(ADMIN, "r1", "resolved", { ...STATEMENT, explanation: "  " })).rejects.toThrow(
+      /Invalid statement of reasons/,
+    );
+  });
+
+  it("refuses an explanation over 1000 characters", async () => {
+    await expect(
+      resolveReport(ADMIN, "r1", "resolved", { ...STATEMENT, explanation: "x".repeat(1001) }),
+    ).rejects.toThrow(/1000 characters or fewer/);
+  });
+
+  it("refuses a blank content reference", async () => {
+    await expect(resolveReport(ADMIN, "r1", "resolved", { ...STATEMENT, contentRef: " " })).rejects.toThrow(
+      /Invalid content reference/,
+    );
+  });
+
+  it("refuses a blank reason", async () => {
+    await expect(resolveReport(ADMIN, "r1", "resolved", { ...STATEMENT, reason: "" })).rejects.toThrow(
+      /Invalid report reason/,
+    );
   });
 
   it("refuses a status outside the allowlist", async () => {
@@ -675,18 +746,33 @@ describe("resolveReport", () => {
     // strand the report outside every queue filter.
     await expect(resolveReport(ADMIN, "r1", "archived" as "resolved")).rejects.toThrow(/Invalid report status/);
     expect(h.mockUpdateDoc).not.toHaveBeenCalled();
+    expect(h.mockWriteBatch).not.toHaveBeenCalled();
   });
 
   it.each([
     { label: "admin uid", admin: "", reportId: "r1" },
     { label: "report id", admin: ADMIN, reportId: "reports/r1" },
   ])("throws on an invalid $label without writing", async ({ admin, reportId }) => {
-    await expect(resolveReport(admin, reportId, "resolved")).rejects.toThrow(/Invalid/);
+    await expect(resolveReport(admin, reportId, "resolved", STATEMENT)).rejects.toThrow(/Invalid/);
     expect(h.mockUpdateDoc).not.toHaveBeenCalled();
+    expect(h.mockWriteBatch).not.toHaveBeenCalled();
   });
 
-  it("rethrows a write failure", async () => {
+  it("rethrows a dismiss write failure", async () => {
     h.mockUpdateDoc.mockRejectedValueOnce(denied());
-    await expect(resolveReport(ADMIN, "r1", "resolved")).rejects.toThrow(/insufficient permissions/);
+    await expect(resolveReport(ADMIN, "r1", "dismissed")).rejects.toThrow(/insufficient permissions/);
+  });
+
+  it("rethrows a resolve batch failure", async () => {
+    h.mockWriteBatch.mockImplementationOnce(() => {
+      const batch = {
+        update: vi.fn(),
+        set: vi.fn(),
+        commit: vi.fn().mockRejectedValue(denied()),
+      };
+      h.lastBatch = batch;
+      return batch;
+    });
+    await expect(resolveReport(ADMIN, "r1", "resolved", STATEMENT)).rejects.toThrow(/insufficient permissions/);
   });
 });

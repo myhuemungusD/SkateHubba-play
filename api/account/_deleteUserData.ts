@@ -81,6 +81,10 @@ export interface DeletionSummary {
   pushDispatch: number;
   nudges: number;
   reports: number;
+  /** Statements of reasons written about this user. */
+  moderationStatements: number;
+  /** Appeals this user filed. */
+  appeals: number;
   achievements: number;
   locker: number;
   blockedUsers: number;
@@ -115,6 +119,8 @@ function emptySummary(): DeletionSummary {
     pushDispatch: 0,
     nudges: 0,
     reports: 0,
+    moderationStatements: 0,
+    appeals: 0,
     achievements: 0,
     locker: 0,
     blockedUsers: 0,
@@ -535,6 +541,17 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   summary.reports = await deleteRefs(
     db,
     (await scanAll(db.collection("reports").where("reporterUid", "==", uid))).map((d) => d.ref),
+  );
+
+  // Statements name the subject; appeals name the appellant. Both are that
+  // person's data. Reports filed against them stay (see above).
+  summary.moderationStatements = await deleteRefs(
+    db,
+    (await scanAll(db.collection("moderationStatements").where("subjectUid", "==", uid))).map((d) => d.ref),
+  );
+  summary.appeals = await deleteRefs(
+    db,
+    (await scanAll(db.collection("appeals").where("appellantUid", "==", uid))).map((d) => d.ref),
   );
 
   // ── Phase 4: identity surface ──

@@ -124,6 +124,8 @@ describe("full cascade over a populated account", () => {
       pushDispatch: 1,
       nudges: 2,
       reports: 1,
+      moderationStatements: 0,
+      appeals: 0,
       achievements: 2,
       locker: 2,
       blockedUsers: 1,
@@ -159,6 +161,27 @@ describe("full cascade over a populated account", () => {
       "users/u2/achievements/first_win",
       "users/u2/locker/deck_baker",
     ]);
+  });
+
+  it("deletes statements about this user and appeals they filed", async () => {
+    const store = makeFakeStore({
+      moderationStatements: {
+        mine: { subjectUid: UID },
+        theirs: { subjectUid: OTHER },
+      },
+      appeals: {
+        mine: { appellantUid: UID },
+        theirs: { appellantUid: OTHER },
+      },
+    });
+    const summary = await deleteUserDataAsAdmin(store.deps, UID);
+
+    expect(summary.moderationStatements).toBe(1);
+    expect(summary.appeals).toBe(1);
+    expect(store.docs.has("moderationStatements/mine")).toBe(false);
+    expect(store.docs.has("moderationStatements/theirs")).toBe(true);
+    expect(store.docs.has("appeals/mine")).toBe(false);
+    expect(store.docs.has("appeals/theirs")).toBe(true);
   });
 
   it("deletes a nudge in both directions exactly once", async () => {
@@ -269,6 +292,8 @@ describe("ownership fields", () => {
     ["nudges", "senderUid"],
     ["nudges", "recipientUid"],
     ["reports", "reporterUid"],
+    ["moderationStatements", "subjectUid"],
+    ["appeals", "appellantUid"],
   ];
 
   it.each(OWNERSHIP)("queries %s on %s", async (collection, field) => {
@@ -692,6 +717,8 @@ describe("idempotency", () => {
       pushDispatch: 0,
       nudges: 0,
       reports: 0,
+      moderationStatements: 0,
+      appeals: 0,
       achievements: 0,
       locker: 0,
       blockedUsers: 0,

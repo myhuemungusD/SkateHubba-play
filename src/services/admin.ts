@@ -16,6 +16,7 @@
  *   users/{uid}/achievements/{badgeId}  badge grant (doc id IS the badge key)
  *   users/{uid}/locker/{itemId}         minted gear item
  *   reports/{reportId}                  moderation status transition
+ *   moderationStatements/{reportId}     statement of reasons (resolved only)
  *
  * Payload exactness
  * ─────────────────
@@ -50,6 +51,7 @@ import {
   setDoc,
   updateDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
@@ -415,28 +417,69 @@ export async function fetchReports(statusFilter?: string): Promise<AdminReport[]
 }
 
 /**
+ * What the subject is told when a report is resolved. The report itself stays
+ * unreadable to them. `explanation` is the admin's words, not the reporter's.
+ */
+export interface ReportResolutionStatement {
+  subjectUid: string;
+  explanation: string;
+  /** Clip id, game id, or `"account"` when the report names neither. */
+  contentRef: string;
+  /** The report's reason, copied onto the statement so the subject sees it. */
+  reason: string;
+}
+
+/**
  * Close out a report.
  *
- * Writes EXACTLY `{ status, resolvedBy, resolvedAt }`. The status allowlist is
- * enforced at runtime as well as in the type: a JS caller (or a drifted UI
- * constant) passing anything else would write a status the queue filter can
- * never surface again, stranding the report.
+ * Dismissed writes EXACTLY `{ status, resolvedBy, resolvedAt }`. Resolved
+ * writes that same triple AND `moderationStatements/{reportId}` in one batch:
+ * the rules reject a resolve that does not leave a statement of reasons.
+ * The status allowlist is enforced at runtime as well as in the type.
  */
 export async function resolveReport(
   adminUid: string,
   reportId: string,
   status: "resolved" | "dismissed",
+  statement?: ReportResolutionStatement,
 ): Promise<void> {
   requireId(adminUid, "admin uid");
   requireId(reportId, "report id");
   if (!RESOLVABLE_STATUSES.has(status)) throw new Error("Invalid report status.");
 
+  const closeOut = {
+    status,
+    resolvedBy: adminUid,
+    resolvedAt: serverTimestamp(),
+  };
+
   try {
-    await updateDoc(doc(requireDb(), "reports", reportId), {
-      status,
-      resolvedBy: adminUid,
-      resolvedAt: serverTimestamp(),
+    if (status === "dismissed") {
+      await updateDoc(doc(requireDb(), "reports", reportId), closeOut);
+      return;
+    }
+
+    if (!statement) throw new Error("A statement of reasons is required.");
+    requireId(statement.subjectUid, "statement subject");
+    if (statement.subjectUid === adminUid) throw new Error("Invalid statement subject.");
+    const explanation = requireText(statement.explanation, "statement of reasons", 1000);
+    const contentRef = requireText(statement.contentRef, "content reference", 128);
+    const reason = requireText(statement.reason, "report reason", 64);
+
+    const db = requireDb();
+    const batch = writeBatch(db);
+    batch.update(doc(db, "reports", reportId), closeOut);
+    batch.set(doc(db, "moderationStatements", reportId), {
+      subjectUid: statement.subjectUid,
+      reportId,
+      action: "content_restricted",
+      reason,
+      explanation,
+      contentRef,
+      createdBy: adminUid,
+      createdAt: serverTimestamp(),
     });
+    await batch.commit();
   } catch (err) {
     logger.warn("admin_report_resolve_failed", { adminUid, reportId, status, error: parseFirebaseError(err) });
     throw err;

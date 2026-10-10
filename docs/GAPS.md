@@ -40,13 +40,13 @@ Doc-only pass: each item below was re-checked against the current source, not ju
 - **P1-1 PARTIALLY CLOSED** (#577) — `notBanned()` now gates `spots` create, `spots/{id}/comments` create, `reports` create, and `disputeVotes` create. `disputes` create and game-sourced `clips` create stay ungated **on purpose**: both commit in the same transaction as a `/games` write, and gating them would break the documented "a banned user can finish an in-flight game" exception (and could fail the honest opponent's turn).
 - **P1-2 CLOSED** (#576) — `users/{uid}` create requires `getAfter(usernames/{username}).uid == uid` (`firestore.rules:353`).
 - **P1-3 CLOSED** (#576) — `player{1,2}IsVerifiedPro` bound to `users/{uid}.isVerifiedPro` at create and pinned immutable on every `/games` update branch via `verifiedProBadgesUnchanged()`.
-- **P1-5 — clip-comments bullet CLOSED** (#578): a viewer can report the clip from inside its comment thread. The four DSA bullets (illegal-content category, reporter notice, statement of reasons, appeal) remain open.
+- **P1-5 — clip-comments bullet CLOSED** (#578). The four signed-in DSA bullets (illegal-content category, in-app receipt and status, statement of reasons, appeal) are closed in the notice-and-action UI. A non-account notice route is still open.
 - **P2-10 PARTIALLY CLOSED** (#577) — `reports.reportedUsername` capped at 20 chars and `reports` create requires `email_verified`. `notifications` create deliberately left without `email_verified` (it runs inside turn transactions; gating it would block unverified players mid-game). Spots URLs and the missing `hasOnly()` allowlists remain open.
 - **P3-5 CLOSED** (#579) — toast live region is always mounted; `useFocusTrap` takes an opt-in `onEscape`.
 - **P3-6 native online-status global CLOSED** (#580) — listener is ref-counted with a generation guard.
 - **P3-6 `sw-cleanup.js` lint errors and `init_failed` raw-error echo CLOSED** (#581, merged 2026-10-01 after this sweep started).
 - **New (ops), from the 2026-10-01 rules-deploy log (run #845):** deploys are green, but WIF auth still fails with `Invalid value for "audience"`. Every deploy authenticates with the deprecated `FIREBASE_TOKEN` fallback, and the production PII scan (`migrate-users-private.mjs --verify`) is skipped every run because that token cannot drive the Admin SDK. When Google retires token auth, rules deploys stop again. Fix the `FIREBASE_WIF_PROVIDER` secret (GCP/secrets task).
-- **Still open, re-confirmed:** P0-4, P1-4 (no `getAfter` on either cooldown anchor; `games.create.ts:168` still writes `lastGameCreatedAt` fire-and-forget), P1-5 DSA bullets, P1-8 (none of the three cron workflows has a failure step), P2-1 (coverage `include` is still `src/**` only; `api/` has no tests), P2-5 (no CodeQL/gitleaks/Semgrep workflow), P2-9 (rules now **193.9 KB / 3,335 lines, ~76%** of the 256 KB limit — up from 189.5 KB), the rest of P3-6.
+- **Still open, re-confirmed:** P0-4 (account/trader rows), P1-4 (no `getAfter` on either cooldown anchor; `games.create.ts:168` still writes `lastGameCreatedAt` fire-and-forget), P1-5 anonymous illegal-content route, P1-8 (none of the three cron workflows has a failure step), P2-1 (coverage `include` is still `src/**` only; `api/` has no tests), P2-5 (no CodeQL/gitleaks/Semgrep workflow), P2-9 (rules size vs the 256 KB limit), the rest of P3-6.
 
 ---
 
@@ -90,11 +90,11 @@ _As originally filed:_ when a matcher claimed a land on the honor path, `games.m
 
 ### P0-4 · DSA compliance: zero controls, hard deadline of 2026-02-17 **already missed**
 
-**Status: PARTIALLY CLOSED** — `docs/DSA_COMPLIANCE.md` now exists as the tracker for the account-level items (D-U-N-S, Apple org conversion, point of contact). The code items remain open under P1-5.
+**Status: PARTIALLY CLOSED** — `docs/DSA_COMPLIANCE.md` tracks the account-level items (D-U-N-S, Apple org conversion, point of contact). Those rows are still open. The signed-in code path is under P1-5 and is in the product.
 
 **Compliance blocker. The trader/DUNS items cannot be compressed at the deadline.**
-**Escalated 2026-08-26: the deadline passed ~6 months ago and every account-level row in `docs/DSA_COMPLIANCE.md` is still 🔴.** Repo-wide grep for `appeal|transparency|statement of reasons|trusted flagger|d-u-n-s` still returns nothing across `src/` and `fastlane/` (`docs/DSA_COMPLIANCE.md` now exists, so the `docs/` half of the original grep is stale). The app ships to Apple and Google. The `dsa-compliance-checkpoint` skill tracks a **17 February 2026** gate, now overdue. The account-level items — Apple Individual→Organization conversion, D-U-N-S issuance (days-to-weeks), DSA point-of-contact — bear external lead time and block submission regardless of code.
-**Fix (start immediately, non-code):** kick off D-U-N-S + Apple org conversion now; designate a DSA point of contact (Art. 11/12) in `TermsOfService.tsx`. Code items in P1-5.
+**Escalated 2026-08-26: the deadline passed ~6 months ago and every account-level row in `docs/DSA_COMPLIANCE.md` is still 🔴.** The app ships to Apple and Google. The `dsa-compliance-checkpoint` skill tracks a **17 February 2026** gate, now overdue. The account-level items — Apple Individual→Organization conversion, D-U-N-S issuance (days-to-weeks), DSA point-of-contact — bear external lead time and block submission regardless of code.
+**Fix (start immediately, non-code):** kick off D-U-N-S + Apple org conversion now; designate a DSA point of contact (Art. 11/12) in `TermsOfService.tsx`. Signed-in code items are in P1-5.
 
 ---
 
@@ -127,12 +127,12 @@ _As originally filed:_ when a matcher claimed a land on the honor path, `games.m
 
 ### P1-5 · DSA notice-and-action mechanism is materially incomplete (code)
 
-The report/ban infrastructure is above-average as abuse tooling (`reports.ts`, `firestore.rules:2518-2597`, `ReportModal` on 4 surfaces) but incomplete as DSA compliance:
+**Status: PARTIALLY CLOSED** — signed-in users can file an illegal-content notice, see that it was received, check its status, read a statement of reasons when their content is restricted, and appeal. A person who is not signed in still cannot file a notice. There is no email or push of the decision; the reporter sees it in Settings.
 
-- **No illegal-content category** — reason enum is `inappropriate_video|abusive_behavior|cheating|spam|non_skate_content|other` (`reports.ts:6-12`, `firestore.rules:2545`). No Art. 16 illegal-content notice path; signed-in-only (`:2523`) so a non-user who spots illegal content has no route.
-- **No receipt/decision notice to reporter** (Art. 16(4-5)) — `submitReport` writes nothing back; close-out `hasOnly` (`:2587`) structurally prevents attaching a notification.
-- **No Art. 17 statement of reasons** — `bans.reason` is optional free text (`:845-849`); content removal produces no uploader notice (`clips.cascade.ts`).
-- **No Art. 20 appeal path** — rules structurally preclude one (`:854-856`, `:2586`, `:2594`); an appeal needs a new collection, not a rule relaxation.
+- **Illegal-content category** — **CLOSED** for signed-in, email-verified users. `illegal_content` is a report reason and the explanation must be at least 20 characters (`reports.ts`, `firestore.rules`). **Still open:** the create rule requires a signed-in verified email, so a non-user has no notice route.
+- **Receipt / decision notice** (Art. 16) — **CLOSED** in the app. `ReportModal` shows “We received your report” and the report id. Settings → Reports & actions lists the reporter’s own reports and status (`pending`, `resolved`, `dismissed`). No outbound email or push.
+- **Art. 17 statement of reasons** — **CLOSED**. Resolving a report writes `moderationStatements/{reportId}` in the same batch; the subject can read it and cannot read the report. An account restriction uses `bans/{uid}`, which the subject can already get. A blank ban reason shows a short fallback in Settings.
+- **Art. 20 appeal** — **CLOSED**. `appeals/{statement|ban}_{id}` is one appeal per target. The button sits on each statement and on an account restriction. A ban does not block the appeal, and email verification is not required. Admin close-out moves `pending` to `upheld` or `rejected`.
 - ~~**Clip comments not reportable**~~ — **CLOSED** in #578: `ClipComments` takes an `onReport` prop wired to the clip's existing report flow.
 
 ### P1-6 · Unhandled rejection on Rematch → silent dead-end
@@ -256,7 +256,7 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 ## Recommended sequence
 
 1. **Today:** P0-4 (the remaining P0; DSA account tasks have external lead time — start the clock). P0-1, P0-2, and P0-3 are closed.
-2. **This cycle:** P1-4, the P1-5 DSA bullets, and P1-8 (P1-2/P1-3/P1-6/P1-7 are closed; P1-1 is closed as far as it safely can be).
+2. **This cycle:** P1-4, the P1-5 anonymous notice route, and P1-8 (P1-2/P1-3/P1-6/P1-7 are closed; P1-1 is closed as far as it safely can be; the signed-in P1-5 UI is in).
 3. **Schedule:** P2 block — `api/` observability + coverage, App Check rollout, moderation.
 4. **Batch:** P3 doc rewrite (P3-1 first — the state-machine docs actively mislead), release hygiene.
 

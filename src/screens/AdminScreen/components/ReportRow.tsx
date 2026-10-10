@@ -17,7 +17,7 @@ export interface ReportRowProps {
   report: AdminReport;
   /** True while any action on THIS report is in flight. */
   acting: boolean;
-  onResolve: (report: AdminReport) => void;
+  onResolve: (report: AdminReport, explanation: string) => void;
   onDismiss: (report: AdminReport) => void;
   onBan: (report: AdminReport) => void;
 }
