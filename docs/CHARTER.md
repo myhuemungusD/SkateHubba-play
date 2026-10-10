@@ -25,6 +25,7 @@
 ## CHANGELOG FROM v6.1 (v6.2, October 10, 2026)
 
 - **Launch feature freeze lifted.** Map (`/map`, `/spots/:id`), the Clips feed (`/feed`, including the community LAND/BAIL vote lane) and Verified Pro are visible in production. `VITE_FEATURE_EXTRAS_ENABLED=true` is set for Production and Preview in Vercel. §2.1 lists them as shipped; §2.2 lists the only features still off.
+- **Referee nomination off for new games.** `VITE_FEATURE_REFEREE_ENABLED` defaults off (literal `true` only). Launch simplicity: every dispute on a new game goes to the community vote (`pendingReview`, then `communityReview`). In-flight games that already have a judge finish on the judge path. Firestore rules are unchanged.
 
 ## CHANGELOG FROM v6
 
@@ -87,10 +88,11 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 
 ### 2.2 In review
 
-- _(nothing currently in review)_ — the referee system shipped in **v1.1.0** (2026-04-19); see §2.1.
+- _(nothing currently in review)_ — the referee system shipped in **v1.1.0** (2026-04-19) and still finishes any game that already has a judge. New games cannot nominate one unless `VITE_FEATURE_REFEREE_ENABLED` is the literal `true`.
 
-**Still off in production (the only features not visible on skatehubba.com):**
+**Still off in production:**
 
+- **Referee on new games** (`VITE_FEATURE_REFEREE_ENABLED`) — hidden for launch simplicity, so every dispute on a new game goes to the community vote. The challenge screen does not offer a referee, and `createGame` will not stamp one. Games already in flight keep their judge: invites, `disputable`, `setReview`, the Judge / No Judge badge, notifications, stats, and `api/cron` referee sweeps are unchanged. `firestore.rules` is unchanged.
 - **Roll Dice** (`VITE_FEATURE_DICE_ENABLED`) — built, but the `diceAction` / `diceSweep` server functions are not yet deployed. Goes to testers first. See `docs/DICE.md`.
 - **Sign in with Apple** (`VITE_FEATURE_APPLE_SIGNIN_ENABLED`) — waiting on Apple account setup (Firebase Apple provider). Web and Android stay on Google + email until then.
 

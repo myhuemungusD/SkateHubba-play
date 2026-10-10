@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 
 import {
   installGamesTestBeforeEach,
@@ -28,6 +28,10 @@ import type { TrickCategoryId } from "../../constants/trickCategories";
 import { createGame, acceptJudgeInvite, declineJudgeInvite } from "../games";
 
 installGamesTestBeforeEach();
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("games service", () => {
   describe("acceptJudgeInvite", () => {
@@ -347,7 +351,8 @@ describe("games service", () => {
       expect(docData.judgeStatus).toBeNull();
     });
 
-    it("sets judge fields in pending state when a valid judge is nominated", async () => {
+    it("sets judge fields in pending state when a valid judge is nominated and the flag is on", async () => {
+      vi.stubEnv("VITE_FEATURE_REFEREE_ENABLED", "true");
       await createGame("p1", "alice", "p2", "bob", {
         judgeUid: "p3",
         judgeUsername: "charlie",
@@ -356,6 +361,32 @@ describe("games service", () => {
       expect(docData.judgeId).toBe("p3");
       expect(docData.judgeUsername).toBe("charlie");
       expect(docData.judgeStatus).toBe("pending");
+      const types = mockBatchSet.mock.calls.map((c) => (c[1] as { type?: string } | undefined)?.type);
+      expect(types).toContain("judge_invite");
+    });
+
+    it("drops a valid judge nomination while the referee flag is off", async () => {
+      await createGame("p1", "alice", "p2", "bob", {
+        judgeUid: "p3",
+        judgeUsername: "charlie",
+      });
+      const docData = gameSetDocCall();
+      expect(docData.judgeId).toBeNull();
+      expect(docData.judgeUsername).toBeNull();
+      expect(docData.judgeStatus).toBeNull();
+      const types = mockBatchSet.mock.calls.map((c) => (c[1] as { type?: string } | undefined)?.type);
+      expect(types).not.toContain("judge_invite");
+    });
+
+    it("drops a judge nomination unless the flag is the literal string true", async () => {
+      vi.stubEnv("VITE_FEATURE_REFEREE_ENABLED", "TRUE");
+      await createGame("p1", "alice", "p2", "bob", {
+        judgeUid: "p3",
+        judgeUsername: "charlie",
+      });
+      const docData = gameSetDocCall();
+      expect(docData.judgeId).toBeNull();
+      expect(docData.judgeStatus).toBeNull();
     });
 
     it("drops judge nomination if it collides with either player", async () => {
