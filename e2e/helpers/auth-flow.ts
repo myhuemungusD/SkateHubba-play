@@ -26,6 +26,15 @@ import { expectOnLobby } from "./lobby-nav";
  * DOB. There is no standalone age-gate screen — DOB is collected on the same
  * card as email + password.
  */
+/**
+ * The boot shell paints the same signup card before Firebase resolves, and
+ * its submit button does not validate. The real AuthScreen is the card with
+ * the password reveal control.
+ */
+export async function waitForAuthForm(page: Page): Promise<void> {
+  await expect(page.getByRole("button", { name: "Show password" })).toBeVisible({ timeout: 15_000 });
+}
+
 export async function fillAgeFields(page: Page): Promise<void> {
   await expect(page.getByLabel("Birth month")).toBeVisible({ timeout: 5_000 });
   await page.getByLabel("Birth month").fill("01");
@@ -52,6 +61,7 @@ export async function signUpViaUI(page: Page, email: string, password: string): 
   // longer a "Use email" button, and the stale locator failed every spec that
   // signs up (i.e. nearly the whole suite) the moment it was reached.
   await page.getByRole("button", { name: "Create account", exact: true }).click();
+  await waitForAuthForm(page);
   await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("you@email.com").fill(email);
   // Fill both password fields (Password + Confirm).
@@ -100,6 +110,7 @@ export async function signInViaUI(page: Page, email: string, password: string): 
   // button and a hero "Create account" button, and a substring match resolves
   // to two elements — a Playwright strict-mode violation, not a miss.
   await page.getByRole("button", { name: "Account", exact: true }).click();
+  await waitForAuthForm(page);
   await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("you@email.com").fill(email);
   await page.getByPlaceholder("••••••••").fill(password);

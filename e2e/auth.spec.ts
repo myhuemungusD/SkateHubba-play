@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { clearAll, verifyEmail } from "./helpers/emulator";
-import { signUpViaUI, completeProfileSetup, fillAgeFields } from "./helpers/auth-flow";
+import { signUpViaUI, completeProfileSetup, fillAgeFields, waitForAuthForm } from "./helpers/auth-flow";
 import { expectOnLobby, openChallengeForm, tapChallengeTab } from "./helpers/lobby-nav";
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -59,6 +59,7 @@ test("sign up → profile setup → lobby", async ({ page }) => {
 test("sign up form rejects mismatched passwords", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Create account", exact: true }).click();
+  await waitForAuthForm(page);
 
   await page.getByPlaceholder("you@email.com").fill("test@test.com");
   const pwFields = page.getByPlaceholder("••••••••");
@@ -72,6 +73,7 @@ test("sign up form rejects mismatched passwords", async ({ page }) => {
 test("sign up form rejects short passwords", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Create account", exact: true }).click();
+  await waitForAuthForm(page);
 
   await page.getByPlaceholder("you@email.com").fill("test@test.com");
   const pwFields = page.getByPlaceholder("••••••••");
