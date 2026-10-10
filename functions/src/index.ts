@@ -38,7 +38,14 @@ const xpTesterUids = defineString("XP_TESTER_UIDS", { default: "" });
  * this pre-check only avoids opening a transaction for unrelated updates.
  */
 export const onGameCompleted = onDocumentUpdated(
-  { document: "games/{gameId}", database: DATABASE_ID, region: "us-central1" },
+  {
+    document: "games/{gameId}",
+    database: DATABASE_ID,
+    region: "us-central1",
+    // A thrown close-out is retried. applyGameStats re-checks statsApplied
+    // inside the transaction, so a second run does not award twice.
+    retry: true,
+  },
   async (event): Promise<void> => {
     const after = event.data?.after.data();
     if (!after) return;
