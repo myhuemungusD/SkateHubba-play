@@ -153,6 +153,17 @@ describe("createProfile 3-write transaction — happy path", () => {
     );
   });
 
+  it("attack: CANNOT backdate createdAt on signup", async () => {
+    await assertFails(
+      runCreateProfileTx({
+        ctx: asAlice(),
+        pathUid: ALICE_UID,
+        username: ALICE_USERNAME,
+        userDocOverride: { createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000) },
+      }),
+    );
+  });
+
   it("authenticated user CAN include optional parentalConsent on the private doc", async () => {
     // Mirrors the COPPA path: a minor's signup writes parentalConsent=true
     // alongside the standard fields. The private-doc keys().hasOnly([...])

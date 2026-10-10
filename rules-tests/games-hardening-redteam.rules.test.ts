@@ -195,6 +195,15 @@ describe("games create — username impersonation guard", () => {
     await assertSucceeds(createGameWithAnchor(gameRef(asP1(), "g-honest"), makeCreatePayload()));
   });
 
+  it("rejects a game whose createdAt is not request.time", async () => {
+    await assertFails(
+      createGameWithAnchor(
+        gameRef(asP1(), "g-backdated"),
+        makeCreatePayload({ createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000) }),
+      ),
+    );
+  });
+
   it("rejects a create when the challenger has no profile doc to bind against", async () => {
     // No users/{auth.uid} doc → the username get() resolves to null and the
     // bind fails closed. A game cannot exist without an authoritative handle.

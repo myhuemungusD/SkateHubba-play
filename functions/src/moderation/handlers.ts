@@ -1,5 +1,7 @@
+import { getAuth } from "firebase-admin/auth";
 import { FieldValue, type Firestore } from "firebase-admin/firestore";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
+import { preferAccountCreatedMs } from "../accountAge.js";
 import { VIDEO_API_POLL_MS, VIDEO_API_TIMEOUT_MS } from "./config.js";
 import { clipBadgeDelta, nextClipsPosted } from "./clipBadge.js";
 import { adminPatch, shouldApplyUploadDecision, shouldAutoHideClip, type SaveGuard } from "./patches.js";
@@ -190,9 +192,17 @@ export async function handleClipReport(options: HandlerOptions, raw: unknown, no
     loadCreatedAt: async (uid) => {
       const snap = await options.db.collection("users").doc(uid).get();
       const created = snap.get("createdAt") as { toMillis?: () => number } | undefined;
-      if (!created || typeof created.toMillis !== "function") return null;
-      const ms = created.toMillis();
-      return Number.isFinite(ms) ? ms : null;
+      const profileMs =
+        created && typeof created.toMillis === "function" && Number.isFinite(created.toMillis())
+          ? created.toMillis()
+          : null;
+      let authCreationTime: string | undefined;
+      try {
+        authCreationTime = (await getAuth().getUser(uid)).metadata.creationTime;
+      } catch {
+        authCreationTime = undefined;
+      }
+      return preferAccountCreatedMs(authCreationTime, profileMs);
     },
     save: async (patch, guard) => {
       const applied = await saveClip(options.db, clipId, patch, guard);
