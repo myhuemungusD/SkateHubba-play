@@ -179,7 +179,7 @@ export function MascotBubble({
         <button
           type="button"
           onClick={handlePrimary}
-          className={`font-display tracking-wider text-sm text-white bg-brand-orange hover:brightness-110 active:brightness-95 rounded-lg px-4 ${TOUCH_TARGET} ${FOCUS_RING}`}
+          className={`font-display tracking-wider text-sm text-[#1a1a1a] bg-brand-orange hover:brightness-110 active:brightness-95 rounded-lg px-4 ${TOUCH_TARGET} ${FOCUS_RING}`}
         >
           {primaryCta.label}
         </button>

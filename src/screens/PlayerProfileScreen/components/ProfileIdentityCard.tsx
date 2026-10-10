@@ -123,7 +123,7 @@ export function ProfileIdentityCard({
               onClick={() => setPickerOpen(true)}
               className="absolute -bottom-1 -right-1 w-11 h-11 p-2 rounded-full bg-transparent flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
-              <span className="w-7 h-7 rounded-full bg-brand-orange text-white flex items-center justify-center shadow-md">
+              <span className="w-7 h-7 rounded-full bg-brand-orange text-[#1a1a1a] flex items-center justify-center shadow-md">
                 <svg
                   width="14"
                   height="14"

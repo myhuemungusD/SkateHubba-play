@@ -71,7 +71,7 @@ export function Root({ boot, loadApp }: { boot: boolean; loadApp: AppLoader }) {
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="px-6 py-3 rounded-xl bg-brand-orange text-white font-display tracking-wider"
+          className="px-6 py-3 rounded-xl bg-brand-orange text-[#1a1a1a] font-display tracking-wider"
         >
           Reload
         </button>
