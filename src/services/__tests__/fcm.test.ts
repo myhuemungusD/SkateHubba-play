@@ -7,11 +7,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const mockGetToken = vi.fn<(...args: unknown[]) => unknown>();
 const mockOnMessage = vi.fn<(...args: unknown[]) => unknown>(() => vi.fn());
 const mockGetMessaging = vi.fn<(...args: unknown[]) => unknown>(() => "messaging-instance");
+const mockIsSupported = vi.fn<(...args: unknown[]) => Promise<boolean>>(async () => true);
 
 vi.mock("firebase/messaging", () => ({
   getMessaging: (...args: unknown[]) => mockGetMessaging(...args),
   getToken: (...args: unknown[]) => mockGetToken(...args),
   onMessage: (...args: unknown[]) => mockOnMessage(...args),
+  isSupported: () => mockIsSupported(),
 }));
 
 /* ── mock firebase/firestore ─────────────────── */
@@ -45,6 +47,7 @@ import {
   onForegroundMessage,
   _resetSwRegistration,
   _resetActiveFcmToken,
+  _resetMessagingSupport,
 } from "../fcm";
 
 // jsdom doesn't provide Notification — stub it globally for these tests
@@ -55,6 +58,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   _resetSwRegistration();
   _resetActiveFcmToken();
+  _resetMessagingSupport();
+  mockIsSupported.mockResolvedValue(true);
   vi.stubEnv("VITE_FIREBASE_VAPID_KEY", "test-vapid-key");
 
   // Provide a minimal Notification stub
@@ -251,6 +256,27 @@ describe("requestPushPermission", () => {
     expect(result).toBeNull();
     spy.mockRestore();
   });
+
+  it("returns null without calling getMessaging when the browser is unsupported", async () => {
+    mockIsSupported.mockResolvedValue(false);
+    mockRequestPermission.mockResolvedValue("granted");
+
+    const result = await requestPushPermission("u1");
+
+    expect(result).toBeNull();
+    expect(mockGetMessaging).not.toHaveBeenCalled();
+    expect(mockGetToken).not.toHaveBeenCalled();
+  });
+
+  it("returns null without calling getMessaging when the support check rejects", async () => {
+    mockIsSupported.mockRejectedValue(new Error("messaging/unsupported-browser"));
+    mockRequestPermission.mockResolvedValue("granted");
+
+    const result = await requestPushPermission("u1");
+
+    expect(result).toBeNull();
+    expect(mockGetMessaging).not.toHaveBeenCalled();
+  });
 });
 
 describe("refreshWebPushTokenIfGranted", () => {
@@ -428,20 +454,54 @@ describe("getSwRegistration caching", () => {
 });
 
 describe("onForegroundMessage", () => {
-  it("registers message listener and returns unsubscribe", () => {
+  it("registers message listener and returns unsubscribe", async () => {
     const cb = vi.fn();
+    const innerUnsub = vi.fn();
+    mockOnMessage.mockReturnValueOnce(innerUnsub);
     const unsub = onForegroundMessage(cb);
-    expect(mockOnMessage).toHaveBeenCalledWith("messaging-instance", cb);
-    expect(typeof unsub).toBe("function");
+    await vi.waitFor(() => {
+      expect(mockOnMessage).toHaveBeenCalledWith("messaging-instance", cb);
+    });
+    expect(mockGetMessaging).toHaveBeenCalledTimes(1);
+    unsub();
+    expect(innerUnsub).toHaveBeenCalledTimes(1);
   });
 
-  it("returns no-op when messaging throws", () => {
-    // getMessagingInstance caches, so instead make onMessage throw
+  it("does not call getMessaging when the browser is unsupported", async () => {
+    mockIsSupported.mockResolvedValue(false);
+    const unsub = onForegroundMessage(vi.fn());
+    await vi.waitFor(() => {
+      expect(mockIsSupported).toHaveBeenCalled();
+    });
+    expect(mockGetMessaging).not.toHaveBeenCalled();
+    expect(mockOnMessage).not.toHaveBeenCalled();
+    unsub();
+  });
+
+  it("does not attach a listener when unsubscribed before support resolves", async () => {
+    let resolveSupport: (supported: boolean) => void = () => {};
+    mockIsSupported.mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        resolveSupport = resolve;
+      }),
+    );
+    const unsub = onForegroundMessage(vi.fn());
+    unsub();
+    resolveSupport(true);
+    await vi.waitFor(() => {
+      expect(mockGetMessaging).toHaveBeenCalled();
+    });
+    expect(mockOnMessage).not.toHaveBeenCalled();
+  });
+
+  it("returns no-op when messaging throws", async () => {
     mockOnMessage.mockImplementationOnce(() => {
       throw new Error("messaging unavailable");
     });
     const unsub = onForegroundMessage(vi.fn());
-    expect(typeof unsub).toBe("function");
+    await vi.waitFor(() => {
+      expect(mockOnMessage).toHaveBeenCalled();
+    });
     unsub();
   });
 });

@@ -1,4 +1,4 @@
-import { getMessaging, getToken, onMessage, type MessagePayload } from "firebase/messaging";
+import { getMessaging, getToken, isSupported, onMessage, type MessagePayload } from "firebase/messaging";
 import { doc, setDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore";
 import app, { requireDb } from "../firebase";
 import { logger } from "./logger";
@@ -22,11 +22,33 @@ export function _resetActiveFcmToken(): void {
 }
 
 let messagingInstance: ReturnType<typeof getMessaging> | null = null;
+let messagingSupport: Promise<boolean> | null = null;
 
-function getMessagingInstance() {
+/**
+ * Firebase Messaging throws `messaging/unsupported-browser` from
+ * `getMessaging()` in in-app browsers and some iOS webviews. That throw is
+ * what Sentry records as SKATEHUBBA-SENTRY-3. `isSupported()` is the
+ * documented check and must run first; a rejection is treated as unsupported
+ * so the SDK is never constructed.
+ */
+function readMessagingSupport(): Promise<boolean> {
+  if (!messagingSupport) {
+    messagingSupport = isSupported().catch(() => false);
+  }
+  return messagingSupport;
+}
+
+/** @internal Reset cached Messaging support and instance (for tests only). */
+export function _resetMessagingSupport(): void {
+  messagingSupport = null;
+  messagingInstance = null;
+}
+
+async function getMessagingInstance(): Promise<ReturnType<typeof getMessaging> | null> {
   /* v8 ignore start -- guard for null Firebase app; always truthy when firebase.ts init succeeds */
   if (!app) throw new Error("Firebase not initialized");
   /* v8 ignore stop */
+  if (!(await readMessagingSupport())) return null;
   if (!messagingInstance) {
     messagingInstance = getMessaging(app);
   }
@@ -92,7 +114,8 @@ async function acquireAndStoreToken(uid: string): Promise<string | null> {
   // who explicitly turned push off.
   if (!(await getPushEnabled(uid))) return null;
 
-  const messaging = getMessagingInstance();
+  const messaging = await getMessagingInstance();
+  if (!messaging) return null;
   const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
   if (!vapidKey) {
     logger.warn("vapid_key_missing", { hint: "set VITE_FIREBASE_VAPID_KEY to enable push notifications" });
@@ -245,10 +268,23 @@ export async function removeCurrentFcmToken(uid: string): Promise<void> {
  * The caller should convert the payload into an in-app notification.
  */
 export function onForegroundMessage(callback: (payload: MessagePayload) => void): () => void {
-  try {
-    const messaging = getMessagingInstance();
-    return onMessage(messaging, callback);
-  } catch {
-    return () => {};
-  }
+  let unsubscribe: (() => void) | null = null;
+  let cancelled = false;
+
+  // Support is async. Return the unsubscribe immediately so callers can
+  // clean up from an effect; attach the listener only after the check.
+  void (async () => {
+    try {
+      const messaging = await getMessagingInstance();
+      if (!messaging || cancelled) return;
+      unsubscribe = onMessage(messaging, callback);
+    } catch {
+      // A throw after the support check must not become an unhandled rejection.
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+    unsubscribe?.();
+  };
 }
