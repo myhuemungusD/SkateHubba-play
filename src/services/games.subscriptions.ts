@@ -82,8 +82,13 @@ export function subscribeToMyGames(
   limitCount: number = 20,
 ): Unsubscribe {
   // Firestore doesn't support OR queries across different fields natively,
-  // so we run three queries (player1, player2, judge) and merge.
-  type Slice = "p1" | "p2" | "judge";
+  // so we run a query per seat. Each seat has two listeners: every active
+  // game (so a live turn cannot fall off a paged history query) and a page
+  // of finished games ordered by updatedAt.
+  const SLICES = ["p1", "p2", "judge", "p1Active", "p2Active", "judgeActive"] as const;
+  type Slice = (typeof SLICES)[number];
+  /** Cap on live games per seat. History uses `limitCount`; active does not. */
+  const ACTIVE_GAME_LIMIT = 50;
 
   // Per-slice game maps keep each listener's contribution isolated — so an
   // error on (e.g.) the judge listener can drop that slice without trashing
@@ -93,12 +98,15 @@ export function subscribeToMyGames(
     p1: new Map(),
     p2: new Map(),
     judge: new Map(),
+    p1Active: new Map(),
+    p2Active: new Map(),
+    judgeActive: new Map(),
   };
 
-  // First-load gate: we only emit to `onUpdate` once all three listeners have
+  // First-load gate: we only emit to `onUpdate` once every listener has
   // delivered at least once (or errored — see handleError). Without this,
   // consumers would see a flicker of "just my p1 games" → "all games" while
-  // the other two snapshots are still in flight.
+  // the other snapshots are still in flight.
   const seeded = new Set<Slice>();
   let firstLoadComplete = false;
 
@@ -123,7 +131,7 @@ export function subscribeToMyGames(
   const markSeeded = (slice: Slice) => {
     if (firstLoadComplete) return;
     seeded.add(slice);
-    if (seeded.size === 3) {
+    if (seeded.size === SLICES.length) {
       firstLoadComplete = true;
     }
   };
@@ -169,18 +177,50 @@ export function subscribeToMyGames(
     if (!wasFirstLoadComplete && firstLoadComplete) rebuildAndEmit();
   };
 
-  const q1 = query(gamesRef(), where("player1Uid", "==", uid), limit(limitCount));
-  const q2 = query(gamesRef(), where("player2Uid", "==", uid), limit(limitCount));
-  const q3 = query(gamesRef(), where("judgeId", "==", uid), limit(limitCount));
+  const finished = where("status", "in", ["complete", "forfeit"] as const);
+  const live = where("status", "==", "active");
+  const newest = orderBy("updatedAt", "desc");
+  const historyLimit = limit(limitCount);
+  const activeLimit = limit(ACTIVE_GAME_LIMIT);
 
-  const unsub1 = onSnapshot(q1, (snap) => handleSnapshot("p1", snap), handleError("p1"));
-  const unsub2 = onSnapshot(q2, (snap) => handleSnapshot("p2", snap), handleError("p2"));
-  const unsub3 = onSnapshot(q3, (snap) => handleSnapshot("judge", snap), handleError("judge"));
+  const unsub1 = onSnapshot(
+    query(gamesRef(), where("player1Uid", "==", uid), finished, newest, historyLimit),
+    (snap) => handleSnapshot("p1", snap),
+    handleError("p1"),
+  );
+  const unsub2 = onSnapshot(
+    query(gamesRef(), where("player2Uid", "==", uid), finished, newest, historyLimit),
+    (snap) => handleSnapshot("p2", snap),
+    handleError("p2"),
+  );
+  const unsub3 = onSnapshot(
+    query(gamesRef(), where("judgeId", "==", uid), finished, newest, historyLimit),
+    (snap) => handleSnapshot("judge", snap),
+    handleError("judge"),
+  );
+  const unsub4 = onSnapshot(
+    query(gamesRef(), where("player1Uid", "==", uid), live, newest, activeLimit),
+    (snap) => handleSnapshot("p1Active", snap),
+    handleError("p1Active"),
+  );
+  const unsub5 = onSnapshot(
+    query(gamesRef(), where("player2Uid", "==", uid), live, newest, activeLimit),
+    (snap) => handleSnapshot("p2Active", snap),
+    handleError("p2Active"),
+  );
+  const unsub6 = onSnapshot(
+    query(gamesRef(), where("judgeId", "==", uid), live, newest, activeLimit),
+    (snap) => handleSnapshot("judgeActive", snap),
+    handleError("judgeActive"),
+  );
 
   return () => {
     unsub1();
     unsub2();
     unsub3();
+    unsub4();
+    unsub5();
+    unsub6();
   };
 }
 
