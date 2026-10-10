@@ -9,6 +9,15 @@
       ]
     },
     {
+      "collectionGroup": "spots",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "createdBy", "order": "ASCENDING" },
+        { "fieldPath": "isActive", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "clips",
       "queryScope": "COLLECTION",
       "fields": [

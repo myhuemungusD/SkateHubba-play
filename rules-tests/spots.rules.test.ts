@@ -18,7 +18,19 @@ import {
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { addDoc, collection, doc, getDoc, getDocs, setDoc, deleteDoc, setLogLevel } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  deleteDoc,
+  setLogLevel,
+  query,
+  where,
+  orderBy,
+} from "firebase/firestore";
 
 const PROJECT_ID = "demo-skatehubba-rules-spots";
 
@@ -119,6 +131,39 @@ describe("spots — read", () => {
       await setDoc(doc(ctx.firestore(), "spots", SPOT_ID), makeValidSpot());
     });
     await assertSucceeds(getDoc(doc(asOtherVerified().firestore(), "spots", SPOT_ID)));
+  });
+
+  it("a signed-in user can list active spots by createdBy", async () => {
+    // Profile "spots you've added" query. The read rule requires isActive,
+    // so the query has to constrain it or Firestore rejects the whole list.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "spots", SPOT_ID), makeValidSpot({ createdAt: new Date("2026-04-02") }));
+      await setDoc(
+        doc(ctx.firestore(), "spots", "older-spot"),
+        makeValidSpot({ name: "Older", createdAt: new Date("2026-04-01") }),
+      );
+      await setDoc(doc(ctx.firestore(), "spots", "inactive-spot"), makeValidSpot({ isActive: false, name: "Gone" }));
+      await setDoc(
+        doc(ctx.firestore(), "spots", "other-spot"),
+        makeValidSpot({ createdBy: OTHER_UID, name: "Theirs" }),
+      );
+    });
+    const listed = query(
+      collection(asOwner().firestore(), "spots"),
+      where("createdBy", "==", OWNER_UID),
+      where("isActive", "==", true),
+      orderBy("createdAt", "desc"),
+    );
+    const snap = await assertSucceeds(getDocs(listed));
+    expect(snap.docs.map((d) => d.id)).toEqual([SPOT_ID, "older-spot"]);
+  });
+
+  it("rejects a createdBy list that does not constrain isActive", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "spots", SPOT_ID), makeValidSpot());
+    });
+    const listed = query(collection(asOwner().firestore(), "spots"), where("createdBy", "==", OWNER_UID));
+    await assertFails(getDocs(listed));
   });
 
   it("nobody can read an inactive (soft-deleted) spot", async () => {
