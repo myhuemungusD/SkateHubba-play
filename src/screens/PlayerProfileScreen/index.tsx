@@ -21,7 +21,7 @@ import { ProfileIdentityCard } from "./components/ProfileIdentityCard";
 import { ProfileSkeleton } from "./components/ProfileSkeleton";
 import { ProfileStatsGrid } from "./components/ProfileStatsGrid";
 import { SignUpToChallengeCta } from "./components/SignUpToChallengeCta";
-import { AddedSpotsPlaceholder } from "./components/AddedSpotsPlaceholder";
+import { AddedSpotsSection } from "./components/AddedSpotsSection";
 import { WinStreakBanner } from "./components/WinStreakBanner";
 
 /**
@@ -52,7 +52,7 @@ interface Props {
   blockedUids?: Set<string>;
   /**
    * Called when the user taps "ADD A SPOT" on their own profile. Omit and the
-   * CTA renders disabled rather than dead — see AddedSpotsPlaceholder.
+   * CTA renders disabled rather than dead — see AddedSpotsSection.
    */
   onAddSpot?: () => void;
   /**
@@ -93,8 +93,9 @@ interface Props {
  *   - Pull-to-refresh on own profile.
  *   - "Share my profile" button on own profile (`navigator.share` with
  *     clipboard fallback). Shares a deep-link to `/player/{uid}`.
- *   - AddedSpotsPlaceholder — empty state whose CTA opens the map with the
- *     Add Spot sheet already open; the spot *list* still awaits real data.
+ *   - AddedSpotsSection — spots this player created (`spots.createdBy`),
+ *     each linking to `/spots/:id`. Empty state when they have added none.
+ *     The CTA opens the map with the Add Spot sheet already open.
  *
  *   - BadgesRow / LockerShowcase — Economy Phase A. Real granted data, fetched
  *     by the controller; each renders nothing when the player has earned
@@ -193,9 +194,8 @@ export function PlayerProfileScreen({
   });
 
   // The map/add-spot flow already exists at `/map`, so the CTA no longer
-  // needs to sit disabled. The spot *list* above it still awaits the
-  // spot-check-in PR's `spotsAddedCount` data, but the button now does the
-  // thing its label promises instead of being an inert affordance.
+  // needs to sit disabled. The list above it is the player's own `spots`
+  // docs; the button still opens the map with the Add Spot sheet ready.
   const handleAddSpot = useCallback(() => {
     if (!onAddSpot) return;
     trackEvent("profile_add_a_spot_tapped", { uid: hashUid(viewerUid) });
@@ -352,7 +352,7 @@ export function PlayerProfileScreen({
             profile is noise to every visitor but the owner. AchievementsRibbon
             used to sit here too — see this file's docstring for why it doesn't. */}
         {isOwnProfile && isExtrasEnabled() && (
-          <AddedSpotsPlaceholder onAddSpot={onAddSpot ? handleAddSpot : undefined} />
+          <AddedSpotsSection uid={viewedUid} onAddSpot={onAddSpot ? handleAddSpot : undefined} />
         )}
 
         {/* Both sections are derived from games, and game reads are gated on

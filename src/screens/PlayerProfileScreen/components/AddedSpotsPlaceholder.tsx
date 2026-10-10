@@ -1,17 +1,10 @@
 /**
  * Empty state for the "Spots you've added" section.
  *
- * The *list* is still a placeholder: nothing on `users/{uid}` counts a user's
- * added spots today (`UserProfile` has no `spotsAddedCount` / `checkInsCount`
- * field, and no such field is written anywhere), so there is no data to
- * enumerate. Populating this section needs that counter — or a query over
- * `spots` by author — to land first.
- *
- * The CTA, by contrast, is live: the parent screen passes `onAddSpot`, which
- * routes to `/map?add=1` and opens the Add Spot sheet on arrival. The prop
- * stays optional so the component can still render as a pure empty state (and
- * so an unwired caller gets a visibly disabled button rather than a
- * dead-looking live one).
+ * Shown only when `listSpotsByCreator` returns nothing. The CTA is live: the
+ * parent passes `onAddSpot`, which routes to `/map?add=1` and opens the Add
+ * Spot sheet. The prop stays optional so an unwired caller gets a disabled
+ * button rather than a dead-looking live one.
  */
 interface Props {
   /**

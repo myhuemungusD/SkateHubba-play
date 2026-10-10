@@ -91,6 +91,7 @@ import {
   getSpotsNearby,
   fetchSpotName,
   addSpotComment,
+  listSpotsByCreator,
   _resetCreateSpotRateLimit,
 } from "../spots";
 import type { CreateSpotRequest } from "../../types/spot";
@@ -558,6 +559,37 @@ describe("getSpotsNearby", () => {
   ])("rejects when $label without hitting Firestore", async ({ center: c, radius, limit }) => {
     await expect(getSpotsNearby(c, radius, limit)).rejects.toThrow(/Invalid nearby/);
     expect(mockGetDocs).not.toHaveBeenCalled();
+  });
+});
+
+/* ────────────────────────────────────────────
+ * listSpotsByCreator
+ * ──────────────────────────────────────────── */
+
+describe("listSpotsByCreator", () => {
+  it("returns nothing for an empty or non-string uid without querying", async () => {
+    expect(await listSpotsByCreator("")).toEqual([]);
+    expect(await listSpotsByCreator(undefined as unknown as string)).toEqual([]);
+    expect(mockGetDocs).not.toHaveBeenCalled();
+  });
+
+  it("queries active spots by createdBy, newest first, and skips malformed docs", async () => {
+    mockGetDocs.mockResolvedValueOnce(
+      makeQuerySnap([
+        makeSpotSnap({ name: "Good" }, "spot-good"),
+        { id: "spot-bad", data: () => ({ name: "missing fields" }) },
+        makeSpotSnap({ name: "Someone else", createdBy: "other" }, "spot-other"),
+        makeSpotSnap({ name: "Hidden", isActive: false }, "spot-hidden"),
+      ]),
+    );
+
+    const spots = await listSpotsByCreator("creator-uid");
+
+    expect(spots.map((s) => s.id)).toEqual(["spot-good"]);
+    expect(mockWhere).toHaveBeenCalledWith("createdBy", "==", "creator-uid");
+    expect(mockWhere).toHaveBeenCalledWith("isActive", "==", true);
+    expect(mockOrderBy).toHaveBeenCalledWith("createdAt", "desc");
+    expect(mockLimit).toHaveBeenCalledWith(50);
   });
 });
 

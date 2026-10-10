@@ -448,6 +448,49 @@ export async function getSpotsNearby(
 }
 
 /* ────────────────────────────────────────────
+ * listSpotsByCreator
+ * ──────────────────────────────────────────── */
+
+/** Cap for the profile "spots you've added" list. Newest first. */
+const CREATOR_SPOTS_LIMIT = 50;
+
+/**
+ * Active spots created by `uid`, newest first.
+ *
+ * The read rule is `isSignedIn() && isActive == true`. A query that only
+ * filters `createdBy` is rejected, because Firestore cannot prove every
+ * matching doc is active. Both filters are required; `createdAt` desc needs
+ * the composite index in `firestore.indexes.json`.
+ */
+export async function listSpotsByCreator(uid: string): Promise<Spot[]> {
+  if (typeof uid !== "string" || uid.length === 0) return [];
+
+  const q = query(
+    spotsRef(),
+    where("createdBy", "==", uid),
+    where("isActive", "==", true),
+    orderBy("createdAt", "desc"),
+    limitFn(CREATOR_SPOTS_LIMIT),
+  );
+
+  const snap = await getDocs(q);
+  const spots: Spot[] = [];
+  for (const docSnap of snap.docs) {
+    try {
+      const spot = toSpot(docSnap);
+      if (spot.createdBy === uid && spot.isActive) spots.push(spot);
+    } catch (err) {
+      logger.warn("malformed_spot_by_creator", {
+        uid,
+        docId: docSnap.id,
+        error: parseFirebaseError(err),
+      });
+    }
+  }
+  return spots;
+}
+
+/* ────────────────────────────────────────────
  * Comments
  * ──────────────────────────────────────────── */
 
