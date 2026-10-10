@@ -89,6 +89,14 @@ vi.mock("../../services/sounds", () => {
   };
 });
 
+vi.mock("../../services/moderation", () => ({
+  listMyReports: vi.fn().mockResolvedValue([]),
+  listMyStatements: vi.fn().mockResolvedValue([]),
+  getMyBan: vi.fn().mockResolvedValue(null),
+  listMyAppeals: vi.fn().mockResolvedValue([]),
+  submitAppeal: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../../services/logger", () => ({
   logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));

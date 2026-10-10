@@ -26,6 +26,7 @@ import { InstallAppCard } from "../components/InstallAppCard";
 import { AccountActions } from "../components/AccountActions";
 import { TwoFactorSection } from "../components/TwoFactorSection";
 import { SOCIAL_LINKS } from "../constants/socialLinks";
+import { SafetyReportsSection } from "../components/SafetyReportsSection";
 
 type PushState = "unsupported" | "default" | "granted" | "denied";
 
@@ -685,6 +686,9 @@ export function Settings({
             <p className="font-body text-xs text-faint mt-1">Run Hubz&apos;s welcome tour again from the top.</p>
           </button>
         </div>
+
+        <SectionHeader title="REPORTS & ACTIONS" />
+        <SafetyReportsSection uid={profile.uid} />
 
         {/* Legal */}
         <SectionHeader title="LEGAL" />

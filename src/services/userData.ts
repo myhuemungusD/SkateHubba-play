@@ -53,6 +53,8 @@ const EXPORT_QUERY_LIMIT = 500;
  *   - `nudges` (senderUid|recipientUid) — nudges sent or received
  *   - `users/{uid}/blocked_users/*`    — people they have blocked
  *   - `reports` (reporterUid == uid)   — reports they filed
+ *   - `moderationStatements` (subjectUid) — statements of reasons about them
+ *   - `appeals` (appellantUid == uid)  — appeals they filed
  *
  * Intentionally excludes:
  *   - Other users' profile/game data (not the exporter's data)
@@ -86,6 +88,8 @@ export interface UserDataExport {
   nudges: ExportedDoc[];
   blockedUsers: ExportedDoc[];
   reports: ExportedDoc[];
+  moderationStatements: ExportedDoc[];
+  appeals: ExportedDoc[];
 }
 
 /**
@@ -157,6 +161,8 @@ export async function exportUserData(uid: string, username: string): Promise<Use
     nudgesReceived,
     blocked,
     reports,
+    moderationStatements,
+    appeals,
   ] = await Promise.all([
     readDoc(`users/${uid}`, () => getDoc(doc(db, "users", uid))),
     normalizedUsername
@@ -202,6 +208,12 @@ export async function exportUserData(uid: string, username: string): Promise<Use
     readCollection("reports", () =>
       getDocs(query(collection(db, "reports"), where("reporterUid", "==", uid), limitFn(cap))),
     ),
+    readCollection("moderationStatements", () =>
+      getDocs(query(collection(db, "moderationStatements"), where("subjectUid", "==", uid), limitFn(cap))),
+    ),
+    readCollection("appeals", () =>
+      getDocs(query(collection(db, "appeals"), where("appellantUid", "==", uid), limitFn(cap))),
+    ),
   ]);
 
   // Deduplicate games — a user can appear as player1, player2, or judge on
@@ -239,6 +251,8 @@ export async function exportUserData(uid: string, username: string): Promise<Use
     nudgesReceived,
     blocked,
     reports,
+    moderationStatements,
+    appeals,
   ];
   const capped = allSurfaces.some((s) => s.length >= cap);
 
@@ -257,6 +271,8 @@ export async function exportUserData(uid: string, username: string): Promise<Use
     nudges,
     blockedUsers: blocked,
     reports,
+    moderationStatements,
+    appeals,
   };
 }
 

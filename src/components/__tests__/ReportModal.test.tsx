@@ -7,12 +7,14 @@ const mockSubmitReport = vi.fn();
 
 vi.mock("../../services/reports", () => ({
   submitReport: (...args: unknown[]) => mockSubmitReport(...args),
+  ILLEGAL_CONTENT_MIN_EXPLANATION: 20,
   REPORT_REASON_LABELS: {
     inappropriate_video: "Inappropriate video content",
     abusive_behavior: "Abusive or threatening behavior",
     cheating: "Cheating or exploiting",
     spam: "Spam or bot activity",
     non_skate_content: "Not skateboarding",
+    illegal_content: "Illegal content",
     other: "Other",
   },
 }));
@@ -59,6 +61,47 @@ describe("ReportModal", () => {
         description: "They faked the landing",
       });
     });
+    expect(baseProps.onSubmitted).not.toHaveBeenCalled();
+    expect(screen.getByText("We received your report")).toBeInTheDocument();
+    expect(screen.getByTestId("report-receipt-id")).toHaveTextContent("Reference r1");
+    await userEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(baseProps.onSubmitted).toHaveBeenCalled();
+  });
+
+  it("requires a 20-character explanation for illegal content", async () => {
+    render(<ReportModal {...baseProps} />);
+    await userEvent.selectOptions(screen.getByLabelText("REASON"), "illegal_content");
+    expect(screen.getByLabelText("EXPLANATION (REQUIRED)")).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("EXPLANATION (REQUIRED)"), "too short");
+    expect(screen.getByText("Submit Report")).toBeDisabled();
+  });
+
+  it("submits an illegal-content report once the explanation is long enough", async () => {
+    render(<ReportModal {...baseProps} />);
+    await userEvent.selectOptions(screen.getByLabelText("REASON"), "illegal_content");
+    await userEvent.type(screen.getByLabelText("EXPLANATION (REQUIRED)"), "This clip contains illegal content.");
+    await userEvent.click(screen.getByText("Submit Report"));
+    await waitFor(() =>
+      expect(mockSubmitReport).toHaveBeenCalledWith(expect.objectContaining({ reason: "illegal_content" })),
+    );
+    expect(screen.getByText("We received your report")).toBeInTheDocument();
+  });
+
+  it("confirms the receipt on Escape", async () => {
+    render(<ReportModal {...baseProps} />);
+    await userEvent.selectOptions(screen.getByLabelText("REASON"), "spam");
+    await userEvent.click(screen.getByText("Submit Report"));
+    const dialog = await screen.findByRole("dialog");
+    dialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(baseProps.onSubmitted).toHaveBeenCalled();
+  });
+
+  it("confirms the receipt when the overlay is clicked", async () => {
+    render(<ReportModal {...baseProps} />);
+    await userEvent.selectOptions(screen.getByLabelText("REASON"), "spam");
+    await userEvent.click(screen.getByText("Submit Report"));
+    await screen.findByText("We received your report");
+    await userEvent.click(screen.getByRole("dialog"));
     expect(baseProps.onSubmitted).toHaveBeenCalled();
   });
 

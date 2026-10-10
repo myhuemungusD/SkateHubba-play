@@ -2622,9 +2622,15 @@ service cloud.firestore {
               && request.resource.data.clipId.size() > 0)
         )
         && request.resource.data.reason is string
-        && request.resource.data.reason in ['inappropriate_video', 'abusive_behavior', 'cheating', 'spam', 'non_skate_content', 'other']
+        && request.resource.data.reason in ['inappropriate_video', 'abusive_behavior', 'cheating', 'spam', 'non_skate_content', 'illegal_content', 'other']
         && request.resource.data.description is string
         && request.resource.data.description.size() <= 500
+        // DSA Art. 16: an illegal-content notice has to say what is illegal.
+        // Other reasons may leave the explanation blank.
+        && (
+          request.resource.data.reason != 'illegal_content'
+          || request.resource.data.description.size() >= 20
+        )
         && request.resource.data.status == 'pending'
         // Optional clipId: when a report targets a clip from the feed rather
         // than an in-game video, it carries the clip's deterministic id
@@ -2671,7 +2677,21 @@ service cloud.firestore {
             .hasOnly(['status', 'resolvedBy', 'resolvedAt'])
         && request.resource.data.status in ['resolved', 'dismissed']
         && request.resource.data.resolvedBy == request.auth.uid
-        && request.resource.data.resolvedAt == request.time;
+        && request.resource.data.resolvedAt == request.time
+        // Dismissing takes no action, so there is nothing to explain.
+        // Resolving restricts content: the same batch must leave a
+        // statement of reasons the subject can read (they cannot read
+        // this report). getAfter sees that companion write.
+        && (
+          request.resource.data.status == 'dismissed'
+          || (
+            existsAfter(/databases/$(database)/documents/moderationStatements/$(reportId))
+            && getAfter(/databases/$(database)/documents/moderationStatements/$(reportId)).data.subjectUid == resource.data.reportedUid
+            && getAfter(/databases/$(database)/documents/moderationStatements/$(reportId)).data.createdBy == request.auth.uid
+            && getAfter(/databases/$(database)/documents/moderationStatements/$(reportId)).data.createdAt == request.time
+            && getAfter(/databases/$(database)/documents/moderationStatements/$(reportId)).data.action == 'content_restricted'
+          )
+        );
       // Reports are the moderation audit trail — nobody deletes them.
       allow delete: if false;
     }
@@ -2717,6 +2737,101 @@ service cloud.firestore {
       // Rate-limit docs are server-managed cooldown state with no user-
       // facing lifecycle. Clients must never delete them — a successful
       // delete would reset the 1h cooldown and re-enable spam.
+      allow delete: if false;
+    }
+
+    // ── Statements of reasons (DSA Art. 17) ──
+    // The reported user must never read /reports (the reporter's identity
+    // is in there). When an admin resolves a report they write one of
+    // these in the same batch. The subject reads this doc; strangers do
+    // not. Doc id is the report id, so a report has one statement.
+    match /moderationStatements/{statementId} {
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.subjectUid == request.auth.uid);
+
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly([
+          'subjectUid', 'reportId', 'action', 'reason', 'explanation',
+          'contentRef', 'createdBy', 'createdAt'
+        ])
+        && request.resource.data.subjectUid is string
+        && request.resource.data.subjectUid.size() > 0
+        && request.resource.data.subjectUid != request.auth.uid
+        && statementId == request.resource.data.reportId
+        && request.resource.data.reportId is string
+        && request.resource.data.reportId.size() > 0
+        && request.resource.data.reportId.size() <= 128
+        && request.resource.data.action == 'content_restricted'
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() > 0
+        && request.resource.data.reason.size() <= 64
+        && request.resource.data.explanation is string
+        && request.resource.data.explanation.size() > 0
+        && request.resource.data.explanation.size() <= 1000
+        && request.resource.data.contentRef is string
+        && request.resource.data.contentRef.size() > 0
+        && request.resource.data.contentRef.size() <= 128
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && getAfter(/databases/$(database)/documents/reports/$(statementId)).data.status == 'resolved'
+        && getAfter(/databases/$(database)/documents/reports/$(statementId)).data.resolvedBy == request.auth.uid
+        && getAfter(/databases/$(database)/documents/reports/$(statementId)).data.resolvedAt == request.time
+        && getAfter(/databases/$(database)/documents/reports/$(statementId)).data.reportedUid == request.resource.data.subjectUid;
+
+      // The statement is the notice. Editing it would rewrite the reason
+      // the subject was given. A new action is a new report close-out.
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ── Appeals (DSA Art. 20) ──
+    // One appeal per target. Doc id is `${targetKind}_${targetId}`:
+    // `statement_{reportId}` or `ban_{uid}`. Email verification is NOT
+    // required, and notBanned() does not apply — a restricted user has
+    // to be able to ask for a review. The reported user still cannot
+    // read the original report.
+    match /appeals/{appealId} {
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.appellantUid == request.auth.uid);
+
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasOnly([
+          'appellantUid', 'targetKind', 'targetId', 'explanation', 'status', 'createdAt'
+        ])
+        && request.resource.data.appellantUid == request.auth.uid
+        && request.resource.data.targetKind in ['statement', 'ban']
+        && request.resource.data.targetId is string
+        && request.resource.data.targetId.size() > 0
+        && request.resource.data.targetId.size() <= 128
+        && appealId == request.resource.data.targetKind + '_' + request.resource.data.targetId
+        && request.resource.data.explanation is string
+        && request.resource.data.explanation.size() > 0
+        && request.resource.data.explanation.size() <= 1000
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time
+        && (
+          (
+            request.resource.data.targetKind == 'statement'
+            && exists(/databases/$(database)/documents/moderationStatements/$(request.resource.data.targetId))
+            && get(/databases/$(database)/documents/moderationStatements/$(request.resource.data.targetId)).data.subjectUid == request.auth.uid
+          )
+          || (
+            request.resource.data.targetKind == 'ban'
+            && request.resource.data.targetId == request.auth.uid
+            && exists(/databases/$(database)/documents/bans/$(request.auth.uid))
+          )
+        );
+
+      // The appellant cannot edit a filed appeal. An admin moves it
+      // once, from pending to a terminal outcome, with an audit stamp.
+      allow update: if isAdmin()
+        && resource.data.status == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'reviewedBy', 'reviewedAt'])
+        && request.resource.data.status in ['upheld', 'rejected']
+        && request.resource.data.reviewedBy == request.auth.uid
+        && request.resource.data.reviewedAt == request.time;
+
       allow delete: if false;
     }
 
