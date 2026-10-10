@@ -44,7 +44,7 @@ function Wrapper({ children }: { children: ReactNode }) {
 beforeEach(() => {
   vi.clearAllMocks();
   mockFetchReports.mockResolvedValue([]);
-  mockFetchClipsInReview.mockResolvedValue([]);
+  mockFetchClipsInReview.mockResolvedValue({ clips: [], cursor: null });
 });
 
 describe("AdminScreen", () => {

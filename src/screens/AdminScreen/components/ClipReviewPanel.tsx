@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import { decideClipModeration, fetchClipsInReview, type ReviewClip } from "../../../services/clipModeration";
+import {
+  decideClipModeration,
+  fetchClipsInReview,
+  type ReviewClip,
+  type ReviewCursor,
+} from "../../../services/clipModeration";
 import { useNotifications } from "../../../context/NotificationContext";
 import { errorMessage } from "../utils";
 
@@ -11,20 +16,28 @@ import { errorMessage } from "../utils";
 export function ClipReviewPanel() {
   const { notify } = useNotifications();
   const [reloadKey, setReloadKey] = useState(0);
-  const [state, setState] = useState<{ loadedKey: number; clips: ReviewClip[]; error: string }>({
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [state, setState] = useState<{
+    loadedKey: number;
+    clips: ReviewClip[];
+    cursor: ReviewCursor | null;
+    error: string;
+  }>({
     loadedKey: -1,
     clips: [],
+    cursor: null,
     error: "",
   });
 
   useEffect(() => {
     let stale = false;
     fetchClipsInReview()
-      .then((clips) => {
-        if (!stale) setState({ loadedKey: reloadKey, clips, error: "" });
+      .then((page) => {
+        if (!stale) setState({ loadedKey: reloadKey, clips: page.clips, cursor: page.cursor, error: "" });
       })
       .catch((err: unknown) => {
-        if (!stale) setState({ loadedKey: reloadKey, clips: [], error: errorMessage(err, "Couldn't load clips.") });
+        if (!stale)
+          setState({ loadedKey: reloadKey, clips: [], cursor: null, error: errorMessage(err, "Couldn't load clips.") });
       });
     return () => {
       stale = true;
@@ -32,6 +45,19 @@ export function ClipReviewPanel() {
   }, [reloadKey]);
 
   const loading = state.loadedKey !== reloadKey;
+
+  const loadMore = async (): Promise<void> => {
+    if (!state.cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await fetchClipsInReview(state.cursor);
+      setState((prev) => ({ ...prev, clips: [...prev.clips, ...page.clips], cursor: page.cursor, error: "" }));
+    } catch (err: unknown) {
+      setState((prev) => ({ ...prev, error: errorMessage(err, "Couldn't load clips.") }));
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   return (
     <section aria-label="Clips in review">
@@ -71,6 +97,16 @@ export function ClipReviewPanel() {
           />
         ))}
       </ul>
+      {state.cursor && (
+        <button
+          type="button"
+          onClick={() => void loadMore()}
+          disabled={loadingMore}
+          className="mt-4 min-h-[44px] w-full rounded-xl border border-border font-display text-xs tracking-wider text-white disabled:opacity-40"
+        >
+          {loadingMore ? "Loading…" : "Load more"}
+        </button>
+      )}
     </section>
   );
 }

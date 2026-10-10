@@ -1,6 +1,7 @@
 import { FieldValue, type Firestore } from "firebase-admin/firestore";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 import { VIDEO_API_POLL_MS, VIDEO_API_TIMEOUT_MS } from "./config.js";
+import { clipBadgeDelta, nextClipsPosted } from "./clipBadge.js";
 import { adminPatch, shouldApplyUploadDecision, shouldAutoHideClip, type SaveGuard } from "./patches.js";
 import { runReportModeration } from "./runReport.js";
 import { runUploadModeration } from "./runUpload.js";
@@ -40,7 +41,23 @@ async function saveClip(
           ? shouldAutoHideClip(data)
           : data.source === "user";
     if (!allowed) return false;
-    tx.update(ref, { ...patch, moderationUpdatedAt: FieldValue.serverTimestamp() });
+    const delta = clipBadgeDelta(data, patch.moderation);
+    const ownerUid = typeof data.playerUid === "string" ? data.playerUid : "";
+    let clipsPosted: number | null = null;
+    if (delta !== 0 && ownerUid.length > 0) {
+      const userSnap = await tx.get(db.collection("users").doc(ownerUid));
+      if (userSnap.exists) clipsPosted = nextClipsPosted(userSnap.get("clipsPosted"), delta);
+    }
+    const counted =
+      clipsPosted !== null && delta === 1
+        ? { badgeCounted: true }
+        : clipsPosted !== null && delta === -1
+          ? { badgeCounted: false }
+          : {};
+    tx.update(ref, { ...patch, ...counted, moderationUpdatedAt: FieldValue.serverTimestamp() });
+    if (clipsPosted !== null) {
+      tx.update(db.collection("users").doc(ownerUid), { clipsPosted });
+    }
     return true;
   });
 }

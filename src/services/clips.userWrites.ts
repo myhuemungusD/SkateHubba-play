@@ -229,13 +229,18 @@ export async function createUserClip(params: CreateUserClipParams): Promise<stri
       // Mandatory companion write. `update` (not set/merge) because the
       // owner-update rule is what pins this field to `request.time`, and the
       // profile is known to exist from the read above.
-      const priorClips =
-        typeof userData.clipsPosted === "number" && userData.clipsPosted > 0 ? userData.clipsPosted : 0;
-      tx.update(userRef, {
+      // A public post counts immediately. A pending post waits for approval,
+      // which is the only place clipsPosted moves after that.
+      const userUpdate: Record<string, unknown> = {
         lastClipCreatedAt: serverTimestamp(),
-        clipsPosted: priorClips + 1,
-        clipsPostedClipId: clipId,
-      });
+      };
+      if (!moderationOn) {
+        const priorClips =
+          typeof userData.clipsPosted === "number" && userData.clipsPosted > 0 ? userData.clipsPosted : 0;
+        userUpdate.clipsPosted = priorClips + 1;
+        userUpdate.clipsPostedClipId = clipId;
+      }
+      tx.update(userRef, userUpdate);
     });
     return clipId;
   } catch (err) {

@@ -40,6 +40,23 @@
       "collectionGroup": "clips",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "moderation", "order": "ASCENDING" },
+        { "fieldPath": "moderationUpdatedAt", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "disputeVotes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "disputeId", "order": "ASCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "clips",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "moderationStatus", "order": "ASCENDING" },
         { "fieldPath": "upvoteCount", "order": "DESCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" },

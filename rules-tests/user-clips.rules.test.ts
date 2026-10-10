@@ -288,6 +288,25 @@ describe("clipsPosted +1 is bound to a new user clip", () => {
     await assertFails(bumped.commit());
   });
 
+  it("rejects a clipsPosted bump for a clip that is still pending", async () => {
+    const ctx = authed(UID);
+    const pending = writeBatch(ctx.firestore());
+    pending.set(
+      doc(ctx.firestore(), "clips", "clip-pending"),
+      makeUserClip(UID, { moderationStatus: "pending", moderation: "pending" }),
+    );
+    pending.update(doc(ctx.firestore(), "users", UID), {
+      lastClipCreatedAt: serverTimestamp(),
+      clipsPosted: 1,
+      clipsPostedClipId: "clip-pending",
+    });
+    await assertFails(pending.commit());
+  });
+
+  it("rejects a client stamping badgeCounted on a new clip", async () => {
+    await assertFails(createUserClip(authed(UID), UID, { badgeCounted: true }));
+  });
+
   it("rejects a clipsPosted bump that does not create a clip", async () => {
     await assertFails(
       updateDoc(doc(authed(UID).firestore(), "users", UID), {

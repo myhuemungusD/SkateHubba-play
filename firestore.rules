@@ -525,6 +525,11 @@ service cloud.firestore {
             && !exists(/databases/$(database)/documents/clips/$(request.resource.data.clipsPostedClipId))
             && getAfter(/databases/$(database)/documents/clips/$(request.resource.data.clipsPostedClipId)).data.source == 'user'
             && getAfter(/databases/$(database)/documents/clips/$(request.resource.data.clipsPostedClipId)).data.playerUid == request.auth.uid
+            // A pending, rejected, or removed clip does not count. The
+            // moderation function adds one when it approves, and takes one
+            // back when that approval is undone.
+            && getAfter(/databases/$(database)/documents/clips/$(request.resource.data.clipsPostedClipId)).data.moderationStatus == 'active'
+            && !('moderation' in getAfter(/databases/$(database)/documents/clips/$(request.resource.data.clipsPostedClipId)).data)
           )
         )
         // Cannot change username or uid after creation
@@ -3059,6 +3064,7 @@ service cloud.firestore {
         )
         && !('moderationScores' in request.resource.data)
         && !('moderationNotice' in request.resource.data)
+        && !('badgeCounted' in request.resource.data)
         && request.resource.data.upvoteCount == 0
         && request.resource.data.downvoteCount == 0
         && request.resource.data.createdAt == request.time
