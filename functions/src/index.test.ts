@@ -100,6 +100,7 @@ describe("onGameCompleted trigger", () => {
       document: "games/{gameId}",
       database: "skatehubba",
       region: "us-central1",
+      retry: true,
     });
     expect(initializeAppMock).toHaveBeenCalledTimes(1);
   });
@@ -153,5 +154,10 @@ describe("onGameCompleted trigger", () => {
       enabled: false,
       testers: "",
     });
+  });
+
+  it("rethrows a close-out failure so the trigger retry can run again", async () => {
+    applyGameStatsMock.mockRejectedValueOnce(new Error("unavailable"));
+    await expect(captured.handler?.(event({ status: "complete", winner: "uid-1" }))).rejects.toThrow("unavailable");
   });
 });

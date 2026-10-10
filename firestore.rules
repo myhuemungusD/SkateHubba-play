@@ -2073,9 +2073,12 @@ service cloud.firestore {
         && cronNotifyTombstonesUnchanged()
         && verifiedProBadgesUnchanged();
 
-      // Players may delete their own non-active games (account deletion flow)
+      // A finished game stays until close-out has set statsApplied. Deleting
+      // it first drops the loss. Account deletion uses the Admin SDK, which
+      // bypasses this rule.
       allow delete: if isSignedIn() && isPlayer(resource.data)
-        && resource.data.status != "active";
+        && resource.data.status != "active"
+        && resource.data.statsApplied == true;
     }
 
     // ── Spots ──
