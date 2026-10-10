@@ -1,7 +1,7 @@
 import { Btn } from "../components/ui/Btn";
 import type { Screen } from "../context/NavigationContext";
 
-const EFFECTIVE_DATE = "March 20, 2026";
+const EFFECTIVE_DATE = "October 10, 2026";
 const CONTACT_EMAIL = "privacy@skatehubba.com";
 
 export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (s: Screen) => void }) {
@@ -50,6 +50,11 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
               These are uploaded to Firebase Storage and linked to your game sessions.
             </li>
             <li>
+              <strong className="text-white">Trick-training labels (only if you opt in):</strong> The storage path of a
+              clip, the trick you picked (including stance and obstacle), whether the clip was a set or a match, and
+              whether it landed. We also store a snapshot of your consent. This is off unless you turn it on.
+            </li>
+            <li>
               <strong className="text-white">Precise device location:</strong> If you open the map and grant permission,
               we read your device&apos;s GPS location to centre the map and show skate spots near you. Location is used
               only while the map is open, is not stored on our servers, and you can revoke the permission at any time in
@@ -80,6 +85,10 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
             <li>To send transactional emails (e.g. email verification, password reset) via Firebase.</li>
             <li>To detect and fix bugs using anonymised error reports.</li>
             <li>To understand aggregate product usage and improve the app.</li>
+            <li>
+              If you opt in, to teach a future trick recognizer from clips you filmed and the trick you named. We do not
+              do this unless you turn the setting on.
+            </li>
             <li>
               To review user reports of inappropriate content or behaviour. When you flag an opponent, we store your
               user ID, the reported user&apos;s ID, the game ID, and the reason you provided. Reports are reviewed by
@@ -213,7 +222,41 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
           </ul>
         </Section>
 
-        <Section title="10. California Privacy Rights (CCPA/CPRA)">
+        <Section title="10. Trick recognition training">
+          <p>
+            SkateHubba may one day recognize tricks from video. That work is not running yet. If it does, it will only
+            learn from clips of people who asked us to use them.
+          </p>
+          <ul>
+            <li>
+              <strong className="text-white">Opt-in, default off.</strong> The Settings switch &quot;Help train
+              SkateHubba&apos;s trick AI&quot; starts off. Nothing you film is used for training unless you turn it on.
+              After your first finished game we may ask once. You can ignore that question.
+            </li>
+            <li>
+              <strong className="text-white">What we keep.</strong> If you opt in, we store a training label for each
+              set and match clip: where the video lives, the trick, stance, and obstacle you picked, whether you were
+              setting or matching, how the turn ended, and whether you had opted in at the time.
+            </li>
+            <li>
+              <strong className="text-white">Turning it off.</strong> You can switch it off at any time. We then stop
+              using your clips for training, including clips you already shared. Those labels are marked excluded.
+            </li>
+            <li>
+              <strong className="text-white">Deletion.</strong> Deleting your account deletes your training labels along
+              with the rest of your data.
+            </li>
+            <li>
+              <strong className="text-white">Age.</strong> Players under 18 cannot opt in. Players under 13 cannot use
+              SkateHubba at all.
+            </li>
+          </ul>
+          <p>
+            This section is written in plain words. A lawyer should review it before you rely on it as a legal notice.
+          </p>
+        </Section>
+
+        <Section title="11. California Privacy Rights (CCPA/CPRA)">
           <p>
             If you are a California resident, the California Consumer Privacy Act (CCPA), as amended by the California
             Privacy Rights Act (CPRA), grants you additional rights:
@@ -257,7 +300,7 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
           )}
         </Section>
 
-        <Section title="11. Do Not Sell My Personal Information">
+        <Section title="12. Do Not Sell My Personal Information">
           <p>
             SkateHubba does <strong className="text-white">not sell</strong> personal information as defined under the
             CCPA. We do not share personal information with third parties for monetary or other valuable consideration.
@@ -265,7 +308,7 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
           </p>
         </Section>
 
-        <Section title="12. Changes to This Policy">
+        <Section title="13. Changes to This Policy">
           <p>
             We may update this Privacy Policy from time to time. We will notify users of material changes by updating
             the effective date at the top of this page. Continued use of the app after changes constitutes acceptance of
@@ -273,7 +316,7 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
           </p>
         </Section>
 
-        <Section title="13. Contact">
+        <Section title="14. Contact">
           <p>
             Questions about this Privacy Policy? Email us at <span className="text-brand-orange">{CONTACT_EMAIL}</span>.
           </p>

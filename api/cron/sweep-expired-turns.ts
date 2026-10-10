@@ -38,6 +38,7 @@ import { parseServiceAccountJson } from "./_serviceAccount.js";
 // cold start (ERR_MODULE_NOT_FOUND).
 import { decideExpiredForfeit, type ForfeitGameUpdate } from "../../src/services/turnForfeit.shared.js";
 import { toGameDoc, type GameDoc } from "../../src/services/games.mappers.js";
+import { applyTrainingLabelPending, materializeTrainingLabels } from "../../src/services/trainingLabels.materialize.js";
 import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
 
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
@@ -69,6 +70,10 @@ interface SweepSummary {
   reminded: number;
   /** Failures inside the notification passes — never fail the forfeit sweep. */
   notifyErrors: number;
+  /** Training-label rows written this run. Failures stay in trainingErrors. */
+  trainingLabels: number;
+  trainingExcluded: number;
+  trainingErrors: number;
   dryRun: boolean;
 }
 
@@ -161,6 +166,7 @@ export function toAdminGameUpdate(update: ForfeitGameUpdate): Record<string, unk
   if (update.p2Letters !== undefined) out.p2Letters = update.p2Letters;
   if (update.judgeReviewFor !== undefined) out.judgeReviewFor = update.judgeReviewFor;
   if (update.appendTurnRecord !== undefined) out.turnHistory = FieldValue.arrayUnion(update.appendTurnRecord);
+  applyTrainingLabelPending(out, update.appendTurnRecord);
   return out;
 }
 
@@ -680,6 +686,9 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
     reconciled: 0,
     reminded: 0,
     notifyErrors: 0,
+    trainingLabels: 0,
+    trainingExcluded: 0,
+    trainingErrors: 0,
     dryRun,
   };
 
@@ -738,6 +747,24 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
     // Notification passes run after the forfeit sweep so a slow reconcile can
     // never delay the state transitions the game actually depends on.
     await runNotificationPasses(db, summary, dryRun);
+
+    // Training labels are a side pass. A failure here must not fail the
+    // forfeit sweep the game depends on.
+    try {
+      const labeled = await materializeTrainingLabels(db, { dryRun });
+      summary.trainingLabels += labeled.labels;
+      summary.trainingExcluded += labeled.excluded;
+      summary.trainingErrors += labeled.errors;
+    } catch (err) {
+      summary.trainingErrors += 1;
+      console.warn(
+        JSON.stringify({
+          event: "training_labels_failed",
+          message: err instanceof Error ? err.message : String(err),
+        }),
+      );
+      captureServerError("training_labels_failed", err, {}, { level: "warning" });
+    }
 
     await flushServerErrors();
     res.status(200).json(summary);

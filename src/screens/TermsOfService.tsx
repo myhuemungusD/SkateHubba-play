@@ -1,6 +1,6 @@
 import { Btn } from "../components/ui/Btn";
 
-const EFFECTIVE_DATE = "March 20, 2026";
+const EFFECTIVE_DATE = "October 10, 2026";
 const CONTACT_EMAIL = "legal@skatehubba.com";
 
 export function TermsOfService({ onBack }: { onBack: () => void }) {
@@ -63,6 +63,13 @@ export function TermsOfService({ onBack }: { onBack: () => void }) {
             SkateHubba a worldwide, royalty-free, non-exclusive licence to store, display, and deliver your Content to
             your game opponents within the App. We will not use your Content for advertising or share it publicly
             outside of your game.
+          </p>
+          <p>
+            If you are 18 or older you may separately opt in, in Settings, to let us use clips you film and the trick
+            you pick to train a future trick recognizer. That permission is off unless you turn it on. It is not part of
+            the licence above. If you turn it off, we stop using your clips for training, including clips you already
+            shared, and we mark those records excluded. Deleting your account deletes them. Players under 18 cannot opt
+            in. This training language is plain wording. A lawyer should review it before you rely on it.
           </p>
           <p>You must not upload Content that:</p>
           <ul>

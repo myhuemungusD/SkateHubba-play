@@ -57,3 +57,12 @@ export function isAppleSignInEnabled(): boolean {
 export function isRefereeEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_REFEREE_ENABLED);
 }
+
+/**
+ * Searchable trick picker. Off until the catalog has been tried on a phone.
+ * Literal "true" only. While off, setters still type a trick name and no
+ * structured trick fields are required.
+ */
+export function isTrickPickerEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_TRICK_PICKER_ENABLED);
+}

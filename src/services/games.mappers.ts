@@ -1,5 +1,6 @@
 import { Timestamp } from "firebase/firestore";
 import type { TrickCategoryId } from "../constants/trickCategories.js";
+import type { TrickObstacle, TrickStance } from "../constants/tricks.js";
 
 /** Re-exported so callers can pull the game trick-category type from the games barrel. */
 export type { TrickCategoryId } from "../constants/trickCategories.js";
@@ -44,6 +45,15 @@ export interface TurnRecord {
   letterTo: string | null;
   /** UID of the judge who ruled on this turn, or null if no judge was involved. */
   judgedBy?: string | null;
+  /**
+   * Catalog id from the trick picker. Absent on free-text turns and on every
+   * game played before the picker. The training cron only labels turns that
+   * carry this.
+   */
+  trickId?: string;
+  stance?: TrickStance;
+  obstacle?: TrickObstacle | null;
+  trickNameCustom?: string | null;
 }
 
 /** Create a Firestore Timestamp from epoch milliseconds. Keeps Firebase SDK out of utils/. */
@@ -66,6 +76,14 @@ export interface GameDoc {
   /** UID of the player currently setting a trick */
   currentSetter: string;
   currentTrickName: string | null;
+  /**
+   * Structured trick from the picker. Null or absent on free-text turns.
+   * Cleared whenever `currentTrickName` is cleared.
+   */
+  currentTrickId?: string | null;
+  currentTrickStance?: TrickStance | null;
+  currentTrickObstacle?: TrickObstacle | null;
+  currentTrickNameCustom?: string | null;
   currentTrickVideoUrl: string | null;
   matchVideoUrl: string | null;
   turnDeadline: Timestamp;

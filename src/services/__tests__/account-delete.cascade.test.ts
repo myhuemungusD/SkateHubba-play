@@ -132,6 +132,8 @@ describe("full cascade over a populated account", () => {
       diceGames: 0,
       diceStats: 0,
       diceCreateLimits: 0,
+      trainingLabels: 0,
+      trainingRevocations: 0,
     });
   });
 
@@ -269,6 +271,7 @@ describe("ownership fields", () => {
     ["nudges", "senderUid"],
     ["nudges", "recipientUid"],
     ["reports", "reporterUid"],
+    ["trainingLabels", "ownerUid"],
   ];
 
   it.each(OWNERSHIP)("queries %s on %s", async (collection, field) => {
@@ -700,6 +703,8 @@ describe("idempotency", () => {
       diceGames: 0,
       diceStats: 0,
       diceCreateLimits: 0,
+      trainingLabels: 0,
+      trainingRevocations: 0,
     });
   });
 
@@ -768,6 +773,29 @@ describe("Roll Dice cleanup", () => {
     });
     await deleteUserDataAsAdmin(store.deps, UID);
     expect(store.docs.get("diceStats/u2")).toEqual({ wins: 1, losses: 0, gamesPlayed: 1 });
+  });
+});
+
+describe("training label cleanup", () => {
+  it("deletes this user's labels and revocation doc and leaves everyone else's", async () => {
+    const store = makeFakeStore({
+      users: { [UID]: { username: "TonyH" } },
+      usernames: { tonyh: { uid: UID } },
+      trainingLabels: {
+        mine: { ownerUid: UID, trickId: "kickflip", excluded: false },
+        also: { ownerUid: UID, trickId: "heelflip", excluded: true },
+        theirs: { ownerUid: OTHER, trickId: "ollie", excluded: false },
+      },
+      trainingRevocations: { [UID]: { revokedAt: 1 }, [OTHER]: { revokedAt: 2 } },
+    });
+    const summary = await deleteUserDataAsAdmin(store.deps, UID);
+    expect(summary.trainingLabels).toBe(2);
+    expect(summary.trainingRevocations).toBe(1);
+    expect(store.docs.has("trainingLabels/mine")).toBe(false);
+    expect(store.docs.has("trainingLabels/also")).toBe(false);
+    expect(store.docs.has("trainingLabels/theirs")).toBe(true);
+    expect(store.docs.has(`trainingRevocations/${UID}`)).toBe(false);
+    expect(store.docs.has(`trainingRevocations/${OTHER}`)).toBe(true);
   });
 });
 

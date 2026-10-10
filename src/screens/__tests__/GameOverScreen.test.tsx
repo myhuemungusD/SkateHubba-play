@@ -6,6 +6,8 @@ import { GameOverScreen } from "../GameOverScreen";
 const { fetchResolvedDispute } = vi.hoisted(() => ({ fetchResolvedDispute: vi.fn().mockResolvedValue(null) }));
 vi.mock("../../services/disputes", () => ({ fetchResolvedDispute }));
 
+vi.mock("../../services/trainingConsent", () => import("./trainingConsent.screen-test-helpers"));
+
 vi.mock("../../services/analytics", () => ({
   trackEvent: vi.fn(),
 }));

@@ -711,6 +711,28 @@ service cloud.firestore {
             || request.resource.data.pushEnabled is bool;
         }
 
+        // Trick-training opt-in. Default is the field's absence (off).
+        // Age (18+) is enforced in src/services/trainingConsent.ts — rules
+        // cannot subtract 18 years from request.time.
+        function trainingConsentStampOk(field) {
+          return !(field in request.resource.data)
+            || request.resource.data[field] == null
+            || request.resource.data[field] == request.time
+            || (request.resource.data[field] is timestamp
+                && request.resource.data[field] <= request.time + duration.value(5, 's'));
+        }
+        function trainingConsentOk() {
+          return (!('trainingConsentOptedIn' in request.resource.data)
+              || request.resource.data.trainingConsentOptedIn is bool)
+            && (!('trainingConsentPolicyVersion' in request.resource.data)
+              || (request.resource.data.trainingConsentPolicyVersion is string
+                  && request.resource.data.trainingConsentPolicyVersion.size() > 0
+                  && request.resource.data.trainingConsentPolicyVersion.size() <= 32))
+            && trainingConsentStampOk('trainingConsentUpdatedAt')
+            && trainingConsentStampOk('trainingConsentRevokedAt')
+            && trainingConsentStampOk('trainingConsentPromptSeenAt');
+        }
+
         // ── Allowlist of accepted keys ──
         // Every key currently written to users/{uid}/private/profile by
         // the codebase. Keep in sync with UserPrivateProfile in
@@ -726,7 +748,12 @@ service cloud.firestore {
             'onboardingTutorialVersion',
             'onboardingCompletedAt',
             'onboardingSkippedAt',
-            'pushEnabled'
+            'pushEnabled',
+            'trainingConsentOptedIn',
+            'trainingConsentPolicyVersion',
+            'trainingConsentUpdatedAt',
+            'trainingConsentRevokedAt',
+            'trainingConsentPromptSeenAt'
           ]);
         }
 
@@ -736,14 +763,16 @@ service cloud.firestore {
           && onboardingTutorialVersionOk()
           && onboardingCompletedAtOk()
           && onboardingSkippedAtOk()
-          && pushEnabledOk();
+          && pushEnabledOk()
+          && trainingConsentOk();
         allow update: if isOwner(uid)
           && privateProfileKeysOk()
           && fcmTokensOk()
           && onboardingTutorialVersionOk()
           && onboardingCompletedAtOk()
           && onboardingSkippedAtOk()
-          && pushEnabledOk();
+          && pushEnabledOk()
+          && trainingConsentOk();
         allow delete: if isOwner(uid);
       }
 
@@ -1095,6 +1124,51 @@ service cloud.firestore {
       );
     }
 
+    // ── Trick picker fields (optional; absent on free-text and legacy docs) ──
+    // Shape only. The catalog lives in src/constants/tricks.ts — listing every
+    // id here would blow the 256KB rules cap. A slug that is not in the catalog
+    // is still rejected by the client; rules reject the wrong types.
+    function trickFieldsCleared() {
+      return (!('currentTrickId' in request.resource.data) || request.resource.data.currentTrickId == null)
+        && (!('currentTrickStance' in request.resource.data) || request.resource.data.currentTrickStance == null)
+        && (!('currentTrickObstacle' in request.resource.data) || request.resource.data.currentTrickObstacle == null)
+        && (!('currentTrickNameCustom' in request.resource.data) || request.resource.data.currentTrickNameCustom == null);
+    }
+    function trickFieldsShapeOk() {
+      return trickFieldsCleared() || (
+        request.resource.data.currentTrickId is string
+        && request.resource.data.currentTrickId.size() > 0
+        && request.resource.data.currentTrickId.size() <= 40
+        && request.resource.data.currentTrickId.matches('^[a-z0-9]+(-[a-z0-9]+)*$')
+        && request.resource.data.currentTrickStance in ['regular', 'fakie', 'nollie', 'switch']
+        && (
+          !('currentTrickObstacle' in request.resource.data)
+          || request.resource.data.currentTrickObstacle == null
+          || request.resource.data.currentTrickObstacle in ['flat', 'ledge', 'rail', 'stairs', 'gap', 'bank', 'transition', 'manual-pad']
+        )
+        && (
+          (request.resource.data.currentTrickId != 'other'
+            && (!('currentTrickNameCustom' in request.resource.data) || request.resource.data.currentTrickNameCustom == null))
+          || (request.resource.data.currentTrickId == 'other'
+            && request.resource.data.currentTrickNameCustom is string
+            && request.resource.data.currentTrickNameCustom.size() > 0
+            && request.resource.data.currentTrickNameCustom.size() <= 64)
+        )
+      );
+    }
+    // Later update branches do not re-pin these four fields. A presence-pair
+    // per field on every branch blows the 1000-expression budget on the
+    // setReview auto-clear and expired-dispute auto-accept rules, which are
+    // already at the ceiling. The setting write is what introduces them.
+    // Client may raise the flag when a catalog turn resolves. Only the cron
+    // (admin SDK) may clear it. Absent on legacy writes.
+    function trainingLabelPendingOk() {
+      return (!('trainingLabelPending' in resource.data) && !('trainingLabelPending' in request.resource.data))
+        || ('trainingLabelPending' in request.resource.data && request.resource.data.trainingLabelPending == true)
+        || ('trainingLabelPending' in resource.data && 'trainingLabelPending' in request.resource.data
+            && request.resource.data.trainingLabelPending == resource.data.trainingLabelPending);
+    }
+
     // ── Games ──
     match /games/{gameId} {
       // Players AND the nominated judge can read the game document.
@@ -1134,6 +1208,8 @@ service cloud.firestore {
         && request.resource.data.currentTrickName == null
         && request.resource.data.currentTrickVideoUrl == null
         && request.resource.data.matchVideoUrl == null
+        && trickFieldsCleared()
+        && (!('trainingLabelPending' in request.resource.data) || request.resource.data.trainingLabelPending == false)
         // Optional spotId must be a string if present (location context for
         // the challenge — clients validate UUID shape, rules enforce the
         // coarser type invariant).
@@ -1363,7 +1439,8 @@ service cloud.firestore {
            // videoUrlBucketPinned() accepts both forms (getDownloadURL() and
            // the bucket-as-host CDN form). Mirrors the matchVideoUrl +
            // clips.videoUrl pins below.
-           && videoUrlBucketPinned(request.resource.data.currentTrickVideoUrl))
+           && videoUrlBucketPinned(request.resource.data.currentTrickVideoUrl)
+           && trickFieldsShapeOk())
           // setting → setting (setter failed to land, turn passes to opponent)
           //   • currentSetter MUST flip to the other player (the whole point of
           //     failSetTrick is the role passes) — this is the invariant the
@@ -1378,7 +1455,8 @@ service cloud.firestore {
               && request.resource.data.currentTurn == request.resource.data.currentSetter
               && request.resource.data.turnNumber == resource.data.turnNumber + 1
               && request.resource.data.currentTrickName == null
-              && request.resource.data.currentTrickVideoUrl == null)
+              && request.resource.data.currentTrickVideoUrl == null
+              && trickFieldsCleared())
         )
         // turnHistory must not change during setting-phase updates
         && (
@@ -1388,9 +1466,8 @@ service cloud.firestore {
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
         && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged();
-
-      // ── Match resolution (matcher submits an attempt) ──
+        && verifiedProBadgesUnchanged()
+        && trainingLabelPendingOk();
       // Honor system (no active judge):
       //   • missed  → matcher +1 letter, phase=setting (or complete)
       //   • landed  → matcher's call stands; roles swap, phase=setting
@@ -1497,7 +1574,8 @@ service cloud.firestore {
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
         && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged();
+        && verifiedProBadgesUnchanged()
+        && trainingLabelPendingOk();
 
       // ── Pending-review resolution (honor-system binding dispute, Phase 2) ──
       // A matcher's landed claim now freezes the game in `pendingReview` (see
@@ -1620,7 +1698,8 @@ service cloud.firestore {
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
         && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged();
+        && verifiedProBadgesUnchanged()
+        && trainingLabelPendingOk();
 
       // ── Dispute resolution (judge rules on the matcher's "landed" claim) ──
       // Judge-only. The setter never self-judges — disputes only exist in
@@ -1724,7 +1803,8 @@ service cloud.firestore {
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
         && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged();
+        && verifiedProBadgesUnchanged()
+        && trainingLabelPendingOk();
 
       // ── Call BS resolution (judge rules on set trick in setReview phase) ──
       // Judge-only. Clean → back to matching (matcher must attempt).
@@ -1786,7 +1866,8 @@ service cloud.firestore {
           || (request.resource.data.phase == 'setting'
               && request.resource.data.currentTurn == resource.data.currentSetter
               && request.resource.data.currentTrickName == null
-              && request.resource.data.currentTrickVideoUrl == null)
+              && request.resource.data.currentTrickVideoUrl == null
+              && trickFieldsCleared())
         )
         // turnHistory growth bound — Call BS rulings that go "sketchy"
         // append a TurnRecord noting the invalidated set. Same cap as the
@@ -1795,7 +1876,8 @@ service cloud.firestore {
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
         && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged();
+        && verifiedProBadgesUnchanged()
+        && trainingLabelPendingOk();
 
       // ── Judge invite accept / decline ──
       // Only the nominated judge can flip their status from pending. No
@@ -1848,7 +1930,8 @@ service cloud.firestore {
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
         && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged();
+        && verifiedProBadgesUnchanged()
+        && trainingLabelPendingOk();
 
       // Either player can forfeit the current-turn player's expired turn
       // Winner must be the opponent of the player whose turn it is
@@ -1898,7 +1981,8 @@ service cloud.firestore {
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
         && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged();
+        && verifiedProBadgesUnchanged()
+        && trainingLabelPendingOk();
 
       // ── Expired dispute auto-accept ──
       // When the judge's review window expires (24 h), any participant
@@ -1967,7 +2051,8 @@ service cloud.firestore {
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
         && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged();
+        && verifiedProBadgesUnchanged()
+        && trainingLabelPendingOk();
 
       // ── Expired setReview auto-clear ──
       // When the judge doesn't rule on a "Call BS" within 24h, the set
@@ -2020,7 +2105,8 @@ service cloud.firestore {
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
         && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged();
+        && verifiedProBadgesUnchanged()
+        && trainingLabelPendingOk();
 
       // Players may delete their own non-active games (account deletion flow)
       allow delete: if isSignedIn() && isPlayer(resource.data)
@@ -3361,6 +3447,23 @@ service cloud.firestore {
     // last time someone started a match).
     match /diceCreateLimits/{uid} {
       allow read, write: if false;
+    }
+
+    // Trick-training labels. Written by the sweep cron (admin SDK). Admins
+    // may read them for export. Clients cannot write or read.
+    match /trainingLabels/{labelId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Owner-created withdrawal marker. The cron marks that skater's labels
+    // excluded and deletes the doc. Doc id is the uid.
+    match /trainingRevocations/{uid} {
+      allow read: if false;
+      allow create, update: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['revokedAt'])
+        && request.resource.data.revokedAt == request.time;
+      allow delete: if false;
     }
   }
 }

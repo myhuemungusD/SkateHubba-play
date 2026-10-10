@@ -102,6 +102,15 @@ describe("safeParseEnv", () => {
   );
 
   it.each(flagCases)(
+    "parses VITE_FEATURE_TRICK_PICKER_ENABLED=%j as %s (trick picker, default off)",
+    (raw, expected) => {
+      const result = safeParseEnv({ ...validEnv, VITE_FEATURE_TRICK_PICKER_ENABLED: raw });
+      expect(result).not.toBeNull();
+      expect(result?.VITE_FEATURE_TRICK_PICKER_ENABLED).toBe(expected);
+    },
+  );
+
+  it.each(flagCases)(
     "parses VITE_FEATURE_REFEREE_ENABLED=%j as %s (referee on new games, default off)",
     (raw, expected) => {
       const result = safeParseEnv({ ...validEnv, VITE_FEATURE_REFEREE_ENABLED: raw });

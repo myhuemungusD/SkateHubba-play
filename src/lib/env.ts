@@ -67,6 +67,12 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Searchable trick picker. DEFAULTS TO OFF. Read via isTrickPickerEnabled().
+  VITE_FEATURE_TRICK_PICKER_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // Referee nomination on new games. DEFAULTS TO OFF so a missing env var
   // cannot put a judge on a new game. Read via isRefereeEnabled().
   VITE_FEATURE_REFEREE_ENABLED: z
