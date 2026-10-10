@@ -8,7 +8,7 @@ What changed from the first draft, in the words of that review:
 
 - Scoring is four rules a player can remember. Shutouts, comebacks, letters, and the daily-first bonus are gone from XP. Shutouts and comebacks are achievements instead.
 - The daily cap is a high safety rail. The real limit is repeated games against the same person.
-- The climb is longer: 50 levels, and a player who finishes 3 games a day still takes a bit over 3 years to reach the top.
+- The climb is 50 levels. A player who finishes 3 games a day, every day, reaches the top in about 6 months. A player at 3 games a week takes about 3.5 years.
 - The ribbon is the front of a larger set, about 36 achievements in bronze / silver / gold, with a See All view.
 
 ## What already exists
@@ -40,7 +40,7 @@ The CI allowlist (`verify-no-cloud-functions` in `.github/workflows/pr-gate.yml`
 
 This build adds no file under `functions/src/`. The gate does not change. `applyGameStats.ts` is 331 lines today, under the soft 400-line budget. If the XP math pushes it over 400, that is a warning. Splitting a new `functions/src/xp.ts` would fail the gate until you sign off on an allowlist edit, so the math stays in the allowlisted file.
 
-`functions/tsconfig.json` compiles only `functions/src`. The function cannot import the app's `src/constants/`. The level formula below is integer arithmetic, so the function and the client can each carry a copy without float drift. Tests pin level 2 = 160, level 10 = 12,960, and level 50 = 384,160.
+`functions/tsconfig.json` compiles only `functions/src`. The function cannot import the app's `src/constants/`. The level formula below is integer arithmetic, so the function and the client can each carry a copy without float drift. Tests pin level 2 = 24, level 10 = 1,944, and level 50 = 57,624.
 
 ## The four rules
 
@@ -113,79 +113,79 @@ Calls, hotter win rates, and more lands move these up. The same-opponent taper m
 
 ```
 xpToReach(1) = 0
-xpToReach(L) = 160 × (L − 1)²     for L from 2 to 50
+xpToReach(L) = 24 × (L − 1)²     for L from 2 to 50
 ```
 
-Squares stay exact in both the function and the client. No exponent to recompute. A player's level is the highest `L` with `xpToReach(L) <= xp`, and it never goes past 50. XP past 384,160 still accumulates. The chip stays at L50.
+Squares stay exact in both the function and the client. No exponent to recompute. A player's level is the highest `L` with `xpToReach(L) <= xp`, and it never goes past 50. XP past 57,624 still accumulates. The chip stays at L50.
 
-The step from one level to the next is `160 × (2L − 3)`. Level 2 costs 160 (about two games). Level 50 costs 15,520 (about seven weeks of the active pace, for that one level).
+The step from one level to the next is `24 × (2L − 3)`. Level 2 costs 24, which is inside the first finished game (a finish alone is 50). Level 50 costs 2,328, about a week of the active pace for that one level. The early levels move on purpose. The square is what stretches the top: the last level costs about a hundred times the second.
 
-Times below are rounded. "Casual" is the 3-games-a-week player. "Active" is the 3-games-a-day player.
+Times below use the 105 XP game from the section above, and they are rounded. Casual is 3 games a week (315 XP a week). Active is 3 games a day, every day (315 XP a day). At that active pace, 57,624 XP is 183 days, which is 6 months.
 
 | Level | Total XP | This level | Casual | Active |
 | ---: | ---: | ---: | --- | --- |
 | 1 | 0 | 0 | start | start |
-| 2 | 160 | 160 | under a week | under a day |
-| 3 | 640 | 480 | 2 weeks | 2 days |
-| 4 | 1,440 | 800 | 5 weeks | 5 days |
-| 5 | 2,560 | 1,120 | 2 months | 8 days |
-| 6 | 4,000 | 1,440 | 3 months | 2 weeks |
-| 7 | 5,760 | 1,760 | 4 months | 3 weeks |
-| 8 | 7,840 | 2,080 | 6 months | 4 weeks |
-| 9 | 10,240 | 2,400 | 7 months | 5 weeks |
-| 10 | 12,960 | 2,720 | 9 months | 6 weeks |
-| 11 | 16,000 | 3,040 | 12 months | 7 weeks |
-| 12 | 19,360 | 3,360 | 14 months | 2 months |
-| 13 | 23,040 | 3,680 | 17 months | 2.4 months |
-| 14 | 27,040 | 4,000 | 20 months | 2.8 months |
-| 15 | 31,360 | 4,320 | 23 months | 3.3 months |
-| 16 | 36,000 | 4,640 | 2.2 years | 3.8 months |
-| 17 | 40,960 | 4,960 | 2.5 years | 4.3 months |
-| 18 | 46,240 | 5,280 | 2.8 years | 4.8 months |
-| 19 | 51,840 | 5,600 | 3.2 years | 5.4 months |
-| 20 | 57,760 | 5,920 | 3.5 years | 6 months |
-| 21 | 64,000 | 6,240 | 3.9 years | 6.7 months |
-| 22 | 70,560 | 6,560 | 4.3 years | 7.4 months |
-| 23 | 77,440 | 6,880 | 4.7 years | 8.1 months |
-| 24 | 84,640 | 7,200 | 5.2 years | 8.8 months |
-| 25 | 92,160 | 7,520 | 5.6 years | 9.6 months |
-| 26 | 100,000 | 7,840 | 6.1 years | 10 months |
-| 27 | 108,160 | 8,160 | 6.6 years | 11 months |
-| 28 | 116,640 | 8,480 | 7.1 years | 12 months |
-| 29 | 125,440 | 8,800 | 7.6 years | 13 months |
-| 30 | 134,560 | 9,120 | 8.2 years | 14 months |
-| 31 | 144,000 | 9,440 | 8.8 years | 15 months |
-| 32 | 153,760 | 9,760 | 9.4 years | 16 months |
-| 33 | 163,840 | 10,080 | 10 years | 17 months |
-| 34 | 174,240 | 10,400 | 11 years | 18 months |
-| 35 | 184,960 | 10,720 | 11 years | 19 months |
-| 36 | 196,000 | 11,040 | 12 years | 21 months |
-| 37 | 207,360 | 11,360 | 13 years | 22 months |
-| 38 | 219,040 | 11,680 | 13 years | 23 months |
-| 39 | 231,040 | 12,000 | 14 years | 2.0 years |
-| 40 | 243,360 | 12,320 | 15 years | 2.1 years |
-| 41 | 256,000 | 12,640 | 16 years | 2.2 years |
-| 42 | 268,960 | 12,960 | 16 years | 2.3 years |
-| 43 | 282,240 | 13,280 | 17 years | 2.5 years |
-| 44 | 295,840 | 13,600 | 18 years | 2.6 years |
-| 45 | 309,760 | 13,920 | 19 years | 2.7 years |
-| 46 | 324,000 | 14,240 | 20 years | 2.8 years |
-| 47 | 338,560 | 14,560 | 21 years | 2.9 years |
-| 48 | 353,440 | 14,880 | 22 years | 3.1 years |
-| 49 | 368,640 | 15,200 | 22 years | 3.2 years |
-| 50 | 384,160 | 15,520 | 23 years | 3.3 years |
+| 2 | 24 | 24 | first game | first game |
+| 3 | 96 | 72 | first game | first game |
+| 4 | 216 | 120 | first week | first day |
+| 5 | 384 | 168 | first week | first day |
+| 6 | 600 | 216 | 2 weeks | 2 days |
+| 7 | 864 | 264 | 3 weeks | 3 days |
+| 8 | 1,176 | 312 | 4 weeks | 4 days |
+| 9 | 1,536 | 360 | 5 weeks | 5 days |
+| 10 | 1,944 | 408 | 6 weeks | 6 days |
+| 11 | 2,400 | 456 | 8 weeks | 8 days |
+| 12 | 2,904 | 504 | 2 months | 9 days |
+| 13 | 3,456 | 552 | 3 months | 11 days |
+| 14 | 4,056 | 600 | 3 months | 13 days |
+| 15 | 4,704 | 648 | 3 months | 2 weeks |
+| 16 | 5,400 | 696 | 4 months | 2 weeks |
+| 17 | 6,144 | 744 | 4 months | 3 weeks |
+| 18 | 6,936 | 792 | 5 months | 3 weeks |
+| 19 | 7,776 | 840 | 6 months | 4 weeks |
+| 20 | 8,664 | 888 | 6 months | 4 weeks |
+| 21 | 9,600 | 936 | 7 months | 4 weeks |
+| 22 | 10,584 | 984 | 8 months | 5 weeks |
+| 23 | 11,616 | 1,032 | 8 months | 5 weeks |
+| 24 | 12,696 | 1,080 | 9 months | 6 weeks |
+| 25 | 13,824 | 1,128 | 10 months | 6 weeks |
+| 26 | 15,000 | 1,176 | 11 months | 7 weeks |
+| 27 | 16,224 | 1,224 | 12 months | 7 weeks |
+| 28 | 17,496 | 1,272 | 13 months | 8 weeks |
+| 29 | 18,816 | 1,320 | 14 months | 9 weeks |
+| 30 | 20,184 | 1,368 | 15 months | 2 months |
+| 31 | 21,600 | 1,416 | 16 months | 2.3 months |
+| 32 | 23,064 | 1,464 | 17 months | 2.4 months |
+| 33 | 24,576 | 1,512 | 18 months | 2.6 months |
+| 34 | 26,136 | 1,560 | 19 months | 2.7 months |
+| 35 | 27,744 | 1,608 | 20 months | 2.9 months |
+| 36 | 29,400 | 1,656 | 21 months | 3.1 months |
+| 37 | 31,104 | 1,704 | 1.9 years | 3.2 months |
+| 38 | 32,856 | 1,752 | 2 years | 3.4 months |
+| 39 | 34,656 | 1,800 | 2.1 years | 3.6 months |
+| 40 | 36,504 | 1,848 | 2.2 years | 3.8 months |
+| 41 | 38,400 | 1,896 | 2.3 years | 4 months |
+| 42 | 40,344 | 1,944 | 2.5 years | 4.2 months |
+| 43 | 42,336 | 1,992 | 2.6 years | 4.4 months |
+| 44 | 44,376 | 2,040 | 2.7 years | 4.6 months |
+| 45 | 46,464 | 2,088 | 2.8 years | 4.8 months |
+| 46 | 48,600 | 2,136 | 3 years | 5.1 months |
+| 47 | 50,784 | 2,184 | 3.1 years | 5.3 months |
+| 48 | 53,016 | 2,232 | 3.2 years | 5.5 months |
+| 49 | 55,296 | 2,280 | 3.4 years | 5.8 months |
+| 50 | 57,624 | 2,328 | 3.5 years | 6 months |
 
 Reading the bands:
 
-| You reach | Total XP | Casual | Active |
+| You reach | Total XP | Casual (3 games/week) | Active (3 games/day) |
 | --- | ---: | --- | --- |
-| Level 2 | 160 | the first week | the first day |
-| Level 10 | 12,960 | about 9 months | about 6 weeks |
-| Level 20 | 57,760 | about 3.5 years | about 6 months |
-| Level 30 | 134,560 | about 8 years | about 14 months |
-| Level 50 | 384,160 | about 23 years | about 3.3 years |
+| Level 2 | 24 | the first game | the first game |
+| Level 10 | 1,944 | about 6 weeks | about 6 days |
+| Level 20 | 8,664 | about 6 months | about 4 weeks |
+| Level 30 | 20,184 | about 15 months | about 2 months |
+| Level 50 | 57,624 | about 3.5 years | about 6 months |
 
-An active player is past a year at level 27 and takes a bit over three years to hit the cap, playing 3 games a day the whole way. A casual player is level 10 inside a year and spends many years in the 20s and 30s.
+Same square, two clocks. The active player is at the cap in half a year. The casual player is around level 20 at that same half-year mark, and needs about 3.5 years to finish.
 
 ## Achievements
 
@@ -389,7 +389,7 @@ No new file under `functions/src/`.
 | `api/cron/resolve-expired-disputes.ts` | Vote XP and `disputeVotesCast` |
 | `firestore.rules` | Nine names, clip +1, `xpMarkers` |
 | `rules-tests/users-stats-selfinflate-redteam.rules.test.ts` | Cannot mint or bump the new fields |
-| `src/constants/xp.ts` | `160 × (level − 1)²` and `levelForXp` |
+| `src/constants/xp.ts` | `24 × (level − 1)²` and `levelForXp` |
 | `src/lib/featureFlags.ts`, `src/lib/env.ts`, `src/vite-env.d.ts`, `.env.example` | The client flag |
 | `src/services/users.ts` | New fields on `UserProfile`, and `xpMarkers` in account deletion |
 | `api/account/_deleteUserData.ts` | Sweep `xpMarkers` |
@@ -404,7 +404,7 @@ No new file under `functions/src/`.
 
 The review settled the shape: four rules, a high cap, pair-based anti-farm, a longer 50-level climb, and a tiered set with See All. These are the calls still worth a yes or a different number.
 
-1. **Are 50 / 50 / 10 / 10 the right four numbers?** Default: yes. Finish 50, win 50, each land 10, each call 10. A normal win with a few lands is about 140 XP, which is just under level 2. Level 2 takes about two games.
+1. **Are 50 / 50 / 10 / 10 the right four numbers?** Default: yes. Finish 50, win 50, each land 10, each call 10. A normal win with a few lands is about 140 XP, which is level 3. Level 2 is inside the first finished game.
 
 2. **Is 3,000 a day the right safety rail, or should there be no hard cap at all?** Default: keep 3,000. A heavy day of games against different people does not hit it. The pair taper is what stops two friends from farming. Say if you would rather delete the cap entirely.
 
@@ -412,7 +412,7 @@ The review settled the shape: four rules, a high cap, pair-based anti-farm, a lo
 
 4. **A forfeit after real skating pays the finish and the lands, and does not pay the win. Good?** Default: yes. An empty forfeit still pays nothing, and a brand-new pair of accounts still gets no play XP for the first day. Those two stay.
 
-5. **Past level 50, does XP stop?** Default: the chip stays at 50 and XP keeps counting past 384,160, so a later level 60 does not need a second backfill.
+5. **Past level 50, does XP stop?** Default: the chip stays at 50 and XP keeps counting past 57,624, so a later level 60 does not need a second backfill.
 
 6. **Do games people already finished count?** Default: yes. One admin script replays them through these rules and sets XP, then the switch flips on for everyone. Old votes and old clips count toward those achievements and do not add XP.
 
