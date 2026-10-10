@@ -45,4 +45,26 @@ for (const budget of budgets) {
   }
 }
 
+/** JS linked from dist/index.html (entry + modulepreload). ~150 KB gzip. */
+const html = readFileSync(join(process.cwd(), "dist", "index.html"), "utf8");
+const initial = [...html.matchAll(/(?:src|href)="\/assets\/([^"]+\.js)"/g)].map((match) => match[1]);
+const uniqueInitial = [...new Set(initial)];
+if (uniqueInitial.length === 0) {
+  console.error("bundle budget: no initial JS in dist/index.html");
+  failed = true;
+} else {
+  let total = 0;
+  for (const name of uniqueInitial) {
+    total += gzipSync(readFileSync(join(assetsDir, name))).length;
+  }
+  const maxInitial = 150 * 1024;
+  const kib = (total / 1024).toFixed(1);
+  if (total > maxInitial) {
+    console.error(`bundle budget: initial JS ${kib} KiB gzip (limit 150.0 KiB) [${uniqueInitial.join(", ")}]`);
+    failed = true;
+  } else {
+    console.log(`bundle budget: initial JS ${kib} KiB gzip (limit 150.0 KiB)`);
+  }
+}
+
 if (failed) process.exit(1);

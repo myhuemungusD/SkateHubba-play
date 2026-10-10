@@ -584,6 +584,24 @@ export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean
 }
 
 /**
+ * Firebase stores a pending redirect in sessionStorage under
+ * `firebase:pendingRedirect:{apiKey}:[DEFAULT]` (browserSessionPersistence).
+ * Absent on a normal visit, so we must not boot reCAPTCHA just to ask.
+ */
+function hasPendingGoogleRedirect(): boolean {
+  const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+  if (typeof apiKey !== "string" || apiKey.length === 0) return false;
+  try {
+    return sessionStorage.getItem(`firebase:pendingRedirect:${apiKey}:[DEFAULT]`) === "true";
+  } catch (err) {
+    logger.warn("pending_redirect_probe_failed", {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
+
+/**
  * Call once on app mount to resolve any pending Google redirect sign-in.
  * Safe to call when no redirect is in progress (returns null).
  */
@@ -598,7 +616,9 @@ export async function resolveGoogleRedirect(): Promise<User | null> {
     logger.debug("resolve_google_redirect_skip_emulator");
     return null;
   }
-  await ensureAppCheck();
+  // App Check only when a redirect is actually in flight. Warming it on
+  // every load pulls reCAPTCHA into the Lighthouse trace.
+  if (hasPendingGoogleRedirect()) await ensureAppCheck();
   logger.debug("resolve_google_redirect_start");
   try {
     const result = await getRedirectResult(auth);

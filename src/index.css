@@ -511,9 +511,9 @@
   animation-delay: 0.7s;
 }
 /* The heading is the landing's LCP element. Chrome doesn't count an
-   opacity:0 element as painted, so a fade-in pushed LCP to the end of the
-   animation. It now starts fully opaque and only slides/sharpens in, and
-   starts immediately (fill-mode both = shows the first keyframe at t=0). */
+   opacity:0 element as painted, and a blur filter keeps the glyphs
+   non-contentful until the animation ends. It stays fully opaque and
+   sharp, and only slides in. fill-mode both shows the first keyframe at t=0. */
 .hero-stagger > .hero-lcp {
   opacity: 1;
   animation-name: hero-in-solid;
@@ -523,11 +523,9 @@
 @keyframes hero-in-solid {
   from {
     transform: translateY(20px);
-    filter: blur(4px);
   }
   to {
     transform: translateY(0);
-    filter: blur(0);
   }
 }
 

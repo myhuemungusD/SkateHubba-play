@@ -128,8 +128,8 @@ if (env) {
     Capacitor.getPlatform() === "ios" ? initializeAuth(app, { persistence: browserLocalPersistence }) : getAuth(app);
 
   // App Check and Storage stay off the first-paint path. Warmup starts the
-  // reCAPTCHA provider after idle or the first tap; ensureAppCheck() is what
-  // Firestore, Storage, Functions, and sign-in actually wait on.
+  // reCAPTCHA provider on the first tap; ensureAppCheck() is what Firestore,
+  // Storage, Functions, and sign-in actually wait on.
   scheduleAppCheckWarmup();
 
   // Connect to emulators in development (if running). Storage connects
@@ -256,12 +256,11 @@ async function installAppCheck(): Promise<void> {
 }
 
 /**
- * Start App Check after first paint. Idle covers a returning signed-in
- * session that restores without a tap; the first pointer or key starts it
- * sooner. Sign-in, Storage, Functions, and the profile read all await
- * `ensureAppCheck()` so a token is attached before those calls even if this
- * warmup has not run yet. Monitor mode is unchanged — this only moves when
- * the provider is constructed.
+ * Start App Check on the first tap or key. An idle timer pulled reCAPTCHA
+ * into the Lighthouse trace (third-party cookies + a console 400) and sank
+ * Best Practices. Sign-in, Storage, Functions, and the profile read all
+ * await `ensureAppCheck()` so a token is attached before those calls even
+ * if the visitor never hits this listener. Monitor mode is unchanged.
  */
 function scheduleAppCheckWarmup(): void {
   if (!env?.VITE_APPCHECK_ENABLED) {
@@ -277,10 +276,6 @@ function scheduleAppCheckWarmup(): void {
     started = true;
     void ensureAppCheck();
   };
-  const ric = (globalThis as { requestIdleCallback?: (fn: () => void, opts?: { timeout: number }) => number })
-    .requestIdleCallback;
-  if (typeof ric === "function") ric(start, { timeout: 4000 });
-  else setTimeout(start, 1);
   window.addEventListener("pointerdown", start, { once: true, capture: true });
   window.addEventListener("keydown", start, { once: true, capture: true });
   /* v8 ignore stop */
