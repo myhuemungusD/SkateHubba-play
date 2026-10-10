@@ -2699,6 +2699,14 @@ service cloud.firestore {
               && request.resource.data.clipId.size() > 0
               && request.resource.data.clipId.size() <= 128)
         )
+        // Optional disputeId. A community-call report names the dispute so
+        // an admin can hide it. Shape only — auto-hide does not run for it.
+        && (
+          !('disputeId' in request.resource.data)
+          || (request.resource.data.disputeId is string
+              && request.resource.data.disputeId.size() > 0
+              && request.resource.data.disputeId.size() <= 128)
+        )
         // Rate-limit gate: EITHER the reporter has never reported this
         // target before (no limits doc exists) OR the previous report was
         // more than 1 hour ago. Checked against the PRE-batch state via
@@ -2720,7 +2728,7 @@ service cloud.firestore {
       // rewrite their own filing. An admin may only move a report to a
       // TERMINAL state with an audit trail: `pending` is not an accepted
       // target, so a report cannot be silently reopened/recycled, and
-      // `hasOnly` keeps reason/description/gameId/clipId (the evidence) and
+      // `hasOnly` keeps reason/description/gameId/clipId/disputeId (the evidence) and
       // reporterUid/reportedUid (the parties) frozen in the same write.
       //
       // The close-out is ONE-WAY: only a still-`pending` report may be
@@ -3359,8 +3367,18 @@ service cloud.firestore {
 
       // The ONLY client-writable change is a vote tally delta, bound to the
       // paired disputeVotes create/delete in the same atomic write — the same
-      // shape as the clips.upvoteCount ±1 branches. Everything else (status
-      // close-out, moderation flips, content) is Admin SDK only.
+      // shape as the clips.upvoteCount ±1 branches. Status close-out and
+      // content stay Admin SDK only.
+      //
+      // An admin may hide the dispute from the reports queue. That write
+      // changes moderationStatus from active to hidden and nothing else, so
+      // it cannot move a tally or rewrite the video.
+      allow update: if isAdmin()
+        && resource.data.moderationStatus == 'active'
+        && request.resource.data.moderationStatus == 'hidden'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['moderationStatus']);
+
+      // Vote tallies.
       //
       // ── Why a symmetric -1 branch exists, despite "a verdict is final" ──
       // "No un-vote" is a PRODUCT rule, enforced where product rules belong:

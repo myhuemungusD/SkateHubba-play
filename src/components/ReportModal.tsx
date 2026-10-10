@@ -17,6 +17,7 @@ export function ReportModal({
   reportedUsername,
   gameId,
   clipId,
+  disputeId,
   onClose,
   onSubmitted,
 }: {
@@ -32,6 +33,8 @@ export function ReportModal({
   gameId?: string | null;
   /** Clip id when reporting a feed clip; omit for game-level reports. */
   clipId?: string;
+  /** Community dispute id. These reports stay in the admin queue and do not auto-hide. */
+  disputeId?: string;
   onClose: () => void;
   onSubmitted: () => void;
 }) {
@@ -61,6 +64,7 @@ export function ReportModal({
         reason,
         description,
         ...(clipId ? { clipId } : {}),
+        ...(disputeId ? { disputeId } : {}),
       });
       setReceiptId(id);
       setSubmitting(false);

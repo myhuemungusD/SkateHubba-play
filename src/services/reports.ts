@@ -52,6 +52,20 @@ export interface SubmitReportParams {
    * (`${gameId}_${turnNumber}_${role}`).
    */
   clipId?: string;
+  /**
+   * Community dispute this report is about. The admin queue uses it to hide
+   * the dispute. It never auto-hides a video: dispute and game videos stay
+   * up until a person takes them down.
+   */
+  disputeId?: string;
+}
+
+function optionalDisputeId(value: string | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  if (trimmed.includes("/")) throw new Error("That report target is not valid.");
+  return trimmed.slice(0, 128);
 }
 
 /**
@@ -65,7 +79,7 @@ export interface SubmitReportParams {
  * was more than 1 hour ago. No client-query bypass possible.
  */
 export async function submitReport(params: SubmitReportParams): Promise<string> {
-  const { reporterUid, reportedUid, reportedUsername, gameId, reason, description, clipId } = params;
+  const { reporterUid, reportedUid, reportedUsername, gameId, reason, description, clipId, disputeId } = params;
 
   if (!reason) throw new Error("Please select a reason for your report.");
   if (reporterUid === reportedUid) throw new Error("You cannot report yourself.");
@@ -73,6 +87,7 @@ export async function submitReport(params: SubmitReportParams): Promise<string> 
   // nothing to look at.
   const targetGameId = typeof gameId === "string" && gameId.length > 0 ? gameId : null;
   const targetClipId = typeof clipId === "string" && clipId.length > 0 ? clipId.slice(0, 128) : null;
+  const targetDisputeId = optionalDisputeId(disputeId);
   if (targetGameId === null && targetClipId === null) {
     throw new Error("Nothing to report — no game or clip was identified.");
   }
@@ -98,6 +113,9 @@ export async function submitReport(params: SubmitReportParams): Promise<string> 
     };
     if (targetClipId !== null) {
       payload.clipId = targetClipId;
+    }
+    if (targetDisputeId !== null) {
+      payload.disputeId = targetDisputeId;
     }
 
     // Atomic batch: report + companion cooldown anchor. The rule requires

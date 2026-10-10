@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { ClipDoc } from "../../services/clips";
 import type { UserProfile } from "../../services/users";
+import type { Dispute } from "../../types/dispute";
 import { isFirebaseStorageUrl } from "../../utils/helpers";
 
 const ReportModal = lazy(() => import("../ReportModal").then((m) => ({ default: m.ReportModal })));
@@ -36,6 +37,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
   const disputes = useDisputeLaneController(profile.uid);
   const [muted, setMuted] = useState(true);
   const [reportTarget, setReportTarget] = useState<ClipDoc | null>(null);
+  const [disputeReport, setDisputeReport] = useState<Dispute | null>(null);
   const [commentsTarget, setCommentsTarget] = useState<ClipDoc | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [moderationRefresh, setModerationRefresh] = useState(0);
@@ -130,7 +132,14 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
           aria-keyshortcuts="ArrowUp ArrowDown"
           className="h-full overflow-y-auto overscroll-y-contain snap-y snap-mandatory outline-none motion-reduce:scroll-auto"
         >
-          <DisputeSlides state={disputes} activeIndex={activeIndex} muted={muted} onToggleMute={toggleMute} />
+          <DisputeSlides
+            state={disputes}
+            viewerUid={profile.uid}
+            onReport={setDisputeReport}
+            activeIndex={activeIndex}
+            muted={muted}
+            onToggleMute={toggleMute}
+          />
           {!disputes.loading &&
             clips.visibleClips.map((clip, index) => {
               const slideIndex = leading + index;
@@ -186,6 +195,20 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
               setModerationRefresh((key) => key + 1);
               void clips.loadPool();
             }}
+          />
+        </Suspense>
+      )}
+
+      {disputeReport && (
+        <Suspense fallback={null}>
+          <ReportModal
+            reporterUid={profile.uid}
+            reportedUid={disputeReport.matcherUid}
+            reportedUsername={disputeReport.matcherUsername}
+            gameId={disputeReport.gameId}
+            disputeId={disputeReport.id}
+            onClose={() => setDisputeReport(null)}
+            onSubmitted={() => setDisputeReport(null)}
           />
         </Suspense>
       )}

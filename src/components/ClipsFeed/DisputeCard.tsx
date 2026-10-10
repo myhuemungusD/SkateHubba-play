@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { GavelIcon } from "../icons";
+import { FlagIcon, GavelIcon } from "../icons";
 import { Timer } from "../Timer";
 import { isFirebaseStorageUrl } from "../../utils/helpers";
 import { landShare, totalVotes, type Dispute, type DisputeTally, type DisputeVerdict } from "../../types/dispute";
@@ -19,6 +19,8 @@ export interface DisputeCardProps {
   /** Vote-window close time (ms), or null when unknown. Derived from the dispute. */
   deadline: number | null;
   onVerdict: (dispute: Dispute, verdict: DisputeVerdict) => void;
+  /** Opens the existing report flow for this attempt. Omitted for the matcher. */
+  onReport?: (dispute: Dispute) => void;
   /** Snapped page. Controls mount only here so an off-screen LAND can't be tapped. */
   active?: boolean;
   /** Mount the attempt video. False for slides far from the viewport. */
@@ -42,6 +44,7 @@ export const DisputeCard = memo(function DisputeCard({
   voting,
   deadline,
   onVerdict,
+  onReport,
   active = true,
   near = true,
   muted = true,
@@ -111,6 +114,17 @@ export const DisputeCard = memo(function DisputeCard({
             {!showButtons && <DisputeTallyMeter tally={tally} ownVerdict={ownVerdict} />}
             {!attemptUrl && (
               <p className="mt-4 font-body text-sm text-white/70">This attempt&apos;s video is unavailable.</p>
+            )}
+            {onReport && (
+              <button
+                type="button"
+                onClick={() => onReport(dispute)}
+                aria-label={`Report @${dispute.matcherUsername}'s attempt`}
+                className="mt-3 inline-flex min-h-[44px] items-center gap-1.5 rounded-xl px-1 font-display text-[11px] tracking-[0.15em] text-white/70 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              >
+                <FlagIcon size={14} />
+                REPORT
+              </button>
             )}
             {setUrl && (
               <details className="mt-3">

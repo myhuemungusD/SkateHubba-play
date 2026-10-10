@@ -4,11 +4,13 @@ import userEvent from "@testing-library/user-event";
 
 const mockFetchReports = vi.fn();
 const mockResolveReport = vi.fn();
+const mockHideDispute = vi.fn();
 const mockBanUser = vi.fn();
 
 vi.mock("../../../../services/admin", () => ({
   fetchReports: (...args: unknown[]) => mockFetchReports(...args),
   resolveReport: (...args: unknown[]) => mockResolveReport(...args),
+  hideDispute: (...args: unknown[]) => mockHideDispute(...args),
 }));
 
 vi.mock("../../../../services/admin.bans", () => ({
@@ -54,6 +56,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockFetchReports.mockResolvedValue([report]);
   mockResolveReport.mockResolvedValue(undefined);
+  mockHideDispute.mockResolvedValue(undefined);
   mockBanUser.mockResolvedValue(undefined);
 });
 
@@ -69,6 +72,25 @@ describe("ReportsPanel", () => {
     expect(row.getByText(/2h ago · game g1 · reporter u2/)).toBeInTheDocument();
     // v1 is triage-only — nothing in a row navigates away from the queue.
     expect(row.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("hides the named dispute and leaves the report open", async () => {
+    mockFetchReports.mockResolvedValue([{ ...report, disputeId: "g1_3" }]);
+    const user = userEvent.setup();
+    renderPanel();
+
+    const row = within(await screen.findByTestId("report-r1"));
+    expect(row.getByTestId("report-dispute-r1")).toHaveTextContent("dispute g1_3");
+    await user.click(row.getByRole("button", { name: "HIDE DISPUTE" }));
+    await user.click(row.getByRole("button", { name: "HIDE" }));
+    await waitFor(() => expect(mockHideDispute).toHaveBeenCalledWith("g1_3"));
+    expect(mockResolveReport).not.toHaveBeenCalled();
+  });
+
+  it("does not offer hide when the report is not about a dispute", async () => {
+    renderPanel();
+    const row = within(await screen.findByTestId("report-r1"));
+    expect(row.queryByRole("button", { name: "HIDE DISPUTE" })).not.toBeInTheDocument();
   });
 
   it("shows the evidence a verdict is made on: the description and the flagged clip", async () => {

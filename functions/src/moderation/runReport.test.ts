@@ -98,6 +98,27 @@ describe("runReportModeration", () => {
     );
   });
 
+  it("does not auto-hide a dispute report, even when the named clip is a public user clip", async () => {
+    const save = vi.fn(async () => true);
+    const loadClip = vi.fn(async () => ({ source: "user", moderation: "approved", playerUid: "owner" }));
+    await expect(
+      runReportModeration({
+        enabled: true,
+        clipId: "c1",
+        disputeId: "g1_3",
+        reason: "inappropriate_video",
+        loadClip,
+        loadReports: async () => [reporter("a"), reporter("b"), reporter("c")],
+        loadCreatedAt: async () => nowMs - 3 * DAY,
+        nowMs,
+        save,
+        notify: vi.fn(async () => undefined),
+      }),
+    ).resolves.toBe("ignored");
+    expect(loadClip).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it("does not claim a hide when the clip was already in review", async () => {
     const save = vi.fn(async () => false);
     await expect(

@@ -20,6 +20,7 @@ export interface ReportRowProps {
   onResolve: (report: AdminReport, explanation: string) => void;
   onDismiss: (report: AdminReport) => void;
   onBan: (report: AdminReport) => void;
+  onHideDispute: (report: AdminReport) => void;
 }
 
 /**
@@ -30,7 +31,7 @@ export interface ReportRowProps {
  * only: the reported player, game and reporter are plain text, not links —
  * navigating away mid-triage would lose the queue.
  */
-export function ReportRow({ report, acting, onResolve, onDismiss, onBan }: ReportRowProps) {
+export function ReportRow({ report, acting, onResolve, onDismiss, onBan, onHideDispute }: ReportRowProps) {
   return (
     <li data-testid={`report-${report.id}`} className="rounded-2xl border border-border bg-surface p-3">
       <p className="font-display text-sm text-white">@{report.reportedUsername}</p>
@@ -59,6 +60,12 @@ export function ReportRow({ report, acting, onResolve, onDismiss, onBan }: Repor
         </p>
       )}
 
+      {report.disputeId && (
+        <p data-testid={`report-dispute-${report.id}`} className="mt-2 font-mono text-[11px] break-all text-subtle">
+          dispute {report.disputeId}
+        </p>
+      )}
+
       {/* Provenance line. A clip a skater posted directly has no game, so the
           row says "feed clip" instead of "game null" — an operator reading a
           literal null has to go and find out whether it means "no game" or
@@ -78,7 +85,14 @@ export function ReportRow({ report, acting, onResolve, onDismiss, onBan }: Repor
         </p>
       )}
 
-      <ReportRowActions report={report} acting={acting} onResolve={onResolve} onDismiss={onDismiss} onBan={onBan} />
+      <ReportRowActions
+        report={report}
+        acting={acting}
+        onResolve={onResolve}
+        onDismiss={onDismiss}
+        onBan={onBan}
+        onHideDispute={onHideDispute}
+      />
     </li>
   );
 }

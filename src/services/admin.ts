@@ -88,6 +88,11 @@ export interface AdminReport {
    * absent, blank or malformed — the field is optional in the create rule.
    */
   clipId: string | null;
+  /**
+   * Community dispute this report is about, or `null` when it isn't one.
+   * The queue offers a hide action only when this is set.
+   */
+  disputeId: string | null;
   /** "pending" | "resolved" | "dismissed" in practice; read as a string. */
   status: string;
   /** Filing time, or `null` when the field is missing or not a Timestamp. */
@@ -366,6 +371,7 @@ function toAdminReport(snap: ParsableDoc): AdminReport | null {
     // Rendering safety is the UI's job (plain text, never innerHTML).
     description: toStringOrEmpty(data.description),
     clipId: toStringOrNull(data.clipId),
+    disputeId: toStringOrNull(data.disputeId),
     status: toStringOrEmpty(data.status),
     createdAt: toDateOrNull(data.createdAt),
     // The resolution audit pair. Written by `resolveReport`; absent on every
@@ -427,6 +433,23 @@ export interface ReportResolutionStatement {
   contentRef: string;
   /** The report's reason, copied onto the statement so the subject sees it. */
   reason: string;
+}
+
+/**
+ * Hide a community dispute from the feed.
+ *
+ * Writes exactly `{ moderationStatus: "hidden" }`. The rules allow an admin
+ * that one field, and nothing else — vote tallies, the video, and the
+ * players stay as they were. This does not auto-hide the game video.
+ */
+export async function hideDispute(disputeId: string): Promise<void> {
+  requireId(disputeId, "dispute id");
+  try {
+    await updateDoc(doc(requireDb(), "disputes", disputeId), { moderationStatus: "hidden" });
+  } catch (err) {
+    logger.warn("dispute_hide_failed", { disputeId, error: parseFirebaseError(err) });
+    throw new Error("Couldn't hide that dispute.");
+  }
 }
 
 /**

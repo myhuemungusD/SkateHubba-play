@@ -52,6 +52,7 @@ import {
   awardLockerItem,
   removeLockerItem,
   fetchReports,
+  hideDispute,
   resolveReport,
   type AdminLockerItemInput,
 } from "../admin";
@@ -120,6 +121,7 @@ const REPORT_FIELDS = {
   reason: "cheating",
   description: "He landed on his knee and still claimed it.",
   clipId: "game-9_3_set",
+  disputeId: null,
   status: "pending",
 };
 
@@ -500,6 +502,7 @@ describe("fetchReports — parsing", () => {
       reason: "",
       description: "",
       clipId: null,
+      disputeId: null,
       status: "",
       createdAt: new Date("2026-06-01T12:00:00Z"),
       resolvedBy: "",
@@ -516,6 +519,7 @@ describe("fetchReports — parsing", () => {
       "clipId",
       "createdAt",
       "description",
+      "disputeId",
       "gameId",
       "id",
       "reason",
@@ -761,6 +765,28 @@ describe("resolveReport", () => {
   it("rethrows a dismiss write failure", async () => {
     h.mockUpdateDoc.mockRejectedValueOnce(denied());
     await expect(resolveReport(ADMIN, "r1", "dismissed")).rejects.toThrow(/insufficient permissions/);
+  });
+
+  it("keeps a dispute id and hides that dispute with only moderationStatus", async () => {
+    stubReports([reportDoc("r1", { ...fullReport(), disputeId: "game-9_3" })]);
+    const [report] = await fetchReports();
+    expect(report?.disputeId).toBe("game-9_3");
+
+    await hideDispute("game-9_3");
+    expect(h.mockUpdateDoc).toHaveBeenCalledWith(expect.objectContaining({ __path: "disputes/game-9_3" }), {
+      moderationStatus: "hidden",
+    });
+  });
+
+  it("refuses to hide a dispute id that is not a single path segment", async () => {
+    await expect(hideDispute("")).rejects.toThrow(/Invalid dispute id/);
+    await expect(hideDispute("a/b")).rejects.toThrow(/Invalid dispute id/);
+    expect(h.mockUpdateDoc).not.toHaveBeenCalled();
+  });
+
+  it("rethrows a hide failure", async () => {
+    h.mockUpdateDoc.mockRejectedValueOnce(denied());
+    await expect(hideDispute("game-9_3")).rejects.toThrow(/Couldn't hide that dispute/);
   });
 
   it("rethrows a resolve batch failure", async () => {

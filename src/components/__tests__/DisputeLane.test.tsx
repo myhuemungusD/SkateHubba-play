@@ -113,6 +113,25 @@ describe("DisputeLane", () => {
     );
     expect(screen.getByRole("button", { name: /^Land — @bob landed it$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Bail — @bob bailed$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /report @bob's attempt/i })).not.toBeInTheDocument();
+  });
+
+  it("reports the matcher's attempt and hides that button from the matcher", async () => {
+    const onReport = vi.fn();
+    const user = userEvent.setup();
+    const dispute = makeDispute();
+    mockFetchOpenDisputes.mockResolvedValueOnce([dispute]);
+    mockFetchDisputeViewerState.mockResolvedValueOnce(new Map([[dispute.id, CAN_VOTE]]));
+    const { unmount } = render(<DisputeLane viewerUid="me" onReport={onReport} />);
+    await user.click(await screen.findByRole("button", { name: /report @bob's attempt/i }));
+    expect(onReport).toHaveBeenCalledWith(expect.objectContaining({ id: dispute.id, matcherUid: "u2" }));
+    unmount();
+
+    mockFetchOpenDisputes.mockResolvedValueOnce([dispute]);
+    mockFetchDisputeViewerState.mockResolvedValueOnce(new Map([[dispute.id, CAN_VOTE]]));
+    render(<DisputeLane viewerUid="u2" onReport={onReport} />);
+    await screen.findByRole("article", { name: /community call on switch heel/i });
+    expect(screen.queryByRole("button", { name: /report @bob's attempt/i })).not.toBeInTheDocument();
   });
 
   it("shows the vote-window countdown derived from the dispute's createdAt", async () => {

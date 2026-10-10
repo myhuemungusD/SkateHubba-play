@@ -76,6 +76,14 @@ describe("reports — user-clip reason + nullable gameId", () => {
     await assertFails(submitReport({ reason: "i_dont_like_them" }));
   });
 
+  it("accepts a dispute id on a game report", async () => {
+    await assertSucceeds(submitReport({ gameId: "g-1", disputeId: "g-1_3" }, true));
+  });
+
+  it("attack: an oversized dispute id is rejected", async () => {
+    await assertFails(submitReport({ gameId: "g-1", disputeId: "d".repeat(129) }));
+  });
+
   it("attack: gameId: null with NO clipId is rejected (unattributable report)", async () => {
     await assertFails(submitReport({}, true));
   });
