@@ -132,19 +132,21 @@ describe("parseOwnClip", () => {
   });
 });
 
+function reviewRow(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    moderation: "review",
+    videoUrl: "v",
+    playerUid: "u",
+    trickName: "kickflip",
+    playerUsername: "a",
+    ...extra,
+  };
+}
+
 describe("fetchClipsInReview", () => {
   it("returns parsed review clips and skips junk", async () => {
     state.docs = [
-      {
-        id: "good",
-        data: () => ({
-          moderation: "review",
-          videoUrl: "v",
-          playerUid: "u",
-          trickName: "kickflip",
-          playerUsername: "a",
-        }),
-      },
+      { id: "good", data: () => reviewRow() },
       { id: "bad", data: () => ({ moderation: "approved" }) },
     ];
     const page = await fetchClipsInReview();
@@ -162,14 +164,7 @@ describe("fetchClipsInReview", () => {
   it("pages with a cursor once a full page comes back", async () => {
     state.docs = Array.from({ length: 30 }, (_, index) => ({
       id: `c${index}`,
-      data: () => ({
-        moderation: "review",
-        videoUrl: "v",
-        playerUid: "u",
-        trickName: "kickflip",
-        playerUsername: "a",
-        moderationUpdatedAt: { toMillis: () => 1_700_000_000_000 - index },
-      }),
+      data: () => reviewRow({ moderationUpdatedAt: { toMillis: () => 1_700_000_000_000 - index } }),
     }));
     const first = await fetchClipsInReview();
     expect(first.cursor).toEqual({ moderationUpdatedAtMs: 1_700_000_000_000 - 29, id: "c29" });
@@ -181,13 +176,7 @@ describe("fetchClipsInReview", () => {
 
     state.docs = Array.from({ length: 30 }, (_, index) => ({
       id: `plain${index}`,
-      data: () => ({
-        moderation: "review",
-        videoUrl: "v",
-        playerUid: "u",
-        trickName: "kickflip",
-        playerUsername: "a",
-      }),
+      data: () => reviewRow(),
     }));
     expect((await fetchClipsInReview()).cursor).toBeNull();
 
