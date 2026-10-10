@@ -131,6 +131,7 @@ describe("auth service", () => {
       // Successful sends must never surface throttled=true. Callers rely on
       // the invariant that `throttled` is only meaningful when the send failed.
       expect(result.throttled).toBe(false);
+      expect(result.verificationErrorCode).toBeNull();
     });
 
     it("sends a verification email and awaits the result", async () => {
@@ -149,6 +150,13 @@ describe("auth service", () => {
       expect(result.user).toEqual(mockUserCredential.user);
       expect(result.verificationEmailSent).toBe(false);
       expect(result.throttled).toBe(false);
+      expect(result.verificationErrorCode).toBe("");
+      expect(mockCaptureException).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.objectContaining({
+          extra: expect.objectContaining({ context: "sendEmailVerification on sign-up", code: "" }),
+        }),
+      );
     });
 
     it("returns throttled=true when send fails with auth/too-many-requests", async () => {
@@ -159,6 +167,7 @@ describe("auth service", () => {
       const result = await signUp("a@b.com", "pass123");
       expect(result.verificationEmailSent).toBe(false);
       expect(result.throttled).toBe(true);
+      expect(result.verificationErrorCode).toBe("auth/too-many-requests");
       // The account was still created — throttled is a send-side signal only.
       expect(result.user).toEqual(mockUserCredential.user);
     });
@@ -170,6 +179,7 @@ describe("auth service", () => {
       const result = await signUp("a@b.com", "pass123");
       expect(result.verificationEmailSent).toBe(false);
       expect(result.throttled).toBe(true);
+      expect(result.verificationErrorCode).toBe("auth/quota-exceeded");
     });
 
     it("retries without actionCodeSettings on unauthorized-continue-uri", async () => {
@@ -178,6 +188,7 @@ describe("auth service", () => {
       const result = await signUp("a@b.com", "pass123");
       expect(result.verificationEmailSent).toBe(true);
       expect(result.throttled).toBe(false);
+      expect(result.verificationErrorCode).toBeNull();
       expect(mockSendVerify).toHaveBeenCalledTimes(2);
       // Second call should be without actionCodeSettings
       expect(mockSendVerify.mock.calls[1]).toEqual([mockUserCredential.user]);
@@ -192,6 +203,8 @@ describe("auth service", () => {
       expect(result.verificationEmailSent).toBe(false);
       // Generic retry failure is not a throttle — keep the UX distinction.
       expect(result.throttled).toBe(false);
+      expect(result.verificationErrorCode).toBe("");
+      expect(mockCaptureException).toHaveBeenCalled();
       expect(mockSendVerify).toHaveBeenCalledTimes(2);
     });
 
@@ -206,6 +219,7 @@ describe("auth service", () => {
       const result = await signUp("a@b.com", "pass123");
       expect(result.verificationEmailSent).toBe(false);
       expect(result.throttled).toBe(true);
+      expect(result.verificationErrorCode).toBe("auth/too-many-requests");
       expect(mockSendVerify).toHaveBeenCalledTimes(2);
     });
   });
@@ -270,9 +284,9 @@ describe("auth service", () => {
       );
     });
 
-    it("does nothing when there is no current user", async () => {
+    it("throws when there is no current user instead of looking like a send", async () => {
       (auth as unknown as { currentUser: unknown }).currentUser = null;
-      await resendVerification();
+      await expect(resendVerification()).rejects.toMatchObject({ code: "auth/no-current-user" });
       expect(mockSendVerify).not.toHaveBeenCalled();
     });
 
@@ -285,10 +299,31 @@ describe("auth service", () => {
       expect(mockSendVerify.mock.calls[1]).toEqual([{ uid: "u1" }]);
     });
 
-    it("rethrows non-URI errors", async () => {
+    it("rethrows non-URI errors and reports them", async () => {
       (auth as unknown as { currentUser: unknown }).currentUser = { uid: "u1" };
-      mockSendVerify.mockRejectedValueOnce(Object.assign(new Error("rate"), { code: "auth/too-many-requests" }));
+      const rate = Object.assign(new Error("rate"), { code: "auth/too-many-requests" });
+      mockSendVerify.mockRejectedValueOnce(rate);
       await expect(resendVerification()).rejects.toThrow("rate");
+      expect(mockCaptureException).toHaveBeenCalledWith(
+        rate,
+        expect.objectContaining({
+          extra: expect.objectContaining({ context: "resendVerification", code: "auth/too-many-requests" }),
+        }),
+      );
+    });
+
+    it("reports the fallback failure when the bare resend is also rejected", async () => {
+      (auth as unknown as { currentUser: unknown }).currentUser = { uid: "u1" };
+      const uriError = Object.assign(new Error("unauthorized"), { code: "auth/unauthorized-continue-uri" });
+      const quota = Object.assign(new Error("quota"), { code: "auth/quota-exceeded" });
+      mockSendVerify.mockRejectedValueOnce(uriError).mockRejectedValueOnce(quota);
+      await expect(resendVerification()).rejects.toThrow("quota");
+      expect(mockCaptureException).toHaveBeenCalledWith(
+        quota,
+        expect.objectContaining({
+          extra: expect.objectContaining({ context: "resendVerification fallback", code: "auth/quota-exceeded" }),
+        }),
+      );
     });
   });
 

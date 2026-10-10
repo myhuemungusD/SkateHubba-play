@@ -20,6 +20,7 @@ import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
 import { auth, ensureAppCheck, requireAuth, isEmulatorMode } from "../firebase";
 import { captureException } from "../lib/sentry";
 import { getErrorCode, parseFirebaseError } from "../utils/helpers";
+import { verificationContinueHost } from "../utils/verificationEmail";
 import { logger } from "./logger";
 
 export type AuthUser = User;
@@ -68,6 +69,12 @@ export interface SignUpResult {
    * on a successful send.
    */
   throttled: boolean;
+  /**
+   * Firebase Auth code from the failed send, or null when the send was
+   * accepted. Empty string means the rejection carried no `code`. Acceptance
+   * is not proof the message reached an inbox.
+   */
+  verificationErrorCode: string | null;
 }
 
 /**
@@ -100,6 +107,7 @@ export async function signUp(email: string, password: string): Promise<SignUpRes
   logger.info("sign_up_success", { uid: cred.user.uid, email: cred.user.email });
   let verificationEmailSent = false;
   let throttled = false;
+  let verificationErrorCode: string | null = null;
   try {
     await sendEmailVerification(cred.user, getActionCodeSettings());
     verificationEmailSent = true;
@@ -114,23 +122,39 @@ export async function signUp(email: string, password: string): Promise<SignUpRes
         logger.info("sign_up_verification_email_sent_fallback", { uid: cred.user.uid });
       } catch (retryErr) {
         const retryCode = getErrorCode(retryErr);
+        verificationErrorCode = retryCode;
         if (VERIFICATION_THROTTLED_CODES.has(retryCode)) throttled = true;
         logger.error("sign_up_verification_email_failed", {
           uid: cred.user.uid,
           error: retryCode || parseFirebaseError(retryErr),
+          continueHost: verificationContinueHost(),
         });
-        captureException(retryErr, { extra: { context: "sendEmailVerification on sign-up (fallback)" } });
+        captureException(retryErr, {
+          extra: {
+            context: "sendEmailVerification on sign-up (fallback)",
+            code: retryCode,
+            continueHost: verificationContinueHost(),
+          },
+        });
       }
     } else {
+      verificationErrorCode = code;
       if (VERIFICATION_THROTTLED_CODES.has(code)) throttled = true;
       logger.error("sign_up_verification_email_failed", {
         uid: cred.user.uid,
         error: code || parseFirebaseError(err),
+        continueHost: verificationContinueHost(),
       });
-      captureException(err, { extra: { context: "sendEmailVerification on sign-up" } });
+      captureException(err, {
+        extra: {
+          context: "sendEmailVerification on sign-up",
+          code,
+          continueHost: verificationContinueHost(),
+        },
+      });
     }
   }
-  return { user: cred.user, verificationEmailSent, throttled };
+  return { user: cred.user, verificationEmailSent, throttled, verificationErrorCode };
 }
 
 /**
@@ -249,14 +273,19 @@ export async function getAdminClaim(): Promise<boolean> {
 
 /**
  * Resend the email-verification link for the currently signed-in user.
- * Silently no-ops if no user is signed in. Falls back to Firebase's default
+ * Throws `auth/no-current-user` when nobody is signed in — a resolved call
+ * used to look like a successful send. Falls back to Firebase's default
  * continue-URI when the configured one is not in the authorized-domains list.
+ * A resolved call means Identity Toolkit accepted the request, not that the
+ * message reached an inbox.
  */
 export async function resendVerification(): Promise<void> {
   const user = requireAuth().currentUser;
   if (!user) {
     logger.warn("resend_verification_no_user");
-    return;
+    throw Object.assign(new Error("No signed-in user to send a verification email to."), {
+      code: "auth/no-current-user",
+    });
   }
   logger.info("resend_verification", { uid: user.uid });
   try {
@@ -268,10 +297,31 @@ export async function resendVerification(): Promise<void> {
     // or invalid, retry without actionCodeSettings — Firebase will use its
     // default redirect URL (the firebaseapp.com handler).
     if (code === "auth/unauthorized-continue-uri" || code === "auth/invalid-continue-uri") {
-      await sendEmailVerification(user);
-      logger.info("resend_verification_sent_fallback", { uid: user.uid });
-      return;
+      try {
+        await sendEmailVerification(user);
+        logger.info("resend_verification_sent_fallback", { uid: user.uid });
+        return;
+      } catch (retryErr) {
+        const retryCode = getErrorCode(retryErr);
+        logger.error("resend_verification_failed", {
+          uid: user.uid,
+          code: retryCode,
+          continueHost: verificationContinueHost(),
+        });
+        captureException(retryErr, {
+          extra: { context: "resendVerification fallback", code: retryCode, continueHost: verificationContinueHost() },
+        });
+        throw retryErr;
+      }
     }
+    logger.error("resend_verification_failed", {
+      uid: user.uid,
+      code,
+      continueHost: verificationContinueHost(),
+    });
+    captureException(err, {
+      extra: { context: "resendVerification", code, continueHost: verificationContinueHost() },
+    });
     throw err;
   }
   logger.info("resend_verification_sent", { uid: user.uid });

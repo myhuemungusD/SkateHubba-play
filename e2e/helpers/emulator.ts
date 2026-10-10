@@ -92,6 +92,23 @@ export async function verifyEmail(email: string): Promise<void> {
   if (!applyRes.ok) throw new Error(`verifyEmail failed: ${applyRes.status} ${await applyRes.text()}`);
 }
 
+/**
+ * Verify a user created through the Auth emulator REST API.
+ *
+ * `createUser` does not send a verification mail, so there is no OOB code
+ * for {@link verifyEmail} until this asks for one. Call it BEFORE the
+ * browser signs in so the ID token already carries `email_verified`.
+ */
+export async function verifyAuthUser(email: string, idToken: string): Promise<void> {
+  const send = await fetch(`${AUTH}/identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${API_KEY}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ requestType: "VERIFY_EMAIL", idToken }),
+  });
+  if (!send.ok) throw new Error(`verifyAuthUser send failed: ${send.status} ${await send.text()}`);
+  await verifyEmail(email);
+}
+
 // ─── Firestore helpers ────────────────────────────────────────────────────────
 
 type FsValue =
@@ -151,6 +168,13 @@ export async function createProfile(
   username: string,
   email: string,
   emailVerified = false,
+  /**
+   * When false, the public user doc matches a real signup: email and
+   * emailVerified are not on it. A later client merge (rematch stamps
+   * lastGameCreatedAt) is denied if those fields are present, because the
+   * update rule forbids them on the public doc.
+   */
+  legacyPublicEmail = true,
 ): Promise<void> {
   await Promise.all([
     // Client-side `Date` approximation of the production `serverTimestamp()`
@@ -161,9 +185,8 @@ export async function createProfile(
     writeDoc("users", uid, {
       uid,
       username,
-      email,
+      ...(legacyPublicEmail ? { email, emailVerified } : {}),
       stance: "Regular",
-      emailVerified,
       createdAt: new Date(),
     }),
     writeDoc("usernames", username.toLowerCase(), { uid }),

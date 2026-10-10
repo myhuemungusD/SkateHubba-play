@@ -1,7 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import { resendVerification, reloadUser } from "../services/auth";
 import { getErrorCode } from "../utils/helpers";
-import { captureException } from "../lib/sentry";
+import {
+  VERIFICATION_ACCEPTED_COPY,
+  VERIFICATION_UNVERIFIED_COPY,
+  isVerificationRateLimit,
+  readVerificationSendState,
+  verificationFailureMessage,
+  writeVerificationSendState,
+  type VerificationSendState,
+} from "../utils/verificationEmail";
 
 const RESEND_COOLDOWN_S = 60;
 const RATE_LIMIT_COOLDOWN_S = 300;
@@ -27,6 +35,22 @@ function writeStoredCooldown(seconds: number): void {
   }
 }
 
+/** Signup writes the send outcome; the banner mounts on the next screen. */
+function bannerFromStoredSend(): { error: string | null; sent: boolean } {
+  const state: VerificationSendState | null = readVerificationSendState();
+  if (state === null) return { error: null, sent: false };
+  switch (state.status) {
+    case "accepted":
+      return { error: null, sent: true };
+    case "failed":
+      return { error: verificationFailureMessage(state.code), sent: false };
+    default: {
+      const unreachable: never = state;
+      return unreachable;
+    }
+  }
+}
+
 export function VerifyEmailBanner({
   emailVerified,
   onManualReload,
@@ -40,8 +64,8 @@ export function VerifyEmailBanner({
 }) {
   const [sending, setSending] = useState(false);
   const [cooldown, setCooldown] = useState(readStoredCooldown);
-  const [sendError, setSendError] = useState<string | null>(null);
-  const [sent, setSent] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(() => bannerFromStoredSend().error);
+  const [sent, setSent] = useState(() => bannerFromStoredSend().sent);
   const [checking, setChecking] = useState(false);
 
   // Single setInterval owned by a ref so we never recreate the timer on every
@@ -81,22 +105,17 @@ export function VerifyEmailBanner({
       await resendVerification();
       writeStoredCooldown(RESEND_COOLDOWN_S);
       setCooldown(RESEND_COOLDOWN_S);
+      writeVerificationSendState({ status: "accepted" });
       setSent(true);
     } catch (err) {
       const code = getErrorCode(err);
-      captureException(err, { extra: { context: "VerifyEmailBanner resend" } });
-      if (code === "auth/too-many-requests") {
-        writeStoredCooldown(RATE_LIMIT_COOLDOWN_S);
-        setCooldown(RATE_LIMIT_COOLDOWN_S);
-        setSendError("Too many attempts — please wait 5 minutes before retrying.");
-      } else {
-        // Apply the standard 60s cooldown on ANY failure — otherwise the
-        // button is spammable and users hammer it until Firebase throttles
-        // them into the 5-minute cooldown branch above.
-        writeStoredCooldown(RESEND_COOLDOWN_S);
-        setCooldown(RESEND_COOLDOWN_S);
-        setSendError("Failed to send — check your connection.");
-      }
+      // resendVerification already reports the rejection to Sentry. The
+      // banner's job is to show the code and stop the button being hammered.
+      const wait = isVerificationRateLimit(code) ? RATE_LIMIT_COOLDOWN_S : RESEND_COOLDOWN_S;
+      writeStoredCooldown(wait);
+      setCooldown(wait);
+      writeVerificationSendState({ status: "failed", code });
+      setSendError(verificationFailureMessage(code));
     } finally {
       setSending(false);
     }
@@ -117,11 +136,7 @@ export function VerifyEmailBanner({
     }
   };
 
-  const statusMessage =
-    sendError ??
-    (sent
-      ? "Sent! Check your inbox and spam/junk folder."
-      : "Check your inbox and spam/junk folder for the verification link.");
+  const statusMessage = sendError ?? (sent ? VERIFICATION_ACCEPTED_COPY : VERIFICATION_UNVERIFIED_COPY);
   const btnLabel = sending ? "..." : cooldown > 0 ? `${cooldown}s` : sendError !== null ? "Retry" : "Resend";
 
   const resendAriaLabel = sending
