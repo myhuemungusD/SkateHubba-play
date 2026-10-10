@@ -15,9 +15,9 @@
  *
  * Run via:  npm run test:rules
  */
-import { describe, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { assertSucceeds, assertFails, type RulesTestContext } from "@firebase/rules-unit-testing";
-import { doc, setDoc, serverTimestamp, runTransaction } from "firebase/firestore";
+import { doc, getDoc, setDoc, serverTimestamp, runTransaction } from "firebase/firestore";
 import { makeClip, setupRulesTestEnv } from "./_fixtures";
 
 const OWNER_UID = "owner-uid";
@@ -100,12 +100,27 @@ function flipAndUpdate(ctx: RulesTestContext, newValue: number, clipUpdate: Reco
 }
 
 describe("clipVotes — value validation", () => {
-  it("accepts value: 1 (upvote)", async () => {
-    await assertSucceeds(setDoc(voteRef(voter()), makeVote(VOTER_UID, 1)));
+  it("accepts value: 1 when the upvote counter moves +1 in the same write", async () => {
+    await assertSucceeds(castAndUpdate(voter(), 1, { upvoteCount: 1 }));
   });
 
-  it("accepts value: -1 (downvote)", async () => {
-    await assertSucceeds(setDoc(voteRef(voter()), makeVote(VOTER_UID, -1)));
+  it("accepts value: -1 when the downvote counter moves +1 in the same write", async () => {
+    await assertSucceeds(castAndUpdate(voter(), -1, { downvoteCount: 1 }));
+  });
+
+  it("attack: a bare vote create is denied, so a later delete cannot drain the tally", async () => {
+    await seedCounts(4, 2);
+    await assertFails(setDoc(voteRef(voter()), makeVote(VOTER_UID, 1)));
+    await assertFails(withdrawAndUpdate(voter(), { upvoteCount: 3 }));
+    let upvoteCount = -1;
+    let downvoteCount = -1;
+    await getEnv().withSecurityRulesDisabled(async (ctx) => {
+      const data = (await getDoc(clipRef(ctx))).data();
+      upvoteCount = typeof data?.upvoteCount === "number" ? data.upvoteCount : -1;
+      downvoteCount = typeof data?.downvoteCount === "number" ? data.downvoteCount : -1;
+    });
+    expect(upvoteCount).toBe(4);
+    expect(downvoteCount).toBe(2);
   });
 
   it("attack: rejects an out-of-range value (weighted vote)", async () => {

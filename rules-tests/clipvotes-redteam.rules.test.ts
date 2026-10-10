@@ -23,7 +23,7 @@ import {
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { doc, setDoc, serverTimestamp, setLogLevel } from "firebase/firestore";
+import { doc, runTransaction, setDoc, serverTimestamp, setLogLevel } from "firebase/firestore";
 import { makeClip } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-clipvotes-redteam";
@@ -113,9 +113,16 @@ describe("clipVotes — red-team against email_verified + uniqueness", () => {
     await assertFails(setDoc(voteRef(unverified, "throwaway-uid"), makeValidVote("throwaway-uid")));
   });
 
-  it("legitimate: verified-email user CAN cast one clipVote", async () => {
+  it("legitimate: verified-email user CAN cast one clipVote with the tally", async () => {
     const verified = testEnv.authenticatedContext("voter-uid", { email_verified: true });
-    await assertSucceeds(setDoc(voteRef(verified, "voter-uid"), makeValidVote("voter-uid")));
+    await assertSucceeds(
+      runTransaction(verified.firestore(), async (tx) => {
+        const clip = doc(verified.firestore(), "clips", CLIP_ID);
+        await tx.get(clip);
+        tx.set(voteRef(verified, "voter-uid"), makeValidVote("voter-uid"));
+        tx.update(clip, { upvoteCount: 1 });
+      }),
+    );
   });
 
   it("attack: verified user CANNOT double-vote on the same clip (rewrite rejected by update:false)", async () => {
