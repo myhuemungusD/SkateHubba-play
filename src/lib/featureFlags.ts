@@ -1,17 +1,16 @@
 /**
  * Build-time feature flags.
  *
- * Feature freeze (2026-10): the core S.K.A.T.E. Challenge loop
- * (lobby → challenge → record → game → result → rematch) is the only
- * surface we ship. The "extras" — the spot Map (/map, /spots/:id), the
- * Clips feed (/feed) and Verified Pro (badge + admin grant panel) — stay in
- * the codebase but are hidden behind ONE switch:
+ * Extras switch. The launch feature freeze was lifted 2026-10-10: the spot
+ * Map (/map, /spots/:id), the Clips feed (/feed) and Verified Pro (badge +
+ * admin grant panel) are live in production, where Vercel sets
+ * VITE_FEATURE_EXTRAS_ENABLED=true (Production + Preview). ONE switch:
  *
- *   VITE_FEATURE_EXTRAS_ENABLED=true   → extras visible (pre-freeze behaviour)
- *   unset / anything else              → extras hidden (DEFAULT)
+ *   VITE_FEATURE_EXTRAS_ENABLED=true   → extras visible (production)
+ *   unset / anything else              → extras hidden (code default)
  *
- * Defaults to OFF so a missing Vercel env var can never resurface a frozen
- * feature. Re-enable by setting the var to the literal string "true" in the
+ * Defaults to OFF so a missing Vercel env var fails closed to the core
+ * game loop. Toggle by setting the var to the literal string "true" in the
  * Vercel project and redeploying (VITE_* values are inlined at build time).
  *
  * Read through a function rather than a module-level constant so tests can
@@ -27,13 +26,13 @@ export function parseFlag(raw: unknown): boolean {
   return raw === "true";
 }
 
-/** True when the frozen Map / Clips feed / Verified Pro surfaces should render. */
+/** True when the Map / Clips feed / Verified Pro surfaces should render. */
 export function isExtrasEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_EXTRAS_ENABLED);
 }
 
 /**
- * Roll Dice (street dice / C-Lo). Separate from the extras freeze: it ships
+ * Roll Dice (street dice / C-Lo). Separate from the extras switch: it ships
  * off, and turning extras on must not surface it. Literal "true" only.
  */
 export function isDiceEnabled(): boolean {
