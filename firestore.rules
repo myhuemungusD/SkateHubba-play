@@ -354,6 +354,20 @@ service cloud.firestore {
             && request.resource.data.turnHistory.size() == resource.data.turnHistory.size());
     }
 
+    // Unchanged history, including content, with the 200-entry ceiling.
+    // One size-gated compare. Used where an append is not a legal outcome,
+    // so the growth helper's +1 arm would be evaluated and then rejected.
+    function turnHistoryFrozenOk() {
+      return (!('turnHistory' in resource.data) && !('turnHistory' in request.resource.data))
+        || ('turnHistory' in resource.data
+            && 'turnHistory' in request.resource.data
+            && resource.data.turnHistory is list
+            && request.resource.data.turnHistory is list
+            && request.resource.data.turnHistory.size() <= 200
+            && request.resource.data.turnHistory.size() == resource.data.turnHistory.size()
+            && request.resource.data.turnHistory == resource.data.turnHistory);
+    }
+
     // The three fields stats close-out trusts, read off the one new entry.
     function appendedEntryAgrees(entry, landed, letterTo, matcherUid) {
       return entry.landed == landed
@@ -1226,6 +1240,17 @@ service cloud.firestore {
       );
     }
 
+    // One call for the pins every /games update shares. Inlined at each
+    // branch they were re-evaluated once per allow-rule, and the late
+    // auto-accept / setReview rules crossed the 1000-expression cap.
+    function gameAuditTailOk() {
+      return judgeUsernameUnchanged()
+        && statsAppliedUnchanged()
+        && createdAtUnchanged()
+        && cronNotifyTombstonesUnchanged()
+        && verifiedProBadgesUnchanged();
+    }
+
     // Product window is 24h (TURN_DURATION_MS). ±1h absorbs client clock skew.
     // A shorter clock is an instant forfeit or an instant auto-accept; a longer
     // one locks the opponent out of the forfeit path.
@@ -1378,24 +1403,137 @@ service cloud.firestore {
         && !('challengeNotifiedAt' in request.resource.data)
         && !('turnReminderSentFor' in request.resource.data);
 
-      // Current-turn player can make normal game updates
-      allow update: if isSignedIn()
-        && isPlayer(resource.data)
+      // Expired-window rules are first in this OR-chain. Their success
+      // path used to evaluate every earlier games update and cross
+      // Firestore's 1000-expression cap. A non-matching phase fails on
+      // the first compare, so setting and matching writes pay two
+      // compares and then their own rule.
+      // ── Expired dispute auto-accept ──
+      // When the judge's review window expires (24 h), any participant
+      // (player or judge) can trigger auto-accept: matcher's "landed" call
+      // stands, roles swap, no letters change, game continues.
+      // Phase, expiry, and the post-write phase/status fail every other
+      // games update before isParticipant() and the history pins. This
+      // rule used to sit at the end of the OR-chain and crossed the
+      // 1000-expression cap on a legitimate auto-accept.
+      allow update: if resource.data.phase == 'disputable'
         && resource.data.status == 'active'
-        // Early phase gate (PR claude/video-url-security): every branch of this
-        // rule already requires resource.data.phase == 'setting'. Hoisting it
-        // to the top fails matching-phase writes BEFORE they reach the
-        // expensive currentTrickVideoUrl `.matches()` below — without this, a
-        // matcher's resolution write burns this rule's regex node cost on its
-        // way to the match-resolution rule, and the two `.matches()` calls
-        // together blow Firestore's cumulative 1000-expression evaluation
-        // budget for the request (silent PERMISSION_DENIED). Pure
-        // optimization: the accepted set is unchanged.
-        && resource.data.phase == 'setting'
-        // Forfeit flips status and is decided by the forfeit rule below.
-        // Reject it before the field pins so that write does not spend this
-        // rule's budget on the way there (together they cross the 1000 cap).
+        && request.time > resource.data.turnDeadline
+        && request.resource.data.phase == 'setting'
         && request.resource.data.status == 'active'
+        && request.resource.data.winner == null
+        && isSignedIn()
+        && isParticipant(resource.data)
+        // Letters must not change (auto-accept = landed)
+        && request.resource.data.p1Letters == resource.data.p1Letters
+        && request.resource.data.p2Letters == resource.data.p2Letters
+        // Cannot change player UIDs or usernames
+        && request.resource.data.player1Uid == resource.data.player1Uid
+        && request.resource.data.player2Uid == resource.data.player2Uid
+        && request.resource.data.player1Username == resource.data.player1Username
+        && request.resource.data.player2Username == resource.data.player2Username
+        // spotId + judge immutable
+        && (
+          (!('spotId' in resource.data) && !('spotId' in request.resource.data))
+          || ('spotId' in resource.data && 'spotId' in request.resource.data
+              && request.resource.data.spotId == resource.data.spotId)
+        )
+        // trickCategory immutable (mirrors spotId)
+        && (
+          (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
+          || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
+              && request.resource.data.trickCategory == resource.data.trickCategory)
+        )
+        // customRules pairs with trickCategory: set at creation, immutable
+        // thereafter (a mid-game rewrite of the agreed rules is not allowed).
+        && (
+          (!('customRules' in resource.data) && !('customRules' in request.resource.data))
+          || ('customRules' in resource.data && 'customRules' in request.resource.data
+              && request.resource.data.customRules == resource.data.customRules)
+        )
+        && request.resource.data.judgeId == resource.data.judgeId
+        && request.resource.data.judgeStatus == resource.data.judgeStatus
+        // Turn-order pins (audit HIGH: turn seize) — see autoAcceptRolePinsOk.
+        // Without these either participant could seize the setter role out of
+        // rotation in this same write.
+        && autoAcceptRolePinsOk(resource.data, request.resource.data)
+        // The next turn's clock is a fresh 24h, not whatever the client picks.
+        && aboutOneDayAhead(request.resource.data.turnDeadline)
+        // ── matchVideoUrl bucket pin (audit P2) ──
+        // Auto-accept finalises the matcher's "landed" call without judge
+        // intervention. The matcher's stored matchVideoUrl is now the canonical
+        // record of the trick — without a bucket pin a participant could
+        // overwrite it on this transition with an attacker-hosted payload
+        // that the clip feed and dispute UI would render verbatim. Same
+        // shape as the match-resolution + dispute branches above.
+        && matchVideoUrlOk(request.resource.data.matchVideoUrl, resource.data.matchVideoUrl)
+        // turnHistory growth bound — auto-accept writes a TurnRecord for
+        // the expired dispute. Same 1-per-write + ≤200 ceiling.
+        && turnHistoryGrowthOk()
+        // Auto-accept stands the landed claim: no letter, matcher is the
+        // setter's opponent. A miss entry here would invent a letter.
+        && (
+          turnHistoryUnchanged()
+          || lastTurnAgrees(true, null, opponentUid(resource.data, resource.data.currentSetter))
+        )
+        && gameAuditTailOk();
+
+      // ── Expired setReview auto-clear ──
+      // When the judge doesn't rule on a "Call BS" within 24h, the set
+      // stands (benefit of the doubt) and matcher is prompted to attempt.
+      // Same early-out as auto-accept: phase, expiry, then the post-write
+      // phase. A Call BS ruling that is not an expired clear fails here,
+      // before the history compare.
+      allow update: if resource.data.phase == 'setReview'
+        && resource.data.status == 'active'
+        && request.time > resource.data.turnDeadline
+        && request.resource.data.phase == 'matching'
+        && request.resource.data.status == 'active'
+        && request.resource.data.winner == null
+        && isSignedIn()
+        && isParticipant(resource.data)
+        && request.resource.data.p1Letters == resource.data.p1Letters
+        && request.resource.data.p2Letters == resource.data.p2Letters
+        && request.resource.data.player1Uid == resource.data.player1Uid
+        && request.resource.data.player2Uid == resource.data.player2Uid
+        && request.resource.data.player1Username == resource.data.player1Username
+        && request.resource.data.player2Username == resource.data.player2Username
+        && (
+          (!('spotId' in resource.data) && !('spotId' in request.resource.data))
+          || ('spotId' in resource.data && 'spotId' in request.resource.data
+              && request.resource.data.spotId == resource.data.spotId)
+        )
+        && (
+          (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
+          || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
+              && request.resource.data.trickCategory == resource.data.trickCategory)
+        )
+        // customRules pairs with trickCategory: set at creation, immutable
+        // thereafter (a mid-game rewrite of the agreed rules is not allowed).
+        && (
+          (!('customRules' in resource.data) && !('customRules' in request.resource.data))
+          || ('customRules' in resource.data && 'customRules' in request.resource.data
+              && request.resource.data.customRules == resource.data.customRules)
+        )
+        && request.resource.data.judgeId == resource.data.judgeId
+        && request.resource.data.judgeStatus == resource.data.judgeStatus
+        && request.resource.data.currentSetter == resource.data.currentSetter
+        && request.resource.data.currentTurn == opponentUid(resource.data, resource.data.currentSetter)
+        && aboutOneDayAhead(request.resource.data.turnDeadline)
+        // No append and no content rewrite. This path does not finish a turn.
+        && turnHistoryFrozenOk()
+        && gameAuditTailOk();
+
+      // Current-turn player can make normal game updates.
+      // Phase and the post-write status fail every other games update in
+      // two compares, before isPlayer() and the field pins. A forfeit, an
+      // auto-accept, and a match resolution used to walk this body on the
+      // way to their own rule and cross the 1000-expression cap.
+      allow update: if resource.data.phase == 'setting'
+        && resource.data.status == 'active'
+        && request.resource.data.status == 'active'
+        && isSignedIn()
+        && isPlayer(resource.data)
         && request.auth.uid == resource.data.currentTurn
         // Rate limit: at most one turn action per 2 seconds (prevents write flooding).
         // The cooldown below compares against the STORED updatedAt; without
@@ -1459,8 +1597,8 @@ service cloud.firestore {
         // Letters are only awarded via the match resolution rule below.
         && request.resource.data.p1Letters == resource.data.p1Letters
         && request.resource.data.p2Letters == resource.data.p2Letters
-        // Game stays active, no winner (completion only via match resolution or forfeit)
-        && request.resource.data.status == 'active'
+        // No winner on a setting update (completion is match resolution or forfeit).
+        // status stays 'active' — already required above.
         && request.resource.data.winner == null
         // matchVideoUrl is only written by the matching-phase rule — setting
         // phase updates must not touch it. Without this pin, a setter whose
@@ -1518,11 +1656,7 @@ service cloud.firestore {
           (!('turnHistory' in resource.data) && !('turnHistory' in request.resource.data))
           || request.resource.data.turnHistory == resource.data.turnHistory
         )
-        && judgeUsernameUnchanged()
-        && statsAppliedUnchanged()
-        && createdAtUnchanged()
-        && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged();
+        && gameAuditTailOk();
 
       // ── Match resolution (matcher submits an attempt) ──
       // Honor system (no active judge):
@@ -1534,14 +1668,14 @@ service cloud.firestore {
       //
       // Call BS (judge only): matcher transitions matching → setReview with
       // currentTurn = judgeId. Split out as its own branch for clarity.
-      allow update: if isSignedIn()
-        && isPlayer(resource.data)
+      allow update: if resource.data.phase == 'matching'
         && resource.data.status == 'active'
-        && resource.data.phase == 'matching'
         // Forfeit is not a match resolution. Fail it before the field pins
         // and the video-url check; the forfeit rule is later in this OR-chain
         // and the cumulative cost otherwise hits the 1000-expression cap.
         && (request.resource.data.status == 'active' || request.resource.data.status == 'complete')
+        && isSignedIn()
+        && isPlayer(resource.data)
         && request.auth.uid == resource.data.currentTurn
         // Rate limit. New updatedAt must equal request.time — prevents the
         // stored-value spoof where a client writes epoch 0 to keep the 2s
@@ -1650,11 +1784,7 @@ service cloud.firestore {
         // this PR's matchVideoUrl `.matches()` pin are both present. Accepted
         // set is unchanged — see the helper for the per-outcome rationale.
         && matchResolutionPinsOk(resource.data, request.resource.data)
-        && judgeUsernameUnchanged()
-        && statsAppliedUnchanged()
-        && createdAtUnchanged()
-        && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged();
+        && gameAuditTailOk();
 
       // ── Pending-review resolution (honor-system binding dispute, Phase 2) ──
       // A matcher's landed claim now freezes the game in `pendingReview` (see
@@ -1680,10 +1810,10 @@ service cloud.firestore {
       // roles, phase, winner or status — the game is frozen until the admin
       // referee (Admin SDK, bypasses these rules) resolves it. That absence IS
       // the enforcement; do not add a client communityReview branch.
-      allow update: if isSignedIn()
-        && isPlayer(resource.data)
+      allow update: if resource.data.phase == 'pendingReview'
         && resource.data.status == 'active'
-        && resource.data.phase == 'pendingReview'
+        && isSignedIn()
+        && isPlayer(resource.data)
         // Only the setter of the frozen turn may accept or dispute.
         && request.auth.uid == resource.data.currentSetter
         // Rate limit — new updatedAt pinned to request.time so a stale value
@@ -1778,20 +1908,16 @@ service cloud.firestore {
           || (request.resource.data.phase == 'setting'
               && lastTurnAgrees(true, null, opponentUid(resource.data, resource.data.currentSetter)))
         )
-        && judgeUsernameUnchanged()
-        && statsAppliedUnchanged()
-        && createdAtUnchanged()
-        && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged();
+        && gameAuditTailOk();
 
       // ── Dispute resolution (judge rules on the matcher's "landed" claim) ──
       // Judge-only. The setter never self-judges — disputes only exist in
       // games with an active judge. Judge accepts (no letters, roles swap)
       // or overrules (matcher +1 letter, setter keeps setting).
-      allow update: if isSignedIn()
-        && isJudge(resource.data)
+      allow update: if resource.data.phase == 'disputable'
         && resource.data.status == 'active'
-        && resource.data.phase == 'disputable'
+        && isSignedIn()
+        && isJudge(resource.data)
         && request.auth.uid == resource.data.currentTurn
         && judgeActive(resource.data)
         // Rate limit. Pinning updatedAt to request.time closes the
@@ -1904,20 +2030,16 @@ service cloud.firestore {
             )
           )
         )
-        && judgeUsernameUnchanged()
-        && statsAppliedUnchanged()
-        && createdAtUnchanged()
-        && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged();
+        && gameAuditTailOk();
 
       // ── Call BS resolution (judge rules on set trick in setReview phase) ──
       // Judge-only. Clean → back to matching (matcher must attempt).
       // Sketchy → back to setting (same setter re-sets, trick fields cleared).
       // No letter changes, no game completion.
-      allow update: if isSignedIn()
-        && isJudge(resource.data)
+      allow update: if resource.data.phase == 'setReview'
         && resource.data.status == 'active'
-        && resource.data.phase == 'setReview'
+        && isSignedIn()
+        && isJudge(resource.data)
         && request.auth.uid == resource.data.currentTurn
         && judgeActive(resource.data)
         // Rate limit. New updatedAt must equal request.time so the 2s
@@ -1968,27 +2090,19 @@ service cloud.firestore {
               && request.resource.data.currentTrickName == null
               && request.resource.data.currentTrickVideoUrl == null)
         )
-        // turnHistory growth bound — Call BS rulings that go "sketchy"
-        // append a TurnRecord noting the invalidated set. Same cap as the
-        // other resolution branches.
-        && turnHistoryGrowthOk()
-        // The client does not append on a Call BS ruling. An entry here
-        // would be a land or a letter the ruling did not award.
-        && turnHistoryUnchanged()
-        && judgeUsernameUnchanged()
-        && statsAppliedUnchanged()
-        && createdAtUnchanged()
-        && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged();
+        // No append and no content rewrite. Call BS does not finish a turn,
+        // so the growth helper's +1 arm is not a legal outcome here.
+        && turnHistoryFrozenOk()
+        && gameAuditTailOk();
 
       // ── Judge invite accept / decline ──
       // Only the nominated judge can flip their status from pending. No
       // other field may change on the same write.
-      allow update: if isSignedIn()
-        && isJudge(resource.data)
-        && resource.data.status == 'active'
-        && 'judgeStatus' in resource.data
+      allow update: if 'judgeStatus' in resource.data
         && resource.data.judgeStatus == 'pending'
+        && resource.data.status == 'active'
+        && isSignedIn()
+        && isJudge(resource.data)
         && request.resource.data.judgeId == resource.data.judgeId
         // Re-verify judge isn't either player — defence-in-depth in case the
         // create-time check was bypassed (e.g. older docs written before the
@@ -2030,21 +2144,17 @@ service cloud.firestore {
           || ('customRules' in resource.data && 'customRules' in request.resource.data
               && request.resource.data.customRules == resource.data.customRules)
         )
-        && judgeUsernameUnchanged()
-        && statsAppliedUnchanged()
-        && createdAtUnchanged()
-        && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged();
+        && gameAuditTailOk();
 
       // Either player can forfeit the current-turn player's expired turn
       // Winner must be the opponent of the player whose turn it is
-      allow update: if isSignedIn()
-        && isPlayer(resource.data)
+      allow update: if request.resource.data.status == 'forfeit'
         && resource.data.status == 'active'
-        && request.resource.data.status == 'forfeit'
         // Only forfeit from setting or matching (disputable auto-accepts,
         // setReview auto-clears to matching — neither is a forfeit path).
         && (resource.data.phase == 'setting' || resource.data.phase == 'matching')
+        && isSignedIn()
+        && isPlayer(resource.data)
         // The stored clock must have actually expired. Writes pin that clock to
         // ~24h, so this cannot fire a second after a phase change. The forfeit
         // itself must not rewrite the clock it is claiming has expired.
@@ -2090,134 +2200,8 @@ service cloud.firestore {
           turnHistoryUnchanged()
           || lastTurnAgrees(false, resource.data.currentTurn, opponentUid(resource.data, resource.data.currentSetter))
         )
-        && judgeUsernameUnchanged()
-        && statsAppliedUnchanged()
-        && createdAtUnchanged()
-        && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged();
+        && gameAuditTailOk();
 
-      // ── Expired dispute auto-accept ──
-      // When the judge's review window expires (24 h), any participant
-      // (player or judge) can trigger auto-accept: matcher's "landed" call
-      // stands, roles swap, no letters change, game continues.
-      allow update: if isSignedIn()
-        && isParticipant(resource.data)
-        && resource.data.status == 'active'
-        && resource.data.phase == 'disputable'
-        && request.time > resource.data.turnDeadline
-        // Letters must not change (auto-accept = landed)
-        && request.resource.data.p1Letters == resource.data.p1Letters
-        && request.resource.data.p2Letters == resource.data.p2Letters
-        // Cannot change player UIDs or usernames
-        && request.resource.data.player1Uid == resource.data.player1Uid
-        && request.resource.data.player2Uid == resource.data.player2Uid
-        && request.resource.data.player1Username == resource.data.player1Username
-        && request.resource.data.player2Username == resource.data.player2Username
-        // spotId + judge immutable
-        && (
-          (!('spotId' in resource.data) && !('spotId' in request.resource.data))
-          || ('spotId' in resource.data && 'spotId' in request.resource.data
-              && request.resource.data.spotId == resource.data.spotId)
-        )
-        // trickCategory immutable (mirrors spotId)
-        && (
-          (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
-          || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
-              && request.resource.data.trickCategory == resource.data.trickCategory)
-        )
-        // customRules pairs with trickCategory: set at creation, immutable
-        // thereafter (a mid-game rewrite of the agreed rules is not allowed).
-        && (
-          (!('customRules' in resource.data) && !('customRules' in request.resource.data))
-          || ('customRules' in resource.data && 'customRules' in request.resource.data
-              && request.resource.data.customRules == resource.data.customRules)
-        )
-        && request.resource.data.judgeId == resource.data.judgeId
-        && request.resource.data.judgeStatus == resource.data.judgeStatus
-        // Must transition back to setting (active, no winner)
-        && request.resource.data.status == 'active'
-        && request.resource.data.phase == 'setting'
-        && request.resource.data.winner == null
-        // Turn-order pins (audit HIGH: turn seize) — see autoAcceptRolePinsOk.
-        // Without these either participant could seize the setter role out of
-        // rotation in this same write.
-        && autoAcceptRolePinsOk(resource.data, request.resource.data)
-        // The next turn's clock is a fresh 24h, not whatever the client picks.
-        && aboutOneDayAhead(request.resource.data.turnDeadline)
-        // ── matchVideoUrl bucket pin (audit P2) ──
-        // Auto-accept finalises the matcher's "landed" call without judge
-        // intervention. The matcher's stored matchVideoUrl is now the canonical
-        // record of the trick — without a bucket pin a participant could
-        // overwrite it on this transition with an attacker-hosted payload
-        // that the clip feed and dispute UI would render verbatim. Same
-        // shape as the match-resolution + dispute branches above.
-        && matchVideoUrlOk(request.resource.data.matchVideoUrl, resource.data.matchVideoUrl)
-        // turnHistory growth bound — auto-accept writes a TurnRecord for
-        // the expired dispute. Same 1-per-write + ≤200 ceiling.
-        && turnHistoryGrowthOk()
-        // Auto-accept stands the landed claim: no letter, matcher is the
-        // setter's opponent. A miss entry here would invent a letter.
-        && (
-          turnHistoryUnchanged()
-          || lastTurnAgrees(true, null, opponentUid(resource.data, resource.data.currentSetter))
-        )
-        && judgeUsernameUnchanged()
-        && statsAppliedUnchanged()
-        && createdAtUnchanged()
-        && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged();
-
-      // ── Expired setReview auto-clear ──
-      // When the judge doesn't rule on a "Call BS" within 24h, the set
-      // stands (benefit of the doubt) and matcher is prompted to attempt.
-      allow update: if isSignedIn()
-        && isParticipant(resource.data)
-        && resource.data.status == 'active'
-        && resource.data.phase == 'setReview'
-        && request.time > resource.data.turnDeadline
-        && request.resource.data.p1Letters == resource.data.p1Letters
-        && request.resource.data.p2Letters == resource.data.p2Letters
-        && request.resource.data.player1Uid == resource.data.player1Uid
-        && request.resource.data.player2Uid == resource.data.player2Uid
-        && request.resource.data.player1Username == resource.data.player1Username
-        && request.resource.data.player2Username == resource.data.player2Username
-        && (
-          (!('spotId' in resource.data) && !('spotId' in request.resource.data))
-          || ('spotId' in resource.data && 'spotId' in request.resource.data
-              && request.resource.data.spotId == resource.data.spotId)
-        )
-        && (
-          (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
-          || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
-              && request.resource.data.trickCategory == resource.data.trickCategory)
-        )
-        // customRules pairs with trickCategory: set at creation, immutable
-        // thereafter (a mid-game rewrite of the agreed rules is not allowed).
-        && (
-          (!('customRules' in resource.data) && !('customRules' in request.resource.data))
-          || ('customRules' in resource.data && 'customRules' in request.resource.data
-              && request.resource.data.customRules == resource.data.customRules)
-        )
-        && request.resource.data.judgeId == resource.data.judgeId
-        && request.resource.data.judgeStatus == resource.data.judgeStatus
-        && request.resource.data.status == 'active'
-        && request.resource.data.phase == 'matching'
-        && request.resource.data.winner == null
-        && request.resource.data.currentSetter == resource.data.currentSetter
-        && request.resource.data.currentTurn == opponentUid(resource.data, resource.data.currentSetter)
-        && aboutOneDayAhead(request.resource.data.turnDeadline)
-        // turnHistory growth bound — this path typically leaves the
-        // history unchanged (no new turn was completed), but we still run
-        // the helper to enforce the absolute 200-entry ceiling and block
-        // any sneaky append.
-        && turnHistoryGrowthOk()
-        // This path does not finish a turn. History stays as stored.
-        && turnHistoryUnchanged()
-        && judgeUsernameUnchanged()
-        && statsAppliedUnchanged()
-        && createdAtUnchanged()
-        && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged();
 
       // A finished game stays until close-out has set statsApplied. Deleting
       // it first drops the loss. Account deletion uses the Admin SDK, which
