@@ -224,6 +224,8 @@ describe("what does not lock", () => {
     rollTo(run, z + LATE_LOCK + 3);
     expect(run.getState().status).toBe("playing");
     run.input("flip");
+    expect(run.getState().crashed).toBe(true);
+    run.step(0.2);
     expect(run.getState().status).toBe("gameover");
     expect(run.getState().onGrind).toBe(false);
     run.input("tap");

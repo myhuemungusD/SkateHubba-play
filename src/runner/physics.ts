@@ -1,34 +1,42 @@
 import {
   ANGULAR_DAMP,
   ANGULAR_SPRING,
+  AUTOLEVEL_SPRING,
+  BALANCE_ACTIVE_AFTER,
+  BALANCE_FREE,
+  BALANCE_K0,
   BALANCE_LIMIT,
+  BALANCE_NOISE,
+  BALANCE_REPEAT,
   BOUNCE,
   BOUNCE_STOP,
+  BOX_Y,
   CROOKED_PITCH,
   CROOKED_ROLL,
   CROOKED_YAW,
-  GRAVITY,
-  HANG_SCALE,
-  HANG_SPEED,
+  FALL_GRAVITY_SCALE,
+  FLICK_POP_MIN,
+  FLIP_COMPLETE,
   LAND_BAIL,
   LAND_CLEAN,
+  LAND_LEVEL_WINDOW,
   LAND_PERFECT,
   LANE_ACCEL,
   LANE_X,
+  LATE_LOCK,
   MAGNET_LEAD,
-  MAGNET_PULL,
+  MAGNET_SNAP,
   NOSE_PITCH,
   NOSE_ROLL,
   NOSE_YAW,
+  OLLIE_GRAVITY,
   PITCH_HOLD_DAMP,
   POP_HOLD,
   RAIL_Y,
-  BOX_Y,
   RIDE_PITCH,
   SQUASH_GAIN,
   SQUASH_MAX,
   SQUASH_RECOVER,
-  LATE_LOCK,
 } from "./tune";
 import type { Grade, RunnerState, Trick } from "./types";
 
@@ -45,6 +53,8 @@ export interface LandingSample {
   balance: number;
   popped: boolean;
   earlyPop: boolean;
+  /** 0..1. A trick that was not a flip is already complete. */
+  flipComplete: number;
 }
 
 export interface MotionResult {
@@ -65,22 +75,73 @@ export function landingAngle(sample: LandingSample): number {
   return Math.max(pitch, roll, yaw);
 }
 
+/** 1 is a short pop. 5 is the full ollie. */
+export function popScale(speed: number): number {
+  const score = Math.max(1, Math.min(5, speed));
+  return FLICK_POP_MIN + ((score - 1) / 4) * (1 - FLICK_POP_MIN);
+}
+
+/** Height and vertical speed of a pop at time t. Up uses g, down uses 1.6 g. */
+export function ollieArc(t: number, v0: number): { y: number; vy: number } {
+  const gUp = OLLIE_GRAVITY;
+  const apexAt = v0 / gUp;
+  if (t <= apexAt) {
+    return { y: v0 * t - 0.5 * gUp * t * t, vy: v0 - gUp * t };
+  }
+  const height = (v0 * v0) / (2 * gUp);
+  const fall = t - apexAt;
+  const gDown = gUp * FALL_GRAVITY_SCALE;
+  return { y: height - 0.5 * gDown * fall * fall, vy: -gDown * fall };
+}
+
+/** Seconds until the wheels meet the ground. Large when the board is still rising. */
+export function timeToGround(state: RunnerState): number {
+  if (state.y <= 0 && !state.airborne) return 0;
+  if (state.popV0 > 0) {
+    const gUp = OLLIE_GRAVITY;
+    const apexAt = state.popV0 / gUp;
+    const height = (state.popV0 * state.popV0) / (2 * gUp);
+    const gDown = gUp * FALL_GRAVITY_SCALE;
+    const total = apexAt + Math.sqrt((2 * height) / gDown);
+    return Math.max(0, total - state.popAge);
+  }
+  if (state.vy >= 0) return 1;
+  const g = OLLIE_GRAVITY * FALL_GRAVITY_SCALE;
+  const disc = state.vy * state.vy + 2 * g * Math.max(0, state.y);
+  return Math.max(0, (state.vy + Math.sqrt(disc)) / g);
+}
+
 /**
- * Perfect needs a late pop, a flat board, and a centered balance.
- * Sliding off the end can be clean. A wild angle or a dumped balance bails.
+ * Perfect needs a late pop, a flat board, a finished flip, and a centered balance.
+ * Sliding off the end is a clean exit. A wild angle or a dumped balance bails.
  */
 export function gradeTouchdown(sample: LandingSample): Grade | "bail" {
   const angle = landingAngle(sample);
   if (angle > LAND_BAIL || Math.abs(sample.balance) > BALANCE_LIMIT) return "bail";
-  if (sample.popped && !sample.earlyPop && angle <= LAND_PERFECT && Math.abs(sample.balance) <= 0.35) {
+  if (!sample.popped) return "clean";
+  const flipDone = sample.flipComplete >= FLIP_COMPLETE;
+  if (!sample.earlyPop && flipDone && angle <= LAND_PERFECT && Math.abs(sample.balance) <= 0.35) {
     return "perfect";
   }
   if (angle <= LAND_CLEAN && Math.abs(sample.balance) <= 0.6) return "clean";
   return "sketchy";
 }
 
-function spring(value: number, vel: number, target: number, dt: number): { value: number; vel: number } {
-  const accel = (target - value) * ANGULAR_SPRING - vel * ANGULAR_DAMP;
+/**
+ * Needle acceleration a = k·θ + noise. k grows with time on the rail and
+ * with each earlier grind in the combo. The first half-second is still.
+ */
+export function stepBalance(state: RunnerState, dt: number): void {
+  if (!state.onGrind || state.grindTime < BALANCE_FREE) return;
+  const repeats = Math.max(0, state.grinds - 1);
+  const k = BALANCE_K0 * (1 + BALANCE_REPEAT * repeats) * (1 + state.grindTime / BALANCE_ACTIVE_AFTER);
+  const accel = k * state.balance + state.balanceDrift * BALANCE_NOISE;
+  state.balanceVel += accel * dt;
+  state.balance += state.balanceVel * dt;
+}
+
+function spring(value: number, vel: number, target: number, dt: number, rate: number): { value: number; vel: number } {
+  const accel = (target - value) * rate - vel * ANGULAR_DAMP * (rate > ANGULAR_SPRING ? 1.6 : 1);
   const nextVel = vel + accel * dt;
   return { value: value + nextVel * dt, vel: nextVel };
 }
@@ -101,8 +162,8 @@ function featureHeight(state: RunnerState): number | null {
 
 /**
  * One physics slice. Mutates `state`.
- * Air is a parabola with hang near the apex. The lane change accelerates.
- * A grind pins the board and walks the balance. Landing squashes and can bounce.
+ * Air is a closed-form arc. The lane change accelerates.
+ * A grind pins the board. Landing squashes and can bounce.
  */
 export function integrateMotion(state: RunnerState, dt: number): MotionResult {
   if (state.squash > 0) state.squash = Math.max(0, state.squash - SQUASH_RECOVER * dt);
@@ -142,25 +203,27 @@ export function integrateMotion(state: RunnerState, dt: number): MotionResult {
     state.vy = 0;
     state.y = 0;
     state.pendingLanding = false;
-    const pitched = spring(state.pitch, state.pitchVel, 0.04, dt);
+    const pitched = spring(state.pitch, state.pitchVel, 0.04, dt, ANGULAR_SPRING);
     state.pitch = pitched.value;
     state.pitchVel = pitched.vel;
     return { touched: false };
   }
 
   state.popAge += dt;
-  if (state.airborne && state.popAge < POP_HOLD) {
+  const leveling = state.airborne && state.vy < 0 && timeToGround(state) <= LAND_LEVEL_WINDOW;
+  const springRate = leveling ? AUTOLEVEL_SPRING : ANGULAR_SPRING;
+  if (state.airborne && state.popAge < POP_HOLD && !leveling) {
     state.pitch += state.pitchVel * dt;
     state.pitchVel *= Math.max(0, 1 - PITCH_HOLD_DAMP * dt);
   } else {
-    const pitched = spring(state.pitch, state.pitchVel, RIDE_PITCH, dt);
+    const pitched = spring(state.pitch, state.pitchVel, RIDE_PITCH, dt, springRate);
     state.pitch = pitched.value;
     state.pitchVel = pitched.vel;
   }
-  const rolled = spring(state.roll, state.rollVel, 0, dt);
+  const rolled = spring(state.roll, state.rollVel, 0, dt, springRate);
   state.roll = rolled.value;
   state.rollVel = rolled.vel;
-  const yawed = spring(state.yaw, state.yawVel, 0, dt);
+  const yawed = spring(state.yaw, state.yawVel, 0, dt, springRate);
   state.yaw = yawed.value;
   state.yawVel = yawed.vel;
 
@@ -168,10 +231,29 @@ export function integrateMotion(state: RunnerState, dt: number): MotionResult {
   const magnet = featureHeight(state);
   if (!state.airborne) {
     state.vy = 0;
+    state.popV0 = 0;
     if (magnet === null) state.y = 0;
+  } else if (state.popV0 > 0) {
+    const sample = ollieArc(state.popAge, state.popV0);
+    state.y = sample.y;
+    state.vy = sample.vy;
+    if (sample.y <= 0 && state.popAge > dt) {
+      const impact = Math.max(0, -sample.vy);
+      state.popV0 = 0;
+      state.y = 0;
+      state.squash = Math.min(SQUASH_MAX, impact * SQUASH_GAIN);
+      const rebound = impact * BOUNCE;
+      if (rebound < BOUNCE_STOP) {
+        state.vy = 0;
+        state.airborne = false;
+      } else {
+        state.vy = rebound;
+        state.y = 0.001;
+      }
+      touched = true;
+    }
   } else {
-    const hang = Math.abs(state.vy) < HANG_SPEED;
-    state.vy -= (hang ? GRAVITY * HANG_SCALE : GRAVITY) * dt;
+    state.vy -= OLLIE_GRAVITY * FALL_GRAVITY_SCALE * dt;
     state.y += state.vy * dt;
     if (state.y <= 0) {
       const impact = Math.max(0, -state.vy);
@@ -189,7 +271,7 @@ export function integrateMotion(state: RunnerState, dt: number): MotionResult {
   }
 
   if (magnet !== null && !touched) {
-    const pull = Math.min(1, MAGNET_PULL * dt);
+    const pull = Math.min(1, dt / MAGNET_SNAP);
     state.y += (magnet - state.y) * pull;
     state.x += (target - state.x) * pull;
   }

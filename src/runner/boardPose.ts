@@ -1,4 +1,4 @@
-import { FLIP_DURATION } from "./constants";
+import { FLIP_DELAY, FLIP_DURATION, FLIP_LOCK_BLEND } from "./constants";
 import { trickAngles } from "./physics";
 import type { RunnerState } from "./types";
 
@@ -33,17 +33,28 @@ export interface BoardPose {
   spin: number;
 }
 
+function easeOut(t: number): number {
+  const u = Math.min(1, Math.max(0, t));
+  return 1 - (1 - u) ** 3;
+}
+
+/** One roll around the board's length. It waits out the pop, then eases off. */
+export function flipSpin(flip: number): number {
+  if (flip <= FLIP_DELAY) return 0;
+  return easeOut((flip - FLIP_DELAY) / (FLIP_DURATION - FLIP_DELAY));
+}
+
 export function boardPose(state: RunnerState): BoardPose {
-  if (state.status === "gameover") {
+  if (state.status === "gameover" || state.crashed) {
     return { pitch: 0.8, yaw: 0.4, roll: 1.2, y: 0.05, spin: 0 };
   }
   if (state.onGrind && state.grindTrick) {
     const angles = trickAngles(state.grindTrick);
-    return { ...angles, y: state.y, spin: 0 };
+    const spin = state.flipBlend > 0 ? flipSpin(state.flip) * (state.flipBlend / FLIP_LOCK_BLEND) : 0;
+    return { ...angles, y: state.y, spin };
   }
   if (state.flip >= 0) {
-    const spin = Math.min(1, state.flip / FLIP_DURATION);
-    return { pitch: state.pitch, yaw: state.yaw, roll: state.roll, y: state.y, spin };
+    return { pitch: state.pitch, yaw: state.yaw, roll: state.roll, y: state.y, spin: flipSpin(state.flip) };
   }
   if (state.duck >= 0) {
     return { pitch: 0.04, yaw: 0.85, roll: -0.18, y: 0, spin: 0 };

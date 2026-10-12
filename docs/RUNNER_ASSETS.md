@@ -53,6 +53,8 @@ Bricks060 is a clean brick wall. It is not a graffiti texture.
 
 The pop, grind, and land one-shots in `sfx/` were generated for Skate Runner and released [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). They are not a third-party recording.
 
+Three Freesound files were checked before this pass and not shipped. Each page's license link is [CC0 1.0](http://creativecommons.org/publicdomain/zero/1.0/): [Skateboard_Grinds.wav](https://freesound.org/people/BlackNeon1234/sounds/348326/) (2.7 MB, 24-bit stereo), [skateboard ollie](https://freesound.org/people/nolimitkid/sounds/515229/) (CC0, confirmed on the sound page and in pack 28982), and [Skateboarding Rail Slide](https://freesound.org/people/C-V/sounds/845524/) (2.2 MB, 24-bit stereo). The long takes would sit in the lazy runner chunk. The short generated one-shots stay. Pop and land pitch still wander by ±5%.
+
 The HDRI is Poly Haven `sunset_jhbcentral`, 1k HDR. License: [CC0](https://polyhaven.com/license).
 
 - Asset page: https://polyhaven.com/a/sunset_jhbcentral

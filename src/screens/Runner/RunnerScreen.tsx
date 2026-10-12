@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createRunnerController, type RunnerController } from "../../runner/controller";
 import { bindRunnerTouch, createGestureRecognizer } from "../../runner/gestures";
+import { FLICK_SENSITIVITY } from "../../runner/tune";
 import { actionForKey, isTypingTarget } from "../../runner/keyboard";
 import { preloadRunnerSfx } from "../../runner/sfx";
 import { canUseWebGL, frameDelta, noteFps, type FpsBucket } from "../../runner/webgl";
@@ -28,6 +29,8 @@ export function RunnerScreen({ controller: injected }: Props = {}) {
   const hud = useSyncExternalStore(controller.subscribe, controller.getHud, controller.getHud);
   const rootRef = useRef<HTMLDivElement>(null);
   const fpsRef = useRef<HTMLSpanElement>(null);
+  const gesture = useRef(createGestureRecognizer());
+  const [sensitivity, setSensitivity] = useState(FLICK_SENSITIVITY);
 
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -42,9 +45,9 @@ export function RunnerScreen({ controller: injected }: Props = {}) {
     if (!el) return;
     return bindRunnerTouch(
       el,
-      createGestureRecognizer(),
-      (action) => {
-        controller.input(action);
+      gesture.current,
+      (action, grade) => {
+        controller.input(action, grade);
       },
       (lean) => {
         controller.setLean(lean);
@@ -145,6 +148,12 @@ export function RunnerScreen({ controller: injected }: Props = {}) {
         onPause={() => controller.pause()}
         onResume={() => controller.resume()}
         onRestart={() => controller.restart()}
+        sensitivity={sensitivity}
+        onToggleControl={() => controller.setStreamlined(!controller.isStreamlined())}
+        onSensitivity={(value) => {
+          setSensitivity(value);
+          gesture.current.setSensitivity(value);
+        }}
       />
     </div>
   );

@@ -139,6 +139,12 @@ describe("RunnerScreen", () => {
     expect(screen.getByRole("link", { name: LOW_RAIL_AUTHOR_PAGE })).toHaveAttribute("href", LOW_RAIL_AUTHOR_PAGE);
     expect(screen.getByRole("link", { name: SKATEPARK_PAGE })).toHaveAttribute("href", SKATEPARK_PAGE);
     expect(screen.getByRole("link", { name: SKATEPARK_AUTHOR_PAGE })).toHaveAttribute("href", SKATEPARK_AUTHOR_PAGE);
+    expect(screen.getByTestId("runner-control-mode")).toHaveTextContent("Classic tricks");
+    await user.click(screen.getByTestId("runner-control-mode"));
+    expect(controller.isStreamlined()).toBe(true);
+    expect(screen.getByTestId("runner-control-mode")).toHaveTextContent("Easy flicks");
+    fireEvent.change(screen.getByLabelText("Flick sensitivity"), { target: { value: "80" } });
+    expect(screen.getByLabelText("Flick sensitivity")).toHaveValue("80");
 
     await user.click(screen.getByRole("button", { name: "Resume" }));
     expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
@@ -196,6 +202,9 @@ describe("RunnerScreen", () => {
     });
     expect(crashed.getState().distance).toBeGreaterThan(1 + LATE_LOCK);
     fireEvent.keyDown(window, { key: "f" });
+    act(() => {
+      crashed.step(0.2);
+    });
     expect(screen.getByRole("dialog", { name: "Game over" })).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "Escape" });
     expect(crashed.getState().status).toBe("gameover");

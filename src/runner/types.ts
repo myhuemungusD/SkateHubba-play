@@ -19,8 +19,14 @@ export type Grade = "perfect" | "clean" | "sketchy";
  */
 export type Action = "left" | "right" | "duck" | "tap" | "flip";
 
-/** Pop, lock, landing, and powerslide buzz. A bail stays silent. */
+/** Pop, lock, landing, powerslide, and bail each have a buzz. */
 export type RunnerEvent = "powerslide" | "pop" | "lock" | "land" | "bail";
+
+/** Flick-It style scores. 1 is a mushy gesture, 5 is straight and fast. */
+export interface FlickGrade {
+  accuracy: number;
+  speed: number;
+}
 
 export interface Obstacle {
   id: number;
@@ -66,7 +72,24 @@ export interface RunnerState {
   balance: number;
   /** +1 drifts toward the right. -1 drifts toward the left. */
   balanceDrift: number;
+  /** Acceleration of the balance needle. */
+  balanceVel: number;
   airborne: boolean;
+  /** Launch speed of the current pop. 0 on the ground. The arc is closed-form from this. */
+  popV0: number;
+  /** 1–5 from the gesture that popped. Keyboard input is a 5. */
+  flickSpeed: number;
+  flickAccuracy: number;
+  /** The flick's leftover roll has already been applied. */
+  flipSlopApplied: boolean;
+  /** Seconds of kickflip still showing after a lock. */
+  flipBlend: number;
+  /** The player pressed land inside the timing window. */
+  timedLand: boolean;
+  /** Seconds after a slide-off where a tap still counts as the pop. */
+  exitCoyote: number;
+  /** A crash freeze is running. The run ends when it does. */
+  crashed: boolean;
   /** Seconds since the last pop. The nose stays up for a short hold. */
   popAge: number;
   /** The player tapped off the feature, instead of sliding off the end. */

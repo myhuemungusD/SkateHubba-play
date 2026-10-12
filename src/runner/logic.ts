@@ -1,24 +1,30 @@
 import {
   ARM_RANGE,
-  BALANCE_DRIFT,
-  BALANCE_GRACE,
+  BALANCE_ACTIVE_AFTER,
   BALANCE_LIMIT,
   BALANCE_NUDGE,
-  BALANCE_RAMP,
   BASE_SPEED,
   BOX_LENGTH,
   BOX_Y,
+  COYOTE_TIME,
   DOUBLE_TAP,
   DUCK_DURATION,
   EXIT_EARLY,
   EXIT_POP,
   FIRST_ROW_Z,
   FLIP_DURATION,
+  FLIP_COMPLETE,
+  FLIP_LOCK_BLEND,
+  FLIP_SLOP,
   GOOD_MAX,
   GRIND_DRAG,
   GRIND_MIN_SPEED,
   HIT_STOP,
+  HIT_STOP_BAIL,
+  HIT_STOP_MAX,
   HIT_STOP_PERFECT,
+  LAND_PRESS_BOOST,
+  LAND_PRESS_WINDOW,
   LANDING_BONUS,
   LANE_X,
   LANES,
@@ -28,6 +34,7 @@ import {
   MAX_SPEED,
   MISS_LIMIT,
   OLLIE_POP,
+  POWERSLIDE_SHED,
   PERFECT_MAX,
   PERFECT_MIN,
   POP_NOSE,
@@ -38,14 +45,28 @@ import {
   SPAWN_AHEAD,
   SPEED_RAMP,
   TRICK_NAMES,
+  TRICK_BUFFER,
   TRICK_POINTS,
   TRICK_POWERSLIDE,
   coyoteDistance,
   multiplierFor,
 } from "./constants";
-import { gradeTouchdown, integrateMotion } from "./physics";
+import { gradeTouchdown, integrateMotion, popScale, stepBalance, timeToGround } from "./physics";
 import { nextUnit } from "./rng";
-import type { Action, Grade, Lane, Obstacle, ObstacleKind, RunnerEvent, RunnerState, Tick, Trick } from "./types";
+import type {
+  Action,
+  FlickGrade,
+  Grade,
+  Lane,
+  Obstacle,
+  ObstacleKind,
+  RunnerEvent,
+  RunnerState,
+  Tick,
+  Trick,
+} from "./types";
+
+const FULL_FLICK: FlickGrade = { accuracy: 5, speed: 5 };
 
 export interface CreateRunOptions {
   seed?: number;
@@ -96,7 +117,16 @@ export function createRun(options: CreateRunOptions = {}): RunnerState {
     squash: 0,
     balance: 0,
     balanceDrift: seed % 2 === 0 ? -1 : 1,
+    balanceVel: 0,
     airborne: false,
+    popV0: 0,
+    flickSpeed: 5,
+    flickAccuracy: 5,
+    flipSlopApplied: false,
+    flipBlend: 0,
+    timedLand: false,
+    exitCoyote: 0,
+    crashed: false,
     popAge: 0,
     popped: false,
     earlyPop: false,
@@ -129,16 +159,21 @@ export function createRun(options: CreateRunOptions = {}): RunnerState {
   };
 }
 
-function popBoard(state: RunnerState, trick: Trick): void {
+function popBoard(state: RunnerState, trick: Trick, flick: FlickGrade): void {
+  const scale = popScale(flick.speed);
   state.airborne = true;
-  state.vy = trick === "kickflip" ? OLLIE_POP * 0.94 : OLLIE_POP;
+  state.popV0 = (trick === "kickflip" ? OLLIE_POP * 0.94 : OLLIE_POP) * scale;
+  state.vy = state.popV0;
+  state.flickSpeed = flick.speed;
+  state.flickAccuracy = flick.accuracy;
+  state.flipSlopApplied = false;
   state.pitchVel = POP_NOSE;
   state.popAge = 0;
   state.squash = 0;
   if (trick === "kickflip") state.rollVel = 2.4;
 }
 
-function commit(prev: RunnerState, trick: Trick): Tick {
+function commit(prev: RunnerState, trick: Trick, flick: FlickGrade): Tick {
   const state: RunnerState = {
     ...prev,
     armed: trick,
@@ -146,39 +181,44 @@ function commit(prev: RunnerState, trick: Trick): Tick {
     armAge: trick === "nose" ? prev.armAge : 0,
     duck: -1,
     flip: trick === "kickflip" ? 0 : -1,
+    flickSpeed: flick.speed,
+    flickAccuracy: flick.accuracy,
   };
   const events: RunnerEvent[] = [];
   if (!prev.airborne && prev.duck < 0 && !prev.onGrind) {
-    popBoard(state, trick);
+    popBoard(state, trick, flick);
     events.push("pop");
   } else if (trick === "kickflip" && !prev.onGrind) {
     state.rollVel = 2.4;
     state.flip = 0;
+    state.flipSlopApplied = false;
     events.push("pop");
   }
   return { state, events };
 }
 
-function bail(prev: RunnerState): Tick {
+/** Freeze, then the next steps end the run. The picture holds for the crash. */
+function crash(prev: RunnerState): Tick {
   return {
     state: {
       ...prev,
-      status: "gameover",
+      crashed: true,
+      hitStop: Math.min(HIT_STOP_MAX, HIT_STOP_BAIL),
       onGrind: false,
       grindId: null,
       grindTrick: null,
       armed: null,
       flip: -1,
+      flipBlend: 0,
       duck: -1,
       trickName: null,
       trickTime: 0,
       grade: null,
       popup: 0,
-      y: 0,
       vy: 0,
       airborne: false,
       pendingLanding: false,
-      hitStop: 0,
+      score: Math.floor(prev.distance) + prev.trickPoints,
     },
     events: ["bail"],
   };
@@ -201,7 +241,7 @@ function slamming(state: RunnerState): boolean {
 function nudge(prev: RunnerState, direction: "left" | "right"): Tick {
   const delta = direction === "left" ? -BALANCE_NUDGE : BALANCE_NUDGE;
   const balance = Math.max(-1.4, Math.min(1.4, prev.balance + delta));
-  return { state: { ...prev, balance }, events: [] };
+  return { state: { ...prev, balance, balanceVel: prev.balanceVel * 0.35 }, events: [] };
 }
 
 /** Tap during a grind pops off. A pop in the first half cannot land perfect. */
@@ -219,18 +259,20 @@ function popOff(prev: RunnerState): Tick {
       popped: true,
       earlyPop: early,
       vy: EXIT_POP,
+      popV0: EXIT_POP,
       y: prev.y + 0.02,
       popAge: 0,
       pitchVel: POP_NOSE,
       grindTime: 0,
       hitStop: 0,
+      exitCoyote: 0,
     },
     events: ["pop"],
   };
 }
 
-export function applyAction(prev: RunnerState, action: Action): Tick {
-  if (prev.status !== "playing") return { state: prev, events: [] };
+export function applyAction(prev: RunnerState, action: Action, flick: FlickGrade = FULL_FLICK): Tick {
+  if (prev.status !== "playing" || prev.crashed) return { state: prev, events: [] };
   switch (action) {
     case "left":
     case "right": {
@@ -239,18 +281,27 @@ export function applyAction(prev: RunnerState, action: Action): Tick {
       if (lane === prev.lane) return { state: prev, events: [] };
       return { state: { ...prev, lane }, events: [] };
     }
-    case "tap": {
-      if (prev.hitStop > 0) return { state: prev, events: [] };
-      if (prev.onGrind) return popOff(prev);
-      if (slamming(prev)) return bail(prev);
-      if (prev.armed === "crooked" && prev.armAge <= DOUBLE_TAP) return commit(prev, "nose");
-      return commit(prev, "crooked");
-    }
+    case "tap":
     case "flip": {
       if (prev.hitStop > 0) return { state: prev, events: [] };
       if (prev.onGrind) return popOff(prev);
-      if (slamming(prev)) return bail(prev);
-      return commit(prev, "kickflip");
+      if (prev.pendingLanding && prev.airborne && (timeToGround(prev) <= TRICK_BUFFER || prev.exitCoyote > 0)) {
+        const eta = timeToGround(prev);
+        return {
+          state: {
+            ...prev,
+            timedLand: eta <= LAND_PRESS_WINDOW,
+            popped: true,
+            earlyPop: prev.exitCoyote > 0 ? false : prev.earlyPop,
+          },
+          events: [],
+        };
+      }
+      if (slamming(prev)) return crash(prev);
+      if (action === "tap" && prev.armed === "crooked" && prev.armAge <= DOUBLE_TAP) {
+        return commit(prev, "nose", flick);
+      }
+      return commit(prev, action === "flip" ? "kickflip" : "crooked", flick);
     }
     case "duck": {
       if (prev.onGrind || prev.duck >= 0) return { state: prev, events: [] };
@@ -263,8 +314,10 @@ export function applyAction(prev: RunnerState, action: Action): Tick {
           flip: -1,
           airborne: false,
           vy: 0,
+          popV0: 0,
           y: 0,
           pendingLanding: false,
+          speed: Math.max(GRIND_MIN_SPEED, prev.speed * (1 - POWERSLIDE_SHED)),
           trickName: showSlide ? TRICK_POWERSLIDE : prev.trickName,
           trickTime: showSlide ? 0.55 : prev.trickTime,
         },
@@ -282,7 +335,7 @@ export function applyAction(prev: RunnerState, action: Action): Tick {
 export function applyLean(prev: RunnerState, lean: number, dt: number): RunnerState {
   if (!prev.onGrind || lean === 0 || dt <= 0) return prev;
   const balance = Math.max(-1.4, Math.min(1.4, prev.balance + lean * LEAN_RATE * dt));
-  return { ...prev, balance };
+  return { ...prev, balance, balanceVel: prev.balanceVel * 0.35 };
 }
 
 function take(state: RunnerState): number {
@@ -371,10 +424,13 @@ function tryLock(state: RunnerState, prevDistance: number, events: RunnerEvent[]
     state.pendingLanding = false;
     state.squash = 0;
     state.balance = 0;
+    state.balanceVel = 0;
+    state.popV0 = 0;
     state.armed = null;
-    state.flip = -1;
+    state.flipBlend = state.flip >= 0 ? FLIP_LOCK_BLEND : 0;
+    if (state.flipBlend === 0) state.flip = -1;
     state.duck = -1;
-    state.hitStop = grade === "perfect" ? HIT_STOP_PERFECT : HIT_STOP;
+    state.hitStop = Math.min(HIT_STOP_MAX, HIT_STOP);
     award(state, trick, grade);
     events.push("lock");
     return;
@@ -398,28 +454,28 @@ function followGrind(state: RunnerState): void {
   state.popped = false;
   state.earlyPop = false;
   state.vy = EXIT_POP * 0.82;
+  state.popV0 = EXIT_POP * 0.82;
   state.y += 0.02;
   state.popAge = 0;
   state.pitchVel = POP_NOSE * 0.65;
+  state.exitCoyote = COYOTE_TIME;
+}
+
+function flipProgress(state: RunnerState): number {
+  if (state.flip < 0) return 1;
+  return Math.min(1, state.flip / FLIP_DURATION);
 }
 
 function payLanding(state: RunnerState, events: RunnerEvent[]): void {
-  const grade = gradeTouchdown(state);
+  const pressed = state.timedLand;
+  let grade = gradeTouchdown({ ...state, flipComplete: flipProgress(state) });
+  if (pressed && grade === "clean" && flipProgress(state) >= FLIP_COMPLETE) grade = "perfect";
   state.pendingLanding = false;
+  state.timedLand = false;
+  state.exitCoyote = 0;
   if (grade === "bail") {
-    const fallen = bail(state);
-    state.status = fallen.state.status;
-    state.onGrind = false;
-    state.grindId = null;
-    state.armed = null;
-    state.flip = -1;
-    state.trickName = null;
-    state.trickTime = 0;
-    state.grade = null;
-    state.popup = 0;
-    state.y = 0;
-    state.vy = 0;
-    state.airborne = false;
+    const fallen = crash(state);
+    Object.assign(state, fallen.state);
     events.push("bail");
     return;
   }
@@ -428,6 +484,8 @@ function payLanding(state: RunnerState, events: RunnerEvent[]): void {
   state.popup = points;
   state.grade = grade;
   state.trickTime = 1.15;
+  if (grade === "perfect") state.hitStop = Math.min(HIT_STOP_MAX, HIT_STOP_PERFECT);
+  if (pressed) state.speed = Math.min(MAX_SPEED, state.speed + LAND_PRESS_BOOST);
   events.push("land");
 }
 
@@ -440,7 +498,7 @@ function resolvePasses(state: RunnerState, events: RunnerEvent[]): void {
     state.combo = 0;
     state.misses += 1;
     if (state.misses >= MISS_LIMIT) {
-      const fallen = bail(state);
+      const fallen = crash(state);
       Object.assign(state, fallen.state);
       events.push("bail");
       return;
@@ -463,6 +521,15 @@ export function stepRun(prev: RunnerState, dt: number): Tick {
   };
   const events: RunnerEvent[] = [];
 
+  if (state.crashed) {
+    state.hitStop -= slice;
+    if (state.hitStop <= 0) {
+      state.hitStop = 0;
+      state.status = "gameover";
+    }
+    return { state, events };
+  }
+
   if (state.hitStop > 0) {
     const used = Math.min(state.hitStop, slice);
     state.hitStop -= used;
@@ -477,6 +544,11 @@ export function stepRun(prev: RunnerState, dt: number): Tick {
   if (state.flip >= 0 && state.flip < FLIP_DURATION) {
     state.flip = Math.min(FLIP_DURATION, state.flip + slice);
   }
+  if (state.flipBlend > 0) {
+    state.flipBlend = Math.max(0, state.flipBlend - slice);
+    if (state.flipBlend === 0) state.flip = -1;
+  }
+  if (state.exitCoyote > 0) state.exitCoyote = Math.max(0, state.exitCoyote - slice);
   if (state.armed) state.armAge += slice;
   if (state.onGrind) state.grindTime += slice;
 
@@ -486,14 +558,17 @@ export function stepRun(prev: RunnerState, dt: number): Tick {
   state.speed = Math.min(MAX_SPEED, state.speed + SPEED_RAMP * slice);
 
   const motion = integrateMotion(state, slice);
+  if (state.airborne && !state.onGrind && state.flip >= FLIP_DURATION && !state.flipSlopApplied) {
+    state.roll += (1 - Math.max(1, Math.min(5, state.flickAccuracy)) / 5) * FLIP_SLOP;
+    state.flipSlopApplied = true;
+  }
+
   if (state.onGrind) {
     state.speed = Math.max(GRIND_MIN_SPEED, state.speed - GRIND_DRAG * slice);
-    const rate = BALANCE_DRIFT * (1 + state.elapsed * BALANCE_RAMP);
-    state.balance += state.balanceDrift * rate * slice;
+    stepBalance(state, slice);
     followGrind(state);
-    if (state.onGrind && state.grindTime > BALANCE_GRACE && Math.abs(state.balance) > BALANCE_LIMIT) {
-      state.score = Math.floor(state.distance) + state.trickPoints;
-      return bail(state);
+    if (state.onGrind && state.grindTime > BALANCE_ACTIVE_AFTER && Math.abs(state.balance) > BALANCE_LIMIT) {
+      return crash(state);
     }
   } else {
     tryLock(state, prevDistance, events);
@@ -501,12 +576,15 @@ export function stepRun(prev: RunnerState, dt: number): Tick {
       state.armed = null;
       state.flip = -1;
     }
-    if (motion.touched && state.pendingLanding && state.status === "playing") {
+    if (motion.touched && state.pendingLanding && !state.crashed) {
       payLanding(state, events);
     }
   }
 
+  if (state.crashed) return { state, events };
+
   if (state.status === "playing") resolvePasses(state, events);
+  if (state.crashed) return { state, events };
 
   if (state.status === "playing") {
     spawnAhead(state);

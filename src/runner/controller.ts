@@ -1,10 +1,12 @@
 import { boardPose } from "./boardPose";
-import { FIXED_DT, INPUT_BUFFER, multiplierFor } from "./constants";
+import { FIXED_DT, GRIND_PULSE, INPUT_BUFFER, LANE_X, multiplierFor } from "./constants";
 import { loadBest, noteSample, saveBest, type GhostSample, type PersonalBest } from "./ghost";
-import { playRunnerHaptic } from "./haptics";
+import { playRunnerHaptic, pulseGrindHaptic } from "./haptics";
 import { applyAction, applyLean, createRun, stepRun, type CreateRunOptions } from "./logic";
 import { playRunnerSfx } from "./sfx";
-import type { Action, Grade, Lane, RunnerEvent, RunnerState, RunnerStatus, Trick } from "./types";
+import type { Action, FlickGrade, Grade, Lane, RunnerEvent, RunnerState, RunnerStatus, Trick } from "./types";
+
+const FULL_FLICK: FlickGrade = { accuracy: 5, speed: 5 };
 
 export interface HudSnapshot {
   status: RunnerStatus;
@@ -23,6 +25,7 @@ export interface HudSnapshot {
   balance: number;
   best: number;
   isNewBest: boolean;
+  streamlined: boolean;
 }
 
 export interface RenderFrame {
@@ -43,7 +46,9 @@ export interface RunnerController {
   getRenderFrame: () => RenderFrame;
   getGhost: () => readonly GhostSample[];
   subscribe: (listener: () => void) => () => void;
-  input: (action: Action) => void;
+  input: (action: Action, flick?: FlickGrade) => void;
+  setStreamlined: (streamlined: boolean) => void;
+  isStreamlined: () => boolean;
   /** -1..1 while a finger or key is held. Zero clears it. */
   setLean: (lean: number) => void;
   step: (dt: number) => void;
@@ -74,7 +79,7 @@ function announceFor(state: RunnerState): string {
   return laneName(state.lane);
 }
 
-function toHud(state: RunnerState, best: number, isNewBest: boolean): HudSnapshot {
+function toHud(state: RunnerState, best: number, isNewBest: boolean, streamlined: boolean): HudSnapshot {
   return {
     status: state.status,
     score: state.score,
@@ -92,6 +97,7 @@ function toHud(state: RunnerState, best: number, isNewBest: boolean): HudSnapsho
     balance: Math.round(state.balance * 20) / 20,
     best,
     isNewBest,
+    streamlined,
   };
 }
 
@@ -112,7 +118,8 @@ function sameHud(a: HudSnapshot, b: HudSnapshot): boolean {
     a.onGrind === b.onGrind &&
     a.balance === b.balance &&
     a.best === b.best &&
-    a.isNewBest === b.isNewBest
+    a.isNewBest === b.isNewBest &&
+    a.streamlined === b.streamlined
   );
 }
 
@@ -146,9 +153,9 @@ function mixFrame(from: RenderFrame, to: RenderFrame, alpha: number): RenderFram
   };
 }
 
-function buzz(events: RunnerEvent[]): void {
+function buzz(events: RunnerEvent[], grade: Grade | null): void {
   for (const event of events) {
-    playRunnerHaptic(event);
+    playRunnerHaptic(event, event === "land" ? grade : null);
     playRunnerSfx(event);
   }
 }
@@ -158,10 +165,13 @@ export function createRunnerController(options: CreateRunOptions = {}): RunnerCo
   let state = createRun({ ...options, seed });
   let best: PersonalBest = loadBest();
   let isNewBest = false;
-  let hud = toHud(state, best.score, isNewBest);
+  let streamlined = false;
+  let hud = toHud(state, best.score, isNewBest, streamlined);
   let accumulator = 0;
   let lean = 0;
-  let queued: { action: Action; left: number } | null = null;
+  let lanePending: "left" | "right" | null = null;
+  let nextGrindPulse = 0;
+  let queued: { action: Action; flick: FlickGrade; left: number } | null = null;
   let previous = frameFrom(state);
   let current = previous;
   let render = current;
@@ -169,7 +179,7 @@ export function createRunnerController(options: CreateRunOptions = {}): RunnerCo
   const listeners = new Set<() => void>();
 
   const publish = (force = false): void => {
-    const next = toHud(state, best.score, isNewBest);
+    const next = toHud(state, best.score, isNewBest, streamlined);
     if (!force && sameHud(next, hud)) return;
     hud = next;
     for (const listener of listeners) listener();
@@ -189,7 +199,7 @@ export function createRunnerController(options: CreateRunOptions = {}): RunnerCo
   const consumeQueue = (events: RunnerEvent[]): void => {
     if (!queued || state.status !== "playing") return;
     queued.left -= FIXED_DT;
-    const tick = applyAction(state, queued.action);
+    const tick = applyAction(state, queued.action, queued.flick);
     if (tick.state !== state) {
       state = tick.state.hasInput ? tick.state : { ...tick.state, hasInput: true };
       events.push(...tick.events);
@@ -208,19 +218,44 @@ export function createRunnerController(options: CreateRunOptions = {}): RunnerCo
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    input: (action) => {
-      const tick = applyAction(state, action);
-      if (tick.state === state && state.status === "playing" && (action === "tap" || action === "flip")) {
-        queued = { action, left: INPUT_BUFFER };
+    input: (action, flick) => {
+      let nextAction = action;
+      let nextFlick = flick ?? FULL_FLICK;
+      if (streamlined && !state.onGrind && (action === "tap" || action === "flip")) {
+        nextAction = "flip";
+        nextFlick = FULL_FLICK;
+      }
+      if (
+        (nextAction === "left" || nextAction === "right") &&
+        !state.onGrind &&
+        (Math.abs(state.x - LANE_X[state.lane]) > 0.02 || lanePending !== null)
+      ) {
+        lanePending = nextAction;
+        return;
+      }
+      const tick = applyAction(state, nextAction, nextFlick);
+      if (
+        tick.state === state &&
+        state.status === "playing" &&
+        !state.crashed &&
+        (nextAction === "tap" || nextAction === "flip")
+      ) {
+        queued = { action: nextAction, flick: nextFlick, left: INPUT_BUFFER };
         return;
       }
       queued = null;
       const wasPlaying = state.status === "playing";
       state = tick.state.hasInput ? tick.state : { ...tick.state, hasInput: true };
       if (wasPlaying && state.status === "gameover") commitBest();
-      buzz(tick.events);
+      if (tick.events.includes("lock")) nextGrindPulse = state.elapsed + GRIND_PULSE;
+      buzz(tick.events, state.grade);
       publish();
     },
+    setStreamlined: (next) => {
+      streamlined = next;
+      publish(true);
+    },
+    isStreamlined: () => streamlined,
     setLean: (next) => {
       lean = Math.max(-1, Math.min(1, next));
     },
@@ -238,6 +273,15 @@ export function createRunnerController(options: CreateRunOptions = {}): RunnerCo
         accumulator -= FIXED_DT;
         previous = current;
         const was = state.status;
+        if (lanePending && !state.onGrind && Math.abs(state.x - LANE_X[state.lane]) <= 0.02) {
+          const pending = lanePending;
+          lanePending = null;
+          const laneTick = applyAction(state, pending);
+          if (laneTick.state !== state) {
+            state = laneTick.state.hasInput ? laneTick.state : { ...laneTick.state, hasInput: true };
+            events.push(...laneTick.events);
+          }
+        }
         consumeQueue(events);
         if (lean !== 0 && state.onGrind) state = applyLean(state, lean, FIXED_DT);
         const tick = stepRun(state, FIXED_DT);
@@ -246,11 +290,16 @@ export function createRunnerController(options: CreateRunOptions = {}): RunnerCo
         current = frameFrom(state);
         noteSample(trail, state.distance, state.x, state.y);
         if (was === "playing" && state.status === "gameover") commitBest();
+        if (tick.events.includes("lock")) nextGrindPulse = state.elapsed + GRIND_PULSE;
+        if (state.onGrind && state.elapsed >= nextGrindPulse) {
+          pulseGrindHaptic();
+          nextGrindPulse = state.elapsed + GRIND_PULSE;
+        }
         if (tick.events.includes("bail")) break;
       }
       const alpha = accumulator <= 0 ? 0 : Math.min(1, accumulator / FIXED_DT);
       render = mixFrame(previous, current, alpha);
-      buzz(events);
+      buzz(events, state.grade);
       publish();
     },
     pause: () => {
@@ -270,6 +319,8 @@ export function createRunnerController(options: CreateRunOptions = {}): RunnerCo
       accumulator = 0;
       lean = 0;
       queued = null;
+      lanePending = null;
+      nextGrindPulse = 0;
       isNewBest = false;
       trail.length = 0;
       previous = frameFrom(state);

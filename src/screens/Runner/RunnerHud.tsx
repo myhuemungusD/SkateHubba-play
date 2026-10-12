@@ -35,6 +35,9 @@ interface Props {
   onPause: () => void;
   onResume: () => void;
   onRestart: () => void;
+  sensitivity: number;
+  onToggleControl: () => void;
+  onSensitivity: (value: number) => void;
 }
 
 const BTN =
@@ -68,7 +71,16 @@ function CreditParagraph({ text }: { text: string }) {
   );
 }
 
-export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) {
+export function RunnerHud({
+  hud,
+  fpsRef,
+  onPause,
+  onResume,
+  onRestart,
+  sensitivity,
+  onToggleControl,
+  onSensitivity,
+}: Props) {
   const restartRef = useRef<HTMLButtonElement>(null);
   const playRef = useRef<HTMLButtonElement>(null);
 
@@ -202,6 +214,27 @@ export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) 
             >
               {resumeLabel}
             </button>
+            <button
+              type="button"
+              data-testid="runner-control-mode"
+              className={`${BTN} mt-2 w-full bg-white/10 text-white`}
+              onClick={onToggleControl}
+            >
+              {hud.streamlined ? "Easy flicks" : "Classic tricks"}
+            </button>
+            <label className="mt-3 block text-left font-body text-xs text-white/60">
+              Flick sensitivity {sensitivity}
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={sensitivity}
+                aria-label="Flick sensitivity"
+                className="mt-1 w-full accent-[#f2c14a]"
+                onChange={(event) => onSensitivity(Number(event.target.value))}
+              />
+            </label>
             <div data-testid="runner-credit" className="mt-4 max-h-40 space-y-2 overflow-y-auto text-left">
               <CreditParagraph text={SKATEBOARD_01_CREDIT} />
               <CreditParagraph text={LOW_RAIL_CREDIT} />

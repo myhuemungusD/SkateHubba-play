@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bindRunnerTouch, createGestureRecognizer, EDGE_DEAD_ZONE_PX } from "../gestures";
+import { bindRunnerTouch, createGestureRecognizer, EDGE_DEAD_ZONE_PX, gradeFlick } from "../gestures";
 
 function touchEvent(type: string, x: number, y: number): Event {
   const event = new Event(type, { bubbles: true, cancelable: true });
@@ -81,5 +81,19 @@ describe("swipe recognition", () => {
     el.dispatchEvent(touchEvent("touchstart", 200, 200));
     el.dispatchEvent(touchEvent("touchmove", 200, 100));
     expect(actions).toEqual(["flip", "tap"]);
+  });
+
+  it("scores a straight fast flick higher than a diagonal crawl", () => {
+    const straight = gradeFlick([
+      { x: 0, y: 0, t: 0 },
+      { x: 0, y: -40, t: 20 },
+    ]);
+    const mushy = gradeFlick([
+      { x: 0, y: 0, t: 0 },
+      { x: 12, y: -12, t: 200 },
+    ]);
+    expect(straight.accuracy).toBe(5);
+    expect(straight.speed).toBeGreaterThan(mushy.speed);
+    expect(mushy.accuracy).toBeLessThan(straight.accuracy);
   });
 });

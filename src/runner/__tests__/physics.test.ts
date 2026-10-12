@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { createRunnerController } from "../controller";
 import { loadBest } from "../ghost";
 import { applyAction, createRun, stepRun } from "../logic";
-import { gradeTouchdown } from "../physics";
+import { gradeTouchdown, ollieArc, popScale } from "../physics";
 import { playRunnerSfx, preloadRunnerSfx } from "../sfx";
-import { FIXED_DT, GRAVITY, LANDING_BONUS, LATE_LOCK, OLLIE_POP, RAIL_LENGTH } from "../tune";
+import { FIXED_DT, LANDING_BONUS, LATE_LOCK, OLLIE_HEIGHT, OLLIE_POP, RAIL_LENGTH, SUGGESTED } from "../tune";
 import type { Obstacle } from "../types";
 
 function rail(z: number): Obstacle {
@@ -16,32 +16,43 @@ describe("board physics", () => {
     let state = applyAction(createRun({ spawn: false }), "tap").state;
     expect(state.airborne).toBe(true);
     expect(state.vy).toBeGreaterThan(2);
-    const ballistic = (OLLIE_POP * OLLIE_POP) / (2 * GRAVITY);
     const heights: number[] = [];
-    for (let i = 0; i < 100 && (state.airborne || heights.length < 4); i += 1) {
+    for (let i = 0; i < 80 && (state.airborne || heights.length < 4); i += 1) {
       state = stepRun(state, FIXED_DT).state;
       heights.push(state.y);
     }
     const peak = Math.max(...heights);
     const peakAt = heights.indexOf(peak);
     const halfway = heights[Math.max(0, Math.floor(peakAt / 2))] ?? 0;
-    expect(peak).toBeGreaterThan(ballistic);
+    const apex = ollieArc(OLLIE_POP / ((8 * OLLIE_HEIGHT) / (0.65 * 0.65)), OLLIE_POP).y;
+    expect(peak).toBeGreaterThan(OLLIE_HEIGHT * 0.85);
+    expect(peak).toBeLessThan(OLLIE_HEIGHT * 1.05);
+    expect(apex).toBeCloseTo(OLLIE_HEIGHT, 1);
     expect(halfway).toBeGreaterThan(peak * 0.65);
     expect(state.y).toBe(0);
     expect(state.squash).toBeGreaterThan(0);
   });
 
   it("grades a flat late pop as perfect and a dumped landing as a bail", () => {
-    expect(gradeTouchdown({ pitch: 0.03, yaw: 0.05, roll: 0.04, balance: 0.1, popped: true, earlyPop: false })).toBe(
-      "perfect",
-    );
-    expect(gradeTouchdown({ pitch: 0.03, yaw: 0.2, roll: 0.1, balance: 0, popped: false, earlyPop: false })).toBe(
-      "clean",
-    );
-    expect(gradeTouchdown({ pitch: 0.4, yaw: 0.2, roll: 0.5, balance: 0.8, popped: true, earlyPop: false })).toBe(
-      "sketchy",
-    );
-    expect(gradeTouchdown({ pitch: 1.4, yaw: 0, roll: 0, balance: 0, popped: true, earlyPop: false })).toBe("bail");
+    const flat = { pitch: 0.03, yaw: 0.05, roll: 0.04, balance: 0.1, popped: true, earlyPop: false, flipComplete: 1 };
+    expect(gradeTouchdown(flat)).toBe("perfect");
+    expect(
+      gradeTouchdown({ pitch: 0.03, yaw: 0.2, roll: 0.1, balance: 0, popped: false, earlyPop: false, flipComplete: 1 }),
+    ).toBe("clean");
+    expect(
+      gradeTouchdown({
+        pitch: 0.4,
+        yaw: 0.2,
+        roll: 0.5,
+        balance: 0.2,
+        popped: true,
+        earlyPop: false,
+        flipComplete: 1,
+      }),
+    ).toBe("sketchy");
+    expect(
+      gradeTouchdown({ pitch: 1.4, yaw: 0, roll: 0, balance: 0, popped: true, earlyPop: false, flipComplete: 1 }),
+    ).toBe("bail");
     expect(LANDING_BONUS.perfect).toBeGreaterThan(LANDING_BONUS.clean);
   });
 
@@ -77,9 +88,26 @@ describe("board physics", () => {
     expect(run.getState().lane).toBe(1);
     expect(run.getState().balance).toBeLessThan(before);
     run.getState().balance = 1.3;
-    run.getState().grindTime = 1;
+    run.getState().grindTime = 3.2;
     run.step(0.05);
+    expect(run.getState().crashed).toBe(true);
+    run.step(0.2);
     expect(run.getState().status).toBe("gameover");
+  });
+
+  it("keeps a short grind from dumping, and a slow flick pops lower", () => {
+    const run = createRunnerController({ spawn: false, obstacles: [rail(8)] });
+    for (let i = 0; i < 400 && run.getState().distance < 6.8; i += 1) run.step(0.05);
+    run.input("tap", { accuracy: 5, speed: 1 });
+    for (let i = 0; i < 80 && run.getState().status === "playing"; i += 1) run.step(0.05);
+    expect(run.getState().status).toBe("playing");
+    const slow = applyAction(createRun({ spawn: false }), "tap", { accuracy: 2, speed: 1 }).state;
+    const full = applyAction(createRun({ spawn: false }), "tap", { accuracy: 5, speed: 5 }).state;
+    expect(slow.popV0).toBeLessThan(full.popV0);
+    expect(full.popV0).toBeCloseTo(OLLIE_POP);
+    expect(popScale(1)).toBeLessThan(popScale(5));
+    expect(SUGGESTED.laneAssist).toBe(1);
+    expect(SUGGESTED.cameraY).toBe(2.2);
   });
 
   it("takes the same distance at 60Hz as two 120Hz steps", () => {

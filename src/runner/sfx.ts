@@ -1,7 +1,7 @@
 import grindUrl from "./assets/sfx/grind.wav?url";
 import landUrl from "./assets/sfx/land.wav?url";
 import popUrl from "./assets/sfx/pop.wav?url";
-import { SFX_VOLUME } from "./tune";
+import { PITCH_JITTER, SFX_VOLUME } from "./tune";
 import type { RunnerEvent } from "./types";
 
 const FILES = {
@@ -15,6 +15,15 @@ type SoundName = keyof typeof FILES;
 const buffers = new Map<SoundName, AudioBuffer>();
 let ctx: AudioContext | null = null;
 let loading: Promise<void> | null = null;
+let pitchSalt = 1;
+
+/** Pop and land wander by ±5%. Grind stays put so the rail reads as one sound. */
+function playbackRate(name: SoundName): number {
+  if (name === "grind") return 1;
+  pitchSalt = (pitchSalt * 17 + 3) % 97;
+  const steps = (pitchSalt % 11) - 5;
+  return 1 + steps * (PITCH_JITTER / 5);
+}
 
 function soundFor(event: RunnerEvent): SoundName | null {
   switch (event) {
@@ -80,6 +89,7 @@ export function playRunnerSfx(event: RunnerEvent): void {
   const source = audio.createBufferSource();
   const gain = audio.createGain();
   source.buffer = buffer;
+  source.playbackRate.value = playbackRate(name);
   gain.gain.value = event === "powerslide" ? SFX_VOLUME * 0.6 : SFX_VOLUME;
   source.connect(gain);
   gain.connect(audio.destination);

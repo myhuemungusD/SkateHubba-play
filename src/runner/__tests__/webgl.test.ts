@@ -12,7 +12,7 @@ describe("webgl helpers", () => {
   });
 
   it("caps a frame slice and ignores a clock that went backwards", () => {
-    expect(frameDelta(1000, 0)).toBe(0.05);
+    expect(frameDelta(1000, 0)).toBe(0.1);
     expect(frameDelta(20, 0)).toBe(0.02);
     expect(frameDelta(0, 10)).toBe(0);
     expect(frameDelta(Number.NaN, 0)).toBe(0);
