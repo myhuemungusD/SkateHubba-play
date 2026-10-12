@@ -112,7 +112,7 @@ The PBR maps and the HDRI stay CC0. The logo and murals are Design Mainline LLC 
 
 ## Slots for later art
 
-The logo, Skateboard_01, and the low rail are filled. The Mike White model stays empty until that file is in the repo. The constants live in `src/runner/artSlots.ts`. Do not add an import for a file that is not in the repo. A missing import fails the build.
+The logo, Skateboard_01, the low rail, and the skatepark pieces are filled. The Mike White model stays empty until that file is in the repo. The constants live in `src/runner/artSlots.ts`. Do not add an import for a file that is not in the repo. A missing import fails the build.
 
 | Slot             | Constant               | File                                     | What it drives                                                                                                                                |
 | ---------------- | ---------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
