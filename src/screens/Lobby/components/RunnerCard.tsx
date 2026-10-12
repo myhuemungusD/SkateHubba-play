@@ -10,7 +10,7 @@ export function RunnerCard() {
     >
       <span className="block font-display tracking-wider text-white">Skate Runner</span>
       <span className="mt-1 block font-body text-xs text-muted">
-        Endless street. This score is not part of S.K.A.T.E.
+        Endless street. This score stays in the run.
       </span>
     </Link>
   );
