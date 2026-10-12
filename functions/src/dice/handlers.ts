@@ -189,9 +189,11 @@ async function writeStats(tx: DiceTx, state: DiceMatch, nowMs: number): Promise<
     { uid: delta.winnerUid, field: "wins" },
     { uid: delta.loserUid, field: "losses" },
   ];
-  for (const row of rows) {
-    const snap = await tx.get(`diceStats/${row.uid}`);
-    const data = snap.data ?? {};
+  // Admin SDK transactions reject a read after a write. Read both stats
+  // docs, then write both.
+  const snaps = await Promise.all(rows.map((row) => tx.get(`diceStats/${row.uid}`)));
+  rows.forEach((row, index) => {
+    const data = snaps[index]?.data ?? {};
     tx.set(
       `diceStats/${row.uid}`,
       {
@@ -202,7 +204,7 @@ async function writeStats(tx: DiceTx, state: DiceMatch, nowMs: number): Promise<
       },
       true,
     );
-  }
+  });
 }
 
 function appendHistory(existing: unknown, entry: Record<string, unknown>): unknown[] {
