@@ -118,14 +118,53 @@ jobs:
 
       - name: Flag workflow file modifications
         run: |
+          # Known workflow files warn and pass. A path under .github/workflows/
+          # that is not on this list fails the job. Adding a workflow means
+          # adding it here in the same PR. Dependabot pin bumps only edit
+          # files already on the list, so they still warn and pass.
+          set -euo pipefail
+          ALLOWED=$(cat <<'EOF'
+          .github/workflows/android-aab.yml
+          .github/workflows/codeql.yml
+          .github/workflows/drain-push-dispatch.yml
+          .github/workflows/firebase-functions-deploy.yml
+          .github/workflows/firebase-infra-setup.yml
+          .github/workflows/firebase-rules-deploy.yml
+          .github/workflows/ios-build.yml
+          .github/workflows/ios-release.yml
+          .github/workflows/ios-signing-bootstrap.yml
+          .github/workflows/main.yml
+          .github/workflows/pr-gate.yml
+          .github/workflows/release-please.yml
+          .github/workflows/release-recovery.yml
+          .github/workflows/release.yml
+          .github/workflows/resolve-expired-disputes.yml
+          .github/workflows/sweep-expired-turns.yml
+          EOF
+          )
+          # Drop leftover indent so each path matches the diff exactly.
+          ALLOWED=$(printf '%s\n' "$ALLOWED" | sed 's/^[[:space:]]*//')
           CHANGED=$(git diff origin/main...HEAD --name-only -- '.github/workflows/' || true)
-          if [ -n "$CHANGED" ]; then
-            echo "::warning::CI workflow files modified in this PR:"
-            echo "$CHANGED"
-            echo ""
-            echo "Workflow changes require maintainer review (CODEOWNERS enforced)."
-          else
+          if [ -z "$CHANGED" ]; then
             echo "No workflow changes detected."
+            exit 0
+          fi
+          echo "::warning::CI workflow files modified in this PR:"
+          echo "$CHANGED"
+          echo ""
+          echo "Workflow changes require maintainer review (CODEOWNERS enforced)."
+          UNKNOWN=""
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            if ! printf '%s\n' "$ALLOWED" | grep -Fxq "$file"; then
+              UNKNOWN="${UNKNOWN}${file}"$'\n'
+            fi
+          done <<< "$CHANGED"
+          if [ -n "$UNKNOWN" ]; then
+            echo "::error::Workflow file is not on the allowlist:"
+            printf '%s' "$UNKNOWN"
+            echo "Add it to verify-workflow-changes in pr-gate.yml in this PR."
+            exit 1
           fi
 
   check-test-duplication:

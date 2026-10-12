@@ -357,10 +357,10 @@ Signed-in viewers see the ribbon, matching the badge row. Signed-out visitors al
 
 ## Rollout
 
-Functions are not deployed by CI. The function is a hand deploy, same as dice (`docs/DICE.md`) and the stats close-out (`docs/DEPLOYMENT.md`).
+Merging to `main` does not deploy functions. Use Actions → **Deploy Firebase Functions** on `main`, with `functions` set to `onGameCompleted` and `confirm` set to `deploy` (`docs/DEPLOY_FUNCTIONS.md`). The laptop command below does the same upload.
 
 1. **Rules.** The new field names, the clip +1, and `xpMarkers`. Nothing writes XP yet.
-2. **Function, by hand, switch off.**
+2. **Function, switch off.**
 
    ```bash
    firebase use sk8hub-d7806

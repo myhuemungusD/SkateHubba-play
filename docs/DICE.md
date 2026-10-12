@@ -16,9 +16,13 @@ Two switches, and both start off.
 
 The scheduled `diceSweep` does not check the kill switch. Tester matches still close when a turn expires.
 
-## Deploy (do this by hand)
+## Deploy
 
-Merging to `main` deploys Firestore rules and indexes only (`firebase-rules-deploy.yml`). The dice rules are read-only for clients, so that deploy does not turn the game on. Functions are not deployed by CI.
+Merging to `main` deploys Firestore rules and indexes only (`firebase-rules-deploy.yml`). The dice rules are read-only for clients, so that deploy does not turn the game on. It also does not deploy functions.
+
+Use Actions → **Deploy Firebase Functions** on `main`. Set `functions` to `diceAction,diceSweep` and `confirm` to `deploy`. See `docs/DEPLOY_FUNCTIONS.md`.
+
+Or from a laptop:
 
 ```bash
 firebase use sk8hub-d7806
