@@ -71,6 +71,17 @@ function renderLobby(overrides: Partial<LobbyProps> = {}) {
   return renderWithProviders(<Lobby {...defaultProps} {...overrides} />);
 }
 
+/** Flagged lobby cards use <Link>, which needs a router the default wrapper does not provide. */
+function renderFlaggedLobby() {
+  return render(
+    <MemoryRouter>
+      <NotificationProvider uid="u1">
+        <Lobby {...defaultProps} />
+      </NotificationProvider>
+    </MemoryRouter>,
+  );
+}
+
 /** THEIR TURN is collapsed by default; its cards only exist once expanded. */
 async function renderExpanded(overrides: Partial<LobbyProps> = {}) {
   const result = renderLobby(overrides);
@@ -580,17 +591,19 @@ describe("Lobby", () => {
       expect(screen.getByText("Referee @ref reviewing")).toBeInTheDocument();
     });
 
+    it("shows the Skate Runner card only while the runner flag is on", () => {
+      renderLobby();
+      expect(screen.queryByTestId("runner-card")).not.toBeInTheDocument();
+      vi.stubEnv("VITE_FEATURE_RUNNER_ENABLED", "true");
+      renderFlaggedLobby();
+      expect(screen.getByTestId("runner-card")).toHaveAttribute("href", "/play/runner");
+    });
+
     it("shows the Roll Dice card only while the dice flag is on", async () => {
       renderLobby();
       expect(screen.queryByTestId("roll-dice-card")).not.toBeInTheDocument();
       vi.stubEnv("VITE_FEATURE_DICE_ENABLED", "true");
-      render(
-        <MemoryRouter>
-          <NotificationProvider uid="u1">
-            <Lobby {...defaultProps} />
-          </NotificationProvider>
-        </MemoryRouter>,
-      );
+      renderFlaggedLobby();
       expect(await screen.findByTestId("roll-dice-card")).toBeInTheDocument();
     });
 

@@ -367,6 +367,12 @@ describe("auth-router deep-link stash/restore", () => {
     expect(pathToScreen("/spotsomething")).toBe("notfound");
   });
 
+  it("resolves the skate runner path and leaves other /play urls unknown", () => {
+    expect(pathToScreen("/play/runner")).toBe("runner");
+    expect(pathToScreen("/play/runners")).toBe("notfound");
+    expect(pathToScreen("/play")).toBe("notfound");
+  });
+
   it("resolves Roll Dice paths to the dice screen", () => {
     expect(pathToScreen("/dice")).toBe("dice");
     expect(pathToScreen("/dice/new")).toBe("dice");

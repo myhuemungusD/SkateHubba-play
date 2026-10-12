@@ -15,5 +15,11 @@ export const EXTRAS_ENABLED = process.env.VITE_FEATURE_EXTRAS_ENABLED === "true"
 /** Roll Dice stays off unless the dev server was started with the flag. */
 export const DICE_ENABLED = process.env.VITE_FEATURE_DICE_ENABLED === "true";
 
+/**
+ * Skate Runner is on for this suite unless a caller sets the flag to "false".
+ * playwright.config.ts defaults it to "true" so the route smoke test runs in CI.
+ */
+export const RUNNER_ENABLED = process.env.VITE_FEATURE_RUNNER_ENABLED !== "false";
+
 export const EXTRAS_SKIP_REASON =
   "Feature freeze: Map / Clips feed / Verified Pro are hidden unless VITE_FEATURE_EXTRAS_ENABLED=true";

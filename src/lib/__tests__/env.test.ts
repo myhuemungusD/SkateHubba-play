@@ -99,6 +99,12 @@ describe("safeParseEnv", () => {
     expect(result?.VITE_FEATURE_DICE_ENABLED).toBe(expected);
   });
 
+  it.each(flagCases)("parses VITE_FEATURE_RUNNER_ENABLED=%j as %s (Skate Runner, default off)", (raw, expected) => {
+    const result = safeParseEnv({ ...validEnv, VITE_FEATURE_RUNNER_ENABLED: raw });
+    expect(result).not.toBeNull();
+    expect(result?.VITE_FEATURE_RUNNER_ENABLED).toBe(expected);
+  });
+
   it.each(flagCases)(
     "parses VITE_FEATURE_APPLE_SIGNIN_ENABLED=%j as %s (Sign in with Apple, default off)",
     (raw, expected) => {

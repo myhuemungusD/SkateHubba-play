@@ -267,7 +267,7 @@ Copy `.env.example` to `.env.local` and fill in the values. The full template (w
 
 The launch feature freeze was lifted on 2026-10-10. The Map (`/map`, `/spots/:id`), the Clips feed (`/feed`) and Verified Pro are live on skatehubba.com, with `VITE_FEATURE_EXTRAS_ENABLED=true` set for Production and Preview in Vercel. The code still requires the literal string `true` (see [`src/lib/featureFlags.ts`](src/lib/featureFlags.ts)), so a local build or fork without it falls back to the core game loop only: those routes redirect to `/lobby` (signed in) or `/` (signed out) and the Clips/Map tabs, "Add a spot" CTA and Verified Pro treatment are hidden. `VITE_*` values are inlined at build time, so changing it needs a redeploy. The landing-page Map teaser was removed outright (not gated) so mapbox-gl never loads on `/`.
 
-Still off in production: Roll Dice (`VITE_FEATURE_DICE_ENABLED` — server functions not yet deployed, testers first) and Sign in with Apple (`VITE_FEATURE_APPLE_SIGNIN_ENABLED` — waiting on Apple account setup).
+Still off in production: Roll Dice (`VITE_FEATURE_DICE_ENABLED` — server functions not yet deployed, testers first), Skate Runner (`VITE_FEATURE_RUNNER_ENABLED` — prototype at `/play/runner`, scores are not S.K.A.T.E.; see `docs/RUNNER.md`), and Sign in with Apple (`VITE_FEATURE_APPLE_SIGNIN_ENABLED` — waiting on Apple account setup).
 
 **Server-only (Vercel project env, never `VITE_`-prefixed — see `.env.example`)**
 

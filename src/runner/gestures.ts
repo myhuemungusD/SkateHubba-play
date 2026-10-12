@@ -1,0 +1,108 @@
+import type { Action } from "./types";
+
+/** Pixels of travel before a swipe commits. Felt on the way, not on release. */
+export const SWIPE_THRESHOLD_PX = 28;
+
+/**
+ * Touches that start this close to either screen edge are left for the
+ * browser, so iOS swipe-back and Android gesture-nav keep working.
+ */
+export const EDGE_DEAD_ZONE_PX = 32;
+
+export interface PointerPoint {
+  x: number;
+  y: number;
+}
+
+export interface GestureRecognizer {
+  /** False when the touch started in the edge dead zone and is not ours. */
+  down(point: PointerPoint, viewportWidth: number): boolean;
+  /** The action, once, when the finger crosses the threshold. */
+  move(point: PointerPoint): Action | null;
+  /** True after a non-edge touchstart until touchend. */
+  ownsGesture(): boolean;
+  up(): void;
+}
+
+export function createGestureRecognizer(
+  threshold = SWIPE_THRESHOLD_PX,
+  edge = EDGE_DEAD_ZONE_PX,
+): GestureRecognizer {
+  let origin: PointerPoint | null = null;
+  let fired = false;
+  let owned = false;
+
+  return {
+    down(point, viewportWidth) {
+      const inEdge = point.x < edge || point.x > viewportWidth - edge;
+      owned = !inEdge;
+      origin = owned ? point : null;
+      fired = false;
+      return owned;
+    },
+    move(point) {
+      if (!origin || fired || !owned) return null;
+      const dx = point.x - origin.x;
+      const dy = point.y - origin.y;
+      if (Math.abs(dx) < threshold && Math.abs(dy) < threshold) return null;
+      fired = true;
+      if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? "right" : "left";
+      // Screen Y grows downward, so a finger moving up is an ollie.
+      return dy > 0 ? "duck" : "ollie";
+    },
+    ownsGesture() {
+      return owned;
+    },
+    up() {
+      origin = null;
+      fired = false;
+      owned = false;
+    },
+  };
+}
+
+/**
+ * Touch listeners for the playfield. `touchmove` is non-passive so a gesture
+ * we own can cancel page scroll. Edge touches are not prevented, which leaves
+ * the iOS back-swipe alone. The action fires inside `touchmove` once the
+ * threshold is crossed — Subway Surfers feel, not a release-to-act swipe.
+ */
+export function bindRunnerTouch(
+  el: HTMLElement,
+  recognize: GestureRecognizer,
+  onAction: (action: Action) => void,
+): () => void {
+  const point = (touch: { clientX: number; clientY: number }): PointerPoint => ({
+    x: touch.clientX,
+    y: touch.clientY,
+  });
+
+  const down = (event: TouchEvent) => {
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+    recognize.down(point(touch), window.innerWidth);
+  };
+
+  const move = (event: TouchEvent) => {
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+    if (recognize.ownsGesture()) event.preventDefault();
+    const action = recognize.move(point(touch));
+    if (action) onAction(action);
+  };
+
+  const up = () => {
+    recognize.up();
+  };
+
+  el.addEventListener("touchstart", down, { passive: true });
+  el.addEventListener("touchmove", move, { passive: false });
+  el.addEventListener("touchend", up);
+  el.addEventListener("touchcancel", up);
+  return () => {
+    el.removeEventListener("touchstart", down);
+    el.removeEventListener("touchmove", move);
+    el.removeEventListener("touchend", up);
+    el.removeEventListener("touchcancel", up);
+  };
+}
