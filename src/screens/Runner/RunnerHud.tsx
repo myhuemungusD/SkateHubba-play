@@ -1,11 +1,6 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { Link } from "react-router";
-import {
-  SKATEBOARD_01_CREDIT_LICENSE,
-  SKATEBOARD_01_CREDIT_NAME,
-  SKATEBOARD_01_LICENSE,
-  SKATEBOARD_01_PAGE,
-} from "../../runner/boardCredit";
+import { LOW_RAIL_CREDIT, SKATEBOARD_01_CREDIT } from "../../runner/boardCredit";
 import { ARM_LABELS } from "../../runner/constants";
 import type { HudSnapshot } from "../../runner/controller";
 import type { Grade } from "../../runner/types";
@@ -30,6 +25,29 @@ const CHUNK = "[text-shadow:0_3px_0_#143028]";
 
 function comboLabel(multiplier: number): string {
   return Number.isInteger(multiplier) ? `x${multiplier}` : `x${multiplier.toFixed(1)}`;
+}
+
+function CreditParagraph({ text }: { text: string }) {
+  const parts = text.split(/(https?:\/\/[^\s)]+)/g);
+  return (
+    <p className="font-body text-[10px] leading-snug text-white/50">
+      {parts.map((part, index) =>
+        part.startsWith("http") ? (
+          <a
+            key={`${part}-${index}`}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline decoration-white/30 underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f2c14a]"
+          >
+            {part}
+          </a>
+        ) : (
+          <span key={index}>{part}</span>
+        ),
+      )}
+    </p>
+  );
 }
 
 export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) {
@@ -143,25 +161,10 @@ export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) 
             >
               {resumeLabel}
             </button>
-            <p data-testid="runner-credit" className="mt-4 font-body text-[10px] leading-snug text-white/50">
-              <a
-                href={SKATEBOARD_01_PAGE}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline decoration-white/30 underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f2c14a]"
-              >
-                {SKATEBOARD_01_CREDIT_NAME}
-              </a>
-              {", "}
-              <a
-                href={SKATEBOARD_01_LICENSE}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline decoration-white/30 underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f2c14a]"
-              >
-                {SKATEBOARD_01_CREDIT_LICENSE}
-              </a>
-            </p>
+            <div data-testid="runner-credit" className="mt-4 space-y-2 text-left">
+              <CreditParagraph text={SKATEBOARD_01_CREDIT} />
+              <CreditParagraph text={LOW_RAIL_CREDIT} />
+            </div>
           </div>
         </div>
       ) : null}

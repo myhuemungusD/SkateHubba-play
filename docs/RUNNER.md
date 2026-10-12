@@ -73,11 +73,11 @@ three.js and React Three Fiber load only when `/play/runner` is opened (`React.l
 
 There is no skater in this build. The player is the deck, griptape, trucks, and wheels drawn in `src/runner/view/Board.tsx`. Poses live in `src/runner/boardPose.ts` and are applied to the root group (nose toward **-Z**, down the street). `spin` is a 0..1 kickflip turn.
 
-Skateboard_01 by RandomScan (Sketchfab), CC BY 4.0, is the board Jason picked. The file is not in the repo yet. `skateboard01ModelUrl()` stays null, so the procedural board stays on screen and the Draco, Meshopt, and KTX2 loaders are not fetched. When the glb is added, `loadSkateboardModel` scales it into this group and hides `ProceduralBoard`. The pause card already shows the credit. The Mike White model is still a null slot in `src/runner/artSlots.ts`. The deck graphic and the logo decal both use the SkateHubba logo. Node names already on the procedural board:
+Skateboard_01 by CrazyScans (Sketchfab, CC BY 4.0) is the board on screen. `loadRunnerModel` scales `skateboard-01.glb` into this group and hides `ProceduralBoard` after it loads. A failed load leaves the procedural board. The grind rail is Low Rail | Game Ready | 4K by bralunit (Sketchfab, CC BY 4.0), instanced from `low-rail.glb` at the same length the sim already uses. The box rail shows only if that file fails. The pause card shows both license lines. The Mike White model is still a null slot. The deck graphic slot still paints the SkateHubba logo on the underside plane named `Graphic`, including after the glb replaces the procedural deck. Node names already on the procedural board:
 
 `Deck`, `DeckPly`, `Griptape`, `Graphic`, `LogoDecal`, `TruckNose`, `TruckTail`, `WheelNoseLeft`, `WheelNoseRight`, `WheelTailLeft`, `WheelTailRight`.
 
-`Graphic` sits on the underside of the deck. `LogoDecal` is the small mark on top and stays hidden until its texture loads.
+`Graphic` sits on the underside of the rig, outside `ProceduralBoard`, so it stays when the glb is showing. `LogoDecal` is the small mark on the procedural deck and hides with that group.
 
 The runner code moves the group. Do not bake root motion into a file. Tricks are these poses, not animation clips: ride, powerslide (yaw), crooked (yaw and roll onto one truck), nose slide (nose down), kickflip (a full roll on the way in, then the crooked pose), bail.
 

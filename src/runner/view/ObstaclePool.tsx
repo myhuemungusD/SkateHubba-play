@@ -1,10 +1,11 @@
 import { useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import type { Group, Object3D } from "three";
 import { BOX_LENGTH, LANE_X, RAIL_LENGTH } from "../constants";
 import type { RunnerController } from "../controller";
 import type { RunnerQuality } from "../quality";
 import type { Obstacle, ObstacleKind } from "../types";
+import { useLowRail } from "./lowRail";
 import { ledgeMaterial, metalMaterial, postMaterial, waxMaterial } from "./textures";
 
 const POOL = 16;
@@ -43,6 +44,8 @@ function stretch(group: Object3D, name: string, length: number, base: number): v
 export function ObstaclePool({ controller, quality }: { controller: RunnerController; quality: RunnerQuality }) {
   const high = quality === "high";
   const slots = useRef<(Group | null)[]>([]);
+  const gl = useThree((state) => state.gl);
+  useLowRail(slots, gl);
 
   useFrame(() => {
     const state = controller.getState();
@@ -62,6 +65,7 @@ export function ObstaclePool({ controller, quality }: { controller: RunnerContro
       if (!kind) continue;
       if (obstacle.kind === "rail") {
         stretch(kind, "rail-beam", obstacle.length, RAIL_LENGTH);
+        stretch(kind, "rail-model", obstacle.length, RAIL_LENGTH);
         const far = kind.getObjectByName("rail-post-far");
         if (far) far.position.z = -obstacle.length;
       } else {
@@ -83,6 +87,7 @@ export function ObstaclePool({ controller, quality }: { controller: RunnerContro
           visible={false}
         >
           <group name="rail">
+            <group name="rail-model" position={[0, 0, -RAIL_LENGTH / 2]} visible={false} />
             <mesh
               name="rail-beam"
               position={[0, 0.42, -RAIL_LENGTH / 2]}

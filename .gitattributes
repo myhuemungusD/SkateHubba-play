@@ -24,6 +24,7 @@ gradlew text eol=lf
 *.woff binary
 *.woff2 binary
 *.wasm binary
+*.glb binary
 *.hdr binary
 
 # Generated lockfiles — exclude from language stats.

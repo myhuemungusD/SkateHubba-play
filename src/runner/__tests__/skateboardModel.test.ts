@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Box3, BoxGeometry, Group, Mesh, MeshBasicMaterial, Vector3 } from "three";
-import { BOARD_TARGET_LENGTH, collectWheelNodes, fitSkateboard } from "../view/skateboardModel";
+import { BOARD_TARGET_LENGTH, collectWheelNodes, fitSkateboard, placeDeckGraphic } from "../view/skateboardModel";
 
 function board(width: number, height: number, depth: number): Group {
   const root = new Group();
@@ -50,6 +50,47 @@ describe("fitSkateboard", () => {
     fitSkateboard(root);
     expect(root.scale.x).toBe(1);
     expect(root.position.y).toBe(0);
+  });
+
+  it("puts the wheels down when they were authored on the positive thin axis", () => {
+    const root = new Group();
+    const deck = new Mesh(new BoxGeometry(0.4, 0.04, 2), new MeshBasicMaterial());
+    deck.position.y = 0.02;
+    deck.name = "Deck";
+    const trucks = new Mesh(new BoxGeometry(0.5, 0.12, 0.24), new MeshBasicMaterial());
+    trucks.position.set(0, 0.12, 0);
+    trucks.name = "Trucks";
+    root.add(deck, trucks);
+    fitSkateboard(root);
+    const deckBox = new Box3().setFromObject(deck);
+    const truckBox = new Box3().setFromObject(trucks);
+    expect(deckBox.min.y).toBeGreaterThan(truckBox.max.y);
+    expect(new Box3().setFromObject(root).min.y).toBeCloseTo(0, 3);
+  });
+
+  it("stretches a long prop to the requested length and keeps it upright", () => {
+    const root = board(0.75, 0.43, 7.06);
+    fitSkateboard(root, false, 7);
+    const box = new Box3().setFromObject(root);
+    const size = box.getSize(new Vector3());
+    expect(size.z).toBeCloseTo(7, 2);
+    expect(size.y).toBeLessThan(size.x);
+    expect(box.min.y).toBeCloseTo(0, 3);
+    expect(new Vector3(0, 1, 0).applyQuaternion(root.quaternion).y).toBeGreaterThan(0.99);
+  });
+});
+
+describe("placeDeckGraphic", () => {
+  it("parks the logo plane on the underside of a fitted board", () => {
+    const root = board(0.4, 0.1, 2);
+    fitSkateboard(root);
+    const graphic = new Group();
+    placeDeckGraphic(root, graphic);
+    const size = sizeOf(root);
+    expect(graphic.position.y).toBeCloseTo(size.y * 0.56, 3);
+    expect(graphic.scale.x).toBeCloseTo(size.x * 0.7, 3);
+    expect(graphic.scale.y).toBeCloseTo(size.z * 0.55, 3);
+    expect(graphic.visible).toBe(true);
   });
 });
 

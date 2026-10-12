@@ -13,6 +13,9 @@ const wood = deckMaterial();
 const ply = flatMaterial("#6e4528");
 const graphic = flatMaterial("#f3efe6");
 graphic.side = DoubleSide;
+graphic.polygonOffset = true;
+graphic.polygonOffsetFactor = -2;
+graphic.polygonOffsetUnits = -2;
 const logo = flatMaterial("#f3efe6");
 logo.side = DoubleSide;
 const truck = truckMaterial();
@@ -129,9 +132,6 @@ export function Board({ controller, quality }: { controller: RunnerController; q
           <mesh position={[0, 0.348, 0.78]} rotation={[-0.36, 0, 0]} material={gripMaterial()}>
             <boxGeometry args={[0.52, 0.012, 0.24]} />
           </mesh>
-          <mesh name="Graphic" position={[0, 0.222, 0]} rotation={[Math.PI / 2, 0, 0]} material={graphic}>
-            <planeGeometry args={[0.48, 0.92]} />
-          </mesh>
           <mesh
             name="LogoDecal"
             position={[0, 0.31, -0.28]}
@@ -148,6 +148,15 @@ export function Board({ controller, quality }: { controller: RunnerController; q
           {wheelAt(2, -0.38, 0.46)}
           {wheelAt(3, 0.38, 0.46)}
         </group>
+        <mesh
+          name="Graphic"
+          position={[0, 0.222, 0]}
+          rotation={[Math.PI / 2, 0, 0]}
+          scale={[0.48, 0.92, 1]}
+          material={graphic}
+        >
+          <planeGeometry args={[1, 1]} />
+        </mesh>
       </group>
     </group>
   );

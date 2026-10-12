@@ -44,12 +44,72 @@ function thinnestAxis(size: Vector3, except: number): number {
   return index;
 }
 
+function component(point: Vector3, axis: number): number {
+  if (axis === 0) return point.x;
+  if (axis === 1) return point.y;
+  return point.z;
+}
+
+/**
+ * Kicked nose and tail sit on the deck. Wheels sit in the middle of the
+ * length. The positive thin-axis end is up only when that end reaches
+ * farther toward the nose and tail.
+ */
+function deckUpSign(root: Object3D, thin: number, long: number): number {
+  const samples: Vector3[] = [];
+  const point = new Vector3();
+  root.traverse((obj) => {
+    if (!(obj instanceof Mesh)) return;
+    const attr = obj.geometry.getAttribute("position");
+    if (!attr) return;
+    const step = Math.max(1, Math.floor(attr.count / 400));
+    for (let i = 0; i < attr.count; i += step) {
+      samples.push(point.fromBufferAttribute(attr, i).applyMatrix4(obj.matrixWorld).clone());
+    }
+  });
+  if (samples.length < 8) return 1;
+
+  let minThin = Infinity;
+  let maxThin = -Infinity;
+  let minLong = Infinity;
+  let maxLong = -Infinity;
+  for (const sample of samples) {
+    const alongThin = component(sample, thin);
+    const alongLong = component(sample, long);
+    if (alongThin < minThin) minThin = alongThin;
+    if (alongThin > maxThin) maxThin = alongThin;
+    if (alongLong < minLong) minLong = alongLong;
+    if (alongLong > maxLong) maxLong = alongLong;
+  }
+  const thinSpan = maxThin - minThin || 1;
+  const longSpan = maxLong - minLong || 1;
+  let positive = 0;
+  let positiveCount = 0;
+  let negative = 0;
+  let negativeCount = 0;
+  for (const sample of samples) {
+    const alongThin = (component(sample, thin) - minThin) / thinSpan;
+    const towardEnds = Math.abs((component(sample, long) - minLong) / longSpan - 0.5) * 2;
+    if (alongThin > 0.75) {
+      positive += towardEnds;
+      positiveCount += 1;
+    } else if (alongThin < 0.25) {
+      negative += towardEnds;
+      negativeCount += 1;
+    }
+  }
+  const positiveScore = positiveCount > 0 ? positive / positiveCount : 0;
+  const negativeScore = negativeCount > 0 ? negative / negativeCount : 0;
+  return positiveScore >= negativeScore ? 1 : -1;
+}
+
 /**
  * Lay the model flat in the posed group. The longest axis points down the
- * street (-Z) unless `noseFlip` is set, and the thinnest axis points up.
- * Uniform scale makes the length 1.9. The bottom sits on the rig origin.
+ * street (-Z) unless `noseFlip` is set, and the deck side of the thinnest
+ * axis points up. Uniform scale makes the length 1.9. The bottom sits on
+ * the rig origin.
  */
-export function fitSkateboard(root: Object3D, noseFlip = false): void {
+export function fitSkateboard(root: Object3D, noseFlip = false, targetLength = BOARD_TARGET_LENGTH): void {
   root.position.set(0, 0, 0);
   root.rotation.set(0, 0, 0);
   root.scale.set(1, 1, 1);
@@ -58,8 +118,10 @@ export function fitSkateboard(root: Object3D, noseFlip = false): void {
   const size = new Box3().setFromObject(root).getSize(new Vector3());
   if (![size.x, size.y, size.z].every((value) => Number.isFinite(value) && value > 0)) return;
 
-  const sourceForward = AXIS[longestAxis(size)].clone();
-  const sourceUp = AXIS[thinnestAxis(size, longestAxis(size))].clone();
+  const forwardIndex = longestAxis(size);
+  const upIndex = thinnestAxis(size, forwardIndex);
+  const sourceForward = AXIS[forwardIndex].clone();
+  const sourceUp = AXIS[upIndex].clone().multiplyScalar(deckUpSign(root, upIndex, forwardIndex));
   const sourceRight = new Vector3().crossVectors(sourceUp, sourceForward);
   const targetForward = new Vector3(0, 0, noseFlip ? 1 : -1);
   const targetUp = new Vector3(0, 1, 0);
@@ -70,7 +132,8 @@ export function fitSkateboard(root: Object3D, noseFlip = false): void {
   root.updateMatrixWorld(true);
 
   const fitted = new Box3().setFromObject(root).getSize(new Vector3());
-  root.scale.setScalar(BOARD_TARGET_LENGTH / (fitted.z > 0 ? fitted.z : 1));
+  const length = targetLength > 0 ? targetLength : BOARD_TARGET_LENGTH;
+  root.scale.setScalar(length / (fitted.z > 0 ? fitted.z : 1));
   root.updateMatrixWorld(true);
 
   const grounded = new Box3().setFromObject(root);
@@ -138,10 +201,27 @@ function disposeObject(root: Object3D): void {
 }
 
 /**
- * Draco, Meshopt, KTX2, and WebP. The loader modules are imported only when
- * a URL is set, so the procedural board does not download them.
+ * Sit a unit plane on the deck underside so the graphic slot can replace
+ * whatever art shipped in the file. `graphic` is a 1×1 plane in the same
+ * rig as the fitted board.
  */
-export async function loadSkateboardModel(url: string, renderer: WebGLRenderer): Promise<Object3D> {
+export function placeDeckGraphic(board: Object3D, graphic: Object3D): void {
+  const size = new Box3().setFromObject(board).getSize(new Vector3());
+  if (![size.x, size.y, size.z].every((value) => Number.isFinite(value) && value > 0)) return;
+  graphic.position.set(0, size.y * 0.56, 0);
+  graphic.rotation.set(Math.PI / 2, 0, 0);
+  graphic.scale.set(size.x * 0.7, size.z * 0.55, 1);
+  graphic.visible = true;
+}
+
+export function resetDeckGraphic(graphic: Object3D): void {
+  graphic.position.set(0, 0.222, 0);
+  graphic.rotation.set(Math.PI / 2, 0, 0);
+  graphic.scale.set(0.48, 0.92, 1);
+}
+
+/** Draco, Meshopt, KTX2, and WebP. Imported only when a model URL is set. */
+export async function loadRunnerModel(url: string, renderer: WebGLRenderer): Promise<Object3D> {
   const [{ GLTFLoader }, { DRACOLoader }, { KTX2Loader }, meshopt] = await Promise.all([
     import("three/examples/jsm/loaders/GLTFLoader.js"),
     import("three/examples/jsm/loaders/DRACOLoader.js"),
@@ -173,6 +253,8 @@ export async function loadSkateboardModel(url: string, renderer: WebGLRenderer):
     ktx2.dispose();
   }
 }
+
+export const loadSkateboardModel = loadRunnerModel;
 
 export function wheelSpinRate(state: { duck: number; onGrind: boolean }): number {
   return state.duck >= 0 ? 0.35 : state.onGrind ? 0.9 : 1.7;
@@ -214,6 +296,8 @@ export function useSkateboardModel(
         }
         fitSkateboard(loaded, SKATEBOARD_01_NOSE_FLIP);
         loaded.name = "Skateboard01";
+        const graphic = group.getObjectByName("Graphic");
+        if (graphic) placeDeckGraphic(loaded, graphic);
         if (renderer.shadowMap.enabled) {
           loaded.traverse((obj) => {
             if (obj instanceof Mesh) {
@@ -241,6 +325,8 @@ export function useSkateboardModel(
       }
       const procedural = group.getObjectByName("ProceduralBoard");
       if (procedural) procedural.visible = true;
+      const graphic = group.getObjectByName("Graphic");
+      if (graphic) resetDeckGraphic(graphic);
     };
   }, [renderer, root, wheels]);
 }
