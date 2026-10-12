@@ -149,7 +149,16 @@ describe("RunnerScreen", () => {
     expect(controller.grindAssist()).toBe(12);
     await user.click(screen.getByTestId("runner-feel"));
     expect(controller.feelPreset()).toBe("heavy");
+    expect(controller.grindAssist()).toBe(15);
     expect(screen.getByTestId("runner-feel")).toHaveTextContent("Heavy");
+    await user.click(screen.getByTestId("runner-feel"));
+    expect(controller.feelPreset()).toBe("classic");
+    expect(controller.grindAssist()).toBe(50);
+    expect(screen.getByTestId("runner-feel")).toHaveTextContent("Classic");
+    await user.click(screen.getByTestId("runner-feel"));
+    expect(controller.feelPreset()).toBe("street");
+    expect(controller.grindAssist()).toBe(30);
+    expect(screen.getByTestId("runner-feel")).toHaveTextContent("Street");
 
     await user.click(screen.getByRole("button", { name: "Resume" }));
     expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
@@ -223,6 +232,45 @@ describe("RunnerScreen", () => {
     expect(crashed.getState().distance).toBe(0);
     expect(screen.getByTestId("runner-best")).toHaveTextContent(/Best /);
     expect(screen.getByRole("link", { name: "Exit" })).toHaveAttribute("href", "/");
+  });
+
+  it("restarts a finished run from r and from R", () => {
+    for (const key of ["r", "R"]) {
+      const controller = createRunnerController({ spawn: false, obstacles: [rail(1)] });
+      const view = renderRunner(controller);
+      act(() => {
+        controller.step(1.2);
+      });
+      fireEvent.keyDown(window, { key: "f" });
+      act(() => {
+        controller.step(0.2);
+      });
+      expect(controller.getState().status).toBe("gameover");
+      fireEvent.keyDown(window, { key });
+      expect(controller.getState().status).toBe("playing");
+      expect(controller.getState().distance).toBe(0);
+      view.unmount();
+    }
+  });
+
+  it("releases a held lean when the lane key comes up", () => {
+    const controller = createRunnerController({ spawn: false });
+    const leans: number[] = [];
+    const setLean = controller.setLean;
+    controller.setLean = (next) => {
+      leans.push(next);
+      setLean(next);
+    };
+    renderRunner(controller);
+
+    for (const key of ["ArrowLeft", "a", "A", "ArrowRight", "d", "D"]) {
+      fireEvent.keyDown(window, { key });
+      fireEvent.keyUp(window, { key });
+    }
+    fireEvent.keyUp(window, { key: "q" });
+    fireEvent.keyDown(screen.getByRole("button", { name: "Pause" }), { key: "Enter" });
+    expect(controller.getState().status).toBe("playing");
+    expect(leans).toEqual([-1, 0, -1, 0, -1, 0, 1, 0, 1, 0, 1, 0]);
   });
 
   it("shows the combo after a second grind in the same lane", () => {
