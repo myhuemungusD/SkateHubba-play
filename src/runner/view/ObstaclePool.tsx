@@ -4,11 +4,12 @@ import type { Group, Object3D } from "three";
 import { BOX_LENGTH, LANE_X, RAIL_LENGTH } from "../constants";
 import type { RunnerController } from "../controller";
 import type { Obstacle, ObstacleKind } from "../types";
-import { flatMaterial, metalMaterial, waxMaterial } from "./textures";
+import { flatMaterial, waxMaterial } from "./textures";
 
 const POOL = 16;
 const KINDS: readonly ObstacleKind[] = ["rail", "box"];
-const post = flatMaterial("#4e565c");
+const post = flatMaterial("#6a757c", "#1c2428");
+const railMetal = flatMaterial("#d7e0e6", "#2a343a");
 const ledge = flatMaterial("#8a8176");
 const coping = flatMaterial("#b7b1a6", "#2a2620");
 
@@ -80,14 +81,14 @@ export function ObstaclePool({ controller }: { controller: RunnerController }) {
           visible={false}
         >
           <group name="rail">
-            <mesh name="rail-beam" position={[0, 0.36, -RAIL_LENGTH / 2]} material={metalMaterial()}>
-              <boxGeometry args={[0.1, 0.08, RAIL_LENGTH]} />
+            <mesh name="rail-beam" position={[0, 0.42, -RAIL_LENGTH / 2]} material={railMetal}>
+              <boxGeometry args={[0.18, 0.12, RAIL_LENGTH]} />
             </mesh>
-            <mesh name="rail-post-near" position={[0, 0.18, 0]} material={post}>
-              <boxGeometry args={[0.06, 0.36, 0.06]} />
+            <mesh name="rail-post-near" position={[0, 0.2, 0]} material={post}>
+              <boxGeometry args={[0.1, 0.4, 0.1]} />
             </mesh>
-            <mesh name="rail-post-far" position={[0, 0.18, -RAIL_LENGTH]} material={post}>
-              <boxGeometry args={[0.06, 0.36, 0.06]} />
+            <mesh name="rail-post-far" position={[0, 0.2, -RAIL_LENGTH]} material={post}>
+              <boxGeometry args={[0.1, 0.4, 0.1]} />
             </mesh>
           </group>
           <group name="box" visible={false}>

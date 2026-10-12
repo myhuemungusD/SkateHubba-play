@@ -6,14 +6,14 @@ export const LANES: readonly Lane[] = [0, 1, 2];
 export const LANE_X: readonly [number, number, number] = [-1.7, 0, 1.7];
 
 /**
- * First preview cruised at 14 and added 0.4 each second up to 26.
- * This pass starts about 39% slower and climbs much more slowly, so a lip
- * is something you can read.
+ * Round 2 cruised at 8.5 and added 0.06 each second up to 13.
+ * This pass starts about 30% slower (6) and climbs at half that rate up to 9,
+ * so a lip stays readable while the camera shows the rails ahead.
  */
-export const BASE_SPEED = 8.5;
-export const MAX_SPEED = 13;
+export const BASE_SPEED = 6;
+export const MAX_SPEED = 9;
 /** Speed added per second. */
-export const SPEED_RAMP = 0.06;
+export const SPEED_RAMP = 0.03;
 /** How fast the visual board slides into the committed lane. */
 export const LANE_SLIDE = 14;
 
@@ -24,17 +24,19 @@ export const DOUBLE_TAP = 0.28;
 
 /**
  * How far before the lip an armed trick still counts.
- * At the starting speed that is about three quarters of a second.
+ * At the starting speed that is about a second and a quarter.
+ * The bands are a little wider than round 2 so the slower approach still
+ * has a readable perfect, good, and sloppy.
  */
-export const ARM_RANGE = 6.5;
+export const ARM_RANGE = 7.5;
 /** How far past the lip a late make still locks. Later than this, the input bails. */
-export const LATE_LOCK = 2.2;
+export const LATE_LOCK = 2.5;
 
 /** Lead (units armed before the lip) for a perfect make. */
-export const PERFECT_MIN = 0.45;
-export const PERFECT_MAX = 2.4;
+export const PERFECT_MIN = 0.38;
+export const PERFECT_MAX = 2.8;
 /** Lead that is still clean, outside the perfect band. */
-export const GOOD_MAX = 4.4;
+export const GOOD_MAX = 5.1;
 
 export const RAIL_Y = 0.3;
 export const BOX_Y = 0.34;

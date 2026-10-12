@@ -160,7 +160,7 @@ describe("RunnerScreen", () => {
     const crashed = createRunnerController({ spawn: false, obstacles: [rail(1)] });
     renderRunner(crashed);
     act(() => {
-      crashed.step(0.55);
+      crashed.step(0.7);
     });
     expect(crashed.getState().distance).toBeGreaterThan(1 + LATE_LOCK);
     fireEvent.keyDown(window, { key: "f" });

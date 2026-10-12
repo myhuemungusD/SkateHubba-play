@@ -61,7 +61,7 @@ The score is meters plus those trick points. Nothing is saved. **Play again** st
 
 On a Capacitor build, a powerslide, a grind lock, and the landing each fire a light haptic. A bail is silent. The browser build stays silent. The in-app Haptics switch in Settings still applies.
 
-The street starts at 8.5 units per second (about 39% slower than the first preview) and adds 0.06 per second up to 13. The first preview started at 14 and climbed by 0.4 up to 26.
+The street starts at 6 units per second (about 30% slower than round 2, which started at 8.5) and adds 0.03 per second up to 9. Round 2 added 0.06 per second up to 13. The first preview started at 14 and climbed by 0.4 up to 26. The camera sits higher, wider, and further behind the board so the next rails and ledges are in frame. The grind windows are a little wider to match the slower approach.
 
 ## Phone performance
 

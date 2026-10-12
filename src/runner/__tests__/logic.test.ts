@@ -8,6 +8,7 @@ import {
   MAX_FRAME_DT,
   MAX_SPEED,
   RAIL_LENGTH,
+  SPEED_RAMP,
   TRICK_POINTS,
 } from "../constants";
 import { createRunnerController, type RunnerController } from "../controller";
@@ -274,7 +275,8 @@ describe("score and the street", () => {
     expect(run.getState().distance).toBeGreaterThan(held);
 
     let fast = createRun({ spawn: false });
-    for (let i = 0; i < 1600; i += 1) fast = stepRun(fast, MAX_FRAME_DT).state;
+    const stepsToCap = Math.ceil((MAX_SPEED - BASE_SPEED) / SPEED_RAMP / MAX_FRAME_DT) + 40;
+    for (let i = 0; i < stepsToCap; i += 1) fast = stepRun(fast, MAX_FRAME_DT).state;
     expect(fast.speed).toBe(MAX_SPEED);
   });
 
