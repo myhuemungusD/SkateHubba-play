@@ -28,7 +28,7 @@ Auth is the same pair the rules workflow uses: `FIREBASE_WIF_PROVIDER` and `FIRE
 
 The rules deploy service account can publish rules. It may not be allowed to deploy functions. These grants are on that same account (the email in the `FIREBASE_WIF_SERVICE_ACCOUNT` secret). They do not change rules deploys.
 
-Project: `sk8hub-d7806`. These functions are 2nd gen, in `us-central1`. The runtime identity is the default compute service account.
+Project: `sk8hub-d7806`. These functions are 2nd gen, in `us-central1`. They run as `sk8hub-d7806@appspot.gserviceaccount.com` (`setGlobalOptions` in `functions/src/index.ts`). The default compute service account was deleted, so a deploy that leaves `serviceAccount` unset fails with "Service account ... was not found".
 
 ```bash
 PROJECT_ID=sk8hub-d7806
@@ -43,14 +43,13 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 
 # Act as the account the function runs as.
 gcloud iam service-accounts add-iam-policy-binding \
-  "${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  "sk8hub-d7806@appspot.gserviceaccount.com" \
   --project="$PROJECT_ID" \
   --member="serviceAccount:${DEPLOYER}" \
   --role="roles/iam.serviceAccountUser"
 
-# Act as the Cloud Build account. Since May 2024 many projects build as the
-# compute service account above, so this is the same binding. If Cloud Build
-# still uses the older account, grant it too.
+# Act as the Cloud Build account. If the build log names a different
+# account, grant serviceAccountUser on that one too.
 gcloud iam service-accounts add-iam-policy-binding \
   "${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
   --project="$PROJECT_ID" \

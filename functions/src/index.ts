@@ -1,5 +1,6 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+import { setGlobalOptions, type GlobalOptions } from "firebase-functions/v2";
 import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onCall } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
@@ -10,6 +11,33 @@ import { sweepExpiredDiceGames } from "./dice/handlers.js";
 import { adminDiceDb } from "./dice/store.js";
 import { handleClipCreated, handleClipReport, handleDecideClip } from "./moderation/handlers.js";
 import { adminClipStore } from "./moderation/publish.js";
+
+/**
+ * Shared defaults for every v2 function in this file.
+ *
+ * `setGlobalOptions` replaces the defaults bag, so the runtime account is
+ * spread onto the options already shared by every export (region) instead of
+ * passed alone. Per-function options override a single field. None of the
+ * exports set `serviceAccount`, so the callables (`diceAction`,
+ * `decideClipModeration`), the schedule (`diceSweep`), and the Firestore
+ * triggers (`onGameCompleted`, `moderateNewClip`, `moderateClipReport`) all
+ * inherit this account.
+ *
+ * The default Compute Engine service account
+ * (`665573979824-compute@developer.gserviceaccount.com`) was deleted on
+ * sk8hub-d7806. A deploy that leaves the runtime identity unset fails with
+ * "Service account ... was not found". Live functions already run as the
+ * App Engine default account, and the deployer has
+ * `roles/iam.serviceAccountUser` on it.
+ */
+const globalOptions: GlobalOptions = {
+  region: "us-central1",
+};
+
+setGlobalOptions({
+  ...globalOptions,
+  serviceAccount: "sk8hub-d7806@appspot.gserviceaccount.com",
+});
 
 /**
  * The app uses the named Firestore database "skatehubba", NOT the (default)
