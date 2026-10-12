@@ -228,21 +228,28 @@ function dbWithOneExpiredGame() {
   const txSet = vi.fn();
   const txGet = vi.fn().mockResolvedValue(expiredGameSnapshot());
   const docRef = { __doc: true };
+  const whereArgs: unknown[][] = [];
   const db = {
-    collection: vi.fn(() => ({
-      where: vi.fn().mockReturnThis(),
-      orderBy: vi.fn().mockReturnThis(),
-      limit: vi.fn().mockReturnThis(),
-      // Candidate docs carry data() because the notification passes read the
-      // doc body (createdAt / turnDeadline) straight off the query snapshot.
-      get: vi.fn().mockResolvedValue({ docs: [expiredGameSnapshot()], empty: false }),
-      doc: vi.fn(() => docRef),
-    })),
+    collection: vi.fn(() => {
+      const query = {
+        where: vi.fn((...args: unknown[]) => {
+          whereArgs.push(args);
+          return query;
+        }),
+        orderBy: vi.fn(() => query),
+        limit: vi.fn(() => query),
+        // Candidate docs carry data() because the notification passes read the
+        // doc body (createdAt / turnDeadline) straight off the query snapshot.
+        get: vi.fn().mockResolvedValue({ docs: [expiredGameSnapshot()], empty: false }),
+        doc: vi.fn(() => docRef),
+      };
+      return query;
+    }),
     runTransaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
       fn({ get: txGet, update: txUpdate, set: txSet }),
     ),
   };
-  return { db, txUpdate, txSet };
+  return { db, txUpdate, txSet, whereArgs };
 }
 
 /**
@@ -327,13 +334,14 @@ describe("sweep handler dry-run (never writes)", () => {
   });
 
   it("writes the forfeit transition when not a dry-run", async () => {
-    const { db, txUpdate } = dbWithOneExpiredGame();
+    const { db, txUpdate, whereArgs } = dbWithOneExpiredGame();
     getFirestoreMock.mockReturnValue(db);
 
     const { res, out } = makeRes();
     await handler(makeReq({ authorization: "Bearer s3cret" }), res);
 
     expect(out.body).toMatchObject({ scanned: 1, forfeited: 1, dryRun: false });
+    expect(whereArgs).toContainEqual(["phase", "in", ["setting", "matching", "disputable", "setReview"]]);
     expect(txUpdate).toHaveBeenCalledTimes(1);
     const write = txUpdate.mock.calls[0][1] as Record<string, unknown>;
     expect(write.status).toBe("forfeit");
@@ -556,9 +564,12 @@ describe("sweep handler challenge-notification reconcile (server backstop)", () 
     const { res } = makeRes();
     await handler(makeReq({ authorization: "Bearer s3cret" }), res);
 
-    // Query index 1 is the reconcile pass (0 is the forfeit sweep).
+    // Query index 1 is the reconcile pass (0 is the forfeit sweep, 2 is reminders).
     expect(harness.gamesFilters(1)).toContainEqual(["status", "==", "active"]);
     expect(harness.gamesFilters(1)).toContainEqual(["turnNumber", "==", 1]);
+    const playPhases = ["setting", "matching", "disputable", "setReview"];
+    expect(harness.gamesFilters(0)).toContainEqual(["phase", "in", playPhases]);
+    expect(harness.gamesFilters(2)).toContainEqual(["phase", "in", playPhases]);
   });
 
   it("leaves a game inside the grace period alone (no race with the client)", async () => {
