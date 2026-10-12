@@ -34,7 +34,7 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
               poster={CLIP_POSTER}
               preload="metadata"
               aria-label={`Your attempt at ${game.currentTrickName || "trick"}`}
-              className="trick-frame rounded-2xl bg-black object-cover border border-border"
+              className="trick-frame rounded-2xl bg-black object-contain border border-border"
             />
             <ClipShareButtons videoUrl={game.matchVideoUrl} trickName={game.currentTrickName || "trick"} />
           </>
@@ -58,7 +58,7 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
               poster={CLIP_POSTER}
               preload="metadata"
               aria-label={`Video of ${game.currentTrickName || "trick"} you set`}
-              className="trick-frame rounded-2xl bg-black object-cover border border-border"
+              className="trick-frame rounded-2xl bg-black object-contain border border-border"
             />
             <ClipShareButtons videoUrl={game.currentTrickVideoUrl} trickName={game.currentTrickName || "trick"} />
           </>
@@ -93,7 +93,7 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
           poster={CLIP_POSTER}
           preload="metadata"
           aria-label={clipLabel}
-          className="trick-frame rounded-2xl bg-black object-cover border border-border"
+          className="trick-frame rounded-2xl bg-black object-contain border border-border"
         />
         <ClipShareButtons videoUrl={clipUrl} trickName={lastTurn.trickName} />
       </div>

@@ -218,6 +218,26 @@ describe("useMediaRecorder", () => {
     });
   });
 
+  it("asks for a portrait frame when the phone is held upright", async () => {
+    const prev = Object.getOwnPropertyDescriptor(window, "matchMedia");
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: (query: string) => ({ matches: query === "(orientation: portrait)", media: query }),
+    });
+    mockGetUserMedia.mockResolvedValue(fakeStream([fakeTrack("video", { width: 1080, height: 1920 })]));
+    try {
+      const view = mountRecorder();
+      await openCamera(view);
+      const requested = mockGetUserMedia.mock.calls[0]?.[0] as { video: MediaTrackConstraints };
+      expect(requested.video.width).toEqual({ ideal: 1080 });
+      expect(requested.video.height).toEqual({ ideal: 1920 });
+      expect(requested.video.aspectRatio).toEqual({ ideal: 1080 / 1920 });
+    } finally {
+      if (prev) Object.defineProperty(window, "matchMedia", prev);
+      else Reflect.deleteProperty(window, "matchMedia");
+    }
+  });
+
   it("records at the shared bitrate so native and web clips match", async () => {
     mockGetUserMedia.mockResolvedValue(fakeStream([fakeTrack("video")]));
     const view = mountRecorder();

@@ -6,6 +6,8 @@ import {
   isIOSDevice,
   prefersH264Mp4,
   recorderMimeCandidates,
+  holdOrientation,
+  portraitFrameIsSensorCrop,
   selectIosCamera,
   trackMatchesRequestedCamera,
   tuneVideoTrack,
@@ -71,9 +73,24 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function stubOrientation(portrait: boolean | "throw"): () => void {
+  const prev = Object.getOwnPropertyDescriptor(window, "matchMedia");
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: (query: string) => {
+      if (portrait === "throw") throw new Error("matchMedia unavailable");
+      return { matches: portrait && query === "(orientation: portrait)", media: query };
+    },
+  });
+  return () => {
+    if (prev) Object.defineProperty(window, "matchMedia", prev);
+    else Reflect.deleteProperty(window, "matchMedia");
+  };
+}
+
 describe("videoConstraints", () => {
   it("asks for 1080p16:9 at an ideal 60fps, with 30fps and 720p as optional fallbacks", () => {
-    expect(videoConstraints("environment")).toEqual({
+    expect(videoConstraints("environment", undefined, "landscape")).toEqual({
       facingMode: { ideal: "environment" },
       width: { ideal: 1920 },
       height: { ideal: 1080 },
@@ -94,10 +111,32 @@ describe("videoConstraints", () => {
   });
 
   it("selects an enumerated lens by deviceId and does not also send facingMode", () => {
-    const constraints = videoConstraints("user", "cam-front");
+    const constraints = videoConstraints("user", "cam-front", "landscape");
     expect(constraints.deviceId).toEqual({ exact: "cam-front" });
     expect(constraints.facingMode).toBeUndefined();
     expect(constraints.frameRate).toEqual({ ideal: 60 });
+  });
+
+  it("asks for 1080x1920 when the phone is held portrait, without an exact 9:16 crop", () => {
+    const portrait = videoConstraints("environment", undefined, "portrait");
+    const landscape = videoConstraints("environment", undefined, "landscape");
+    expect(portrait.width).toEqual({ ideal: 1080 });
+    expect(portrait.height).toEqual({ ideal: 1920 });
+    expect(portrait.aspectRatio).toEqual({ ideal: 1080 / 1920 });
+    expect(portrait.advanced).toEqual(landscape.advanced);
+    expect(portrait.facingMode).toEqual({ ideal: "environment" });
+  });
+
+  it("reads portrait from the screen and treats a missing query as landscape", () => {
+    const upright = stubOrientation(true);
+    expect(holdOrientation()).toBe("portrait");
+    upright();
+    const sideways = stubOrientation(false);
+    expect(holdOrientation()).toBe("landscape");
+    sideways();
+    const broken = stubOrientation("throw");
+    expect(holdOrientation()).toBe("landscape");
+    broken();
   });
 });
 
@@ -512,6 +551,7 @@ describe("tuneVideoTrack", () => {
       frameRate: 60,
       zoom: 1,
       facingMode: "environment",
+      hold: "landscape",
     });
 
     const empty = track({});
@@ -522,6 +562,7 @@ describe("tuneVideoTrack", () => {
       frameRate: null,
       zoom: null,
       facingMode: null,
+      hold: "landscape",
     });
   });
 
@@ -546,6 +587,81 @@ describe("tuneVideoTrack", () => {
     const widthOnly = track({ settings: { width: 1920 } });
     await tuneVideoTrack(widthOnly);
     expect(widthOnly.applyConstraints).not.toHaveBeenCalled();
+
+    const tall = track({ settings: { width: 480, height: 640 } });
+    await tuneVideoTrack(tall);
+    expect(tall.applyConstraints).toHaveBeenCalledWith({
+      width: { ideal: 720 },
+      height: { ideal: 1280 },
+      aspectRatio: { ideal: 720 / 1280 },
+      frameRate: { ideal: 30 },
+    });
+  });
+
+  it("replaces a 9:16 sensor slice with the full 16:9 preset", async () => {
+    const warn = vi.spyOn(logger, "warn");
+    const sensor = { width: { max: 1920 }, height: { max: 1080 } };
+    const sliced = track({ settings: { width: 608, height: 1080 }, capabilities: sensor });
+    const rotated = track({ settings: { width: 1080, height: 1920 }, capabilities: sensor });
+    const fourK = track({
+      settings: { width: 1080, height: 1920 },
+      capabilities: { width: { max: 3840 }, height: { max: 2160 } },
+    });
+    const sliceOfFourK = track({
+      settings: { width: 1215, height: 2160 },
+      capabilities: { width: { max: 3840 }, height: { max: 2160 } },
+    });
+    const squareCaps = track({
+      settings: { width: 1080, height: 1920 },
+      capabilities: { width: { max: 1920 }, height: { max: 1920 } },
+    });
+    const landscape = track({ settings: { width: 1920, height: 1080 }, capabilities: sensor });
+    const unknown = track({ settings: { width: 608, height: 1080 } });
+    const exploding = track({ settings: { width: 608, height: 1080 }, capabilitiesThrows: true });
+    const zeroMax = track({
+      settings: { width: 608, height: 1080 },
+      capabilities: { width: { max: 0 }, height: { max: 1080 } },
+    });
+    const almostSquare = track({
+      settings: { width: 1000, height: 1080 },
+      capabilities: sensor,
+    });
+    expect(portraitFrameIsSensorCrop(sliced)).toBe(true);
+    expect(portraitFrameIsSensorCrop(rotated)).toBe(false);
+    expect(portraitFrameIsSensorCrop(fourK)).toBe(false);
+    expect(portraitFrameIsSensorCrop(sliceOfFourK)).toBe(true);
+    expect(portraitFrameIsSensorCrop(squareCaps)).toBe(false);
+    expect(portraitFrameIsSensorCrop(landscape)).toBe(false);
+    expect(portraitFrameIsSensorCrop(unknown)).toBe(false);
+    expect(portraitFrameIsSensorCrop(exploding)).toBe(false);
+    expect(portraitFrameIsSensorCrop(zeroMax)).toBe(false);
+    expect(portraitFrameIsSensorCrop(almostSquare)).toBe(false);
+    expect(portraitFrameIsSensorCrop(track({}))).toBe(false);
+    expect(
+      portraitFrameIsSensorCrop(
+        track({
+          settings: { width: 608, height: 1080 },
+          capabilities: { width: { max: 1200 }, height: { max: 1080 } },
+        }),
+      ),
+    ).toBe(false);
+
+    await tuneVideoTrack(sliced);
+    expect(sliced.applyConstraints).toHaveBeenCalledWith({
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+      aspectRatio: { ideal: 16 / 9 },
+      frameRate: { ideal: 60 },
+    });
+    expect(warn).toHaveBeenCalledWith("camera_portrait_crop_rejected", { width: 608, height: 1080 });
+
+    const rejected = track({
+      settings: { width: 608, height: 1080 },
+      capabilities: sensor,
+      apply: () => Promise.reject(new Error("preset rejected")),
+    });
+    await tuneVideoTrack(rejected);
+    expect(warn).toHaveBeenCalledWith("camera_portrait_crop_fallback_failed", { error: "preset rejected" });
   });
 
   it("locks zoom to 1 and leaves a lens that cannot represent 1x alone", async () => {

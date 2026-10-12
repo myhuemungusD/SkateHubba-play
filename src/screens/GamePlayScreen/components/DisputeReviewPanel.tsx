@@ -48,7 +48,7 @@ export function DisputeReviewPanel({
             poster={CLIP_POSTER}
             preload="metadata"
             aria-label={`${setterUsername}'s ${game.currentTrickName || "trick"} video`}
-            className="trick-frame rounded-2xl bg-black object-cover border border-border"
+            className="trick-frame rounded-2xl bg-black object-contain border border-border"
           />
         </div>
       )}
@@ -65,7 +65,7 @@ export function DisputeReviewPanel({
             poster={CLIP_POSTER}
             preload="metadata"
             aria-label={`${matcherUsername}'s match attempt video`}
-            className="trick-frame rounded-2xl bg-black object-cover border border-border"
+            className="trick-frame rounded-2xl bg-black object-contain border border-border"
           />
         </div>
       )}

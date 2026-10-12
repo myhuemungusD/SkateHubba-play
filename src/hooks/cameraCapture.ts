@@ -6,26 +6,45 @@ export type FacingMode = "environment" | "user";
 /**
  * Browser capture constraints for a one-take trick clip.
  *
- * The viewfinder is a 9:16 frame, but phone sensors are landscape. Asking for
- * 1080×1920 (or aspectRatio 9/16) makes the browser crop that sensor to fill
- * the frame — a digital zoom — and `object-fit: cover` was cropping whatever
- * landscape frame came back a second time. 1920×1080 is the wide 1080p mode;
- * the viewfinder uses `object-contain`, so the preview shows the same pixels
- * that are recorded. The crosshair stays centered on that frame.
+ * The app is vertical. Held in portrait, the ideal frame is 1080×1920
+ * (9:16) so a real portrait buffer fills the viewfinder. Held in landscape,
+ * the ideal is 1920×1080 (16:9). Mobile browsers swap width and height to
+ * match how the phone is held, and a 16:9 preset rotated that way is the
+ * full 1× video field of view — not a zoom.
+ *
+ * An *exact* 1080×1920 is different. Phones have no native portrait preset.
+ * Satisfying 9:16 by crop-and-scale slices a 1920×1080 sensor to about
+ * 608×1080, which is the zoomed-in look. Those exact sizes are therefore
+ * not requested. The exact fallbacks are only the full 16:9 presets
+ * (1080p, then 720p). On current iOS and Android that preset, asked for
+ * while the phone is upright, is what the browser rotates into a vertical
+ * picture. If a 9:16 ideal still comes back as that slice, the tune step
+ * replaces it with the 16:9 preset.
  *
  * 60fps is `ideal` only. Chrome on Android cannot deliver 60fps to
  * getUserMedia / MediaRecorder (it also only encodes VP8/VP9), and a hard
  * `min`/`exact` throws OverconstrainedError instead of opening the camera.
- * The `advanced` list is optional: 1080p60, then 1080p30, then 720p.
  */
 
-export const CAPTURE_WIDTH = 1920;
-export const CAPTURE_HEIGHT = 1080;
-export const CAPTURE_ASPECT = CAPTURE_WIDTH / CAPTURE_HEIGHT;
-const FALLBACK_WIDTH = 1280;
-const FALLBACK_HEIGHT = 720;
+/** How the phone is held when the camera opens. Desktop windows use the same check. */
+export type HoldOrientation = "portrait" | "landscape";
+
+const LANDSCAPE_WIDTH = 1920;
+const LANDSCAPE_HEIGHT = 1080;
+const PORTRAIT_WIDTH = 1080;
+const PORTRAIT_HEIGHT = 1920;
+const FALLBACK_LONG = 1280;
+const FALLBACK_SHORT = 720;
 const IDEAL_FPS = 60;
 const FALLBACK_FPS = 30;
+
+/** Full 16:9 presets. Exact, so a browser cannot satisfy them by slicing to 9:16. */
+const WIDE_PRESETS: MediaTrackConstraintSet[] = [
+  { width: LANDSCAPE_WIDTH, height: LANDSCAPE_HEIGHT, frameRate: IDEAL_FPS },
+  { width: LANDSCAPE_WIDTH, height: LANDSCAPE_HEIGHT, frameRate: FALLBACK_FPS },
+  { width: FALLBACK_LONG, height: FALLBACK_SHORT, frameRate: IDEAL_FPS },
+  { width: FALLBACK_LONG, height: FALLBACK_SHORT, frameRate: FALLBACK_FPS },
+];
 
 /**
  * Mic constraints. Voice-call DSP is destructive to skate audio:
@@ -69,24 +88,36 @@ export function recorderMimeCandidates(): readonly string[] {
     : [...WEBM_MIME_CANDIDATES, ...MP4_MIME_CANDIDATES];
 }
 
-export function videoConstraints(facingMode: FacingMode, deviceId?: string): MediaTrackConstraints {
+function readPortrait(): boolean {
+  try {
+    return window.matchMedia("(orientation: portrait)").matches;
+  } catch {
+    return false;
+  }
+}
+
+export function holdOrientation(): HoldOrientation {
+  return readPortrait() ? "portrait" : "landscape";
+}
+
+export function videoConstraints(
+  facingMode: FacingMode,
+  deviceId?: string,
+  orientation: HoldOrientation = holdOrientation(),
+): MediaTrackConstraints {
   // deviceId and facingMode together overconstrain iOS. The id was chosen
   // because facingMode picked the wrong lens; don't send both.
   const lens: MediaTrackConstraints = deviceId
     ? { deviceId: { exact: deviceId } }
     : { facingMode: { ideal: facingMode } };
+  const portrait = orientation === "portrait";
   return {
     ...lens,
-    width: { ideal: CAPTURE_WIDTH },
-    height: { ideal: CAPTURE_HEIGHT },
-    aspectRatio: { ideal: CAPTURE_ASPECT },
+    width: { ideal: portrait ? PORTRAIT_WIDTH : LANDSCAPE_WIDTH },
+    height: { ideal: portrait ? PORTRAIT_HEIGHT : LANDSCAPE_HEIGHT },
+    aspectRatio: { ideal: portrait ? PORTRAIT_WIDTH / PORTRAIT_HEIGHT : LANDSCAPE_WIDTH / LANDSCAPE_HEIGHT },
     frameRate: { ideal: IDEAL_FPS },
-    advanced: [
-      { width: CAPTURE_WIDTH, height: CAPTURE_HEIGHT, frameRate: IDEAL_FPS },
-      { width: CAPTURE_WIDTH, height: CAPTURE_HEIGHT, frameRate: FALLBACK_FPS },
-      { width: FALLBACK_WIDTH, height: FALLBACK_HEIGHT, frameRate: IDEAL_FPS },
-      { width: FALLBACK_WIDTH, height: FALLBACK_HEIGHT, frameRate: FALLBACK_FPS },
-    ],
+    advanced: WIDE_PRESETS,
   };
 }
 
@@ -239,10 +270,64 @@ async function restoreFacingMode(facingMode: FacingMode): Promise<MediaStream> {
   }
 }
 
-function isBelow720p(settings: MediaTrackSettings): boolean {
+function frameSize(settings: MediaTrackSettings): { width: number; height: number } | null {
   const { width, height } = settings;
-  if (!width || !height) return false;
-  return Math.min(width, height) < 720 || Math.max(width, height) < FALLBACK_WIDTH;
+  if (!width || !height) return null;
+  return { width, height };
+}
+
+/**
+ * True when a portrait frame is a center slice of a wider sensor mode.
+ *
+ * A rotated 1080p preset is 1080×1920: its long side is the sensor's long
+ * side. A 9:16 crop of 1920×1080 is about 608×1080: its long side is the
+ * sensor's short side. The second one is the digital zoom. Capabilities
+ * that report the same max width and height are not a landscape sensor, so
+ * they are left alone.
+ */
+export function portraitFrameIsSensorCrop(track: MediaStreamTrack): boolean {
+  const { width, height } = track.getSettings();
+  if (!width || !height || height <= width) return false;
+  let maxWidth: number | undefined;
+  let maxHeight: number | undefined;
+  try {
+    const caps = track.getCapabilities();
+    maxWidth = caps.width?.max;
+    maxHeight = caps.height?.max;
+  } catch {
+    return false;
+  }
+  if (maxWidth === undefined || maxHeight === undefined || maxWidth <= 0 || maxHeight <= 0) return false;
+  const sensorLong = Math.max(maxWidth, maxHeight);
+  const sensorShort = Math.min(maxWidth, maxHeight);
+  if (sensorShort / sensorLong > 0.92) return false;
+  const longSide = Math.max(width, height);
+  const shortSide = Math.min(width, height);
+  const longSideIsSensorShort = Math.abs(longSide - sensorShort) / sensorShort <= 0.08;
+  return longSideIsSensorShort && longSide < sensorLong * 0.75 && shortSide / longSide < 0.7;
+}
+
+/** Raise a small frame without flipping it from portrait to landscape. */
+function resolutionUpgrade(width: number, height: number): MediaTrackConstraints {
+  const portrait = height > width;
+  const nextWidth = portrait ? FALLBACK_SHORT : FALLBACK_LONG;
+  const nextHeight = portrait ? FALLBACK_LONG : FALLBACK_SHORT;
+  return {
+    width: { ideal: nextWidth },
+    height: { ideal: nextHeight },
+    aspectRatio: { ideal: nextWidth / nextHeight },
+    frameRate: { ideal: FALLBACK_FPS },
+  };
+}
+
+/** The full 16:9 preset, used when a 9:16 frame is only a slice of it. */
+function widePreset(): MediaTrackConstraints {
+  return {
+    width: { ideal: LANDSCAPE_WIDTH },
+    height: { ideal: LANDSCAPE_HEIGHT },
+    aspectRatio: { ideal: LANDSCAPE_WIDTH / LANDSCAPE_HEIGHT },
+    frameRate: { ideal: IDEAL_FPS },
+  };
 }
 
 /** What the camera actually opened, so a grainy/zoomed report can be diagnosed. */
@@ -254,6 +339,7 @@ export function logCameraSettings(track: MediaStreamTrack): void {
     frameRate: settings.frameRate ?? null,
     zoom: settings.zoom ?? null,
     facingMode: settings.facingMode ?? null,
+    hold: holdOrientation(),
   });
 }
 
@@ -263,16 +349,30 @@ export function logCameraSettings(track: MediaStreamTrack): void {
  * a rejected zoom must not throw away a camera that is already open.
  */
 export async function tuneVideoTrack(track: MediaStreamTrack): Promise<void> {
-  if (isBelow720p(track.getSettings())) {
+  if (portraitFrameIsSensorCrop(track)) {
+    const settings = track.getSettings();
+    logger.warn("camera_portrait_crop_rejected", {
+      width: settings.width,
+      height: settings.height,
+    });
     try {
-      await track.applyConstraints({
-        width: { ideal: FALLBACK_WIDTH },
-        height: { ideal: FALLBACK_HEIGHT },
-        aspectRatio: { ideal: CAPTURE_ASPECT },
-        frameRate: { ideal: FALLBACK_FPS },
-      });
+      // Widest 1080p field of view. Replaces the 9:16 slice; does not
+      // center-crop the preset down to fill the viewfinder.
+      await track.applyConstraints(widePreset());
     } catch (err) {
-      logger.warn("camera_resolution_fallback_failed", { error: errorMessage(err) });
+      logger.warn("camera_portrait_crop_fallback_failed", { error: errorMessage(err) });
+    }
+  } else {
+    const size = frameSize(track.getSettings());
+    if (
+      size &&
+      (Math.min(size.width, size.height) < FALLBACK_SHORT || Math.max(size.width, size.height) < FALLBACK_LONG)
+    ) {
+      try {
+        await track.applyConstraints(resolutionUpgrade(size.width, size.height));
+      } catch (err) {
+        logger.warn("camera_resolution_fallback_failed", { error: errorMessage(err) });
+      }
     }
   }
 

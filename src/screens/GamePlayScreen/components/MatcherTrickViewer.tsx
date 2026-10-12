@@ -39,7 +39,7 @@ export function MatcherTrickViewer({
           poster={CLIP_POSTER}
           preload="metadata"
           aria-label={`Video of ${game.currentTrickName || "trick"} set by ${setterUsername}`}
-          className="trick-frame rounded-2xl bg-black object-cover border border-border"
+          className="trick-frame rounded-2xl bg-black object-contain border border-border"
         />
       ) : (
         <p className="font-body text-sm text-subtle text-center py-4">No video recorded — just match the trick!</p>

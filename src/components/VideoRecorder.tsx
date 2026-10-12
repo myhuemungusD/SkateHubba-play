@@ -16,7 +16,11 @@ import { CLIP_POSTER } from "../lib/clipPoster";
  */
 const AUTO_STOP_WARNING_SECONDS = 5;
 
-/** Full recorded frame. `cover` on this 9:16 viewfinder crops a 16:9 stream and looks zoomed in. */
+/**
+ * Full recorded frame, centered in the 9:16 viewfinder. The crosshair is
+ * centered on this same box, so it stays on the middle of the picture when
+ * a non-9:16 stream letterboxes.
+ */
 const FRAME_FIT = "w-full h-full object-contain";
 
 /** Shared classes for the viewfinder chrome toggles — 44px touch target. */
