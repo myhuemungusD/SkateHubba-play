@@ -23,7 +23,7 @@
  */
 import { describe, it } from "vitest";
 import { assertSucceeds, assertFails } from "@firebase/rules-unit-testing";
-import { doc, setDoc, updateDoc } from "firebase/firestore";
+import { deleteDoc, doc, setDoc, updateDoc } from "firebase/firestore";
 import {
   createGameWithAnchor,
   setupRulesTestEnv,
@@ -157,5 +157,47 @@ describe("games UPDATE (forfeit) — statsApplied cannot be introduced", () => {
         winner: ALICE_UID,
       }),
     );
+  });
+});
+
+describe("games DELETE — a finished game stays until stats are applied", () => {
+  it("denied: a player cannot delete a complete game before close-out", async () => {
+    await seedGameForUpdate(
+      getEnv(),
+      "game-delete-early",
+      { player1Uid: ALICE_UID, player2Uid: BOB_UID },
+      {
+        status: "complete",
+        winner: BOB_UID,
+      },
+    );
+    await assertFails(deleteDoc(gameDoc(authedContext(getEnv(), ALICE_UID), "game-delete-early")));
+  });
+
+  it("allowed: a player can delete a complete game after statsApplied", async () => {
+    await seedGameForUpdate(
+      getEnv(),
+      "game-delete-done",
+      { player1Uid: ALICE_UID, player2Uid: BOB_UID },
+      {
+        status: "complete",
+        winner: BOB_UID,
+        statsApplied: true,
+      },
+    );
+    await assertSucceeds(deleteDoc(gameDoc(authedContext(getEnv(), ALICE_UID), "game-delete-done")));
+  });
+
+  it("denied: an active game cannot be deleted even with statsApplied", async () => {
+    await seedGameForUpdate(
+      getEnv(),
+      "game-delete-active",
+      { player1Uid: ALICE_UID, player2Uid: BOB_UID },
+      {
+        status: "active",
+        statsApplied: true,
+      },
+    );
+    await assertFails(deleteDoc(gameDoc(authedContext(getEnv(), ALICE_UID), "game-delete-active")));
   });
 });
