@@ -23,6 +23,7 @@ gradlew text eol=lf
 *.ttf binary
 *.woff binary
 *.woff2 binary
+*.wasm binary
 
 # Generated lockfiles — exclude from language stats.
 package-lock.json linguist-generated=true

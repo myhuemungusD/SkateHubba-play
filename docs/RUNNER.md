@@ -65,7 +65,7 @@ The street starts at 6 units per second (about 30% slower than round 2, which st
 
 ## Phone performance
 
-The canvas caps `devicePixelRatio` at 1.5, turns MSAA off, and does not render shadow maps. The board has a blob shadow. Lights are a hemisphere plus two directionals, with a 1k daytime HDRI on the environment for reflections once it loads. Road, sidewalk, rails, ledges, and the brick walls use compressed CC0 PBR maps (512 WebP, mipmaps). Griptape and the deck wood grain are still generated. Street slabs, rails, and ledges are created once and recycled. Sparks and speed lines are a fixed pool. The sim pauses when the document is hidden, and the canvas stops drawing while paused or after a bail. An FPS number sits in the corner for device playtests. The texture list, licenses, and the empty slots for a deck graphic, a logo, and the Mike White model are in [RUNNER_ASSETS.md](RUNNER_ASSETS.md).
+The canvas caps `devicePixelRatio` at 1.5, turns MSAA off, and does not render shadow maps. The board has a blob shadow. Lights are a hemisphere plus two directionals, with a 1k daytime HDRI on the environment for reflections once it loads. Road, sidewalk, rails, ledges, and the brick walls use compressed CC0 PBR maps (512 WebP, mipmaps). Griptape and the deck wood grain are still generated. Street slabs, rails, and ledges are created once and recycled. Sparks and speed lines are a fixed pool. The sim pauses when the document is hidden, and the canvas stops drawing while paused or after a bail. An FPS number sits in the corner for device playtests. The texture list, licenses, the Skateboard_01 credit, and the empty slots for a deck graphic, a logo, and the Mike White model are in [RUNNER_ASSETS.md](RUNNER_ASSETS.md).
 
 three.js and React Three Fiber load only when `/play/runner` is opened (`React.lazy` in `App.tsx`). `npm run build` fails if any of that code shows up in the initial JavaScript. The procedural board does not import drei, so the runner chunk does not pull the drei barrel. `@react-three/drei` stays in the project for a later model; import it from a core subpath (`core/Gltf`) if a file is added, not from the package root.
 
@@ -73,7 +73,7 @@ three.js and React Three Fiber load only when `/play/runner` is opened (`React.l
 
 There is no skater in this build. The player is the deck, griptape, trucks, and wheels drawn in `src/runner/view/Board.tsx`. Poses live in `src/runner/boardPose.ts` and are applied to the root group (nose toward **-Z**, down the street). `spin` is a 0..1 kickflip turn.
 
-A later deck model can parent under that group and hide the procedural meshes. The switch for that file, and for a deck graphic and a logo decal, is `src/runner/artSlots.ts`. Those three are null until the files exist. Node names already on the procedural board:
+Skateboard_01 by RandomScan (Sketchfab), CC BY 4.0, is the board Jason picked. The file is not in the repo yet. `skateboard01ModelUrl()` stays null, so the procedural board stays on screen and the Draco, Meshopt, and KTX2 loaders are not fetched. When the glb is added, `loadSkateboardModel` scales it into this group and hides `ProceduralBoard`. The pause card already shows the credit. The deck graphic, the logo, and the Mike White model are still separate null slots in `src/runner/artSlots.ts`. Node names already on the procedural board:
 
 `Deck`, `DeckPly`, `Griptape`, `Graphic`, `LogoDecal`, `TruckNose`, `TruckTail`, `WheelNoseLeft`, `WheelNoseRight`, `WheelTailLeft`, `WheelTailRight`.
 

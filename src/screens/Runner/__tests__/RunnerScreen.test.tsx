@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { __resetCachedMqlForTest } from "../../../hooks/useReducedMotion";
+import { SKATEBOARD_01_CREDIT, SKATEBOARD_01_LICENSE, SKATEBOARD_01_PAGE } from "../../../runner/boardCredit";
 import { createRunnerController } from "../../../runner/controller";
 import { LATE_LOCK, RAIL_LENGTH, TRICK_POINTS } from "../../../runner/constants";
 import type { Obstacle } from "../../../runner/types";
@@ -113,6 +114,12 @@ describe("RunnerScreen", () => {
     await user.click(screen.getByRole("button", { name: "Pause" }));
     expect(screen.getByRole("button", { name: "Resume" })).toBeInTheDocument();
     expect(screen.queryByText(/Tap a crooked grind/)).not.toBeInTheDocument();
+    expect(screen.getByTestId("runner-credit")).toHaveTextContent(SKATEBOARD_01_CREDIT);
+    expect(screen.getByRole("link", { name: "Skateboard_01 by RandomScan (Sketchfab)" })).toHaveAttribute(
+      "href",
+      SKATEBOARD_01_PAGE,
+    );
+    expect(screen.getByRole("link", { name: "CC BY 4.0" })).toHaveAttribute("href", SKATEBOARD_01_LICENSE);
 
     await user.click(screen.getByRole("button", { name: "Resume" }));
     expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
@@ -180,10 +187,7 @@ describe("RunnerScreen", () => {
   it("shows the combo after a second grind in the same lane", () => {
     const controller = createRunnerController({
       spawn: false,
-      obstacles: [
-        rail(8),
-        { id: 2, kind: "box", lane: 1, z: 20, length: 3.6, awarded: false, resolved: false },
-      ],
+      obstacles: [rail(8), { id: 2, kind: "box", lane: 1, z: 20, length: 3.6, awarded: false, resolved: false }],
     });
     renderRunner(controller);
     const roll = (distance: number) => {
@@ -209,7 +213,9 @@ describe("RunnerScreen", () => {
 
   it("swipes from the playfield and mounts the 3D view when WebGL exists", () => {
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(((kind: string) =>
-      kind === "webgl" || kind === "webgl2" ? ({} as WebGLRenderingContext) : null) as typeof HTMLCanvasElement.prototype.getContext);
+      kind === "webgl" || kind === "webgl2"
+        ? ({} as WebGLRenderingContext)
+        : null) as typeof HTMLCanvasElement.prototype.getContext);
 
     let frame: FrameRequestCallback | null = null;
     vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {

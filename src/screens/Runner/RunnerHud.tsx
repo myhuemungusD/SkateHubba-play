@@ -1,5 +1,11 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { Link } from "react-router";
+import {
+  SKATEBOARD_01_CREDIT_LICENSE,
+  SKATEBOARD_01_CREDIT_NAME,
+  SKATEBOARD_01_LICENSE,
+  SKATEBOARD_01_PAGE,
+} from "../../runner/boardCredit";
 import { ARM_LABELS } from "../../runner/constants";
 import type { HudSnapshot } from "../../runner/controller";
 import type { Grade } from "../../runner/types";
@@ -59,18 +65,15 @@ export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) 
               Pause
             </button>
           ) : null}
-          <Link
-            to="/"
-            className={`${BTN} inline-flex items-center bg-transparent text-sm text-white/80`}
-          >
+          <Link to="/" className={`${BTN} inline-flex items-center bg-transparent text-sm text-white/80`}>
             Exit
           </Link>
         </div>
       </div>
 
       <p className="sr-only" id="runner-help">
-        Three lanes. Swipe left or right to change lanes. Tap for a crooked grind, tap twice for a nose slide, swipe
-        up to kickflip into the grind. Swipe down to powerslide. The score is only for this run.
+        Three lanes. Swipe left or right to change lanes. Tap for a crooked grind, tap twice for a nose slide, swipe up
+        to kickflip into the grind. Swipe down to powerslide. The score is only for this run.
       </p>
       <p className="sr-only" aria-live="polite" data-testid="runner-announce">
         {hud.announce}
@@ -135,6 +138,25 @@ export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) 
             >
               {resumeLabel}
             </button>
+            <p data-testid="runner-credit" className="mt-4 font-body text-[10px] leading-snug text-white/50">
+              <a
+                href={SKATEBOARD_01_PAGE}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline decoration-white/30 underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              >
+                {SKATEBOARD_01_CREDIT_NAME}
+              </a>
+              {", "}
+              <a
+                href={SKATEBOARD_01_LICENSE}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline decoration-white/30 underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              >
+                {SKATEBOARD_01_CREDIT_LICENSE}
+              </a>
+            </p>
           </div>
         </div>
       ) : null}
