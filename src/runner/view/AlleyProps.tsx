@@ -44,8 +44,9 @@ const lidMat = new MeshStandardMaterial({ color: "#24503a", roughness: 0.7, meta
 
 /**
  * Sodium lamps, a dumpster, graffiti posters, and the HubbaSpot shop.
- * Parent these to a recycled street slab. Glow is an additive card, not a
- * fullscreen bloom pass, so the low quality tier still shows the lamps.
+ * Parent these to a recycled street slab. Glow is an additive card. The
+ * high tier adds a short bloom pass on top of that card. The phone tier
+ * keeps the card and skips the pass.
  */
 export function AlleyProps({ index, high }: { index: number; high: boolean }) {
   return (

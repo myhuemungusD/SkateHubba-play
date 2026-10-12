@@ -7,34 +7,37 @@ import {
   PMREMGenerator,
   RepeatWrapping,
   SRGBColorSpace,
-  TextureLoader,
   type ColorSpace,
   type Scene,
   type Texture,
   type WebGLRenderer,
 } from "three";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
-import asphaltColorUrl from "../assets/asphalt-color.webp";
-import asphaltNormalUrl from "../assets/asphalt-normal.webp";
-import asphaltRoughnessUrl from "../assets/asphalt-roughness.webp";
-import brickColorUrl from "../assets/brick-color.webp";
-import brickNormalUrl from "../assets/brick-normal.webp";
-import brickRoughnessUrl from "../assets/brick-roughness.webp";
-import concreteColorUrl from "../assets/concrete-color.webp";
-import concreteNormalUrl from "../assets/concrete-normal.webp";
-import concreteRoughnessUrl from "../assets/concrete-roughness.webp";
+import { KTX2Loader } from "three/examples/jsm/loaders/KTX2Loader.js";
+import asphaltColorUrl from "../assets/asphalt-color.ktx2?url";
+import asphaltNormalUrl from "../assets/asphalt-normal.ktx2?url";
+import asphaltRoughnessUrl from "../assets/asphalt-roughness.ktx2?url";
+import brickColorUrl from "../assets/brick-color.ktx2?url";
+import brickNormalUrl from "../assets/brick-normal.ktx2?url";
+import brickRoughnessUrl from "../assets/brick-roughness.ktx2?url";
+import concreteColorUrl from "../assets/concrete-color.ktx2?url";
+import concreteNormalUrl from "../assets/concrete-normal.ktx2?url";
+import concreteRoughnessUrl from "../assets/concrete-roughness.ktx2?url";
 import hdriUrl from "../assets/sunset_jhbcentral_1k.hdr?url";
-import metalColorUrl from "../assets/metal-color.webp";
-import metalMetalnessUrl from "../assets/metal-metalness.webp";
-import metalNormalUrl from "../assets/metal-normal.webp";
-import metalRoughnessUrl from "../assets/metal-roughness.webp";
+import metalColorUrl from "../assets/metal-color.ktx2?url";
+import metalMetalnessUrl from "../assets/metal-metalness.ktx2?url";
+import metalNormalUrl from "../assets/metal-normal.ktx2?url";
+import metalRoughnessUrl from "../assets/metal-roughness.ktx2?url";
 import { ensureBrandArt } from "./brandArt";
 
 /**
  * CC0 PBR maps plus the Design Mainline posters for the runner only.
- * Sources are listed in docs/RUNNER_ASSETS.md. Maps load after the lazy
- * route mounts; importing this module does not fetch them.
+ * The tiling maps are KTX2 (UASTC for color and normals, ETC1S for the
+ * data maps) and transcode to the GPU's compressed format. Sources are
+ * listed in docs/RUNNER_ASSETS.md. Maps load after the lazy route mounts.
  */
+
+const BASIS_TRANSCODER_PATH = "/runner/decoders/basis/";
 
 interface MapSet {
   color: Texture;
@@ -120,9 +123,12 @@ function prepare(texture: Texture, colorSpace: ColorSpace): Texture {
   texture.wrapS = RepeatWrapping;
   texture.wrapT = RepeatWrapping;
   texture.anisotropy = 4;
-  texture.generateMipmaps = true;
-  texture.minFilter = LinearMipmapLinearFilter;
-  texture.magFilter = LinearFilter;
+  const compressed = "isCompressedTexture" in texture && texture.isCompressedTexture === true;
+  if (!compressed) {
+    texture.generateMipmaps = true;
+    texture.minFilter = LinearMipmapLinearFilter;
+    texture.magFilter = LinearFilter;
+  }
   texture.needsUpdate = true;
   return texture;
 }
@@ -186,7 +192,7 @@ function applyMaps(): void {
 }
 
 async function loadSet(
-  loader: TextureLoader,
+  loader: KTX2Loader,
   colorUrl: string,
   normalUrl: string,
   roughnessUrl: string,
@@ -199,24 +205,30 @@ async function loadSet(
   return { color, normal, roughness, metalness };
 }
 
-function loadMaps(): Promise<void> {
-  const loader = new TextureLoader();
+function loadMaps(gl: WebGLRenderer): Promise<void> {
+  const loader = new KTX2Loader();
+  loader.setTranscoderPath(BASIS_TRANSCODER_PATH);
+  loader.detectSupport(gl);
   return Promise.all([
     loadSet(loader, asphaltColorUrl, asphaltNormalUrl, asphaltRoughnessUrl),
     loadSet(loader, concreteColorUrl, concreteNormalUrl, concreteRoughnessUrl),
     loadSet(loader, metalColorUrl, metalNormalUrl, metalRoughnessUrl, metalMetalnessUrl),
     loadSet(loader, brickColorUrl, brickNormalUrl, brickRoughnessUrl),
-  ]).then(([nextAsphalt, nextConcrete, nextMetal, nextBrick]) => {
-    asphalt = nextAsphalt;
-    concrete = nextConcrete;
-    metalMaps = nextMetal;
-    brickMaps = nextBrick;
-    applyMaps();
-  });
+  ])
+    .then(([nextAsphalt, nextConcrete, nextMetal, nextBrick]) => {
+      asphalt = nextAsphalt;
+      concrete = nextConcrete;
+      metalMaps = nextMetal;
+      brickMaps = nextBrick;
+      applyMaps();
+    })
+    .finally(() => {
+      loader.dispose();
+    });
 }
 
-export function ensureRunnerMaps(): Promise<void> {
-  mapsPromise ??= loadMaps().catch((error: unknown) => {
+export function ensureRunnerMaps(gl: WebGLRenderer): Promise<void> {
+  mapsPromise ??= loadMaps(gl).catch((error: unknown) => {
     mapsPromise = null;
     throw error;
   });
@@ -239,7 +251,7 @@ export function mountRunnerEnvironment(gl: WebGLRenderer, scene: Scene): () => v
       const brandPromise = ensureBrandArt().catch((error: unknown) => {
         console.warn("Runner brand art failed to load", error);
       });
-      await Promise.all([hdrPromise, ensureRunnerMaps(), brandPromise]);
+      await Promise.all([hdrPromise, ensureRunnerMaps(gl), brandPromise]);
       const loaded = await hdrPromise;
       if (disposed) {
         loaded.dispose();

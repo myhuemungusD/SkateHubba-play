@@ -3,8 +3,17 @@ import { createRunnerController } from "../controller";
 import { loadBest } from "../ghost";
 import { applyAction, createRun, stepRun } from "../logic";
 import { gradeTouchdown, ollieArc, popScale } from "../physics";
-import { playRunnerSfx, preloadRunnerSfx } from "../sfx";
-import { FIXED_DT, LANDING_BONUS, LATE_LOCK, OLLIE_HEIGHT, OLLIE_POP, RAIL_LENGTH, SUGGESTED } from "../tune";
+import { mixRunnerAudio, playRunnerSfx, preloadRunnerSfx } from "../sfx";
+import {
+  FIXED_DT,
+  LANDING_BONUS,
+  LATE_LOCK,
+  OLLIE_GRAVITY,
+  OLLIE_HEIGHT,
+  OLLIE_POP,
+  RAIL_LENGTH,
+  SUGGESTED,
+} from "../tune";
 import type { Obstacle } from "../types";
 
 function rail(z: number): Obstacle {
@@ -24,7 +33,7 @@ describe("board physics", () => {
     const peak = Math.max(...heights);
     const peakAt = heights.indexOf(peak);
     const halfway = heights[Math.max(0, Math.floor(peakAt / 2))] ?? 0;
-    const apex = ollieArc(OLLIE_POP / ((8 * OLLIE_HEIGHT) / (0.65 * 0.65)), OLLIE_POP).y;
+    const apex = ollieArc(OLLIE_POP / OLLIE_GRAVITY, OLLIE_POP).y;
     expect(peak).toBeGreaterThan(OLLIE_HEIGHT * 0.85);
     expect(peak).toBeLessThan(OLLIE_HEIGHT * 1.05);
     expect(apex).toBeCloseTo(OLLIE_HEIGHT, 1);
@@ -151,6 +160,7 @@ describe("runner sfx", () => {
       playRunnerSfx("lock");
       playRunnerSfx("land");
       playRunnerSfx("bail");
+      mixRunnerAudio({ speed: 6, onGrind: false, airborne: false, duck: -1, status: "playing" }, 1 / 60);
     }).not.toThrow();
   });
 });

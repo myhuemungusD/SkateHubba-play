@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runnerQualityFor } from "../quality";
+import { runnerDpr, runnerQualityFor, runnerUsesBloom } from "../quality";
 
 describe("runner quality", () => {
   it("drops phones and small devices to the low tier", () => {
@@ -41,5 +41,12 @@ describe("runner quality", () => {
         hardwareConcurrency: null,
       }),
     ).toBe("high");
+  });
+
+  it("keeps bloom and the higher pixel ratio on the desktop tier only", () => {
+    expect(runnerDpr("low")).toEqual([1, 1]);
+    expect(runnerDpr("high")).toEqual([1, 1.5]);
+    expect(runnerUsesBloom("low")).toBe(false);
+    expect(runnerUsesBloom("high")).toBe(true);
   });
 });

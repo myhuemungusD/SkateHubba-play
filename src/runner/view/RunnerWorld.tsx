@@ -3,9 +3,10 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ACESFilmicToneMapping, Color, PCFSoftShadowMap } from "three";
 import type { RunnerController } from "../controller";
 import { emptyShake, stepPerfectShake } from "../juice";
-import { currentRunnerQuality, type RunnerQuality } from "../quality";
+import { currentRunnerQuality, runnerDpr, runnerUsesBloom, type RunnerQuality } from "../quality";
 import { noteFps, type FpsBucket } from "../webgl";
 import { Board } from "./Board";
+import { RunnerBloom } from "./Bloom";
 import { Effects } from "./Effects";
 import { GhostBoard } from "./GhostBoard";
 import { ObstaclePool } from "./ObstaclePool";
@@ -90,17 +91,19 @@ function RunnerEnvironment() {
 }
 
 /**
- * The 3D view. three.js stays in this lazy chunk. Pixel ratio is capped
- * and MSAA is off. Phones skip the shadow map and keep the blob under the
- * board. A desktop draws one 512 soft shadow. Lamp glow is an additive
- * card, not a bloom pass. The dusk HDRI is environment lighting only.
+ * The 3D view. three.js stays in this lazy chunk. MSAA is off. Phones
+ * stay at pixel ratio 1, skip the shadow map, and keep the blob under the
+ * board. A desktop draws one 512 soft shadow and a short bloom pass on the
+ * lamps and sparks. Lamp cards stay additive either way. The dusk HDRI is
+ * environment lighting only.
  */
 function RunnerCanvas({ controller, reducedMotion, active, fpsRef }: WorldProps) {
   const quality = useMemo((): RunnerQuality => currentRunnerQuality(), []);
   const high = quality === "high";
+  const bloom = runnerUsesBloom(quality);
   return (
     <Canvas
-      dpr={[1, 1.5]}
+      dpr={runnerDpr(quality)}
       shadows={high}
       frameloop={active ? "always" : "never"}
       gl={{ antialias: false, powerPreference: "high-performance", stencil: false }}
@@ -115,8 +118,8 @@ function RunnerCanvas({ controller, reducedMotion, active, fpsRef }: WorldProps)
     >
       <RunnerEnvironment />
       <fog attach="fog" args={["#1c140f", 28, 92]} />
-      <hemisphereLight args={["#ffb36a", "#2a160f", 0.38]} />
-      <ambientLight intensity={0.14} color="#ffd7a8" />
+      <hemisphereLight args={["#ffb36a", "#2a160f", high ? 0.38 : 0.48]} />
+      {high ? <ambientLight intensity={0.14} color="#ffd7a8" /> : null}
       <directionalLight
         position={[6, 8, 5]}
         intensity={high ? 0.95 : 0.7}
@@ -133,13 +136,14 @@ function RunnerCanvas({ controller, reducedMotion, active, fpsRef }: WorldProps)
         shadow-camera-top={6}
         shadow-camera-bottom={-6}
       />
-      <directionalLight position={[-5, 3, -4]} intensity={0.16} color="#6a7ea0" />
+      {high ? <directionalLight position={[-5, 3, -4]} intensity={0.16} color="#6a7ea0" /> : null}
       <CameraRig controller={controller} reducedMotion={reducedMotion} fpsRef={fpsRef} />
       <Street controller={controller} quality={quality} />
       <ObstaclePool controller={controller} quality={quality} />
       <GhostBoard controller={controller} />
       <Board controller={controller} quality={quality} />
       <Effects controller={controller} reducedMotion={reducedMotion} />
+      {bloom ? <RunnerBloom /> : null}
     </Canvas>
   );
 }

@@ -3,7 +3,7 @@ import { createRunnerController, type RunnerController } from "../../runner/cont
 import { bindRunnerTouch, createGestureRecognizer } from "../../runner/gestures";
 import { FLICK_SENSITIVITY } from "../../runner/tune";
 import { actionForKey, isTypingTarget } from "../../runner/keyboard";
-import { preloadRunnerSfx } from "../../runner/sfx";
+import { mixRunnerAudio, preloadRunnerSfx } from "../../runner/sfx";
 import { canUseWebGL, frameDelta, noteFps, type FpsBucket } from "../../runner/webgl";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
 import { RunnerWorld } from "../../runner/view/RunnerWorld";
@@ -111,6 +111,17 @@ export function RunnerScreen({ controller: injected }: Props = {}) {
       const dt = frameDelta(now, last);
       last = now;
       controller.step(dt);
+      const heard = controller.getState();
+      mixRunnerAudio(
+        {
+          speed: heard.speed,
+          onGrind: heard.onGrind,
+          airborne: heard.airborne,
+          duck: heard.duck,
+          status: heard.status,
+        },
+        dt,
+      );
       if (!webgl) noteFps(fpsRef.current, bucket, now);
       raf = requestAnimationFrame(tick);
     };

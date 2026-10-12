@@ -45,9 +45,10 @@ export const SPEED_RAMP = 0.03;
 
 /**
  * Seconds to slide one lane. Acceleration comes from that time and the gap,
- * so the board eases over instead of teleporting.
+ * so the board eases over instead of teleporting. 0.16s is a phone swipe
+ * that still finishes before the next rail, a little heavier than 0.14s.
  */
-export const LANE_TWEEN = 0.14;
+export const LANE_TWEEN = 0.16;
 export const LANE_ACCEL = (2 * (LANE_X[1] - LANE_X[0])) / (LANE_TWEEN * LANE_TWEEN);
 /** Kept for older notes. The slide is acceleration, not a constant speed. */
 export const LANE_SLIDE = 14;
@@ -55,9 +56,11 @@ export const LANE_SLIDE = 14;
 /**
  * Closed-form ollie. Apex h and air time T give g = 8h/T² and v0 = 4h/T.
  * The way down uses FALL_GRAVITY_SCALE so the landing snaps.
+ * 0.58s keeps the 1.1m apex and brings the board back sooner, closer to a
+ * skate pop than a floaty hop.
  */
 export const OLLIE_HEIGHT = 1.1;
-export const OLLIE_AIRTIME = 0.65;
+export const OLLIE_AIRTIME = 0.58;
 export const OLLIE_GRAVITY = (8 * OLLIE_HEIGHT) / (OLLIE_AIRTIME * OLLIE_AIRTIME);
 export const OLLIE_POP = (4 * OLLIE_HEIGHT) / OLLIE_AIRTIME;
 export const GRAVITY = OLLIE_GRAVITY;
@@ -65,7 +68,7 @@ export const FALL_GRAVITY_SCALE = 1.6;
 /** Nose-up angular speed (radians/sec) on the pop. Positive pitch lifts the nose. */
 export const POP_NOSE = 7.5;
 /** Seconds the nose stays up before the spring levels the board for the landing. */
-export const POP_HOLD = 0.11;
+export const POP_HOLD = 0.14;
 export const PITCH_HOLD_DAMP = 1.4;
 
 /** Pull toward level. High spring, a bit under critical damping, so it settles. */
@@ -108,8 +111,8 @@ export const GOOD_MAX = 5.1;
 
 /** How far before the lip the board starts easing onto the feature. */
 export const MAGNET_LEAD = 1.35;
-/** Seconds to ease onto the rail instead of popping there. */
-export const MAGNET_SNAP = 0.06;
+/** Seconds to ease onto the rail. 90ms lets the trucks settle instead of teleporting. */
+export const MAGNET_SNAP = 0.09;
 /** Older pull rate. The snap time above is what the sim uses. */
 export const MAGNET_PULL = 1 / MAGNET_SNAP;
 
@@ -199,6 +202,24 @@ export const GHOST_SPACING = 0.5;
 export const SFX_VOLUME = 0.4;
 /** Pop and land pitch wander by this fraction so two pops are not identical. */
 export const PITCH_JITTER = 0.05;
+
+/**
+ * Layered loops. Roll follows speed while the wheels are down. Grind replaces
+ * it on a lock. A powerslide is the quieter scrape. Pop and land stay one-shots.
+ * Gains are linear from cruise speed to the cap. Rates are playbackRate.
+ */
+export const ROLL_GAIN_LO = 0.07;
+export const ROLL_GAIN_HI = 0.18;
+export const ROLL_RATE_LO = 0.86;
+export const ROLL_RATE_HI = 1.24;
+export const GRIND_GAIN_LO = 0.2;
+export const GRIND_GAIN_HI = 0.32;
+export const GRIND_RATE_LO = 0.94;
+export const GRIND_RATE_HI = 1.16;
+export const SCRAPE_GAIN = 0.11;
+export const SCRAPE_RATE = 0.78;
+/** How fast the loops chase a new mix, in 1/seconds. */
+export const MIX_RESPONSE = 14;
 
 /** One haptic at a time. A grind ticks a light pulse on this interval. */
 export const HAPTIC_GAP_MS = 50;
