@@ -48,6 +48,20 @@ describe("ConsentBanner", () => {
     unsubscribe();
   });
 
+  it("gives the privacy control a 44px target and stays on the bottom edge", () => {
+    render(<ConsentBanner onNav={vi.fn()} />);
+    const privacy = screen.getByText("Privacy Policy");
+    expect(privacy.className).toContain("min-h-11");
+    expect(screen.getByRole("region", { name: /analytics notice/i }).className).toContain("bottom-0");
+  });
+
+  it("sits above the tab bar when the nav is on screen", () => {
+    render(<ConsentBanner onNav={vi.fn()} liftAboveNav />);
+    const region = screen.getByRole("region", { name: /analytics notice/i });
+    expect(region.className).toContain("bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))]");
+    expect(region.className).not.toContain("bottom-0");
+  });
+
   it("notifies consent subscribers when the user declines", async () => {
     const listener = vi.fn();
     const unsubscribe = subscribeConsent(listener);

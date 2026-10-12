@@ -29,7 +29,7 @@ export function DiceHub() {
       <button
         type="button"
         onClick={() => navigate("/dice/new")}
-        className="mt-6 w-full rounded-2xl bg-brand-orange py-4 font-display tracking-wider text-white"
+        className="mt-6 w-full rounded-2xl bg-brand-orange py-4 font-display tracking-wider text-[#1a1a1a]"
       >
         Roll someone
       </button>

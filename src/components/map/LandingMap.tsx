@@ -70,7 +70,7 @@ function FallbackCard({ onSignUpPrompt }: LandingMapProps) {
         <button
           type="button"
           onClick={onSignUpPrompt}
-          className="px-6 py-2.5 bg-brand-orange text-white rounded-xl font-body font-semibold text-sm hover:bg-[#EA580C] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          className="px-6 py-2.5 bg-brand-orange text-[#1a1a1a] rounded-xl font-body font-semibold text-sm hover:bg-[#EA580C] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
         >
           Sign up to explore
         </button>
@@ -116,7 +116,7 @@ function CtaModal({ onClose, onSignUpPrompt }: CtaModalProps) {
             type="button"
             autoFocus
             onClick={onSignUpPrompt}
-            className="w-full px-4 py-2.5 bg-brand-orange text-white rounded-xl font-body font-semibold text-sm hover:bg-[#EA580C] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            className="w-full px-4 py-2.5 bg-brand-orange text-[#1a1a1a] rounded-xl font-body font-semibold text-sm hover:bg-[#EA580C] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
             Sign up free
           </button>

@@ -188,7 +188,13 @@ export function TwoFactorSection() {
       {setup && (
         <div className="mt-3 space-y-3">
           {qrSrc ? (
-            <img src={qrSrc} alt="QR code for your authenticator app" width={192} height={192} className="rounded-lg bg-white p-2" />
+            <img
+              src={qrSrc}
+              alt="QR code for your authenticator app"
+              width={192}
+              height={192}
+              className="rounded-lg bg-white p-2"
+            />
           ) : (
             <p className="font-body text-xs text-muted">Scan isn&apos;t available. Enter the key below instead.</p>
           )}
@@ -211,7 +217,7 @@ export function TwoFactorSection() {
             type="button"
             onClick={() => void finishEnroll()}
             disabled={busy}
-            className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-brand-orange px-4 font-display text-xs tracking-wider text-white disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-brand-orange px-4 font-display text-xs tracking-wider text-[#1a1a1a] disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
             Verify code
           </button>
@@ -238,9 +244,13 @@ export function TwoFactorSection() {
               type="button"
               onClick={() => void confirmRecent()}
               disabled={busy}
-              className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-brand-orange px-4 font-display text-xs tracking-wider text-white disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-brand-orange px-4 font-display text-xs tracking-wider text-[#1a1a1a] disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
-              {method === "google" ? "Confirm with Google" : method === "apple" ? "Confirm with Apple" : "Confirm password"}
+              {method === "google"
+                ? "Confirm with Google"
+                : method === "apple"
+                  ? "Confirm with Apple"
+                  : "Confirm password"}
             </button>
           )}
         </div>

@@ -15,7 +15,7 @@ import { Spinner } from "./components/ui/Spinner";
 import { ToastContainer } from "./components/ToastContainer";
 import { GameNotificationWatcher, OPEN_GAME_EVENT } from "./components/GameNotificationWatcher";
 import { OfflineBanner } from "./components/OfflineBanner";
-import { BottomNav } from "./components/BottomNav";
+import { BottomNav, isBottomNavScreen } from "./components/BottomNav";
 import { useBlockedUsers } from "./hooks/useBlockedUsers";
 import { useIsAdmin } from "./hooks/useIsAdmin";
 import { firebaseReady } from "./firebase";
@@ -93,7 +93,7 @@ function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
       <button
         type="button"
         onClick={onBack}
-        className="px-6 py-3 rounded-xl bg-brand-orange text-white font-display tracking-wider focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+        className="px-6 py-3 rounded-xl bg-brand-orange text-[#1a1a1a] font-display tracking-wider focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
       >
         Back to Lobby
       </button>
@@ -428,7 +428,7 @@ function AppRoutes() {
     <>
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:rounded-xl focus:bg-brand-orange focus:text-white focus:font-display focus:tracking-wider focus:outline-none"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:rounded-xl focus:bg-brand-orange focus:text-[#1a1a1a] focus:font-display focus:tracking-wider focus:outline-none"
       >
         Skip to main content
       </a>
@@ -849,7 +849,10 @@ function AppRoutes() {
           reachable signed-out, so without this check a visitor would get a
           tab bar whose destinations all bounce them straight back. */}
       {auth.activeProfile && <BottomNav />}
-      <ConsentBanner onNav={nav.setScreen} />
+      <ConsentBanner
+        onNav={nav.setScreen}
+        liftAboveNav={Boolean(auth.activeProfile) && isBottomNavScreen(nav.screen)}
+      />
       {analyticsAllowed && (
         <>
           <Analytics />

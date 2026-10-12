@@ -44,12 +44,12 @@ Location When In Use. `android/.../AndroidManifest.xml` — CAMERA,
 RECORD_AUDIO, ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION,
 READ_MEDIA_IMAGES/VIDEO, POST_NOTIFICATIONS.
 
-Deletion & export: in-app account deletion (`deleteAccount` in
+Deletion & export: in-app Settings → "Delete account" (`deleteAccount` in
 `src/services/auth.ts` → `deleteUserData` cascade in `src/services/users.ts`:
 games, videos, clips, votes, disputes, notifications, pushTargets, private
 profile, username, avatar); email fallback `privacy@skatehubba.com` with 30-day
-SLA (`src/screens/DataDeletion.tsx`); GDPR Art. 20 JSON export
-(`src/services/userData.ts`, "Download My Data").
+SLA (`src/screens/DataDeletion.tsx`); GDPR Art. 20 JSON export from the same
+Settings screen (`src/services/userData.ts`, "Download my data").
 
 ---
 
@@ -94,7 +94,7 @@ Overview questions:
 
 - **Does your app collect or share any of the required user data types? → Yes (collects).**
 - **Is all of the user data collected by your app encrypted in transit? → Yes** (all backends — Firebase Auth/Firestore/Storage/FCM, Sentry, PostHog, Vercel, Mapbox — are HTTPS/TLS only; CSP in `vercel.json` allows only https hosts).
-- **Do you provide a way for users to request that their data is deleted? → Yes** — in-app "Delete Account" (`deleteUserData` cascade, `src/services/users.ts`) plus email `privacy@skatehubba.com` and the public Data Deletion page (`src/screens/DataDeletion.tsx`).
+- **Do you provide a way for users to request that their data is deleted? → Yes** — in-app Settings → "Delete account" (`deleteUserData` cascade, `src/services/users.ts`) plus email `privacy@skatehubba.com` and the public Data Deletion page (`src/screens/DataDeletion.tsx`). Download is the same Settings screen ("Download my data").
 - **Data shared with third parties → None.** Play's definition excludes "service providers" processing on the developer's behalf; Firebase/Google Cloud, Sentry, PostHog, and Vercel all act as processors, and no data is sold or shared for advertising. (Confirm each processor's DPA is signed — owner action.)
 
 Per data type ("Collected" = yes, "Shared" = no, "Processed ephemerally" = no

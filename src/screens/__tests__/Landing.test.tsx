@@ -195,12 +195,15 @@ describe("Landing", () => {
     render(<Landing {...defaultProps} />);
     const logoLink = screen.getByRole("link", { name: "SkateHubba home" });
     expect(logoLink).toHaveAttribute("href", "#hero");
+    expect(logoLink.className).toContain("min-h-11");
   });
 
   it("renders an interactive scroll indicator that targets the demo section", () => {
     render(<Landing {...defaultProps} />);
     const scrollLink = screen.getByRole("link", { name: "Scroll to demo" });
     expect(scrollLink).toHaveAttribute("href", "#demo");
+    expect(scrollLink.className).toContain("min-h-11");
+    expect(scrollLink.className).toContain("min-w-11");
   });
 
   it("labels the demo section with a visually hidden heading", () => {

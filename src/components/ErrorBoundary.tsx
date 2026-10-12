@@ -49,7 +49,7 @@ export class ErrorBoundary extends Component<Props, State> {
               type="button"
               aria-label="Try again"
               onClick={this.handleRetry}
-              className="px-6 py-3 rounded-xl bg-brand-orange text-white font-display tracking-wider focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              className="px-6 py-3 rounded-xl bg-brand-orange text-[#1a1a1a] font-display tracking-wider focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
               Try again
             </button>

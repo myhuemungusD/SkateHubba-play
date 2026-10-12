@@ -25,8 +25,8 @@ export function DataDeletion({ onBack }: { onBack: () => void }) {
         <Section title="Download a Copy of Your Data">
           <p>
             Under the GDPR&apos;s right to data portability (Article 20) and CCPA, you can download a machine-readable
-            copy of everything we store about you. When signed in, scroll to the bottom of the lobby and tap{" "}
-            <strong className="text-white">&quot;Download My Data&quot;</strong>. We package your profile, game history,
+            copy of everything we store about you. When signed in, open Settings and tap{" "}
+            <strong className="text-white">&quot;Download my data&quot;</strong>. We package your profile, game history,
             landed clips, reports you filed, and the list of users you blocked into a single JSON file that downloads to
             your device.
           </p>
@@ -34,8 +34,8 @@ export function DataDeletion({ onBack }: { onBack: () => void }) {
 
         <Section title="Delete Your Account (In-App)">
           <p>
-            The fastest way to delete all your data is directly in the app. When signed in, scroll to the bottom of the
-            lobby and tap <strong className="text-white">&quot;Delete Account&quot;</strong>. This permanently removes:
+            The fastest way to delete all your data is directly in the app. When signed in, open Settings and tap{" "}
+            <strong className="text-white">&quot;Delete account&quot;</strong>. This permanently removes:
           </p>
           <ul>
             <li>Your user profile and username</li>
