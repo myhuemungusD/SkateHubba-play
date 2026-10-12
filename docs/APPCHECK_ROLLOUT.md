@@ -17,6 +17,60 @@ repeating the Apr 22 lockout.
 > not, by itself, an abort signal. Judge Phase 1 health by real-user verified
 > request rates in the Console metrics.
 
+## 10 October 2026 audit — what to check by hand
+
+The 10 October audit signed up and signed in on https://skatehubba.com from a
+headless browser on a datacenter network. Every attempt logged
+`AppCheck: 403` from `exchangeRecaptchaV3Token`, then the SDK raised
+`appCheck/throttled` (the initial-throttle path) and stopped asking for tokens
+for about 24 hours. Auth still answered: the password-policy error came back,
+then signup succeeded. Firestore and Storage enforcement were Unenforced, and
+`enforceAppCheck` on the callables is hard-coded `false` in
+`functions/src/index.ts`. Account creation was not blocked.
+
+That pair (403, then a 24-hour throttle) is what the SDK does when reCAPTCHA
+rejects the client. It is expected for headless and datacenter traffic. It is
+not, by itself, proof that phones and desktop browsers are locked out. This
+write-up did not read production App Check metrics or Sentry. Those two
+consoles are the check.
+
+**Do not change Firebase Console, reCAPTCHA admin, or Vercel settings while
+doing this.** Read only. Do not flip enforcement. Do not register a production
+web debug token. A debug token on the production web key would let any client
+that presents it skip reCAPTCHA.
+
+What to open:
+
+1. **Firebase Console → App Check → APIs → Cloud Firestore → Metrics**, and the
+   same chart for **Cloud Storage**. Split verified vs unverified. A 403 from
+   a real browser shows up here as unverified traffic from a normal user
+   agent. Headless audit traffic does not. If verified requests from real
+   browsers are already the bulk of the chart, the audit 403 was the bot
+   score, and enforcement stays off until you choose Phase 2.
+2. **https://www.google.com/recaptcha/admin** → the v3 key registered on the
+   web app → **Settings → Domains**. The list must include `skatehubba.com`
+   and `www.skatehubba.com`. A missing hostname is the April 22 failure: the
+   exchange returns 403 for everyone who loaded the app from that host, and
+   the SDK then throttles that browser for about a day (`appCheck/throttled` /
+   `appCheck/initial-throttle`).
+3. **Sentry will not show the exchange failure.** `initializeAppCheck()` only
+   throws when the site key is malformed or the reCAPTCHA loader is blocked.
+   A 403 from `exchangeRecaptchaV3Token` happens later, inside the SDK, and
+   writes no Sentry event and no `appcheck_init_failed` line (see
+   [Known gap](#known-gap-init-success--tokens-are-minting)). Silence in
+   Sentry is not a clean bill of health. The metrics chart is the signal.
+4. **Debug tokens stay off the production website.** `src/firebase.ts` sets
+   `FIREBASE_APPCHECK_DEBUG_TOKEN` only when the build is pointed at the
+   emulators. A production web bundle uses `ReCaptchaV3Provider` and does not
+   mint a debug token. Native debug builds (`import.meta.env.DEV` or the
+   emulator flag) pass `debug: true` into the Capacitor plugin. If a native
+   debug install needs to talk to production, register that install's token
+   under **App Check → Apps → Manage debug tokens**. Do not put the same
+   token in the production web client.
+5. **Leave enforcement Unenforced** until the 403 rate for real user agents is
+   near zero on both Firestore and Storage. Phase 2 below is still the only
+   path that flips it, and only after a 48–72 h verified-request baseline.
+
 **Audience:** solo maintainer, executing alone, in production.
 
 **Incident context:** `docs/PERMISSION_DENIED_RUNBOOK.md` §0–1. Root cause of
