@@ -222,6 +222,7 @@ Storage rules enforce:
 
 - Vercel (static SPA, auto-deploy from `main`)
 - `vercel.json` handles SPA rewrites, CSP, HSTS, security headers, domain redirects
+- Cloud Functions are not deployed on push. A maintainer runs `.github/workflows/firebase-functions-deploy.yml` from the Actions tab (`workflow_dispatch` only; `confirm` must be `deploy`). Setup and IAM: `docs/DEPLOY_FUNCTIONS.md`. The `verify-no-cloud-functions` source-file allowlist is unchanged.
 
 ### 4.7 Monitoring & analytics
 
@@ -342,12 +343,12 @@ These are the approved majors. Minors and patches track upstream via the caret r
 
 ```
 API.md, APPCHECK_ROLLOUT.md, ARCHITECTURE.md, CHARTER.md (this file),
-CLIP_MODERATION.md, DATABASE.md, DECISIONS.md, DEPLOYMENT.md, DEVELOPMENT.md,
+CLIP_MODERATION.md, DATABASE.md, DECISIONS.md, DEPLOY_FUNCTIONS.md, DEPLOYMENT.md, DEVELOPMENT.md,
 DISPUTE_BINDING_DESIGN.md, DSA_COMPLIANCE.md, ECONOMY.md,
 GAME_MECHANICS.md, GAME_STATE_MACHINE.md, GAPS.md, MAPBOX_STYLE.md,
 NOTIFICATION_AUDIT.md, PERMISSION_DENIED_RUNBOOK.md, SENTRY_ALERTS.md,
 STATS.md, STATUS_REPORT.md, STORE_PRIVACY_ANSWERS.md, TESTING.md
-(23 files)
+(24 files)
 
 archive/   — superseded audits and plans; history only, never a current
              risk register:

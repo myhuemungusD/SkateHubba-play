@@ -27,9 +27,11 @@ A rejection or a removal writes `moderationStatements/clip_{clipId}` with `actio
 
 The owner's "Checking…" strip is `OwnClipModeration`, floating over the full-screen feed. It stays hidden until the client flag is on.
 
-## Deploy (do this by hand)
+## Deploy
 
-Merging to `main` deploys Firestore rules and indexes only. It does not deploy functions and it does not enable the API. Do not deploy this from CI.
+Merging to `main` deploys Firestore rules and indexes only. It does not deploy functions and it does not enable the API.
+
+Use Actions → **Deploy Firebase Functions** on `main`. Set `functions` to `moderateNewClip,moderateClipReport,decideClipModeration` and `confirm` to `deploy`. See `docs/DEPLOY_FUNCTIONS.md`.
 
 1. In Google Cloud project `sk8hub-d7806`, enable the **Cloud Video Intelligence API**.
 2. Deploy the three functions to testers first:
