@@ -248,30 +248,7 @@ describe("games.turnHistory — growth caps", () => {
   });
 
   describe("match-resolution branch (landed, honor system)", () => {
-    it("legitimate: landed path can append a single TurnRecord", async () => {
-      await seedGame({
-        currentTurn: P2_UID,
-        currentSetter: P1_UID,
-        phase: "matching",
-        currentTrickName: "kickflip",
-        currentTrickVideoUrl: VALID_TRICK_URL,
-        turnHistory: [],
-      });
-      await assertSucceeds(
-        updateDoc(gameRef(asP2()), {
-          matchVideoUrl: VALID_MATCH_URL,
-          phase: "setting",
-          currentSetter: P2_UID,
-          currentTurn: P2_UID,
-          turnNumber: 2,
-          turnDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
-          turnHistory: arrayUnion(makeTurnRecord(1, { landed: true, letterTo: null })),
-          updatedAt: serverTimestamp(),
-        }),
-      );
-    });
-
-    it("attack: landed path CANNOT bypass the +1 cap", async () => {
+    it("denied: a landed claim cannot skip pendingReview and append a TurnRecord", async () => {
       await seedGame({
         currentTurn: P2_UID,
         currentSetter: P1_UID,
@@ -288,12 +265,61 @@ describe("games.turnHistory — growth caps", () => {
           currentTurn: P2_UID,
           turnNumber: 2,
           turnDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
-          turnHistory: arrayUnion(
-            makeTurnRecord(1, { landed: true, letterTo: null }),
-            makeTurnRecord(2, { landed: true, letterTo: null }),
-          ),
+          turnHistory: arrayUnion(makeTurnRecord(1, { landed: true, letterTo: null })),
           updatedAt: serverTimestamp(),
         }),
+      );
+    });
+
+    function seedFrozenClaim(): Promise<void> {
+      return seedGame({
+        phase: "pendingReview",
+        currentTurn: P2_UID,
+        currentSetter: P1_UID,
+        reviewFor: P2_UID,
+        reviewDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
+        matchVideoUrl: VALID_MATCH_URL,
+        currentTrickName: "kickflip",
+        currentTrickVideoUrl: VALID_TRICK_URL,
+        turnHistory: [],
+        turnNumber: 1,
+      });
+    }
+
+    function acceptUpdate(turnHistory: unknown): Record<string, unknown> {
+      return {
+        phase: "setting",
+        currentSetter: P2_UID,
+        currentTurn: P2_UID,
+        turnNumber: 2,
+        reviewFor: null,
+        reviewDeadline: null,
+        matchVideoUrl: VALID_MATCH_URL,
+        turnDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
+        turnHistory,
+        updatedAt: serverTimestamp(),
+      };
+    }
+
+    it("legitimate: the setter's accept appends exactly one TurnRecord", async () => {
+      await seedFrozenClaim();
+      await assertSucceeds(
+        updateDoc(gameRef(asP1()), acceptUpdate(arrayUnion(makeTurnRecord(1, { landed: true, letterTo: null })))),
+      );
+    });
+
+    it("attack: the setter's accept CANNOT bypass the +1 cap", async () => {
+      await seedFrozenClaim();
+      await assertFails(
+        updateDoc(
+          gameRef(asP1()),
+          acceptUpdate(
+            arrayUnion(
+              makeTurnRecord(1, { landed: true, letterTo: null }),
+              makeTurnRecord(2, { landed: true, letterTo: null }),
+            ),
+          ),
+        ),
       );
     });
   });

@@ -168,7 +168,7 @@ describe("games — red-team regression guards on game state", () => {
  * out of rotation. The pins added to firestore.rules close this:
  *   • missed-continues  → currentSetter UNCHANGED, turnNumber + 1
  *   • completion        → currentSetter + turnNumber UNCHANGED
- *   • honor + landed    → currentSetter ROTATES to matcher, turnNumber + 1
+ *   • honor + landed    → freeze in pendingReview; a matching→setting swap is denied
  *   • judge disputable  → currentSetter + turnNumber UNCHANGED
  *
  * Fixture: currentSetter = P1, phase = matching, currentTurn = P2. So P2 is
@@ -331,12 +331,12 @@ describe("games — P0 match-resolution turn-order seize guard", () => {
     );
   });
 
-  it("legitimate: matcher LANDED (honor) rotates setter to matcher, advances turnNumber", async () => {
-    // submitMatchAttempt honor+landed (games.match.ts 222-233): roles swap —
-    // currentSetter → matcher (P2), currentTurn follows, turnNumber + 1,
-    // letters unchanged.
+  it("denied: matcher LANDED (honor) cannot rotate setter without pendingReview", async () => {
+    // A landed claim must freeze. Swapping roles on the claim itself is the
+    // closed instant path. The freeze and the setter's later accept are covered
+    // in games-pendingreview-redteam.rules.test.ts.
     await seedGame({ currentTurn: P2_UID, phase: "matching", currentSetter: P1_UID });
-    await assertSucceeds(
+    await assertFails(
       updateDoc(doc(asP2().firestore(), "games", GAME_ID), {
         phase: "setting",
         currentSetter: P2_UID,
