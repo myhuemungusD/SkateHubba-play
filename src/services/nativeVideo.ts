@@ -159,8 +159,9 @@ export async function recordNativeVideo(
     await raceAbort(
       VideoRecorder.initialize({
         camera: VideoRecorderCamera.BACK,
-        // 1080p matches the 1080x1920 the web MediaRecorder path requests, so
-        // a clip looks the same on either platform.
+        // 1080p preset. The web path asks for 1920×1080 specifically
+        // (src/hooks/cameraCapture.ts); this plugin only exposes a quality
+        // enum, not a lens or a frame rate.
         quality: VideoRecorderQuality.MAX_1080P,
         // Left unset, the plugin encodes at a 3 Mbps default hardcoded in its
         // native sources — well below what the web path asks for, so the same

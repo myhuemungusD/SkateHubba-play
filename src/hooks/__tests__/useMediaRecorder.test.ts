@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useMediaRecorder, type MediaRecorderController } from "../useMediaRecorder";
+import { AUDIO_CONSTRAINTS, videoConstraints } from "../cameraCapture";
 import { isNativePlatform, recordNativeVideo, type NativeVideoResult } from "../../services/nativeVideo";
 import { MAX_VIDEO_DURATION_SECONDS, VIDEO_BITS_PER_SECOND } from "../../constants/video";
 
@@ -39,13 +40,20 @@ const CLIP_BYTES = "clip-bytes".padEnd(2048, ".");
  * so the fake does too — a thinner one only proves the code survives thin
  * fakes.
  */
-function fakeTrack(kind: "video" | "audio", settings: MediaTrackSettings = { frameRate: 30 }) {
+function fakeTrack(
+  kind: "video" | "audio",
+  settings: MediaTrackSettings = { frameRate: 30 },
+  capabilities: MediaTrackCapabilities = {},
+) {
   return {
     kind,
+    label: "",
     stop: vi.fn(),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     getSettings: (): MediaTrackSettings => settings,
+    getCapabilities: (): MediaTrackCapabilities => capabilities,
+    applyConstraints: vi.fn().mockResolvedValue(undefined),
   };
 }
 type FakeTrack = ReturnType<typeof fakeTrack>;
@@ -101,6 +109,30 @@ class FakeRecorder {
   emit(chunk: Blob): void {
     this.ondataavailable?.({ data: chunk });
   }
+}
+
+function installEnumeratedDevices(enumerate: unknown): void {
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    writable: true,
+    value: { getUserMedia: mockGetUserMedia, enumerateDevices: enumerate },
+  });
+}
+
+/** Start an open, let it reach its first pending await, then unmount and finish that await. */
+async function unmountDuringOpen(view: HookView, finish: () => void): Promise<void> {
+  let opened: Promise<void> = Promise.resolve();
+  act(() => {
+    opened = view.result.current.openCamera();
+  });
+  await act(async () => {
+    await Promise.resolve();
+  });
+  act(() => view.unmount());
+  await act(async () => {
+    finish();
+    await opened;
+  });
 }
 
 function latestRecorder(): FakeRecorder {
@@ -173,7 +205,7 @@ afterEach(() => {
 });
 
 describe("useMediaRecorder", () => {
-  it("requests portrait HD from the rear camera with voice DSP disabled", async () => {
+  it("requests 1080p from the rear camera, preferring 60fps but accepting 30", async () => {
     mockGetUserMedia.mockResolvedValue(fakeStream([fakeTrack("video")]));
     const view = mountRecorder();
     await openCamera(view);
@@ -181,13 +213,8 @@ describe("useMediaRecorder", () => {
     expect(view.result.current.state).toBe("preview");
     expect(view.result.current.facingMode).toBe("environment");
     expect(mockGetUserMedia).toHaveBeenCalledWith({
-      video: {
-        facingMode: { ideal: "environment" },
-        width: { ideal: 1080 },
-        height: { ideal: 1920 },
-        frameRate: { ideal: 60 },
-      },
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      video: videoConstraints("environment"),
+      audio: AUDIO_CONSTRAINTS,
     });
   });
 
@@ -200,6 +227,138 @@ describe("useMediaRecorder", () => {
 
     expect(latestRecorder().videoBitsPerSecond).toBe(VIDEO_BITS_PER_SECOND);
     expect(view.result.current.state).toBe("recording");
+  });
+
+  const IPHONE_SAFARI =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1";
+  const ANDROID_CHROME =
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
+
+  it("sets zoom to 1x when the opened track can express it", async () => {
+    const track = fakeTrack(
+      "video",
+      { frameRate: 30, width: 1920, height: 1080, zoom: 2, facingMode: "environment" },
+      { zoom: { min: 1, max: 8 } },
+    );
+    mockGetUserMedia.mockResolvedValue(fakeStream([track]));
+    const view = mountRecorder();
+    await openCamera(view);
+
+    expect(track.applyConstraints).toHaveBeenCalledWith({ advanced: [{ zoom: 1 }] });
+    expect(view.result.current.state).toBe("preview");
+  });
+
+  it("on iOS reopens the second video device instead of trusting facingMode", async () => {
+    // WebKit bug 253186: facingMode "environment" is the ultra-wide. Order,
+    // not the localized label, picks the 1× rear camera (index 1).
+    const restore = stubUserAgent(IPHONE_SAFARI);
+    const wrongLens = fakeTrack("video", { deviceId: "ultra", width: 1920, height: 1080, frameRate: 30 });
+    const mainLens = fakeTrack("video", {
+      deviceId: "wide",
+      width: 1920,
+      height: 1080,
+      frameRate: 60,
+      facingMode: "environment",
+      zoom: 1,
+    });
+    const enumerate = vi.fn().mockResolvedValue([
+      { kind: "audioinput", deviceId: "mic", label: "Mikrofon" },
+      { kind: "videoinput", deviceId: "front", label: "Frontkamera" },
+      { kind: "videoinput", deviceId: "wide", label: "Rückkamera" },
+      { kind: "videoinput", deviceId: "tele", label: "Tele" },
+    ]);
+    mockGetUserMedia.mockResolvedValueOnce(fakeStream([wrongLens])).mockResolvedValueOnce(fakeStream([mainLens]));
+    installEnumeratedDevices(enumerate);
+    try {
+      const view = mountRecorder();
+      await openCamera(view);
+
+      expect(enumerate).toHaveBeenCalledTimes(1);
+      expect(mockGetUserMedia).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          video: expect.objectContaining({ deviceId: { exact: "wide" } }),
+          audio: AUDIO_CONSTRAINTS,
+        }),
+      );
+      expect(mockGetUserMedia.mock.calls[1]?.[0].video.facingMode).toBeUndefined();
+      expect(wrongLens.stop).toHaveBeenCalled();
+      expect(mainLens.stop).not.toHaveBeenCalled();
+      expect(view.result.current.state).toBe("preview");
+    } finally {
+      restore();
+    }
+  });
+
+  it("does not pick a camera by enumerate order on Android Chrome", async () => {
+    const restore = stubUserAgent(ANDROID_CHROME);
+    const enumerate = vi.fn().mockResolvedValue([
+      { kind: "videoinput", deviceId: "front" },
+      { kind: "videoinput", deviceId: "wrong-if-used" },
+    ]);
+    mockGetUserMedia.mockResolvedValue(
+      fakeStream([fakeTrack("video", { deviceId: "pixel-back", width: 1920, height: 1080 })]),
+    );
+    installEnumeratedDevices(enumerate);
+    try {
+      const view = mountRecorder();
+      await openCamera(view);
+
+      expect(enumerate).not.toHaveBeenCalled();
+      expect(mockGetUserMedia).toHaveBeenCalledTimes(1);
+      expect(mockGetUserMedia.mock.calls[0]?.[0].video.facingMode).toEqual({ ideal: "environment" });
+    } finally {
+      restore();
+    }
+  });
+
+  it("prefers H.264 MP4 on iOS even when WebM is also reported as supported", async () => {
+    const restore = stubUserAgent(IPHONE_SAFARI);
+    FakeRecorder.supported = ["video/webm;codecs=vp9,opus", "video/mp4;codecs=avc1.42E01E", "video/mp4"];
+    mockGetUserMedia.mockResolvedValue(fakeStream([fakeTrack("video")]));
+    try {
+      const view = mountRecorder();
+      await openCamera(view);
+      act(() => view.result.current.startRec());
+      expect(latestRecorder().mimeType).toBe("video/mp4;codecs=avc1.42E01E");
+    } finally {
+      restore();
+    }
+  });
+
+  it("releases the camera if unmount lands while iOS is enumerating devices", async () => {
+    const restore = stubUserAgent(IPHONE_SAFARI);
+    let resolveEnum: (devices: MediaDeviceInfo[]) => void = () => undefined;
+    const video = fakeTrack("video", { deviceId: "env", width: 1920, height: 1080 });
+    mockGetUserMedia.mockResolvedValue(fakeStream([video]));
+    installEnumeratedDevices(
+      () =>
+        new Promise<MediaDeviceInfo[]>((resolve) => {
+          resolveEnum = resolve;
+        }),
+    );
+    try {
+      const view = mountRecorder();
+      await unmountDuringOpen(view, () => resolveEnum([]));
+      expect(video.stop).toHaveBeenCalled();
+    } finally {
+      restore();
+    }
+  });
+
+  it("releases the camera if unmount lands while the track is being tuned", async () => {
+    const video = fakeTrack("video", { width: 640, height: 480, frameRate: 30 });
+    let resolveTune: () => void = () => undefined;
+    video.applyConstraints.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveTune = resolve;
+        }),
+    );
+    mockGetUserMedia.mockResolvedValue(fakeStream([video]));
+    const view = mountRecorder();
+    await unmountDuringOpen(view, () => resolveTune());
+    expect(video.stop).toHaveBeenCalled();
   });
 
   it("flips the camera, stopping the previous tracks before re-acquiring", async () => {

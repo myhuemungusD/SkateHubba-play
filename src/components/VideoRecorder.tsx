@@ -9,6 +9,16 @@ import { useMediaRecorder, isIOSSafari } from "../hooks/useMediaRecorder";
 import { MAX_VIDEO_DURATION_SECONDS } from "../constants/video";
 import { CLIP_POSTER } from "../lib/clipPoster";
 
+/**
+ * Seconds of lead-in for the "Auto-stop in Ns" warning. The old 60s cap warned
+ * 10s out; at the shared 20s cap that same absolute lead-in would nag for half
+ * the take, so it scales down with the cap.
+ */
+const AUTO_STOP_WARNING_SECONDS = 5;
+
+/** Full recorded frame. `cover` on this 9:16 viewfinder crops a 16:9 stream and looks zoomed in. */
+const FRAME_FIT = "w-full h-full object-contain";
+
 /** Shared classes for the viewfinder chrome toggles — 44px touch target. */
 const CHROME_BTN =
   "w-11 h-11 inline-flex items-center justify-center rounded-full transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
@@ -117,7 +127,7 @@ export function VideoRecorder({
         {state === "done" && blobUrl ? (
           <video
             src={blobUrl}
-            className="w-full h-full object-cover"
+            className={FRAME_FIT}
             controls
             playsInline
             poster={CLIP_POSTER}
@@ -128,7 +138,7 @@ export function VideoRecorder({
           <>
             <video
               ref={setVideoRef}
-              className={`w-full h-full object-cover ${showFisheyeOverlay ? "invisible" : ""}`}
+              className={`${FRAME_FIT} ${showFisheyeOverlay ? "invisible" : ""}`}
               muted
               playsInline
               preload="none"
@@ -140,7 +150,7 @@ export function VideoRecorder({
                 active={true}
                 strength={2.0}
                 onCanvas={setFisheyeCanvas}
-                className="absolute inset-0 w-full h-full object-cover"
+                className={`absolute inset-0 ${FRAME_FIT}`}
               />
             )}
           </>

@@ -15,6 +15,19 @@ interface Navigator {
   contacts?: ContactsManager;
 }
 
+/** Optical zoom. Not in the DOM lib this project typechecks against. */
+interface MediaTrackCapabilities {
+  zoom?: DoubleRange;
+}
+
+interface MediaTrackConstraintSet {
+  zoom?: ConstrainDouble;
+}
+
+interface MediaTrackSettings {
+  zoom?: number;
+}
+
 interface Window {
   /** Set by public/lcp-shell.js when a pre-JS shell is on screen. */
   __skatehubbaLcpShell?: "home" | "auth" | "feed";
