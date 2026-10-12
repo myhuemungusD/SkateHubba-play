@@ -87,14 +87,22 @@ function comment(ctx: RulesTestContext, uid: string, id = "c1"): Promise<void> {
   });
 }
 
-/** A clip vote by `uid`. */
+/**
+ * A clip vote by `uid`, paired with the upvote tally. A create that skips
+ * the counter is denied; the ban cases still fail on `notBanned()`.
+ */
 function vote(ctx: RulesTestContext, uid: string): Promise<void> {
-  return setDoc(doc(ctx.firestore(), "clipVotes", `${uid}_${CLIP_ID}`), {
+  const db = ctx.firestore();
+  const clip = doc(db, "clips", CLIP_ID);
+  const batch = writeBatch(db);
+  batch.set(doc(db, "clipVotes", `${uid}_${CLIP_ID}`), {
     uid,
     clipId: CLIP_ID,
     value: 1,
     createdAt: serverTimestamp(),
   });
+  batch.update(clip, { upvoteCount: 1 });
+  return batch.commit();
 }
 
 /** A user-clip publish by `uid`, with the mandatory cooldown companion write. */

@@ -11,7 +11,7 @@
  */
 import { describe, it, beforeEach } from "vitest";
 import { assertSucceeds, assertFails } from "@firebase/rules-unit-testing";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, runTransaction, setDoc, serverTimestamp } from "firebase/firestore";
 import { setupRulesTestEnv, makeClip } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-clipvotes-selfupvote-redteam";
@@ -24,13 +24,22 @@ const CLIP_ID = `${GAME_ID}_${TURN_NUMBER}_set`;
 
 const getEnv = setupRulesTestEnv(PROJECT_ID);
 
-function voteDoc(uid: string) {
-  const ctx = getEnv().authenticatedContext(uid, { email_verified: true });
-  return doc(ctx.firestore(), "clipVotes", `${uid}_${CLIP_ID}`);
-}
-
 function makeVote(uid: string): Record<string, unknown> {
   return { uid, clipId: CLIP_ID, value: 1, createdAt: serverTimestamp() };
+}
+
+/** A real cast: the vote doc and the matching +1 land in one write. */
+function castUpvote(uid: string): Promise<void> {
+  const ctx = getEnv().authenticatedContext(uid, { email_verified: true });
+  const db = ctx.firestore();
+  const clip = doc(db, "clips", CLIP_ID);
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(clip);
+    const current = snap.data()?.upvoteCount;
+    const upvoteCount = typeof current === "number" ? current + 1 : 1;
+    tx.set(doc(db, "clipVotes", `${uid}_${CLIP_ID}`), makeVote(uid));
+    tx.update(clip, { upvoteCount });
+  });
 }
 
 beforeEach(async () => {
@@ -55,10 +64,10 @@ beforeEach(async () => {
 
 describe("clipVotes — red-team against self-upvote", () => {
   it("attack: the clip's OWNER cannot create a clipVotes doc for their own clip", async () => {
-    await assertFails(setDoc(voteDoc(OWNER_UID), makeVote(OWNER_UID)));
+    await assertFails(castUpvote(OWNER_UID));
   });
 
   it("legitimate: a NON-owner can upvote the clip", async () => {
-    await assertSucceeds(setDoc(voteDoc(OTHER_UID), makeVote(OTHER_UID)));
+    await assertSucceeds(castUpvote(OTHER_UID));
   });
 });
