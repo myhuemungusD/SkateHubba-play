@@ -3,9 +3,9 @@ import { customBoardGraphicUrl, customLogoDecalUrl, mikeWhiteBoardUrl, skateboar
 import { SKATEBOARD_01_CREDIT } from "../boardCredit";
 
 describe("runner art slots", () => {
-  it("stays empty until the custom files are in the repo", () => {
-    expect(customBoardGraphicUrl()).toBeNull();
-    expect(customLogoDecalUrl()).toBeNull();
+  it("uses the SkateHubba logo and leaves the model slots empty", () => {
+    expect(customBoardGraphicUrl()).toContain("board-logo");
+    expect(customLogoDecalUrl()).toBe(customBoardGraphicUrl());
     expect(mikeWhiteBoardUrl()).toBeNull();
     expect(skateboard01ModelUrl()).toBeNull();
   });

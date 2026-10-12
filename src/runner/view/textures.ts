@@ -23,16 +23,17 @@ import brickRoughnessUrl from "../assets/brick-roughness.webp";
 import concreteColorUrl from "../assets/concrete-color.webp";
 import concreteNormalUrl from "../assets/concrete-normal.webp";
 import concreteRoughnessUrl from "../assets/concrete-roughness.webp";
-import hdriUrl from "../assets/kloofendal_48d_partly_cloudy_puresky_1k.hdr?url";
+import hdriUrl from "../assets/sunset_jhbcentral_1k.hdr?url";
 import metalColorUrl from "../assets/metal-color.webp";
 import metalMetalnessUrl from "../assets/metal-metalness.webp";
 import metalNormalUrl from "../assets/metal-normal.webp";
 import metalRoughnessUrl from "../assets/metal-roughness.webp";
+import { ensureBrandArt } from "./brandArt";
 
 /**
- * CC0 PBR maps for the runner only. Sources and the empty board slots are
- * listed in docs/RUNNER_ASSETS.md. Maps load after the lazy route mounts;
- * importing this module does not fetch them.
+ * CC0 PBR maps plus the Design Mainline posters for the runner only.
+ * Sources are listed in docs/RUNNER_ASSETS.md. Maps load after the lazy
+ * route mounts; importing this module does not fetch them.
  */
 
 interface MapSet {
@@ -159,9 +160,16 @@ function assign(
 }
 
 function applyMaps(): void {
-  if (asphalt) assign(roadMaterial(), asphalt, [3, 22], true, "#ffffff");
+  if (asphalt) {
+    // Roughness below 1 multiplies the map, so the same CC0 asphalt reads wet.
+    assign(roadMaterial(), asphalt, [3, 22], true, "#c8c8c4");
+    const roadMat = roadMaterial();
+    roadMat.roughness = 0.5;
+    roadMat.envMapIntensity = 0.5;
+  }
   if (concrete) {
-    assign(sidewalkMaterial(), concrete, [2, 20], true, "#ffffff");
+    assign(sidewalkMaterial(), concrete, [2, 20], true, "#d5d0c8");
+    sidewalkMaterial().roughness = 0.82;
     assign(ledgeMaterial(), concrete, [1, 2], true, "#ffffff");
     assign(waxMaterial(), concrete, [1, 2], false, null);
   }
@@ -171,9 +179,9 @@ function applyMaps(): void {
     assign(truckMaterial(), metalMaps, [1, 1], true, "#ffffff");
   }
   if (brickMaps) {
-    // 40m backdrop, about 2m per tile. Building faces are ~8m.
-    assign(brickMaterial(), brickMaps, [20, 1.1], true, "#ffffff");
-    assign(brickBuildingMaterial(), brickMaps, [4, 1.15], true, "#e4dfda");
+    // 40m backdrop, about 2m per tile. Warm red-brown over the pale source map.
+    assign(brickMaterial(), brickMaps, [20, 1.1], true, "#c45c40");
+    assign(brickBuildingMaterial(), brickMaps, [4, 1.15], true, "#8d4034");
   }
 }
 
@@ -228,7 +236,10 @@ export function mountRunnerEnvironment(gl: WebGLRenderer, scene: Scene): () => v
   void (async () => {
     const hdrPromise = new RGBELoader().loadAsync(hdriUrl);
     try {
-      await Promise.all([hdrPromise, ensureRunnerMaps()]);
+      const brandPromise = ensureBrandArt().catch((error: unknown) => {
+        console.warn("Runner brand art failed to load", error);
+      });
+      await Promise.all([hdrPromise, ensureRunnerMaps(), brandPromise]);
       const loaded = await hdrPromise;
       if (disposed) {
         loaded.dispose();
@@ -260,7 +271,7 @@ export function mountRunnerEnvironment(gl: WebGLRenderer, scene: Scene): () => v
 }
 
 export function roadMaterial(): MeshStandardMaterial {
-  road ??= standard("#3a3a38", 0.92, 0, 0.22);
+  road ??= standard("#2e2c2a", 0.5, 0, 0.5);
   return road;
 }
 
@@ -294,14 +305,14 @@ export function postMaterial(): MeshStandardMaterial {
 }
 
 export function brickMaterial(): MeshStandardMaterial {
-  brick ??= standard("#dcd7d2", 0.92, 0, 0.18);
+  brick ??= standard("#8a4034", 0.92, 0, 0.12);
   return brick;
 }
 
 export function brickBuildingMaterial(): MeshStandardMaterial {
   if (!brickBuilding) {
     brickBuilding = brickMaterial().clone();
-    brickBuilding.color.set("#cfc8c2");
+    brickBuilding.color.set("#6e342c");
   }
   return brickBuilding;
 }

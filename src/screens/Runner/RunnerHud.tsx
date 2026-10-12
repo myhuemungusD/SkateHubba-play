@@ -25,7 +25,8 @@ interface Props {
 }
 
 const BTN =
-  "min-h-11 rounded-xl px-4 font-display tracking-wider focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
+  "min-h-11 rounded-xl px-4 font-display tracking-wider focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f2c14a]";
+const CHUNK = "[text-shadow:0_3px_0_#143028]";
 
 function comboLabel(multiplier: number): string {
   return Number.isInteger(multiplier) ? `x${multiplier}` : `x${multiplier.toFixed(1)}`;
@@ -46,14 +47,14 @@ export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) 
     <div className="pointer-events-none absolute inset-0 z-10 flex flex-col px-10 pt-[max(env(safe-area-inset-top),0.75rem)] pb-[max(env(safe-area-inset-bottom),0.75rem)]">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-sm tracking-[0.35em] text-brand-orange">Skate Runner</h1>
-          <p data-testid="runner-score" className="font-display text-4xl leading-none text-white">
+          <h1 className="font-display text-sm tracking-[0.35em] text-[#f2c14a]">Skate Runner</h1>
+          <p data-testid="runner-score" className={`font-display text-5xl leading-none text-[#f6e7b0] ${CHUNK}`}>
             <span className="sr-only">Score </span>
             {hud.score}
           </p>
           <p className="font-body text-xs text-white/60">{hud.distance} m</p>
           {hud.combo >= 2 ? (
-            <p className="font-display text-sm tracking-widest text-brand-orange">{comboLabel(hud.multiplier)}</p>
+            <p className="font-display text-sm tracking-widest text-[#f2c14a]">{comboLabel(hud.multiplier)}</p>
           ) : null}
         </div>
         <div className="pointer-events-auto flex flex-col items-end gap-2">
@@ -81,16 +82,23 @@ export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) 
 
       {hud.trickName ? (
         <div className="pointer-events-none absolute left-1/2 top-[28%] flex -translate-x-1/2 flex-col items-center">
-          <p aria-hidden className="font-display text-4xl tracking-[0.16em] text-brand-orange">
+          <p aria-hidden className={`font-display text-4xl tracking-[0.08em] text-[#f2c14a] sm:text-5xl ${CHUNK}`}>
             {hud.trickName}
           </p>
           {hud.grade ? (
-            <p aria-hidden className="font-display text-sm tracking-[0.3em] text-white">
+            <p
+              aria-hidden
+              className="font-display text-lg tracking-[0.28em] text-[#d5e7c8] [text-shadow:0_2px_0_#143028]"
+            >
               {GRADE_LABEL[hud.grade]}
             </p>
           ) : null}
           {hud.popup > 0 ? (
-            <p aria-hidden data-testid="runner-popup" className="font-display text-2xl text-white">
+            <p
+              aria-hidden
+              data-testid="runner-popup"
+              className={`font-display text-3xl tracking-wide text-[#f6e27a] ${CHUNK}`}
+            >
               +{hud.popup}
             </p>
           ) : null}
@@ -112,10 +120,7 @@ export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) 
 
       <div className="mt-auto flex justify-center gap-2 pb-2" aria-hidden>
         {[0, 1, 2].map((lane) => (
-          <span
-            key={lane}
-            className={`h-2 w-6 rounded-full ${lane === hud.lane ? "bg-brand-orange" : "bg-white/25"}`}
-          />
+          <span key={lane} className={`h-2 w-6 rounded-full ${lane === hud.lane ? "bg-[#f2c14a]" : "bg-white/25"}`} />
         ))}
       </div>
 
@@ -133,7 +138,7 @@ export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) 
             <button
               ref={playRef}
               type="button"
-              className={`${BTN} mt-5 w-full bg-brand-orange text-[#1a1a1a]`}
+              className={`${BTN} mt-5 w-full bg-[#f2c14a] text-[#143028]`}
               onClick={onResume}
             >
               {resumeLabel}
@@ -143,7 +148,7 @@ export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) 
                 href={SKATEBOARD_01_PAGE}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="underline decoration-white/30 underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+                className="underline decoration-white/30 underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f2c14a]"
               >
                 {SKATEBOARD_01_CREDIT_NAME}
               </a>
@@ -152,7 +157,7 @@ export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) 
                 href={SKATEBOARD_01_LICENSE}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="underline decoration-white/30 underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+                className="underline decoration-white/30 underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f2c14a]"
               >
                 {SKATEBOARD_01_CREDIT_LICENSE}
               </a>
@@ -172,12 +177,12 @@ export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) 
             <h2 id="runner-over-title" className="font-display text-4xl tracking-wide text-white">
               Game over
             </h2>
-            <p className="mt-2 font-display text-3xl text-brand-orange">{hud.score}</p>
+            <p className={`mt-2 font-display text-3xl text-[#f2c14a] ${CHUNK}`}>{hud.score}</p>
             <p className="font-body text-xs text-white/60">{hud.distance} m this run</p>
             <button
               ref={restartRef}
               type="button"
-              className={`${BTN} mt-5 w-full bg-brand-orange text-[#1a1a1a]`}
+              className={`${BTN} mt-5 w-full bg-[#f2c14a] text-[#143028]`}
               onClick={onRestart}
             >
               Play again

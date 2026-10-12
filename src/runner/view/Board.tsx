@@ -1,17 +1,20 @@
-import { useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { CylinderGeometry, MeshBasicMaterial, type Group, type Mesh } from "three";
+import { CylinderGeometry, DoubleSide, Mesh, MeshBasicMaterial, type Group } from "three";
 import { mikeWhiteBoardUrl } from "../artSlots";
 import { boardPose } from "../boardPose";
 import type { RunnerController } from "../controller";
+import type { RunnerQuality } from "../quality";
 import { useCustomBoardArt } from "./customArt";
 import { useSkateboardModel, wheelSpinRate } from "./skateboardModel";
 import { deckMaterial, flatMaterial, gripMaterial, truckMaterial } from "./textures";
 
 const wood = deckMaterial();
 const ply = flatMaterial("#6e4528");
-const graphic = flatMaterial("#e85d04", "#5a2408");
-const logo = flatMaterial("#f4f1ea");
+const graphic = flatMaterial("#f3efe6");
+graphic.side = DoubleSide;
+const logo = flatMaterial("#f3efe6");
+logo.side = DoubleSide;
 const truck = truckMaterial();
 const hanger = truckMaterial();
 const wheel = new MeshBasicMaterial({ color: "#f4f4f4" });
@@ -28,13 +31,24 @@ axleGeo.rotateZ(Math.PI / 2);
  * Wheels sit outside the deck so a high three-quarter camera shows them.
  * Poses come from `boardPose`; this component only applies them.
  */
-export function Board({ controller }: { controller: RunnerController }) {
+export function Board({ controller, quality }: { controller: RunnerController; quality: RunnerQuality }) {
   const root = useRef<Group>(null);
   const shadow = useRef<Mesh>(null);
   const wheels = useRef<(Group | null)[]>([]);
   const gl = useThree((state) => state.gl);
   useSkateboardModel(root, gl, controller);
   useCustomBoardArt(root);
+
+  useLayoutEffect(() => {
+    const group = root.current;
+    if (!group || quality !== "high") return;
+    group.traverse((obj) => {
+      if (obj instanceof Mesh) {
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+      }
+    });
+  }, [quality]);
 
   useFrame((_, dt) => {
     const state = controller.getState();
@@ -115,8 +129,8 @@ export function Board({ controller }: { controller: RunnerController }) {
           <mesh position={[0, 0.348, 0.78]} rotation={[-0.36, 0, 0]} material={gripMaterial()}>
             <boxGeometry args={[0.52, 0.012, 0.24]} />
           </mesh>
-          <mesh name="Graphic" position={[0, 0.306, 0.12]} material={graphic}>
-            <boxGeometry args={[0.18, 0.008, 0.28]} />
+          <mesh name="Graphic" position={[0, 0.222, 0]} rotation={[Math.PI / 2, 0, 0]} material={graphic}>
+            <planeGeometry args={[0.48, 0.92]} />
           </mesh>
           <mesh
             name="LogoDecal"

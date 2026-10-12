@@ -57,7 +57,7 @@ A good or perfect make starts a combo. The next one is worth x1.5, then x2, up t
 
 The score is meters plus those trick points. Nothing is saved. **Play again** starts a fresh run from the same pattern seed.
 
-**Pause**, Escape, or P pauses. Hiding the tab or app also pauses, and it stays paused until you resume. `prefers-reduced-motion` starts the run paused, and turns off the camera bob, speed lines, and grind sparks. The street still moves once you press Play, and the board still poses for each trick so the make stays readable.
+**Pause**, Escape, or P pauses. Hiding the tab or app also pauses, and it stays paused until you resume. `prefers-reduced-motion` starts the run paused, and turns off the camera bob, speed lines, grind sparks, landing dust, and the perfect-grind camera shake. The street still moves once you press Play, and the board still poses for each trick so the make stays readable.
 
 On a Capacitor build, a powerslide, a grind lock, and the landing each fire a light haptic. A bail is silent. The browser build stays silent. The in-app Haptics switch in Settings still applies.
 
@@ -65,7 +65,7 @@ The street starts at 6 units per second (about 30% slower than round 2, which st
 
 ## Phone performance
 
-The canvas caps `devicePixelRatio` at 1.5, turns MSAA off, and does not render shadow maps. The board has a blob shadow. Lights are a hemisphere plus two directionals, with a 1k daytime HDRI on the environment for reflections once it loads. Road, sidewalk, rails, ledges, and the brick walls use compressed CC0 PBR maps (512 WebP, mipmaps). Griptape and the deck wood grain are still generated. Street slabs, rails, and ledges are created once and recycled. Sparks and speed lines are a fixed pool. The sim pauses when the document is hidden, and the canvas stops drawing while paused or after a bail. An FPS number sits in the corner for device playtests. The texture list, licenses, the Skateboard_01 credit, and the empty slots for a deck graphic, a logo, and the Mike White model are in [RUNNER_ASSETS.md](RUNNER_ASSETS.md).
+The canvas caps `devicePixelRatio` at 1.5 and turns MSAA off. A phone, or a machine with 4 GB of memory or fewer or 4 cores or fewer, skips the shadow map and keeps the blob under the board. A desktop adds one 512 soft shadow from the warm key light. Lamp glow is baked as an additive card, not a fullscreen bloom pass. Lights are a warm hemisphere plus two directionals, with a 1k dusk HDRI on the environment for reflections once it loads. Road, sidewalk, rails, ledges, and the brick walls use compressed CC0 PBR maps (512 WebP, mipmaps). The asphalt roughness is pulled down so the street reads wet. Griptape and the deck wood grain are still generated. Street slabs, rails, ledges, lamps, the shop, and the dumpsters are created once and recycled. Sparks, landing dust, and speed lines are a fixed pool. The sim pauses when the document is hidden, and the canvas stops drawing while paused or after a bail. An FPS number sits in the corner for device playtests. The texture list, licenses, the SkateHubba logo, and the Skateboard_01 credit are in [RUNNER_ASSETS.md](RUNNER_ASSETS.md).
 
 three.js and React Three Fiber load only when `/play/runner` is opened (`React.lazy` in `App.tsx`). `npm run build` fails if any of that code shows up in the initial JavaScript. The procedural board does not import drei, so the runner chunk does not pull the drei barrel. `@react-three/drei` stays in the project for a later model; import it from a core subpath (`core/Gltf`) if a file is added, not from the package root.
 
@@ -73,11 +73,11 @@ three.js and React Three Fiber load only when `/play/runner` is opened (`React.l
 
 There is no skater in this build. The player is the deck, griptape, trucks, and wheels drawn in `src/runner/view/Board.tsx`. Poses live in `src/runner/boardPose.ts` and are applied to the root group (nose toward **-Z**, down the street). `spin` is a 0..1 kickflip turn.
 
-Skateboard_01 by RandomScan (Sketchfab), CC BY 4.0, is the board Jason picked. The file is not in the repo yet. `skateboard01ModelUrl()` stays null, so the procedural board stays on screen and the Draco, Meshopt, and KTX2 loaders are not fetched. When the glb is added, `loadSkateboardModel` scales it into this group and hides `ProceduralBoard`. The pause card already shows the credit. The deck graphic, the logo, and the Mike White model are still separate null slots in `src/runner/artSlots.ts`. Node names already on the procedural board:
+Skateboard_01 by RandomScan (Sketchfab), CC BY 4.0, is the board Jason picked. The file is not in the repo yet. `skateboard01ModelUrl()` stays null, so the procedural board stays on screen and the Draco, Meshopt, and KTX2 loaders are not fetched. When the glb is added, `loadSkateboardModel` scales it into this group and hides `ProceduralBoard`. The pause card already shows the credit. The Mike White model is still a null slot in `src/runner/artSlots.ts`. The deck graphic and the logo decal both use the SkateHubba logo. Node names already on the procedural board:
 
 `Deck`, `DeckPly`, `Griptape`, `Graphic`, `LogoDecal`, `TruckNose`, `TruckTail`, `WheelNoseLeft`, `WheelNoseRight`, `WheelTailLeft`, `WheelTailRight`.
 
-`LogoDecal` stays hidden until `CUSTOM_LOGO_DECAL` is a URL. `Graphic` is the orange placeholder until `CUSTOM_BOARD_GRAPHIC` is set.
+`Graphic` sits on the underside of the deck. `LogoDecal` is the small mark on top and stays hidden until its texture loads.
 
 The runner code moves the group. Do not bake root motion into a file. Tricks are these poses, not animation clips: ride, powerslide (yaw), crooked (yaw and roll onto one truck), nose slide (nose down), kickflip (a full roll on the way in, then the crooked pose), bail.
 

@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import type { Group, Object3D } from "three";
 import { BOX_LENGTH, LANE_X, RAIL_LENGTH } from "../constants";
 import type { RunnerController } from "../controller";
+import type { RunnerQuality } from "../quality";
 import type { Obstacle, ObstacleKind } from "../types";
 import { ledgeMaterial, metalMaterial, postMaterial, waxMaterial } from "./textures";
 
@@ -39,7 +40,8 @@ function stretch(group: Object3D, name: string, length: number, base: number): v
 }
 
 /** Fixed pool of rails and waxed ledges. Slots are hidden and reused. */
-export function ObstaclePool({ controller }: { controller: RunnerController }) {
+export function ObstaclePool({ controller, quality }: { controller: RunnerController; quality: RunnerQuality }) {
+  const high = quality === "high";
   const slots = useRef<(Group | null)[]>([]);
 
   useFrame(() => {
@@ -81,24 +83,36 @@ export function ObstaclePool({ controller }: { controller: RunnerController }) {
           visible={false}
         >
           <group name="rail">
-            <mesh name="rail-beam" position={[0, 0.42, -RAIL_LENGTH / 2]} material={railMetal}>
+            <mesh
+              name="rail-beam"
+              position={[0, 0.42, -RAIL_LENGTH / 2]}
+              material={railMetal}
+              castShadow={high}
+              receiveShadow={high}
+            >
               <boxGeometry args={[0.18, 0.12, RAIL_LENGTH]} />
             </mesh>
-            <mesh name="rail-post-near" position={[0, 0.2, 0]} material={post}>
+            <mesh name="rail-post-near" position={[0, 0.2, 0]} material={post} castShadow={high}>
               <boxGeometry args={[0.1, 0.4, 0.1]} />
             </mesh>
-            <mesh name="rail-post-far" position={[0, 0.2, -RAIL_LENGTH]} material={post}>
+            <mesh name="rail-post-far" position={[0, 0.2, -RAIL_LENGTH]} material={post} castShadow={high}>
               <boxGeometry args={[0.1, 0.4, 0.1]} />
             </mesh>
           </group>
           <group name="box" visible={false}>
-            <mesh name="box-body" position={[0, 0.16, -BOX_LENGTH / 2]} material={ledge}>
+            <mesh
+              name="box-body"
+              position={[0, 0.16, -BOX_LENGTH / 2]}
+              material={ledge}
+              castShadow={high}
+              receiveShadow={high}
+            >
               <boxGeometry args={[0.85, 0.32, BOX_LENGTH]} />
             </mesh>
             <mesh name="box-wax" position={[0, 0.325, -BOX_LENGTH / 2]} material={waxMaterial()}>
               <boxGeometry args={[0.72, 0.02, BOX_LENGTH]} />
             </mesh>
-            <mesh name="box-coping" position={[0.34, 0.3, -BOX_LENGTH / 2]} material={coping}>
+            <mesh name="box-coping" position={[0.34, 0.3, -BOX_LENGTH / 2]} material={coping} castShadow={high}>
               <boxGeometry args={[0.08, 0.05, BOX_LENGTH]} />
             </mesh>
           </group>

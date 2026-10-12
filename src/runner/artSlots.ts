@@ -1,22 +1,24 @@
+import boardLogoUrl from "./assets/board-logo.webp";
+
 /**
- * Later art from Jason and Mike White. These stay null until the files
- * exist in the repo. Importing a missing file fails the build, so the
- * paths below are documentation until then.
+ * The deck graphic and the logo decal are the SkateHubba mark (Design
+ * Mainline LLC), one file used in both slots. Skateboard_01 and the Mike
+ * White model stay null until those files are in the repo. Importing a
+ * missing file fails the build.
  *
- * - Deck graphic: src/runner/assets/board-graphic.webp
- * - Logo decal: src/runner/assets/board-logo.webp
+ * - Deck graphic and logo: src/runner/assets/board-logo.webp
  * - Skateboard_01: src/runner/assets/skateboard-01.glb
  * - Mike White board: src/runner/assets/mike-white-board.glb
  *
- * Wire a file by importing its URL and returning that string. The view
- * already has Graphic and LogoDecal meshes. Skateboard_01 is loaded by
- * `loadSkateboardModel` (Draco, Meshopt, KTX2, WebP). A null URL keeps the
- * procedural board and does not fetch decoders. The Mike White model is a
- * later slot and is not loaded by that path.
+ * `Graphic` is the underside of the deck. `LogoDecal` is the small top
+ * mark. Skateboard_01 is loaded by `loadSkateboardModel` (Draco, Meshopt,
+ * KTX2, WebP). A null model URL keeps the procedural board and does not
+ * fetch decoders. The Mike White model is a later slot and is not loaded
+ * by that path.
  */
 
-export const CUSTOM_BOARD_GRAPHIC: string | null = null;
-export const CUSTOM_LOGO_DECAL: string | null = null;
+export const CUSTOM_BOARD_GRAPHIC: string | null = boardLogoUrl;
+export const CUSTOM_LOGO_DECAL: string | null = boardLogoUrl;
 export const MIKE_WHITE_BOARD: string | null = null;
 
 /** Compressed Skateboard_01 glb. Null until Jason's download is in the repo. */

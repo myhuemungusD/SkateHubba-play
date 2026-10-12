@@ -3,6 +3,8 @@ import { useFrame } from "@react-three/fiber";
 import type { Group } from "three";
 import { SEGMENT_LENGTH } from "../constants";
 import type { RunnerController } from "../controller";
+import type { RunnerQuality } from "../quality";
+import { AlleyProps } from "./AlleyProps";
 import { brickBuildingMaterial, brickMaterial, flatMaterial, roadMaterial, sidewalkMaterial } from "./textures";
 
 const SEGMENTS = [0, 1, 2] as const;
@@ -17,7 +19,8 @@ const dash = flatMaterial("#d8d2c4");
  * The road is asphalt, the edges are concrete, and a brick wall sits behind
  * the sidewalk. No per-meter allocation.
  */
-export function Street({ controller }: { controller: RunnerController }) {
+export function Street({ controller, quality }: { controller: RunnerController; quality: RunnerQuality }) {
+  const high = quality === "high";
   const group = useRef<Group>(null);
 
   useFrame(() => {
@@ -37,13 +40,23 @@ export function Street({ controller }: { controller: RunnerController }) {
     <group ref={group}>
       {SEGMENTS.map((index) => (
         <group key={index}>
-          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} material={roadMaterial()}>
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} material={roadMaterial()} receiveShadow={high}>
             <planeGeometry args={[5.4, SEGMENT_LENGTH]} />
           </mesh>
-          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-3.7, 0.06, 0]} material={sidewalkMaterial()}>
+          <mesh
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[-3.7, 0.06, 0]}
+            material={sidewalkMaterial()}
+            receiveShadow={high}
+          >
             <planeGeometry args={[2.1, SEGMENT_LENGTH]} />
           </mesh>
-          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[3.7, 0.06, 0]} material={sidewalkMaterial()}>
+          <mesh
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[3.7, 0.06, 0]}
+            material={sidewalkMaterial()}
+            receiveShadow={high}
+          >
             <planeGeometry args={[2.1, SEGMENT_LENGTH]} />
           </mesh>
           <mesh position={[-2.55, 0.05, 0]} material={curb}>
@@ -57,24 +70,29 @@ export function Street({ controller }: { controller: RunnerController }) {
               <boxGeometry args={[0.08, 0.02, 1.4]} />
             </mesh>
           ))}
-          <mesh position={[-5.15, 1.15, 0]} material={wall}>
+          <mesh position={[-5.15, 1.15, 0]} material={wall} receiveShadow={high}>
             <boxGeometry args={[0.35, 2.3, SEGMENT_LENGTH]} />
           </mesh>
-          <mesh position={[5.15, 1.15, 0]} material={wall}>
+          <mesh position={[5.15, 1.15, 0]} material={wall} receiveShadow={high}>
             <boxGeometry args={[0.35, 2.3, SEGMENT_LENGTH]} />
           </mesh>
-          <mesh position={[-4.3, 1.15, -6]} material={building}>
+          <mesh position={[-4.3, 1.15, -6]} material={building} receiveShadow={high}>
             <boxGeometry args={[1.1, 2.3, 8]} />
           </mesh>
           <mesh position={[-4.3, 1.35, -6]} material={windowMat}>
             <boxGeometry args={[0.08, 0.7, 5]} />
           </mesh>
-          <mesh position={[4.35, 1.45, 8]} material={building}>
-            <boxGeometry args={[1.15, 2.9, 7]} />
-          </mesh>
-          <mesh position={[4.35, 1.7, 8]} material={windowMat}>
-            <boxGeometry args={[0.08, 0.9, 4.2]} />
-          </mesh>
+          {index === 0 ? null : (
+            <mesh position={[4.35, 1.45, 8]} material={building} receiveShadow={high}>
+              <boxGeometry args={[1.15, 2.9, 7]} />
+            </mesh>
+          )}
+          {index === 0 ? null : (
+            <mesh position={[4.35, 1.7, 8]} material={windowMat}>
+              <boxGeometry args={[0.08, 0.9, 4.2]} />
+            </mesh>
+          )}
+          <AlleyProps index={index} high={high} />
         </group>
       ))}
     </group>

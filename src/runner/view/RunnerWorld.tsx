@@ -1,7 +1,9 @@
-import { Component, memo, useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { Component, memo, useEffect, useMemo, useRef, type ReactNode, type RefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { ACESFilmicToneMapping, Color } from "three";
+import { ACESFilmicToneMapping, Color, PCFSoftShadowMap } from "three";
 import type { RunnerController } from "../controller";
+import { emptyShake, stepPerfectShake } from "../juice";
+import { currentRunnerQuality, type RunnerQuality } from "../quality";
 import { noteFps, type FpsBucket } from "../webgl";
 import { Board } from "./Board";
 import { Effects } from "./Effects";
@@ -49,16 +51,29 @@ function CameraRig({
   fpsRef: RefObject<HTMLElement | null>;
 }) {
   const bucket = useRef<FpsBucket>({ frames: 0, stamp: 0 });
+  const shake = useRef(emptyShake());
+  const wasGrind = useRef(false);
 
-  useFrame(({ camera }) => {
+  useFrame(({ camera }, dt) => {
     noteFps(fpsRef.current, bucket.current, performance.now());
     const state = controller.getState();
+    const offset = stepPerfectShake(
+      shake.current,
+      {
+        onGrind: state.onGrind,
+        wasOnGrind: wasGrind.current,
+        grade: state.grade,
+        reducedMotion,
+      },
+      dt,
+    );
+    wasGrind.current = state.onGrind;
     const bob = reducedMotion ? 0 : Math.sin(state.distance * 0.35) * 0.012;
     // Wider, higher, and further back than round 2. The horizon stays on
     // screen so the next rail sits in the upper half, and the board is about
-    // half the size it was.
+    // half the size it was. Shake is zero except on a perfect lock.
     const follow = state.x;
-    camera.position.set(follow * 0.62 + 0.15, 4.7 + bob, 5.6);
+    camera.position.set(follow * 0.62 + 0.15 + offset.x, 4.7 + bob + offset.y, 5.6);
     camera.lookAt(follow * 0.28, 0.12, -6.2);
   });
 
@@ -73,36 +88,54 @@ function RunnerEnvironment() {
 }
 
 /**
- * The 3D view. three.js stays in this lazy chunk. Pixel ratio is capped,
- * MSAA is off, and lights do not cast shadow maps — the board carries a
- * blob shadow instead, which is what holds 60fps on a mid-range phone.
- * The HDRI is environment lighting only. It arrives with this route.
+ * The 3D view. three.js stays in this lazy chunk. Pixel ratio is capped
+ * and MSAA is off. Phones skip the shadow map and keep the blob under the
+ * board. A desktop draws one 512 soft shadow. Lamp glow is an additive
+ * card, not a bloom pass. The dusk HDRI is environment lighting only.
  */
 function RunnerCanvas({ controller, reducedMotion, active, fpsRef }: WorldProps) {
+  const quality = useMemo((): RunnerQuality => currentRunnerQuality(), []);
+  const high = quality === "high";
   return (
     <Canvas
       dpr={[1, 1.5]}
-      shadows={false}
+      shadows={high}
       frameloop={active ? "always" : "never"}
       gl={{ antialias: false, powerPreference: "high-performance", stencil: false }}
       camera={{ position: [0.15, 4.7, 5.6], fov: 55, near: 0.05, far: 120 }}
       onCreated={({ gl, scene }) => {
-        gl.shadowMap.enabled = false;
+        gl.shadowMap.enabled = high;
+        if (high) gl.shadowMap.type = PCFSoftShadowMap;
         gl.toneMapping = ACESFilmicToneMapping;
-        gl.toneMappingExposure = 1;
-        scene.background = new Color("#241f1b");
+        gl.toneMappingExposure = 0.92;
+        scene.background = new Color("#1c140f");
       }}
     >
       <RunnerEnvironment />
-      <fog attach="fog" args={["#241f1b", 36, 100]} />
-      <hemisphereLight args={["#f0e2c8", "#3a3228", 0.85]} />
-      <ambientLight intensity={0.28} />
-      <directionalLight position={[5, 8, 3]} intensity={1.7} color="#fff1d6" castShadow={false} />
-      <directionalLight position={[-4, 3, -6]} intensity={0.35} color="#7f93a8" castShadow={false} />
+      <fog attach="fog" args={["#1c140f", 28, 92]} />
+      <hemisphereLight args={["#ffb36a", "#2a160f", 0.38]} />
+      <ambientLight intensity={0.14} color="#ffd7a8" />
+      <directionalLight
+        position={[6, 8, 5]}
+        intensity={high ? 0.95 : 0.7}
+        color="#ffc48a"
+        castShadow={high}
+        shadow-mapSize-width={512}
+        shadow-mapSize-height={512}
+        shadow-bias={-0.0006}
+        shadow-normalBias={0.04}
+        shadow-camera-near={2}
+        shadow-camera-far={22}
+        shadow-camera-left={-6}
+        shadow-camera-right={6}
+        shadow-camera-top={6}
+        shadow-camera-bottom={-6}
+      />
+      <directionalLight position={[-5, 3, -4]} intensity={0.16} color="#6a7ea0" />
       <CameraRig controller={controller} reducedMotion={reducedMotion} fpsRef={fpsRef} />
-      <Street controller={controller} />
-      <ObstaclePool controller={controller} />
-      <Board controller={controller} />
+      <Street controller={controller} quality={quality} />
+      <ObstaclePool controller={controller} quality={quality} />
+      <Board controller={controller} quality={quality} />
       <Effects controller={controller} reducedMotion={reducedMotion} />
     </Canvas>
   );

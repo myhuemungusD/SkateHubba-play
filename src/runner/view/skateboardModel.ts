@@ -214,6 +214,14 @@ export function useSkateboardModel(
         }
         fitSkateboard(loaded, SKATEBOARD_01_NOSE_FLIP);
         loaded.name = "Skateboard01";
+        if (renderer.shadowMap.enabled) {
+          loaded.traverse((obj) => {
+            if (obj instanceof Mesh) {
+              obj.castShadow = true;
+              obj.receiveShadow = true;
+            }
+          });
+        }
         group.add(loaded);
         model = loaded;
         const procedural = group.getObjectByName("ProceduralBoard");

@@ -2,7 +2,7 @@
 
 Textures for `/play/runner` only. They are imported from `src/runner/view/textures.ts`, which the lazy runner route loads. They are not part of the main app bundle, so the lobby and the rest of the game do not download them.
 
-The textures and the HDRI shipped here are CC0. The compressed payload of those files is about 1.71 MB. Skateboard_01 is CC BY 4.0 and is not in the build yet.
+The PBR maps and the HDRI shipped here are CC0. The SkateHubba logo and the two graffiti posters are brand art owned by Design Mainline LLC and are cleared for the game. Skateboard_01 is CC BY 4.0 and is not in the build yet. The compressed payload of the files in this folder is about 2.10 MB.
 
 | File                                          |   Bytes | Use                                       |
 | --------------------------------------------- | ------: | ----------------------------------------- |
@@ -19,11 +19,16 @@ The textures and the HDRI shipped here are CC0. The compressed payload of those 
 | `brick-color.webp`                            |   26142 | Wall and building albedo                  |
 | `brick-normal.webp`                           |   71880 | Wall and building normal                  |
 | `brick-roughness.webp`                        |   31540 | Wall and building roughness               |
-| `kloofendal_48d_partly_cloudy_puresky_1k.hdr` | 1435119 | Daytime environment light and reflections |
+| `sunset_jhbcentral_1k.hdr`                    | 1573705 | Dusk environment light and reflections    |
+| `board-logo.webp`                             |   42058 | Deck underside, top mark, and wall poster |
+| `graff-wall.webp`                             |   47304 | Left-wall mural                           |
+| `hubba-graff.webp`                            |   79650 | Right-wall mural                          |
 
-Total: 1797261 bytes.
+Total: 2104859 bytes.
 
-Maps are 512×512 WebP (color and roughness quality 76–78, normals 90) with mipmaps and anisotropy capped at 4. The HDRI is the official 1k RGBE file, used as `scene.environment` only. The background stays the street color. There are still no shadow maps.
+Maps are 512×512 WebP (color and roughness quality 76–78, normals 90) with mipmaps and anisotropy capped at 4. The logo is 512×512 WebP. The murals are 640×960 WebP. The HDRI is the official 1k RGBE file, used as `scene.environment` only. The background stays the dusk street color.
+
+Phones and machines with 4 GB of memory or fewer, or 4 cores or fewer, stay on the low tier: the blob shadow under the board, and no shadow map. A desktop draws one 512×512 soft shadow map from the warm key light. Lamp glow is an additive card on the lamp head plus a pool on the ground. There is no fullscreen bloom pass.
 
 The metal color was brightened after compression so a rail reads against asphalt. Normal, roughness, and metalness are the source maps, only resized. Griptape and the deck wood grain are still drawn in code. They are not third-party files.
 
@@ -40,10 +45,22 @@ License for every ambientCG file: [CC0 1.0](https://creativecommons.org/publicdo
 
 Bricks060 is a clean brick wall. It is not a graffiti texture.
 
-The HDRI is Poly Haven `kloofendal_48d_partly_cloudy_puresky`, 1k HDR. License: [CC0](https://polyhaven.com/license).
+The HDRI is Poly Haven `sunset_jhbcentral`, 1k HDR. License: [CC0](https://polyhaven.com/license).
 
-- Asset page: https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky
-- File: https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/kloofendal_48d_partly_cloudy_puresky_1k.hdr
+- Asset page: https://polyhaven.com/a/sunset_jhbcentral
+- File: https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/sunset_jhbcentral_1k.hdr
+
+## Brand art
+
+Owned by Design Mainline LLC. Cleared to ship in the game. These are not CC0.
+
+| File                | Source in the art pack        | Use                                              |
+| ------------------- | ----------------------------- | ------------------------------------------------ |
+| `board-logo.webp`   | `logov2_transparent.png`      | Board underside, small top mark, shop and wall   |
+| `graff-wall.webp`   | `graff_wall.jpg`              | Mural on the left wall                           |
+| `hubba-graff.webp`  | `hubbagraffwall.jpg`          | Mural on the right wall                          |
+
+The shop front (dark green awning, yellow “THE HUBBASPOT” / “SKATESHOP”) is built from meshes. The lettering is drawn in the runner with Bebas Neue, the same display face as the HUD. The USPTO scan was the reference for the mark and is not a separate texture.
 
 ## Skateboard model
 
@@ -74,17 +91,17 @@ Decoders are same-origin and are fetched only when a model URL is set:
 
 Meshopt stays inside the three.js package (MIT) and loads with the model chunk. The copied Draco files are the glTF builds, not the larger default decoder.
 
-The textures and the HDRI above stay CC0. This model is the CC BY file, and it is not in the build until the glb is added.
+The PBR maps and the HDRI stay CC0. The logo and murals are Design Mainline LLC art. This model is the CC BY file, and it is not in the build until the glb is added.
 
 ## Slots for later art
 
-These stay empty until the files are in the repo. The constants live in `src/runner/artSlots.ts`. Do not add an import for a file that is not in the repo. A missing import fails the build.
+The logo slots are filled. The two model slots stay empty until those files are in the repo. The constants live in `src/runner/artSlots.ts`. Do not add an import for a file that is not in the repo. A missing import fails the build.
 
-| Slot             | Constant               | Put the file at                          | What it drives                                                                                                                                |
+| Slot             | Constant               | File                                     | What it drives                                                                                                                                |
 | ---------------- | ---------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Deck graphic     | `CUSTOM_BOARD_GRAPHIC` | `src/runner/assets/board-graphic.webp`   | `Graphic` mesh                                                                                                                                |
-| Logo decal       | `CUSTOM_LOGO_DECAL`    | `src/runner/assets/board-logo.webp`      | `LogoDecal` mesh, hidden until the URL is set                                                                                                 |
-| Skateboard_01    | `SKATEBOARD_01_MODEL`  | `src/runner/assets/skateboard-01.glb`    | `loadSkateboardModel`. Hides `ProceduralBoard` after a successful load.                                                                       |
-| Mike White board | `MIKE_WHITE_BOARD`     | `src/runner/assets/mike-white-board.glb` | Later slot. Not loaded by the Skateboard_01 path.                                                                                             |
+| Deck graphic     | `CUSTOM_BOARD_GRAPHIC` | `src/runner/assets/board-logo.webp`      | `Graphic` mesh on the underside of the deck                                                                                                   |
+| Logo decal       | `CUSTOM_LOGO_DECAL`    | `src/runner/assets/board-logo.webp`      | `LogoDecal` mesh, the small mark on top of the griptape                                                                                       |
+| Skateboard_01    | `SKATEBOARD_01_MODEL`  | `src/runner/assets/skateboard-01.glb`    | Still empty. `loadSkateboardModel` hides `ProceduralBoard` after a successful load.                                                           |
+| Mike White board | `MIKE_WHITE_BOARD`     | `src/runner/assets/mike-white-board.glb` | Still empty. Not loaded by the Skateboard_01 path.                                                                                            |
 
-Return the imported URL from the matching function in `artSlots.ts`. `useCustomBoardArt` already paints the graphic and the logo. The posed group is `BoardRig` (nose toward **-Z**). Node names already on the procedural board: `Deck`, `DeckPly`, `Griptape`, `Graphic`, `LogoDecal`, `TruckNose`, `TruckTail`, `WheelNoseLeft`, `WheelNoseRight`, `WheelTailLeft`, `WheelTailRight`.
+`customBoardGraphicUrl()` and `customLogoDecalUrl()` both return the logo. The model getters stay null. The posed group is `BoardRig` (nose toward **-Z**). Node names already on the procedural board: `Deck`, `DeckPly`, `Griptape`, `Graphic`, `LogoDecal`, `TruckNose`, `TruckTail`, `WheelNoseLeft`, `WheelNoseRight`, `WheelTailLeft`, `WheelTailRight`.
