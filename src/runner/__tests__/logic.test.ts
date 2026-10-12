@@ -4,6 +4,7 @@ import {
   BOX_LENGTH,
   FIRST_ROW_Z,
   LANE_X,
+  LANDING_BONUS,
   LATE_LOCK,
   MAX_FRAME_DT,
   MAX_SPEED,
@@ -63,9 +64,9 @@ describe("lane changes", () => {
 describe("trick timing", () => {
   it("grades a lead in front of the lip as perfect, good, or sloppy", () => {
     expect(gradeForLead(1.2)).toBe("perfect");
-    expect(gradeForLead(3.4)).toBe("good");
-    expect(gradeForLead(5.2)).toBe("sloppy");
-    expect(gradeForLead(-0.4)).toBe("sloppy");
+    expect(gradeForLead(3.4)).toBe("clean");
+    expect(gradeForLead(5.2)).toBe("sketchy");
+    expect(gradeForLead(-0.4)).toBe("sketchy");
   });
 
   it("upgrades a second tap to a nose slide and lets a late second tap stay crooked", () => {
@@ -147,19 +148,16 @@ describe("trick timing", () => {
     run.input("tap");
     rollTo(run, 5.7);
     const locked = run.getState();
-    expect(locked.grade).toBe("sloppy");
+    expect(locked.grade).toBe("sketchy");
     expect(locked.combo).toBe(0);
-    expect(locked.popup).toBe(TRICK_POINTS.crooked.sloppy);
-    expect(locked.score).toBe(Math.floor(locked.distance) + TRICK_POINTS.crooked.sloppy);
+    expect(locked.popup).toBe(TRICK_POINTS.crooked.sketchy);
+    expect(locked.score).toBe(Math.floor(locked.distance) + TRICK_POINTS.crooked.sketchy);
   });
 
   it("multiplies the next good grind and clears the chain on a miss", () => {
     const run = createRunnerController({
       spawn: false,
-      obstacles: [
-        obstacle({ id: 1, kind: "rail", lane: 1, z: 8 }),
-        obstacle({ id: 2, kind: "box", lane: 1, z: 20 }),
-      ],
+      obstacles: [obstacle({ id: 1, kind: "rail", lane: 1, z: 8 }), obstacle({ id: 2, kind: "box", lane: 1, z: 20 })],
     });
     rollTo(run, 8 - 1.2);
     run.input("tap");
@@ -173,14 +171,11 @@ describe("trick timing", () => {
     const chained = run.getState();
     expect(chained.combo).toBe(2);
     expect(chained.popup).toBe(Math.round(TRICK_POINTS.crooked.perfect * 1.5));
-    expect(chained.trickPoints).toBe(TRICK_POINTS.crooked.perfect + chained.popup);
+    expect(chained.trickPoints).toBe(TRICK_POINTS.crooked.perfect + LANDING_BONUS.clean + chained.popup);
 
     const missed = createRunnerController({
       spawn: false,
-      obstacles: [
-        obstacle({ id: 1, kind: "rail", lane: 1, z: 8 }),
-        obstacle({ id: 2, kind: "box", lane: 1, z: 20 }),
-      ],
+      obstacles: [obstacle({ id: 1, kind: "rail", lane: 1, z: 8 }), obstacle({ id: 2, kind: "box", lane: 1, z: 20 })],
     });
     rollTo(missed, 8 - 1.2);
     missed.input("tap");
@@ -226,7 +221,7 @@ describe("what does not lock", () => {
       spawn: false,
       obstacles: [obstacle({ kind: "rail", lane: 1, z, length: RAIL_LENGTH })],
     });
-    rollTo(run, z + LATE_LOCK + 0.35);
+    rollTo(run, z + LATE_LOCK + 3);
     expect(run.getState().status).toBe("playing");
     run.input("flip");
     expect(run.getState().status).toBe("gameover");

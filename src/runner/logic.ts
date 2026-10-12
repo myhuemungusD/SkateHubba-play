@@ -1,44 +1,51 @@
 import {
   ARM_RANGE,
+  BALANCE_DRIFT,
+  BALANCE_GRACE,
+  BALANCE_LIMIT,
+  BALANCE_NUDGE,
+  BALANCE_RAMP,
   BASE_SPEED,
   BOX_LENGTH,
   BOX_Y,
   DOUBLE_TAP,
   DUCK_DURATION,
+  EXIT_EARLY,
+  EXIT_POP,
   FIRST_ROW_Z,
   FLIP_DURATION,
   GOOD_MAX,
-  LANE_SLIDE,
+  GRIND_DRAG,
+  GRIND_MIN_SPEED,
+  HIT_STOP,
+  HIT_STOP_PERFECT,
+  LANDING_BONUS,
   LANE_X,
   LANES,
   LATE_LOCK,
+  LEAN_RATE,
   MAX_FRAME_DT,
   MAX_SPEED,
   MISS_LIMIT,
+  OLLIE_POP,
   PERFECT_MAX,
   PERFECT_MIN,
+  POP_NOSE,
   RAIL_LENGTH,
   RAIL_Y,
+  RIDE_PITCH,
   ROW_GAP,
   SPAWN_AHEAD,
   SPEED_RAMP,
   TRICK_NAMES,
   TRICK_POINTS,
   TRICK_POWERSLIDE,
+  coyoteDistance,
   multiplierFor,
 } from "./constants";
+import { gradeTouchdown, integrateMotion } from "./physics";
 import { nextUnit } from "./rng";
-import type {
-  Action,
-  Grade,
-  Lane,
-  Obstacle,
-  ObstacleKind,
-  RunnerEvent,
-  RunnerState,
-  Tick,
-  Trick,
-} from "./types";
+import type { Action, Grade, Lane, Obstacle, ObstacleKind, RunnerEvent, RunnerState, Tick, Trick } from "./types";
 
 export interface CreateRunOptions {
   seed?: number;
@@ -57,17 +64,18 @@ export function laneAfter(lane: Lane, direction: "left" | "right"): Lane {
 
 /**
  * Lead is how many units before the lip the trick was armed.
- * Negative lead means the input landed after the lip and is sloppy
+ * Negative lead means the input landed after the lip and is sketchy
  * if it is still inside the late window.
  */
 export function gradeForLead(lead: number): Grade {
   if (lead >= PERFECT_MIN && lead <= PERFECT_MAX) return "perfect";
-  if (lead >= 0 && lead <= GOOD_MAX) return "good";
-  return "sloppy";
+  if (lead >= 0 && lead <= GOOD_MAX) return "clean";
+  return "sketchy";
 }
 
 export function createRun(options: CreateRunOptions = {}): RunnerState {
   const lane = options.lane ?? 1;
+  const seed = options.seed ?? 1;
   const obstacles = options.obstacles?.map((obstacle) => ({ ...obstacle })) ?? [];
   const nextId = obstacles.reduce((max, obstacle) => Math.max(max, obstacle.id), 0) + 1;
   return {
@@ -77,6 +85,24 @@ export function createRun(options: CreateRunOptions = {}): RunnerState {
     lane,
     x: LANE_X[lane],
     y: 0,
+    vy: 0,
+    vx: 0,
+    pitch: RIDE_PITCH,
+    yaw: 0,
+    roll: 0,
+    pitchVel: 0,
+    yawVel: 0,
+    rollVel: 0,
+    squash: 0,
+    balance: 0,
+    balanceDrift: seed % 2 === 0 ? -1 : 1,
+    airborne: false,
+    popAge: 0,
+    popped: false,
+    earlyPop: false,
+    pendingLanding: false,
+    grindTime: 0,
+    hitStop: 0,
     duck: -1,
     flip: -1,
     onGrind: false,
@@ -95,7 +121,7 @@ export function createRun(options: CreateRunOptions = {}): RunnerState {
     obstacles,
     nextId,
     spawnedUntil: options.spawn === false ? Number.POSITIVE_INFINITY : 0,
-    rng: options.seed ?? 1,
+    rng: seed,
     elapsed: 0,
     grinds: 0,
     misses: 0,
@@ -103,18 +129,34 @@ export function createRun(options: CreateRunOptions = {}): RunnerState {
   };
 }
 
+function popBoard(state: RunnerState, trick: Trick): void {
+  state.airborne = true;
+  state.vy = trick === "kickflip" ? OLLIE_POP * 0.94 : OLLIE_POP;
+  state.pitchVel = POP_NOSE;
+  state.popAge = 0;
+  state.squash = 0;
+  if (trick === "kickflip") state.rollVel = 2.4;
+}
+
 function commit(prev: RunnerState, trick: Trick): Tick {
-  return {
-    state: {
-      ...prev,
-      armed: trick,
-      armedDistance: prev.distance,
-      armAge: trick === "nose" ? prev.armAge : 0,
-      duck: -1,
-      flip: trick === "kickflip" ? 0 : -1,
-    },
-    events: [],
+  const state: RunnerState = {
+    ...prev,
+    armed: trick,
+    armedDistance: prev.distance,
+    armAge: trick === "nose" ? prev.armAge : 0,
+    duck: -1,
+    flip: trick === "kickflip" ? 0 : -1,
   };
+  const events: RunnerEvent[] = [];
+  if (!prev.airborne && prev.duck < 0 && !prev.onGrind) {
+    popBoard(state, trick);
+    events.push("pop");
+  } else if (trick === "kickflip" && !prev.onGrind) {
+    state.rollVel = 2.4;
+    state.flip = 0;
+    events.push("pop");
+  }
+  return { state, events };
 }
 
 function bail(prev: RunnerState): Tick {
@@ -133,19 +175,58 @@ function bail(prev: RunnerState): Tick {
       grade: null,
       popup: 0,
       y: 0,
+      vy: 0,
+      airborne: false,
+      pendingLanding: false,
+      hitStop: 0,
     },
     events: ["bail"],
   };
 }
 
-/** A trick input after the late window, while the feature is still under the board. */
+function windowEnd(state: RunnerState, obstacle: Obstacle): number {
+  return obstacle.z + LATE_LOCK + coyoteDistance(state.speed);
+}
+
+/** A trick input after the late window and coyote time, while the feature is still under the board. */
 function slamming(state: RunnerState): boolean {
   for (const obstacle of state.obstacles) {
     if (obstacle.lane !== state.lane || obstacle.resolved || obstacle.awarded) continue;
     const end = obstacle.z + obstacle.length;
-    if (state.distance > obstacle.z + LATE_LOCK && state.distance < end) return true;
+    if (state.distance > windowEnd(state, obstacle) && state.distance < end) return true;
   }
   return false;
+}
+
+function nudge(prev: RunnerState, direction: "left" | "right"): Tick {
+  const delta = direction === "left" ? -BALANCE_NUDGE : BALANCE_NUDGE;
+  const balance = Math.max(-1.4, Math.min(1.4, prev.balance + delta));
+  return { state: { ...prev, balance }, events: [] };
+}
+
+/** Tap during a grind pops off. A pop in the first half cannot land perfect. */
+function popOff(prev: RunnerState): Tick {
+  const feature = prev.obstacles.find((obstacle) => obstacle.id === prev.grindId);
+  const along = feature ? prev.distance - feature.z : 0;
+  const early = !feature || along < feature.length * EXIT_EARLY;
+  return {
+    state: {
+      ...prev,
+      onGrind: false,
+      grindId: null,
+      airborne: true,
+      pendingLanding: true,
+      popped: true,
+      earlyPop: early,
+      vy: EXIT_POP,
+      y: prev.y + 0.02,
+      popAge: 0,
+      pitchVel: POP_NOSE,
+      grindTime: 0,
+      hitStop: 0,
+    },
+    events: ["pop"],
+  };
 }
 
 export function applyAction(prev: RunnerState, action: Action): Tick {
@@ -153,19 +234,21 @@ export function applyAction(prev: RunnerState, action: Action): Tick {
   switch (action) {
     case "left":
     case "right": {
-      if (prev.onGrind) return { state: prev, events: [] };
+      if (prev.onGrind) return nudge(prev, action);
       const lane = laneAfter(prev.lane, action);
       if (lane === prev.lane) return { state: prev, events: [] };
       return { state: { ...prev, lane }, events: [] };
     }
     case "tap": {
-      if (prev.onGrind) return { state: prev, events: [] };
+      if (prev.hitStop > 0) return { state: prev, events: [] };
+      if (prev.onGrind) return popOff(prev);
       if (slamming(prev)) return bail(prev);
       if (prev.armed === "crooked" && prev.armAge <= DOUBLE_TAP) return commit(prev, "nose");
       return commit(prev, "crooked");
     }
     case "flip": {
-      if (prev.onGrind) return { state: prev, events: [] };
+      if (prev.hitStop > 0) return { state: prev, events: [] };
+      if (prev.onGrind) return popOff(prev);
       if (slamming(prev)) return bail(prev);
       return commit(prev, "kickflip");
     }
@@ -178,6 +261,10 @@ export function applyAction(prev: RunnerState, action: Action): Tick {
           duck: 0,
           armed: null,
           flip: -1,
+          airborne: false,
+          vy: 0,
+          y: 0,
+          pendingLanding: false,
           trickName: showSlide ? TRICK_POWERSLIDE : prev.trickName,
           trickTime: showSlide ? 0.55 : prev.trickTime,
         },
@@ -189,6 +276,13 @@ export function applyAction(prev: RunnerState, action: Action): Tick {
       return neverAction;
     }
   }
+}
+
+/** Held finger or key. Only matters while locked. `lean` is -1..1. */
+export function applyLean(prev: RunnerState, lean: number, dt: number): RunnerState {
+  if (!prev.onGrind || lean === 0 || dt <= 0) return prev;
+  const balance = Math.max(-1.4, Math.min(1.4, prev.balance + lean * LEAN_RATE * dt));
+  return { ...prev, balance };
 }
 
 function take(state: RunnerState): number {
@@ -224,7 +318,6 @@ function spawnAhead(state: RunnerState): void {
     const z = state.spawnedUntil === 0 ? FIRST_ROW_Z : state.spawnedUntil + ROW_GAP;
     const rowIndex = state.spawnedUntil === 0 ? 0 : Math.round((z - FIRST_ROW_Z) / ROW_GAP);
     if (rowIndex < 2) {
-      // Opening features sit in the left lane so the center start is a free roll.
       state.obstacles.push(makeObstacle(state, rowIndex === 0 ? "rail" : "box", 0, z));
     } else {
       const kind: ObstacleKind = take(state) < 0.55 ? "rail" : "box";
@@ -241,10 +334,10 @@ function spawnAhead(state: RunnerState): void {
 }
 
 function award(state: RunnerState, trick: Trick, grade: Grade): void {
-  const chain = grade === "sloppy" ? Math.max(state.combo, 1) : state.combo + 1;
-  const mult = grade === "sloppy" ? 1 : multiplierFor(chain);
+  const chain = grade === "sketchy" ? Math.max(state.combo, 1) : state.combo + 1;
+  const mult = grade === "sketchy" ? 1 : multiplierFor(chain);
   const points = Math.round(TRICK_POINTS[trick][grade] * mult);
-  if (grade !== "sloppy") state.combo = chain;
+  if (grade !== "sketchy") state.combo = chain;
   state.trickPoints += points;
   state.popup = points;
   state.grade = grade;
@@ -259,27 +352,36 @@ function tryLock(state: RunnerState, prevDistance: number, events: RunnerEvent[]
   if (prevDistance - state.armedDistance > ARM_RANGE) return;
   for (const obstacle of state.obstacles) {
     if (obstacle.lane !== state.lane || obstacle.resolved || obstacle.awarded) continue;
-    const windowEnd = obstacle.z + LATE_LOCK;
-    if (prevDistance > windowEnd || state.distance < obstacle.z) continue;
-    if (state.armedDistance > windowEnd) continue;
+    const end = windowEnd(state, obstacle);
+    if (prevDistance > end || state.distance < obstacle.z) continue;
+    if (state.armedDistance > end) continue;
     const trick = state.armed;
+    const grade = gradeForLead(obstacle.z - state.armedDistance);
     obstacle.awarded = true;
     state.onGrind = true;
     state.grindId = obstacle.id;
     state.grindTrick = trick;
+    state.grindTime = 0;
     state.lane = obstacle.lane;
     state.x = LANE_X[obstacle.lane];
+    state.vx = 0;
     state.y = obstacle.kind === "rail" ? RAIL_Y : BOX_Y;
+    state.vy = 0;
+    state.airborne = false;
+    state.pendingLanding = false;
+    state.squash = 0;
+    state.balance = 0;
     state.armed = null;
     state.flip = -1;
     state.duck = -1;
-    award(state, trick, gradeForLead(obstacle.z - state.armedDistance));
+    state.hitStop = grade === "perfect" ? HIT_STOP_PERFECT : HIT_STOP;
+    award(state, trick, grade);
     events.push("lock");
     return;
   }
 }
 
-function followGrind(state: RunnerState, events: RunnerEvent[]): void {
+function followGrind(state: RunnerState): void {
   const feature = state.obstacles.find((obstacle) => obstacle.id === state.grindId);
   const end = feature ? feature.z + feature.length : state.distance;
   if (feature) {
@@ -287,13 +389,46 @@ function followGrind(state: RunnerState, events: RunnerEvent[]): void {
     state.x = LANE_X[feature.lane];
     state.y = feature.kind === "rail" ? RAIL_Y : BOX_Y;
   }
-  if (!feature || state.distance >= end) {
+  if (!feature || state.distance < end) return;
+  state.onGrind = false;
+  state.grindId = null;
+  state.grindTime = 0;
+  state.airborne = true;
+  state.pendingLanding = true;
+  state.popped = false;
+  state.earlyPop = false;
+  state.vy = EXIT_POP * 0.82;
+  state.y += 0.02;
+  state.popAge = 0;
+  state.pitchVel = POP_NOSE * 0.65;
+}
+
+function payLanding(state: RunnerState, events: RunnerEvent[]): void {
+  const grade = gradeTouchdown(state);
+  state.pendingLanding = false;
+  if (grade === "bail") {
+    const fallen = bail(state);
+    state.status = fallen.state.status;
     state.onGrind = false;
     state.grindId = null;
+    state.armed = null;
+    state.flip = -1;
+    state.trickName = null;
+    state.trickTime = 0;
+    state.grade = null;
+    state.popup = 0;
     state.y = 0;
-    state.trickTime = 1.15;
-    events.push("land");
+    state.vy = 0;
+    state.airborne = false;
+    events.push("bail");
+    return;
   }
+  const points = LANDING_BONUS[grade];
+  state.trickPoints += points;
+  state.popup = points;
+  state.grade = grade;
+  state.trickTime = 1.15;
+  events.push("land");
 }
 
 function resolvePasses(state: RunnerState, events: RunnerEvent[]): void {
@@ -305,16 +440,8 @@ function resolvePasses(state: RunnerState, events: RunnerEvent[]): void {
     state.combo = 0;
     state.misses += 1;
     if (state.misses >= MISS_LIMIT) {
-      state.status = "gameover";
-      state.onGrind = false;
-      state.grindId = null;
-      state.armed = null;
-      state.flip = -1;
-      state.trickName = null;
-      state.trickTime = 0;
-      state.grade = null;
-      state.popup = 0;
-      state.y = 0;
+      const fallen = bail(state);
+      Object.assign(state, fallen.state);
       events.push("bail");
       return;
     }
@@ -323,11 +450,11 @@ function resolvePasses(state: RunnerState, events: RunnerEvent[]): void {
 
 /**
  * Advance one slice. `dt` should be at most MAX_FRAME_DT; larger values are
- * clamped so a single call cannot skip a lip.
+ * clamped so a single call cannot skip a lip. The controller feeds FIXED_DT.
  */
 export function stepRun(prev: RunnerState, dt: number): Tick {
   if (prev.status !== "playing") return { state: prev, events: [] };
-  const slice = Math.min(Math.max(dt, 0), MAX_FRAME_DT);
+  let slice = Math.min(Math.max(dt, 0), MAX_FRAME_DT);
   if (slice === 0) return { state: prev, events: [] };
 
   const state: RunnerState = {
@@ -335,6 +462,13 @@ export function stepRun(prev: RunnerState, dt: number): Tick {
     obstacles: prev.obstacles.map((obstacle) => ({ ...obstacle })),
   };
   const events: RunnerEvent[] = [];
+
+  if (state.hitStop > 0) {
+    const used = Math.min(state.hitStop, slice);
+    state.hitStop -= used;
+    slice -= used;
+    if (slice <= 1e-6) return { state, events };
+  }
 
   if (state.duck >= 0) {
     state.duck += slice;
@@ -344,24 +478,31 @@ export function stepRun(prev: RunnerState, dt: number): Tick {
     state.flip = Math.min(FLIP_DURATION, state.flip + slice);
   }
   if (state.armed) state.armAge += slice;
+  if (state.onGrind) state.grindTime += slice;
 
   const prevDistance = state.distance;
   state.distance += state.speed * slice;
   state.elapsed += slice;
   state.speed = Math.min(MAX_SPEED, state.speed + SPEED_RAMP * slice);
 
+  const motion = integrateMotion(state, slice);
   if (state.onGrind) {
-    followGrind(state, events);
+    state.speed = Math.max(GRIND_MIN_SPEED, state.speed - GRIND_DRAG * slice);
+    const rate = BALANCE_DRIFT * (1 + state.elapsed * BALANCE_RAMP);
+    state.balance += state.balanceDrift * rate * slice;
+    followGrind(state);
+    if (state.onGrind && state.grindTime > BALANCE_GRACE && Math.abs(state.balance) > BALANCE_LIMIT) {
+      state.score = Math.floor(state.distance) + state.trickPoints;
+      return bail(state);
+    }
   } else {
-    const target = LANE_X[state.lane];
-    const dx = target - state.x;
-    const step = Math.min(Math.abs(dx), LANE_SLIDE * slice);
-    state.x += Math.sign(dx) * step;
-    state.y = 0;
     tryLock(state, prevDistance, events);
     if (state.armed && state.distance - state.armedDistance > ARM_RANGE) {
       state.armed = null;
       state.flip = -1;
+    }
+    if (motion.touched && state.pendingLanding && state.status === "playing") {
+      payLanding(state, events);
     }
   }
 

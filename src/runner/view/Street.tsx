@@ -29,7 +29,7 @@ export function Street({ controller, quality }: { controller: RunnerController; 
   useFrame(() => {
     const root = group.current;
     if (!root) return;
-    const distance = controller.getState().distance;
+    const distance = controller.getRenderFrame().distance;
     const index = Math.floor(distance / SEGMENT_LENGTH);
     for (let i = 0; i < SEGMENTS.length; i += 1) {
       const slab = root.children[i];

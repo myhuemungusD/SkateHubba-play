@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createRunnerController, type RunnerController } from "../../runner/controller";
 import { bindRunnerTouch, createGestureRecognizer } from "../../runner/gestures";
 import { actionForKey, isTypingTarget } from "../../runner/keyboard";
+import { preloadRunnerSfx } from "../../runner/sfx";
 import { canUseWebGL, frameDelta, noteFps, type FpsBucket } from "../../runner/webgl";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
 import { RunnerWorld } from "../../runner/view/RunnerWorld";
@@ -39,28 +40,51 @@ export function RunnerScreen({ controller: injected }: Props = {}) {
   useEffect(() => {
     const el = rootRef.current;
     if (!el) return;
-    return bindRunnerTouch(el, createGestureRecognizer(), (action) => {
-      controller.input(action);
-    });
+    return bindRunnerTouch(
+      el,
+      createGestureRecognizer(),
+      (action) => {
+        controller.input(action);
+      },
+      (lean) => {
+        controller.setLean(lean);
+      },
+    );
   }, [controller]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.repeat || isTypingTarget(event.target)) return;
+      if (isTypingTarget(event.target)) return;
       if (event.target instanceof HTMLButtonElement && (event.key === " " || event.key === "Enter")) return;
+      const status = controller.getState().status;
+      if (status === "gameover" && (event.key === "r" || event.key === "R")) {
+        event.preventDefault();
+        controller.restart();
+        return;
+      }
+      if (event.repeat) return;
+      if (event.key === "ArrowLeft" || event.key === "a" || event.key === "A") controller.setLean(-1);
+      if (event.key === "ArrowRight" || event.key === "d" || event.key === "D") controller.setLean(1);
       const action = actionForKey(event.key);
       if (!action) return;
       event.preventDefault();
       if (action === "pause") {
-        const status = controller.getState().status;
         if (status === "playing") controller.pause();
         else if (status === "paused") controller.resume();
         return;
       }
       controller.input(action);
     };
+    const onUp = (event: KeyboardEvent) => {
+      if (event.key === "ArrowLeft" || event.key === "a" || event.key === "A") controller.setLean(0);
+      if (event.key === "ArrowRight" || event.key === "d" || event.key === "D") controller.setLean(0);
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keyup", onUp);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onUp);
+    };
   }, [controller]);
 
   useEffect(() => {
@@ -71,6 +95,10 @@ export function RunnerScreen({ controller: injected }: Props = {}) {
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [controller]);
+
+  useEffect(() => {
+    preloadRunnerSfx();
+  }, []);
 
   useEffect(() => {
     let raf = 0;
@@ -94,18 +122,20 @@ export function RunnerScreen({ controller: injected }: Props = {}) {
       className="fixed inset-0 z-40 overflow-hidden overscroll-none bg-[#121212] text-white select-none"
       aria-describedby="runner-help"
     >
-      <div
-        aria-hidden
-        className="absolute inset-y-0 left-0 z-20 w-8 touch-pan-y"
-      />
-      <div
-        aria-hidden
-        className="absolute inset-y-0 right-0 z-20 w-8 touch-pan-y"
-      />
+      <div aria-hidden className="absolute inset-y-0 left-0 z-20 w-8 touch-pan-y" />
+      <div aria-hidden className="absolute inset-y-0 right-0 z-20 w-8 touch-pan-y" />
       {webgl ? (
-        <RunnerWorld controller={controller} reducedMotion={reduced} active={hud.status === "playing"} fpsRef={fpsRef} />
+        <RunnerWorld
+          controller={controller}
+          reducedMotion={reduced}
+          active={hud.status === "playing"}
+          fpsRef={fpsRef}
+        />
       ) : (
-        <p data-testid="runner-no-webgl" className="absolute inset-x-0 top-24 px-8 text-center font-body text-sm text-white/70">
+        <p
+          data-testid="runner-no-webgl"
+          className="absolute inset-x-0 top-24 px-8 text-center font-body text-sm text-white/70"
+        >
           3D view needs WebGL. The run still counts.
         </p>
       )}

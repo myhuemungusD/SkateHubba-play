@@ -2,7 +2,6 @@ import { useLayoutEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { CylinderGeometry, DoubleSide, Mesh, MeshBasicMaterial, type Group } from "three";
 import { mikeWhiteBoardUrl } from "../artSlots";
-import { boardPose } from "../boardPose";
 import type { RunnerController } from "../controller";
 import type { RunnerQuality } from "../quality";
 import { useCustomBoardArt } from "./customArt";
@@ -32,7 +31,7 @@ axleGeo.rotateZ(Math.PI / 2);
 /**
  * The player. Deck, griptape, trucks, and four wheels — no body.
  * Wheels sit outside the deck so a high three-quarter camera shows them.
- * Poses come from `boardPose`; this component only applies them.
+ * Poses come from the interpolated sim frame. This component only applies them.
  */
 export function Board({ controller, quality }: { controller: RunnerController; quality: RunnerQuality }) {
   const root = useRef<Group>(null);
@@ -55,18 +54,20 @@ export function Board({ controller, quality }: { controller: RunnerController; q
 
   useFrame((_, dt) => {
     const state = controller.getState();
-    const pose = boardPose(state);
+    const frame = controller.getRenderFrame();
     const group = root.current;
     if (group) {
-      group.position.set(state.x, pose.y, 0);
-      group.scale.setScalar(1.4);
-      group.rotation.set(pose.pitch, pose.yaw, pose.roll + pose.spin * Math.PI * 2);
+      const squash = frame.squash;
+      const scale = 1.4;
+      group.position.set(frame.x, frame.y - squash * 0.05, 0);
+      group.scale.set(scale * (1 + squash * 0.4), scale * (1 - squash), scale * (1 + squash * 0.16));
+      group.rotation.set(frame.pitch, frame.yaw, frame.roll + frame.spin * Math.PI * 2);
     }
     if (shadow.current) {
-      shadow.current.position.x = state.x;
+      shadow.current.position.x = frame.x;
       shadow.current.visible = state.status !== "gameover";
     }
-    const next = (wheels.current[0]?.rotation.x ?? 0) + state.speed * dt * wheelSpinRate(state);
+    const next = (wheels.current[0]?.rotation.x ?? 0) + frame.speed * dt * wheelSpinRate(state);
     for (const mesh of wheels.current) {
       if (mesh) mesh.rotation.x = next;
     }

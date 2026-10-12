@@ -58,6 +58,7 @@ function rail(z = 2): Obstacle {
 
 describe("RunnerScreen", () => {
   beforeEach(() => {
+    localStorage.clear();
     installMatchMedia(false);
     vi.stubGlobal("requestAnimationFrame", () => 1);
     vi.stubGlobal("cancelAnimationFrame", vi.fn());
@@ -179,13 +180,19 @@ describe("RunnerScreen", () => {
     expect(screen.getByTestId("runner-announce")).toHaveTextContent("CROOKED GRIND");
     expect(screen.getAllByText("CROOKED GRIND")).toHaveLength(2);
     expect(screen.getByText("PERFECT")).toBeInTheDocument();
+    expect(screen.getByTestId("runner-balance")).toBeInTheDocument();
     expect(screen.getByTestId("runner-popup")).toHaveTextContent("+400");
+    act(() => {
+      controller.getState().balance = 0.9;
+      controller.step(0.05);
+    });
+    expect(screen.getByTestId("runner-balance").querySelector("span")?.className).toContain("bg-red-400");
     first.unmount();
 
     const crashed = createRunnerController({ spawn: false, obstacles: [rail(1)] });
     renderRunner(crashed);
     act(() => {
-      crashed.step(0.7);
+      crashed.step(1.2);
     });
     expect(crashed.getState().distance).toBeGreaterThan(1 + LATE_LOCK);
     fireEvent.keyDown(window, { key: "f" });
@@ -196,9 +203,11 @@ describe("RunnerScreen", () => {
     document.dispatchEvent(new Event("visibilitychange"));
     expect(crashed.getState().status).toBe("gameover");
 
+    expect(screen.getByTestId("runner-best")).toHaveTextContent("New best");
     await user.click(screen.getByRole("button", { name: "Play again" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(crashed.getState().distance).toBe(0);
+    expect(screen.getByTestId("runner-best")).toHaveTextContent(/Best /);
     expect(screen.getByRole("link", { name: "Exit" })).toHaveAttribute("href", "/");
   });
 

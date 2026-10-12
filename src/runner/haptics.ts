@@ -3,19 +3,29 @@ import { playHaptic } from "../services/haptics";
 import type { RunnerEvent } from "./types";
 
 /**
- * Light tap on a powerslide, a grind lock, and the landing off it.
- * Web and desktop stay silent — Capacitor's web shim would vibrate Android
- * Chrome, and this phase only wants the native shell. A bail is silent.
+ * Native shell uses Capacitor. A browser with `navigator.vibrate` gets a
+ * short pattern. A bail stays silent. Desktop browsers without vibrate do too.
  */
 export function playRunnerHaptic(event: RunnerEvent): void {
-  if (!Capacitor.isNativePlatform()) return;
+  if (event === "bail") return;
+  if (Capacitor.isNativePlatform()) {
+    playHaptic("toast");
+    return;
+  }
+  const vibrate = navigator.vibrate?.bind(navigator);
+  if (!vibrate) return;
   switch (event) {
-    case "powerslide":
-    case "lock":
-    case "land":
-      playHaptic("toast");
+    case "pop":
+      vibrate(12);
       return;
-    case "bail":
+    case "lock":
+      vibrate([16, 24, 22]);
+      return;
+    case "land":
+      vibrate(18);
+      return;
+    case "powerslide":
+      vibrate(10);
       return;
     default: {
       const neverEvent: never = event;

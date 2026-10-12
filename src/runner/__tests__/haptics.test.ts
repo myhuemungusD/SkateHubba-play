@@ -22,9 +22,23 @@ describe("runner haptics", () => {
     isNative.mockReturnValue(false);
   });
 
-  it("stays silent in the browser", () => {
+  it("does not use the native haptic in the browser", () => {
     playRunnerHaptic("powerslide");
+    playRunnerHaptic("pop");
     playRunnerHaptic("land");
+    playRunnerHaptic("bail");
+    expect(playHaptic).not.toHaveBeenCalled();
+  });
+
+  it("vibrates in the browser when the device can", () => {
+    const vibrate = vi.fn(() => true);
+    Object.defineProperty(navigator, "vibrate", { configurable: true, value: vibrate });
+    playRunnerHaptic("pop");
+    playRunnerHaptic("lock");
+    playRunnerHaptic("land");
+    playRunnerHaptic("powerslide");
+    playRunnerHaptic("bail");
+    expect(vibrate).toHaveBeenCalledTimes(4);
     expect(playHaptic).not.toHaveBeenCalled();
   });
 

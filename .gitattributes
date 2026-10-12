@@ -17,6 +17,8 @@ gradlew text eol=lf
 *.ico binary
 *.mp4 binary
 *.webm binary
+*.wav binary
+*.ogg binary
 *.mov binary
 *.jar binary
 *.keystore binary

@@ -28,14 +28,17 @@ Touch counts on the way, not when you lift, except a tap. A finger that never mo
 
 The outer 32px on each side of the screen is left for iOS swipe-back and Android gesture navigation. Those strips use `touch-action: pan-y` and sit outside the canvas (`touch-action: none` is only on the canvas). The screen uses `overscroll-behavior: none`.
 
-|                       | Phone                                | Keyboard           |
-| --------------------- | ------------------------------------ | ------------------ |
-| Change lane           | Swipe left or right                  | Arrow keys, A, D   |
-| Crooked grind         | Tap once as you reach the lip        | Arrow up, W, F     |
-| Nose slide            | Tap twice, quickly                   | The same key twice |
-| Kickflip into crooked | Swipe up (extra input on the way in) | Space, K           |
-| Powerslide            | Swipe down                           | Arrow down, S      |
-| Pause                 | Pause button                         | Escape, P          |
+|                       | Phone                                | Keyboard                 |
+| --------------------- | ------------------------------------ | ------------------------ |
+| Change lane           | Swipe left or right                  | Arrow keys, A, D         |
+| Crooked grind         | Tap once as you reach the lip        | Arrow up, W, F           |
+| Nose slide            | Tap twice, quickly                   | The same key twice       |
+| Kickflip into crooked | Swipe up (extra input on the way in) | Space, K                 |
+| Powerslide            | Swipe down                           | Arrow down, S            |
+| Balance on a grind    | Hold or swipe left and right         | Hold arrow keys, A, D    |
+| Pop off a grind       | Tap, or swipe up                     | Arrow up, W, F, or Space |
+| Pause                 | Pause button                         | Escape, P                |
+| Restart after a bail  | Play again                           | R                        |
 
 A powerslide cancels a trick you had armed and slides the board. It does not lock a grind. Use it to let a feature go by, or just to slide.
 
@@ -43,25 +46,37 @@ Lane choice commits on the swipe. The board slides over visually after that. You
 
 ## Tricks
 
-Arm the trick as the lip gets close. The grade is how far ahead of the lip you committed:
+Arm the trick as the lip gets close. The lock grade is how far ahead of the lip you committed. A second grade is the landing, from the board's angle and whether you popped off late:
 
-| Grade   | When                                                  | Crooked | Nose slide | Kickflip crooked |
-| ------- | ----------------------------------------------------- | ------- | ---------- | ---------------- |
-| Perfect | A short beat before the lip                           | 400     | 650        | 1000             |
-| Good    | A little early or a little tighter                    | 250     | 400        | 600              |
-| Sloppy  | Very early, or after the lip but still on the feature | 80      | 120        | 180              |
+| Grade   | When                                                                       | Crooked | Nose slide | Kickflip crooked |
+| ------- | -------------------------------------------------------------------------- | ------- | ---------- | ---------------- |
+| Perfect | A short beat before the lip                                                | 400     | 650        | 1000             |
+| Clean   | A little early, or a settled landing                                       | 250     | 400        | 600              |
+| Sketchy | Very early, or after the lip but still on the feature, or a wonky set-down | 80      | 120        | 180              |
 
-The names on screen are `CROOKED GRIND`, `NOSE SLIDE`, and `KICKFLIP CROOKED`, with the grade and a `+points` popup.
+The names on screen are `CROOKED GRIND`, `NOSE SLIDE`, and `KICKFLIP CROOKED`, with the grade and a `+points` popup. Coming back down adds 150 / 80 / 20 for a perfect, clean, or sketchy landing.
 
-A good or perfect make starts a combo. The next one is worth x1.5, then x2, up to x5. A sloppy make scores the small number and does not add to the chain. Rolling past a feature in your lane with no grind clears the combo. Three of those misses end the run. A trick input after the late window, while the feature is still under the board, bails immediately. Features in the other lanes do not count against you — that is the lane choice.
+A clean or perfect make starts a combo. The next one is worth x1.5, then x2, up to x5. A sketchy make scores the small number and does not add to the chain. Rolling past a feature in your lane with no grind clears the combo. Three of those misses end the run. A trick input after the late window and a short coyote beat, while the feature is still under the board, bails immediately. Features in the other lanes do not count against you — that is the lane choice.
 
-The score is meters plus those trick points. Nothing is saved. **Play again** starts a fresh run from the same pattern seed.
+The score is meters plus those trick points. It is not a S.K.A.T.E. score and it is not written to Firestore. This device remembers your best line in local storage and draws it as a gold ghost on the next run. **Play again** (or R) starts a fresh run immediately, from the same pattern seed.
+
+On a grind, the balance meter walks. Swipe or hold left and right, or the arrow keys, to stay centered. Too far and you bail. Tap or swipe up to pop off. A pop in the later half of the feature, with the board flat, is the perfect landing. Sliding off the end can still be clean.
+
+## Why the board feels like this
+
+The sim runs at a fixed 120 steps a second. The picture blends between those steps, so a 60fps phone and a 120fps phone play the same trick. A tap that lands during the tiny lock freeze is kept for about 140ms and used as soon as the board can take it. A tap a beat late still locks (coyote time). That is the "my finger was there" fairness from the mobile skaters.
+
+A tap is a pop, not a height slider. The tail pivots, the nose comes up, and gravity brings it down on a curve. Near the top, gravity eases off for a moment so the board hangs instead of peaking like a triangle. A kickflip is that same pop plus a roll around the length of the board, one turn, timed to finish as the wheels come back. A crooked grind yaws the board and sets the nose on the rail. A nose slide turns the board 90 degrees and plants the nose on the ledge. The lock eases you onto the feature, then snaps. Speed drops while you grind. The landing squashes the deck and gives a small bounce. A perfect lock holds the world for a fraction of a second. Sparks, a small camera shake on a perfect lock, speed lines, a pop / scrape / land one-shot, and a phone vibration mark the same moments.
+
+Every one of those numbers is in `src/runner/tune.ts`.
+
+The street starts at 6 units per second and adds 0.03 per second up to 9. Balance drift starts gentle and grows as the run goes on, so the first rails are a warm-up and the later ones ask you to steer. Runs stay short: three missed features in your lane and it is over.
 
 **Pause**, Escape, or P pauses. Hiding the tab or app also pauses, and it stays paused until you resume. `prefers-reduced-motion` starts the run paused, and turns off the camera bob, speed lines, grind sparks, landing dust, and the perfect-grind camera shake. The street still moves once you press Play, and the board still poses for each trick so the make stays readable.
 
 On a Capacitor build, a powerslide, a grind lock, and the landing each fire a light haptic. A bail is silent. The browser build stays silent. The in-app Haptics switch in Settings still applies.
 
-The street starts at 6 units per second (about 30% slower than round 2, which started at 8.5) and adds 0.03 per second up to 9. Round 2 added 0.06 per second up to 13. The first preview started at 14 and climbed by 0.4 up to 26. The camera sits higher, wider, and further behind the board so the next rails and ledges are in frame. The grind windows are a little wider to match the slower approach.
+Round 2 added 0.06 per second up to 13. The first preview started at 14 and climbed by 0.4 up to 26. The camera sits higher, wider, and further behind the board so the next rails and ledges are in frame. The grind windows are a little wider to match the slower approach. A perfect lock adds a small shake on top of that camera. Reduced motion turns the shake, sparks, dust, and speed lines off. The board still pops, flips, and lands.
 
 ## Phone performance
 

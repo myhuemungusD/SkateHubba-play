@@ -2,32 +2,35 @@
 
 Textures for `/play/runner` only. They are imported from `src/runner/view/textures.ts`, which the lazy runner route loads. They are not part of the main app bundle, so the lobby and the rest of the game do not download them.
 
-The PBR maps and the HDRI shipped here are CC0. The SkateHubba logo and the two graffiti posters are brand art owned by Design Mainline LLC and are cleared for the game. Skateboard_01, the low rail, and Skatepark Obstacles are CC BY 4.0. The compressed payload of the files in this folder is about 4.55 MB.
+The PBR maps, the HDRI, and the three runner one-shots shipped here are CC0. The SkateHubba logo and the two graffiti posters are brand art owned by Design Mainline LLC and are cleared for the game. Skateboard_01, the low rail, and Skatepark Obstacles are CC BY 4.0. The compressed payload of the files in this folder is about 4.57 MB.
 
-| File                                          |   Bytes | Use                                       |
-| --------------------------------------------- | ------: | ----------------------------------------- |
-| `asphalt-color.webp`                          |   23342 | Road albedo                               |
-| `asphalt-normal.webp`                         |   65448 | Road normal                               |
-| `asphalt-roughness.webp`                      |   28876 | Road roughness                            |
-| `concrete-color.webp`                         |    9162 | Sidewalk and ledge albedo                 |
-| `concrete-normal.webp`                        |   65540 | Sidewalk, ledge, and wax normal           |
-| `concrete-roughness.webp`                     |    9860 | Sidewalk and ledge roughness              |
-| `metal-color.webp`                            |   12500 | Rail, coping, and truck albedo            |
-| `metal-normal.webp`                           |    7106 | Rail, coping, and truck normal            |
-| `metal-roughness.webp`                        |    5524 | Rail, coping, and truck roughness         |
-| `metal-metalness.webp`                        |    5222 | Rail, coping, and truck metalness         |
-| `brick-color.webp`                            |   26142 | Wall and building albedo                  |
-| `brick-normal.webp`                           |   71880 | Wall and building normal                  |
-| `brick-roughness.webp`                        |   31540 | Wall and building roughness               |
-| `sunset_jhbcentral_1k.hdr`                    | 1573705 | Dusk environment light and reflections    |
-| `board-logo.webp`                             |   42058 | Deck underside, top mark, and wall poster |
-| `graff-wall.webp`                             |   47304 | Left-wall mural                           |
-| `hubba-graff.webp`                            |   79650 | Right-wall mural                          |
-| `skateboard-01.glb`                           |  368992 | Player board (Meshopt + WebP)             |
-| `low-rail.glb`                                |  338236 | Grind rail (Meshopt + WebP)               |
-| `skatepark-obstacles.glb`                     | 1739308 | Ledges and sidewalk props (Meshopt + WebP) |
+| File                       |   Bytes | Use                                        |
+| -------------------------- | ------: | ------------------------------------------ |
+| `asphalt-color.webp`       |   23342 | Road albedo                                |
+| `asphalt-normal.webp`      |   65448 | Road normal                                |
+| `asphalt-roughness.webp`   |   28876 | Road roughness                             |
+| `concrete-color.webp`      |    9162 | Sidewalk and ledge albedo                  |
+| `concrete-normal.webp`     |   65540 | Sidewalk, ledge, and wax normal            |
+| `concrete-roughness.webp`  |    9860 | Sidewalk and ledge roughness               |
+| `metal-color.webp`         |   12500 | Rail, coping, and truck albedo             |
+| `metal-normal.webp`        |    7106 | Rail, coping, and truck normal             |
+| `metal-roughness.webp`     |    5524 | Rail, coping, and truck roughness          |
+| `metal-metalness.webp`     |    5222 | Rail, coping, and truck metalness          |
+| `brick-color.webp`         |   26142 | Wall and building albedo                   |
+| `brick-normal.webp`        |   71880 | Wall and building normal                   |
+| `brick-roughness.webp`     |   31540 | Wall and building roughness                |
+| `sunset_jhbcentral_1k.hdr` | 1573705 | Dusk environment light and reflections     |
+| `board-logo.webp`          |   42058 | Deck underside, top mark, and wall poster  |
+| `graff-wall.webp`          |   47304 | Left-wall mural                            |
+| `hubba-graff.webp`         |   79650 | Right-wall mural                           |
+| `skateboard-01.glb`        |  368992 | Player board (Meshopt + WebP)              |
+| `low-rail.glb`             |  338236 | Grind rail (Meshopt + WebP)                |
+| `skatepark-obstacles.glb`  | 1739308 | Ledges and sidewalk props (Meshopt + WebP) |
+| `sfx/pop.wav`              |    4012 | Pop one-shot                               |
+| `sfx/grind.wav`            |    9746 | Grind and powerslide one-shot              |
+| `sfx/land.wav`             |    6218 | Landing one-shot                           |
 
-Total: 4551395 bytes.
+Total: 4571371 bytes.
 
 Maps are 512×512 WebP (color and roughness quality 76–78, normals 90) with mipmaps and anisotropy capped at 4. The logo is 512×512 WebP. The murals are 640×960 WebP. The HDRI is the official 1k RGBE file, used as `scene.environment` only. The background stays the dusk street color.
 
@@ -48,6 +51,8 @@ License for every ambientCG file: [CC0 1.0](https://creativecommons.org/publicdo
 
 Bricks060 is a clean brick wall. It is not a graffiti texture.
 
+The pop, grind, and land one-shots in `sfx/` were generated for Skate Runner and released [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). They are not a third-party recording.
+
 The HDRI is Poly Haven `sunset_jhbcentral`, 1k HDR. License: [CC0](https://polyhaven.com/license).
 
 - Asset page: https://polyhaven.com/a/sunset_jhbcentral
@@ -57,11 +62,11 @@ The HDRI is Poly Haven `sunset_jhbcentral`, 1k HDR. License: [CC0](https://polyh
 
 Owned by Design Mainline LLC. Cleared to ship in the game. These are not CC0.
 
-| File                | Source in the art pack        | Use                                              |
-| ------------------- | ----------------------------- | ------------------------------------------------ |
-| `board-logo.webp`   | `logov2_transparent.png`      | Board underside, small top mark, shop and wall   |
-| `graff-wall.webp`   | `graff_wall.jpg`              | Mural on the left wall                           |
-| `hubba-graff.webp`  | `hubbagraffwall.jpg`          | Mural on the right wall                          |
+| File               | Source in the art pack   | Use                                            |
+| ------------------ | ------------------------ | ---------------------------------------------- |
+| `board-logo.webp`  | `logov2_transparent.png` | Board underside, small top mark, shop and wall |
+| `graff-wall.webp`  | `graff_wall.jpg`         | Mural on the left wall                         |
+| `hubba-graff.webp` | `hubbagraffwall.jpg`     | Mural on the right wall                        |
 
 The shop front (dark green awning, yellow “THE HUBBASPOT” / “SKATESHOP”) is built from meshes. The lettering is drawn in the runner with Bebas Neue, the same display face as the HUD. The USPTO scan was the reference for the mark and is not a separate texture.
 
@@ -101,10 +106,10 @@ All three license lines are on the pause card. The URLs in each sentence are lin
 
 Decoders are same-origin and are fetched only when a model URL is set:
 
-| Decoder                                      | Path                            | License                                                                                      |
-| -------------------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------- |
-| Draco glTF (js, wasm wrapper, wasm)          | `public/runner/decoders/draco/` | [Apache 2.0](https://github.com/google/draco/blob/master/LICENSE)                            |
-| Basis Universal transcoder                   | `public/runner/decoders/basis/` | [Apache 2.0](https://github.com/BinomialLLC/basis_universal/blob/master/LICENSE)             |
+| Decoder                             | Path                            | License                                                                          |
+| ----------------------------------- | ------------------------------- | -------------------------------------------------------------------------------- |
+| Draco glTF (js, wasm wrapper, wasm) | `public/runner/decoders/draco/` | [Apache 2.0](https://github.com/google/draco/blob/master/LICENSE)                |
+| Basis Universal transcoder          | `public/runner/decoders/basis/` | [Apache 2.0](https://github.com/BinomialLLC/basis_universal/blob/master/LICENSE) |
 
 Meshopt stays inside the three.js package (MIT) and loads with the model chunk. The copied Draco files are the glTF builds, not the larger default decoder.
 
@@ -114,13 +119,13 @@ The PBR maps and the HDRI stay CC0. The logo and murals are Design Mainline LLC 
 
 The logo, Skateboard_01, the low rail, and the skatepark pieces are filled. The Mike White model stays empty until that file is in the repo. The constants live in `src/runner/artSlots.ts`. Do not add an import for a file that is not in the repo. A missing import fails the build.
 
-| Slot             | Constant               | File                                     | What it drives                                                                                                                                |
-| ---------------- | ---------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Deck graphic     | `CUSTOM_BOARD_GRAPHIC` | `src/runner/assets/board-logo.webp`      | `Graphic` mesh on the underside of the deck                                                                                                   |
-| Logo decal       | `CUSTOM_LOGO_DECAL`    | `src/runner/assets/board-logo.webp`      | `LogoDecal` mesh, the small mark on top of the griptape                                                                                       |
-| Skateboard_01    | `SKATEBOARD_01_MODEL`  | `src/runner/assets/skateboard-01.glb`    | `loadRunnerModel`. Hides `ProceduralBoard` after a successful load.                                                                           |
-| Low rail         | `LOW_RAIL_MODEL`       | `src/runner/assets/low-rail.glb`         | Cloned into each rail slot. The box rail remains the fallback.                                                                                |
-| Skatepark        | `SKATEPARK_MODEL`      | `src/runner/assets/skatepark-obstacles.glb` | Ledge nodes replace the box mesh. Banks, quarterpipes, and kickers sit on the sidewalk.                                                    |
-| Mike White board | `MIKE_WHITE_BOARD`     | `src/runner/assets/mike-white-board.glb` | Still empty. Not loaded by the Skateboard_01 path.                                                                                            |
+| Slot             | Constant               | File                                        | What it drives                                                                          |
+| ---------------- | ---------------------- | ------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Deck graphic     | `CUSTOM_BOARD_GRAPHIC` | `src/runner/assets/board-logo.webp`         | `Graphic` mesh on the underside of the deck                                             |
+| Logo decal       | `CUSTOM_LOGO_DECAL`    | `src/runner/assets/board-logo.webp`         | `LogoDecal` mesh, the small mark on top of the griptape                                 |
+| Skateboard_01    | `SKATEBOARD_01_MODEL`  | `src/runner/assets/skateboard-01.glb`       | `loadRunnerModel`. Hides `ProceduralBoard` after a successful load.                     |
+| Low rail         | `LOW_RAIL_MODEL`       | `src/runner/assets/low-rail.glb`            | Cloned into each rail slot. The box rail remains the fallback.                          |
+| Skatepark        | `SKATEPARK_MODEL`      | `src/runner/assets/skatepark-obstacles.glb` | Ledge nodes replace the box mesh. Banks, quarterpipes, and kickers sit on the sidewalk. |
+| Mike White board | `MIKE_WHITE_BOARD`     | `src/runner/assets/mike-white-board.glb`    | Still empty. Not loaded by the Skateboard_01 path.                                      |
 
 `customBoardGraphicUrl()` and `customLogoDecalUrl()` both return the logo. `skateboard01ModelUrl()`, `lowRailModelUrl()`, and `skateparkModelUrl()` return the glbs. `mikeWhiteBoardUrl()` stays null. The posed group is `BoardRig` (nose toward **-Z**). `Graphic` lives on that rig, outside `ProceduralBoard`. Node names on the procedural board: `Deck`, `DeckPly`, `Griptape`, `LogoDecal`, `TruckNose`, `TruckTail`, `WheelNoseLeft`, `WheelNoseRight`, `WheelTailLeft`, `WheelTailRight`.

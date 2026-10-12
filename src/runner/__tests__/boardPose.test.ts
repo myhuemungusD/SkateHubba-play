@@ -26,7 +26,9 @@ describe("board pose", () => {
       yaw: 0.62,
       y: 0.3,
     });
-    expect(boardPose({ ...riding, onGrind: true, grindTrick: "nose", y: 0.34 }).pitch).toBeLessThan(0);
+    const nose = boardPose({ ...riding, onGrind: true, grindTrick: "nose", y: 0.34 });
+    expect(nose.pitch).toBeLessThan(0);
+    expect(nose.yaw).toBeCloseTo(Math.PI / 2, 2);
     expect(boardPose({ ...riding, status: "gameover" }).roll).toBeGreaterThan(1);
   });
 });

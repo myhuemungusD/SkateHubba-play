@@ -256,8 +256,11 @@ export async function loadRunnerModel(url: string, renderer: WebGLRenderer): Pro
 
 export const loadSkateboardModel = loadRunnerModel;
 
-export function wheelSpinRate(state: { duck: number; onGrind: boolean }): number {
-  return state.duck >= 0 ? 0.35 : state.onGrind ? 0.9 : 1.7;
+export function wheelSpinRate(state: { duck: number; onGrind: boolean; airborne?: boolean }): number {
+  if (state.duck >= 0) return 0.35;
+  if (state.onGrind) return 0.9;
+  if (state.airborne) return 0.45;
+  return 1.7;
 }
 
 /**

@@ -21,7 +21,7 @@ describe("runner juice", () => {
     const clock = emptyShake();
     const still = stepPerfectShake(
       clock,
-      { onGrind: true, wasOnGrind: false, grade: "good", reducedMotion: false },
+      { onGrind: true, wasOnGrind: false, grade: "clean", reducedMotion: false },
       0.016,
     );
     expect(still).toEqual({ x: 0, y: 0 });

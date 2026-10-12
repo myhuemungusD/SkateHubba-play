@@ -7,6 +7,7 @@ import { currentRunnerQuality, type RunnerQuality } from "../quality";
 import { noteFps, type FpsBucket } from "../webgl";
 import { Board } from "./Board";
 import { Effects } from "./Effects";
+import { GhostBoard } from "./GhostBoard";
 import { ObstaclePool } from "./ObstaclePool";
 import { Street } from "./Street";
 import { mountRunnerEnvironment } from "./textures";
@@ -57,6 +58,7 @@ function CameraRig({
   useFrame(({ camera }, dt) => {
     noteFps(fpsRef.current, bucket.current, performance.now());
     const state = controller.getState();
+    const frame = controller.getRenderFrame();
     const offset = stepPerfectShake(
       shake.current,
       {
@@ -68,11 +70,11 @@ function CameraRig({
       dt,
     );
     wasGrind.current = state.onGrind;
-    const bob = reducedMotion ? 0 : Math.sin(state.distance * 0.35) * 0.012;
+    const bob = reducedMotion ? 0 : Math.sin(frame.distance * 0.35) * 0.012;
     // Wider, higher, and further back than round 2. The horizon stays on
     // screen so the next rail sits in the upper half, and the board is about
     // half the size it was. Shake is zero except on a perfect lock.
-    const follow = state.x;
+    const follow = frame.x;
     camera.position.set(follow * 0.62 + 0.15 + offset.x, 4.7 + bob + offset.y, 5.6);
     camera.lookAt(follow * 0.28, 0.12, -6.2);
   });
@@ -135,6 +137,7 @@ function RunnerCanvas({ controller, reducedMotion, active, fpsRef }: WorldProps)
       <CameraRig controller={controller} reducedMotion={reducedMotion} fpsRef={fpsRef} />
       <Street controller={controller} quality={quality} />
       <ObstaclePool controller={controller} quality={quality} />
+      <GhostBoard controller={controller} />
       <Board controller={controller} quality={quality} />
       <Effects controller={controller} reducedMotion={reducedMotion} />
     </Canvas>

@@ -7,9 +7,27 @@ import type { Grade } from "../../runner/types";
 
 const GRADE_LABEL: Record<Grade, string> = {
   perfect: "PERFECT",
-  good: "GOOD",
-  sloppy: "SLOPPY",
+  clean: "CLEAN",
+  sketchy: "SKETCHY",
 };
+
+const LEAN_CLASS = [
+  "-translate-x-12",
+  "-translate-x-9",
+  "-translate-x-6",
+  "-translate-x-3",
+  "translate-x-0",
+  "translate-x-3",
+  "translate-x-6",
+  "translate-x-9",
+  "translate-x-12",
+] as const;
+
+function leanClass(balance: number): string {
+  const clamped = Math.max(-1, Math.min(1, balance));
+  const index = Math.round((clamped + 1) * 4);
+  return LEAN_CLASS[index] ?? "translate-x-0";
+}
 
 interface Props {
   hud: HudSnapshot;
@@ -72,7 +90,14 @@ export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) 
           </p>
           <p className="font-body text-xs text-white/60">{hud.distance} m</p>
           {hud.combo >= 2 ? (
-            <p className="font-display text-sm tracking-widest text-[#f2c14a]">{comboLabel(hud.multiplier)}</p>
+            <p className="font-display text-sm tracking-widest text-[#f2c14a]">
+              {hud.combo} STREAK <span>{comboLabel(hud.multiplier)}</span>
+            </p>
+          ) : null}
+          {hud.best > 0 && hud.status !== "gameover" ? (
+            <p data-testid="runner-best" className="font-body text-[10px] tracking-wider text-white/50">
+              Best {hud.best}
+            </p>
           ) : null}
         </div>
         <div className="pointer-events-auto flex flex-col items-end gap-2">
@@ -92,7 +117,8 @@ export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) 
 
       <p className="sr-only" id="runner-help">
         Three lanes. Swipe left or right to change lanes. Tap for a crooked grind, tap twice for a nose slide, swipe up
-        to kickflip into the grind. Swipe down to powerslide. The score is only for this run.
+        to kickflip into the grind. On a grind, swipe or hold left and right to keep your balance, and tap to pop off.
+        Swipe down to powerslide. The score stays on this run. This device remembers the best line.
       </p>
       <p className="sr-only" aria-live="polite" data-testid="runner-announce">
         {hud.announce}
@@ -136,7 +162,22 @@ export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) 
         </p>
       ) : null}
 
-      <div className="mt-auto flex justify-center gap-2 pb-2" aria-hidden>
+      {hud.onGrind ? (
+        <div className="mt-auto flex flex-col items-center pb-1" data-testid="runner-balance">
+          <p className="font-body text-[10px] tracking-[0.28em] text-white/70">BALANCE</p>
+          <div className="relative mt-1 h-2 w-28 overflow-hidden rounded-full bg-white/15">
+            <span
+              className={`absolute top-0 left-1/2 h-2 w-2 -ml-1 rounded-full ${leanClass(hud.balance)} ${
+                Math.abs(hud.balance) > 0.72 ? "bg-red-400" : "bg-[#f2c14a]"
+              }`}
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="mt-auto" />
+      )}
+
+      <div className="flex justify-center gap-2 pb-2" aria-hidden>
         {[0, 1, 2].map((lane) => (
           <span key={lane} className={`h-2 w-6 rounded-full ${lane === hud.lane ? "bg-[#f2c14a]" : "bg-white/25"}`} />
         ))}
@@ -183,6 +224,15 @@ export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) 
             </h2>
             <p className={`mt-2 font-display text-3xl text-[#f2c14a] ${CHUNK}`}>{hud.score}</p>
             <p className="font-body text-xs text-white/60">{hud.distance} m this run</p>
+            {hud.isNewBest ? (
+              <p data-testid="runner-best" className="mt-1 font-display tracking-widest text-[#f2c14a]">
+                New best
+              </p>
+            ) : hud.best > 0 ? (
+              <p data-testid="runner-best" className="mt-1 font-body text-xs text-white/50">
+                Best {hud.best}
+              </p>
+            ) : null}
             <button
               ref={restartRef}
               type="button"

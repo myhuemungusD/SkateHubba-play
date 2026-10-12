@@ -1,3 +1,4 @@
+import { LEAN_PX } from "./tune";
 import type { Action } from "./types";
 
 /** Pixels of travel before a swipe commits. Felt on the way, not on release. */
@@ -19,6 +20,11 @@ export interface GestureRecognizer {
   down(point: PointerPoint, viewportWidth: number): boolean;
   /** The action, once, when the finger crosses the threshold. */
   move(point: PointerPoint): Action | null;
+  /**
+   * Horizontal hold after a swipe has committed. -1 is full left, 1 is full
+   * right, 0 before the swipe or when the finger is mostly vertical.
+   */
+  lean(point: PointerPoint): number;
   /** True after a non-edge touchstart until touchend. */
   ownsGesture(): boolean;
   /**
@@ -28,10 +34,7 @@ export interface GestureRecognizer {
   up(): Action | null;
 }
 
-export function createGestureRecognizer(
-  threshold = SWIPE_THRESHOLD_PX,
-  edge = EDGE_DEAD_ZONE_PX,
-): GestureRecognizer {
+export function createGestureRecognizer(threshold = SWIPE_THRESHOLD_PX, edge = EDGE_DEAD_ZONE_PX): GestureRecognizer {
   let origin: PointerPoint | null = null;
   let fired = false;
   let owned = false;
@@ -53,6 +56,13 @@ export function createGestureRecognizer(
       if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? "right" : "left";
       // Screen Y grows downward. Up is the kickflip-in. Down is the powerslide.
       return dy > 0 ? "duck" : "flip";
+    },
+    lean(point) {
+      if (!origin || !owned || !fired) return 0;
+      const dx = point.x - origin.x;
+      const dy = point.y - origin.y;
+      if (Math.abs(dy) > Math.abs(dx)) return 0;
+      return Math.max(-1, Math.min(1, dx / LEAN_PX));
     },
     ownsGesture() {
       return owned;
@@ -77,6 +87,7 @@ export function bindRunnerTouch(
   el: HTMLElement,
   recognize: GestureRecognizer,
   onAction: (action: Action) => void,
+  onLean?: (lean: number) => void,
 ): () => void {
   const point = (touch: { clientX: number; clientY: number }): PointerPoint => ({
     x: touch.clientX,
@@ -93,12 +104,15 @@ export function bindRunnerTouch(
     const touch = event.changedTouches[0];
     if (!touch) return;
     if (recognize.ownsGesture()) event.preventDefault();
-    const action = recognize.move(point(touch));
+    const here = point(touch);
+    const action = recognize.move(here);
     if (action) onAction(action);
+    if (onLean) onLean(recognize.lean(here));
   };
 
   const up = () => {
     const action = recognize.up();
+    if (onLean) onLean(0);
     if (action) onAction(action);
   };
 

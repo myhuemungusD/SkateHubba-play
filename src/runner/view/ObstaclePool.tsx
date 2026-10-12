@@ -51,7 +51,8 @@ export function ObstaclePool({ controller, quality }: { controller: RunnerContro
 
   useFrame(() => {
     const state = controller.getState();
-    const shown = visibleObstacles(state.obstacles, state.distance);
+    const distance = controller.getRenderFrame().distance;
+    const shown = visibleObstacles(state.obstacles, distance);
     for (let i = 0; i < POOL; i += 1) {
       const slot = slots.current[i];
       const obstacle = shown[i];
@@ -61,7 +62,7 @@ export function ObstaclePool({ controller, quality }: { controller: RunnerContro
         continue;
       }
       slot.visible = true;
-      slot.position.set(LANE_X[obstacle.lane], 0, -(obstacle.z - state.distance));
+      slot.position.set(LANE_X[obstacle.lane], 0, -(obstacle.z - distance));
       showKind(slot, obstacle.kind);
       const kind = slot.getObjectByName(obstacle.kind);
       if (!kind) continue;

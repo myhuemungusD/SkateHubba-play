@@ -63,6 +63,7 @@ export function Effects({ controller, reducedMotion }: { controller: RunnerContr
 
   useFrame((_, dt) => {
     const state = controller.getState();
+    const frame = controller.getRenderFrame();
     const playing = state.status === "playing";
     const grinding = state.onGrind || state.duck >= 0;
     const emit = grinding && playing && !reducedMotion;
@@ -76,7 +77,7 @@ export function Effects({ controller, reducedMotion }: { controller: RunnerContr
           mesh.visible = false;
           continue;
         }
-        resetSpark(spark, state.x, state.distance * 0.17 + i * 0.37);
+        resetSpark(spark, frame.x, frame.distance * 0.17 + i * 0.37);
       }
       spark.x += spark.vx * dt;
       spark.y += spark.vy * dt;
@@ -97,7 +98,7 @@ export function Effects({ controller, reducedMotion }: { controller: RunnerContr
         mesh.visible = false;
         continue;
       }
-      if (puff) resetDust(mote, state.x, state.distance * 0.13 + i * 0.41);
+      if (puff) resetDust(mote, frame.x, frame.distance * 0.13 + i * 0.41);
       mote.life -= dt;
       if (mote.life <= 0) {
         mesh.visible = false;
@@ -113,12 +114,12 @@ export function Effects({ controller, reducedMotion }: { controller: RunnerContr
       material.opacity = Math.min(0.45, mote.life);
     }
 
-    const opacity = speedLineOpacity(state.speed, reducedMotion, playing);
+    const opacity = speedLineOpacity(frame.speed, reducedMotion, playing);
     for (let i = 0; i < LINES; i += 1) {
       const mesh = lines.current[i];
       if (!mesh) continue;
       mesh.visible = opacity > 0;
-      mesh.position.set(state.x + (i - 1.5) * 0.22, 0.35 + (i % 2) * 0.18, 1.15);
+      mesh.position.set(frame.x + (i - 1.5) * 0.22, 0.35 + (i % 2) * 0.18, 1.15);
       const material = mesh.material as MeshBasicMaterial;
       material.opacity = opacity;
     }
