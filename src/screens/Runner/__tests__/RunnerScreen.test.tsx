@@ -11,6 +11,9 @@ import {
   SKATEBOARD_01_CREDIT,
   SKATEBOARD_01_LICENSE,
   SKATEBOARD_01_PAGE,
+  SKATEPARK_AUTHOR_PAGE,
+  SKATEPARK_CREDIT,
+  SKATEPARK_PAGE,
 } from "../../../runner/boardCredit";
 import { createRunnerController } from "../../../runner/controller";
 import { LATE_LOCK, RAIL_LENGTH, TRICK_POINTS } from "../../../runner/constants";
@@ -124,6 +127,7 @@ describe("RunnerScreen", () => {
     expect(screen.queryByText(/Tap a crooked grind/)).not.toBeInTheDocument();
     expect(screen.getByTestId("runner-credit")).toHaveTextContent(SKATEBOARD_01_CREDIT);
     expect(screen.getByTestId("runner-credit")).toHaveTextContent(LOW_RAIL_CREDIT);
+    expect(screen.getByTestId("runner-credit")).toHaveTextContent(SKATEPARK_CREDIT);
     expect(screen.getByRole("link", { name: SKATEBOARD_01_PAGE })).toHaveAttribute("href", SKATEBOARD_01_PAGE);
     expect(screen.getByRole("link", { name: SKATEBOARD_01_AUTHOR_PAGE })).toHaveAttribute(
       "href",
@@ -132,6 +136,8 @@ describe("RunnerScreen", () => {
     expect(screen.getAllByRole("link", { name: SKATEBOARD_01_LICENSE }).length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: LOW_RAIL_PAGE })).toHaveAttribute("href", LOW_RAIL_PAGE);
     expect(screen.getByRole("link", { name: LOW_RAIL_AUTHOR_PAGE })).toHaveAttribute("href", LOW_RAIL_AUTHOR_PAGE);
+    expect(screen.getByRole("link", { name: SKATEPARK_PAGE })).toHaveAttribute("href", SKATEPARK_PAGE);
+    expect(screen.getByRole("link", { name: SKATEPARK_AUTHOR_PAGE })).toHaveAttribute("href", SKATEPARK_AUTHOR_PAGE);
 
     await user.click(screen.getByRole("button", { name: "Resume" }));
     expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();

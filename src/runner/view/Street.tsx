@@ -1,10 +1,11 @@
 import { useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import type { Group } from "three";
 import { SEGMENT_LENGTH } from "../constants";
 import type { RunnerController } from "../controller";
 import type { RunnerQuality } from "../quality";
 import { AlleyProps } from "./AlleyProps";
+import { useSkateparkScenery } from "./skatepark";
 import { brickBuildingMaterial, brickMaterial, flatMaterial, roadMaterial, sidewalkMaterial } from "./textures";
 
 const SEGMENTS = [0, 1, 2] as const;
@@ -22,6 +23,8 @@ const dash = flatMaterial("#d8d2c4");
 export function Street({ controller, quality }: { controller: RunnerController; quality: RunnerQuality }) {
   const high = quality === "high";
   const group = useRef<Group>(null);
+  const gl = useThree((state) => state.gl);
+  useSkateparkScenery(group, gl);
 
   useFrame(() => {
     const root = group.current;
@@ -92,6 +95,7 @@ export function Street({ controller, quality }: { controller: RunnerController; 
               <boxGeometry args={[0.08, 0.9, 4.2]} />
             </mesh>
           )}
+          <group name="park-scenery" />
           <AlleyProps index={index} high={high} />
         </group>
       ))}

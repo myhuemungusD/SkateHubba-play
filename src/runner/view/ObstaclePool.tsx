@@ -6,6 +6,7 @@ import type { RunnerController } from "../controller";
 import type { RunnerQuality } from "../quality";
 import type { Obstacle, ObstacleKind } from "../types";
 import { useLowRail } from "./lowRail";
+import { useSkateparkLedges } from "./skatepark";
 import { ledgeMaterial, metalMaterial, postMaterial, waxMaterial } from "./textures";
 
 const POOL = 16;
@@ -46,6 +47,7 @@ export function ObstaclePool({ controller, quality }: { controller: RunnerContro
   const slots = useRef<(Group | null)[]>([]);
   const gl = useThree((state) => state.gl);
   useLowRail(slots, gl);
+  useSkateparkLedges(slots, gl);
 
   useFrame(() => {
     const state = controller.getState();
@@ -105,6 +107,7 @@ export function ObstaclePool({ controller, quality }: { controller: RunnerContro
             </mesh>
           </group>
           <group name="box" visible={false}>
+            <group name="box-model" position={[0, 0, -BOX_LENGTH / 2]} visible={false} />
             <mesh
               name="box-body"
               position={[0, 0.16, -BOX_LENGTH / 2]}

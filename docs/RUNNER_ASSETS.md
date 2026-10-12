@@ -2,7 +2,7 @@
 
 Textures for `/play/runner` only. They are imported from `src/runner/view/textures.ts`, which the lazy runner route loads. They are not part of the main app bundle, so the lobby and the rest of the game do not download them.
 
-The PBR maps and the HDRI shipped here are CC0. The SkateHubba logo and the two graffiti posters are brand art owned by Design Mainline LLC and are cleared for the game. Skateboard_01 and the low rail are CC BY 4.0. The compressed payload of the files in this folder is about 2.81 MB.
+The PBR maps and the HDRI shipped here are CC0. The SkateHubba logo and the two graffiti posters are brand art owned by Design Mainline LLC and are cleared for the game. Skateboard_01, the low rail, and Skatepark Obstacles are CC BY 4.0. The compressed payload of the files in this folder is about 4.55 MB.
 
 | File                                          |   Bytes | Use                                       |
 | --------------------------------------------- | ------: | ----------------------------------------- |
@@ -25,8 +25,9 @@ The PBR maps and the HDRI shipped here are CC0. The SkateHubba logo and the two 
 | `hubba-graff.webp`                            |   79650 | Right-wall mural                          |
 | `skateboard-01.glb`                           |  368992 | Player board (Meshopt + WebP)             |
 | `low-rail.glb`                                |  338236 | Grind rail (Meshopt + WebP)               |
+| `skatepark-obstacles.glb`                     | 1739308 | Ledges and sidewalk props (Meshopt + WebP) |
 
-Total: 2812087 bytes.
+Total: 4551395 bytes.
 
 Maps are 512×512 WebP (color and roughness quality 76–78, normals 90) with mipmaps and anisotropy capped at 4. The logo is 512×512 WebP. The murals are 640×960 WebP. The HDRI is the official 1k RGBE file, used as `scene.environment` only. The background stays the dusk street color.
 
@@ -84,7 +85,19 @@ Credit line, copied from the model's `license.txt`:
 
 This work is based on "Low Rail | Game Ready | 4K" (https://sketchfab.com/3d-models/low-rail-game-ready-4k-ec7bba14b8984e67ab459c20422171a0) by bralunit (https://sketchfab.com/bral_unit) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
 
-Both lines are on the pause card. The URLs in each sentence are links.
+## Skatepark obstacles
+
+Jason supplied Skatepark Obstacles by rhcreations (https://sketchfab.com/rhcreations). The source is one scene with spec-gloss materials. `gltf-transform metalrough` converts those to metallic-roughness, because three.js does not load `KHR_materials_pbrSpecularGlossiness`. Textures were already 1024. `toktx` is not installed here, so the kept nodes are Meshopt plus WebP (quality 80).
+
+`skateparkModelUrl()` points at `src/runner/assets/skatepark-obstacles.glb`. The file is loaded once. Box slots clone the grindable nodes: funboxes (including the one with coping), table tops with a ledge or a rail, both hips with a ledge, Rail 1, Rail 1 High to Low, Curved Rail 1, and the picnic bench. Each clone is scaled to stay inside the lane and near the existing grind height. The waxed box stays in the pool and shows only if the file fails. Grind timing, lanes, and collision are unchanged.
+
+Banks, quarterpipes, and kickers are cloned onto the sidewalk, between the curb and the wall. They are scenery. Spines, mini ramps, volcanoes, humps, roll-ins, plain table tops, and the ground plane are not in the run.
+
+Credit line, copied from the model's `license.txt`:
+
+This work is based on "Skatepark Obstacles" (https://sketchfab.com/3d-models/skatepark-obstacles-235d1cab2dfe4d63b46030db8d459699) by rhcreations (https://sketchfab.com/rhcreations) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+All three license lines are on the pause card. The URLs in each sentence are links.
 
 Decoders are same-origin and are fetched only when a model URL is set:
 
@@ -95,7 +108,7 @@ Decoders are same-origin and are fetched only when a model URL is set:
 
 Meshopt stays inside the three.js package (MIT) and loads with the model chunk. The copied Draco files are the glTF builds, not the larger default decoder.
 
-The PBR maps and the HDRI stay CC0. The logo and murals are Design Mainline LLC art. The board and the rail are the CC BY files.
+The PBR maps and the HDRI stay CC0. The logo and murals are Design Mainline LLC art. The board, the rail, and the skatepark pieces are the CC BY files.
 
 ## Slots for later art
 
@@ -107,6 +120,7 @@ The logo, Skateboard_01, and the low rail are filled. The Mike White model stays
 | Logo decal       | `CUSTOM_LOGO_DECAL`    | `src/runner/assets/board-logo.webp`      | `LogoDecal` mesh, the small mark on top of the griptape                                                                                       |
 | Skateboard_01    | `SKATEBOARD_01_MODEL`  | `src/runner/assets/skateboard-01.glb`    | `loadRunnerModel`. Hides `ProceduralBoard` after a successful load.                                                                           |
 | Low rail         | `LOW_RAIL_MODEL`       | `src/runner/assets/low-rail.glb`         | Cloned into each rail slot. The box rail remains the fallback.                                                                                |
+| Skatepark        | `SKATEPARK_MODEL`      | `src/runner/assets/skatepark-obstacles.glb` | Ledge nodes replace the box mesh. Banks, quarterpipes, and kickers sit on the sidewalk.                                                    |
 | Mike White board | `MIKE_WHITE_BOARD`     | `src/runner/assets/mike-white-board.glb` | Still empty. Not loaded by the Skateboard_01 path.                                                                                            |
 
-`customBoardGraphicUrl()` and `customLogoDecalUrl()` both return the logo. `skateboard01ModelUrl()` and `lowRailModelUrl()` return the glbs. `mikeWhiteBoardUrl()` stays null. The posed group is `BoardRig` (nose toward **-Z**). `Graphic` lives on that rig, outside `ProceduralBoard`. Node names on the procedural board: `Deck`, `DeckPly`, `Griptape`, `LogoDecal`, `TruckNose`, `TruckTail`, `WheelNoseLeft`, `WheelNoseRight`, `WheelTailLeft`, `WheelTailRight`.
+`customBoardGraphicUrl()` and `customLogoDecalUrl()` both return the logo. `skateboard01ModelUrl()`, `lowRailModelUrl()`, and `skateparkModelUrl()` return the glbs. `mikeWhiteBoardUrl()` stays null. The posed group is `BoardRig` (nose toward **-Z**). `Graphic` lives on that rig, outside `ProceduralBoard`. Node names on the procedural board: `Deck`, `DeckPly`, `Griptape`, `LogoDecal`, `TruckNose`, `TruckTail`, `WheelNoseLeft`, `WheelNoseRight`, `WheelTailLeft`, `WheelTailRight`.

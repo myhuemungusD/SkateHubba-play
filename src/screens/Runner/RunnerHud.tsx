@@ -1,6 +1,6 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { Link } from "react-router";
-import { LOW_RAIL_CREDIT, SKATEBOARD_01_CREDIT } from "../../runner/boardCredit";
+import { LOW_RAIL_CREDIT, SKATEBOARD_01_CREDIT, SKATEPARK_CREDIT } from "../../runner/boardCredit";
 import { ARM_LABELS } from "../../runner/constants";
 import type { HudSnapshot } from "../../runner/controller";
 import type { Grade } from "../../runner/types";
@@ -161,9 +161,10 @@ export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) 
             >
               {resumeLabel}
             </button>
-            <div data-testid="runner-credit" className="mt-4 space-y-2 text-left">
+            <div data-testid="runner-credit" className="mt-4 max-h-40 space-y-2 overflow-y-auto text-left">
               <CreditParagraph text={SKATEBOARD_01_CREDIT} />
               <CreditParagraph text={LOW_RAIL_CREDIT} />
+              <CreditParagraph text={SKATEPARK_CREDIT} />
             </div>
           </div>
         </div>
