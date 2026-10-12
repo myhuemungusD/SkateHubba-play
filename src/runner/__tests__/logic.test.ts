@@ -1,28 +1,34 @@
 import { describe, expect, it } from "vitest";
 import {
   BASE_SPEED,
-  BOARDSLIDE_BONUS,
+  BOX_LENGTH,
   FIRST_ROW_Z,
   LANE_X,
+  LATE_LOCK,
   MAX_FRAME_DT,
   MAX_SPEED,
-  OLLIE_DURATION,
-  OLLIE_PEAK,
   RAIL_LENGTH,
+  TRICK_POINTS,
 } from "../constants";
-import { createRunnerController } from "../controller";
-import { applyAction, createRun, laneAfter, ollieArc, stepRun } from "../logic";
+import { createRunnerController, type RunnerController } from "../controller";
+import { applyAction, createRun, gradeForLead, laneAfter, stepRun } from "../logic";
 import { nextUnit } from "../rng";
 import type { Lane, Obstacle } from "../types";
 
 function obstacle(overrides: Partial<Obstacle> & Pick<Obstacle, "kind" | "lane" | "z">): Obstacle {
   return {
     id: 1,
-    length: overrides.kind === "rail" ? RAIL_LENGTH : 0,
+    length: overrides.kind === "rail" ? RAIL_LENGTH : BOX_LENGTH,
     awarded: false,
     resolved: false,
     ...overrides,
   };
+}
+
+function rollTo(run: RunnerController, distance: number): void {
+  for (let i = 0; i < 500 && run.getState().distance < distance && run.getState().status === "playing"; i += 1) {
+    run.step(0.05);
+  }
 }
 
 describe("lane changes", () => {
@@ -41,171 +47,222 @@ describe("lane changes", () => {
     expect(applyAction(left.state, "left").state).toBe(left.state);
   });
 
-  it("slides visually toward the new lane without waiting to arrive before a dodge counts", () => {
-    const dodged = createRunnerController({
-      spawn: false,
-      obstacles: [obstacle({ kind: "barrier", lane: 1, z: 6 })],
-    });
-    dodged.input("left");
-    dodged.step(0.02);
-    const mid = dodged.getState();
+  it("slides visually toward the new lane on the next slice", () => {
+    const run = createRunnerController({ spawn: false });
+    run.input("left");
+    run.step(0.02);
+    const mid = run.getState();
     expect(mid.lane).toBe(0);
     expect(mid.x).toBeLessThan(0);
     expect(mid.x).toBeGreaterThan(LANE_X[0]);
-    dodged.step(0.6);
-    expect(dodged.getState().status).toBe("playing");
-
-    const intoIt = createRunnerController({
-      spawn: false,
-      obstacles: [obstacle({ kind: "barrier", lane: 0, z: 6 })],
-    });
-    intoIt.input("left");
-    intoIt.step(0.6);
-    expect(intoIt.getState().status).toBe("gameover");
+    expect(mid.status).toBe("playing");
   });
 });
 
-describe("ollie arc", () => {
-  it("is zero at takeoff and landing and peaks halfway", () => {
-    expect(ollieArc(0)).toBe(0);
-    expect(ollieArc(OLLIE_DURATION)).toBe(0);
-    expect(ollieArc(-0.1)).toBe(0);
-    expect(ollieArc(OLLIE_DURATION / 2)).toBeCloseTo(OLLIE_PEAK);
+describe("trick timing", () => {
+  it("grades a lead in front of the lip as perfect, good, or sloppy", () => {
+    expect(gradeForLead(1.2)).toBe("perfect");
+    expect(gradeForLead(3.4)).toBe("good");
+    expect(gradeForLead(5.2)).toBe("sloppy");
+    expect(gradeForLead(-0.4)).toBe("sloppy");
   });
 
-  it("lands once and refuses a second ollie or a duck while airborne", () => {
-    const popped = applyAction(createRun({ spawn: false }), "ollie");
-    expect(popped.events).toEqual(["ollie"]);
-    expect(applyAction(popped.state, "ollie").events).toEqual([]);
-    expect(applyAction(popped.state, "duck").events).toEqual([]);
+  it("upgrades a second tap to a nose slide and lets a late second tap stay crooked", () => {
+    const first = applyAction(createRun({ spawn: false }), "tap");
+    expect(first.state.armed).toBe("crooked");
+    expect(applyAction(first.state, "tap").state.armed).toBe("nose");
 
-    let state = popped.state;
-    const events: string[] = [];
-    for (let i = 0; i < 40 && state.ollie >= 0; i += 1) {
-      const tick = stepRun(state, MAX_FRAME_DT);
-      state = tick.state;
-      events.push(...tick.events);
-    }
-    expect(events.filter((event) => event === "land")).toEqual(["land"]);
-    expect(state.ollie).toBe(-1);
-    expect(state.y).toBe(0);
+    let aged = first.state;
+    for (let i = 0; i < 8; i += 1) aged = stepRun(aged, MAX_FRAME_DT).state;
+    expect(applyAction(aged, "tap").state.armed).toBe("crooked");
   });
 
-  it("clears a cone and still hits a barrier", () => {
-    const cone = createRunnerController({
-      spawn: false,
-      obstacles: [obstacle({ kind: "cone", lane: 1, z: 4 })],
-    });
-    cone.input("ollie");
-    cone.step(0.5);
-    expect(cone.getState().status).toBe("playing");
-
-    const missed = createRunnerController({
-      spawn: false,
-      obstacles: [obstacle({ kind: "cone", lane: 1, z: 4 })],
-    });
-    missed.step(0.5);
-    expect(missed.getState().status).toBe("gameover");
-
-    const wall = createRunnerController({
-      spawn: false,
-      obstacles: [obstacle({ kind: "barrier", lane: 1, z: 4 })],
-    });
-    wall.input("ollie");
-    wall.step(0.5);
-    expect(wall.getState().status).toBe("gameover");
-  });
-});
-
-describe("powerslide", () => {
-  it("ducks under a bar, and standing or ollieing into it crashes", () => {
-    const ducked = createRunnerController({
-      spawn: false,
-      obstacles: [obstacle({ kind: "overhead", lane: 1, z: 3 })],
-    });
-    ducked.input("duck");
-    expect(applyAction(ducked.getState(), "ollie").events).toEqual([]);
-    ducked.step(0.35);
-    expect(ducked.getState().status).toBe("playing");
-
-    const standing = createRunnerController({
-      spawn: false,
-      obstacles: [obstacle({ kind: "overhead", lane: 1, z: 3 })],
-    });
-    standing.step(0.4);
-    expect(standing.getState().status).toBe("gameover");
-
-    const popped = createRunnerController({
-      spawn: false,
-      obstacles: [obstacle({ kind: "overhead", lane: 1, z: 3 })],
-    });
-    popped.input("ollie");
-    popped.step(0.3);
-    expect(popped.getState().status).toBe("gameover");
-  });
-});
-
-describe("rail lock", () => {
-  it("locks a grounded approach into a boardslide and ignores lane changes until the rail ends", () => {
+  it("locks a timed tap into a perfect crooked grind and holds the lane", () => {
+    const z = 8;
     const run = createRunnerController({
       spawn: false,
-      obstacles: [obstacle({ id: 4, kind: "rail", lane: 1, z: 4 })],
+      obstacles: [obstacle({ id: 4, kind: "rail", lane: 1, z })],
     });
-    run.step(0.4);
+    rollTo(run, z - 1.2);
+    run.input("tap");
+    rollTo(run, z + 0.3);
     const locked = run.getState();
-    expect(locked.onRail).toBe(true);
-    expect(locked.trickName).toBe("BOARDSLIDE");
-    expect(locked.boardslides).toBe(1);
-    expect(locked.score).toBe(Math.floor(locked.distance) + BOARDSLIDE_BONUS);
+    expect(locked.onGrind).toBe(true);
+    expect(locked.grindTrick).toBe("crooked");
+    expect(locked.grade).toBe("perfect");
+    expect(locked.trickName).toBe("CROOKED GRIND");
+    expect(locked.popup).toBe(TRICK_POINTS.crooked.perfect);
+    expect(locked.combo).toBe(1);
+    expect(locked.grinds).toBe(1);
+    expect(locked.score).toBe(Math.floor(locked.distance) + TRICK_POINTS.crooked.perfect);
     expect(locked.x).toBe(LANE_X[1]);
 
     run.input("left");
     expect(run.getState().lane).toBe(1);
 
-    run.step(1);
+    rollTo(run, z + RAIL_LENGTH + 0.2);
     const landed = run.getState();
-    expect(landed.onRail).toBe(false);
-    expect(landed.boardslides).toBe(1);
+    expect(landed.onGrind).toBe(false);
+    expect(landed.grinds).toBe(1);
     expect(landed.lane).toBe(1);
   });
 
-  it("does not lock from the wrong lane, a duck, or the top of an ollie", () => {
-    const otherLane = createRunnerController({
+  it("scores a nose slide and a kickflip crooked on their own numbers", () => {
+    const nose = createRunnerController({
+      spawn: false,
+      obstacles: [obstacle({ kind: "rail", lane: 1, z: 8 })],
+    });
+    rollTo(nose, 8 - 1.2);
+    nose.input("tap");
+    nose.input("tap");
+    expect(nose.getState().armed).toBe("nose");
+    rollTo(nose, 8.2);
+    expect(nose.getState().grindTrick).toBe("nose");
+    expect(nose.getState().grade).toBe("perfect");
+    expect(nose.getState().popup).toBe(TRICK_POINTS.nose.perfect);
+
+    const flip = createRunnerController({
+      spawn: false,
+      obstacles: [obstacle({ kind: "box", lane: 1, z: 8 })],
+    });
+    rollTo(flip, 8 - 1.2);
+    flip.input("flip");
+    expect(flip.getState().flip).toBe(0);
+    flip.step(0.05);
+    expect(flip.getState().flip).toBeGreaterThan(0);
+    rollTo(flip, 8.2);
+    expect(flip.getState().grindTrick).toBe("kickflip");
+    expect(flip.getState().trickName).toBe("KICKFLIP CROOKED");
+    expect(flip.getState().grade).toBe("perfect");
+    expect(flip.getState().popup).toBe(TRICK_POINTS.kickflip.perfect);
+    expect(flip.getState().y).toBeGreaterThan(0);
+  });
+
+  it("pays a sloppy make without raising the combo", () => {
+    const run = createRunnerController({
+      spawn: false,
+      obstacles: [obstacle({ kind: "rail", lane: 1, z: 5.5 })],
+    });
+    run.input("tap");
+    rollTo(run, 5.7);
+    const locked = run.getState();
+    expect(locked.grade).toBe("sloppy");
+    expect(locked.combo).toBe(0);
+    expect(locked.popup).toBe(TRICK_POINTS.crooked.sloppy);
+    expect(locked.score).toBe(Math.floor(locked.distance) + TRICK_POINTS.crooked.sloppy);
+  });
+
+  it("multiplies the next good grind and clears the chain on a miss", () => {
+    const run = createRunnerController({
+      spawn: false,
+      obstacles: [
+        obstacle({ id: 1, kind: "rail", lane: 1, z: 8 }),
+        obstacle({ id: 2, kind: "box", lane: 1, z: 20 }),
+      ],
+    });
+    rollTo(run, 8 - 1.2);
+    run.input("tap");
+    rollTo(run, 8 + RAIL_LENGTH + 0.3);
+    expect(run.getState().combo).toBe(1);
+    expect(run.getState().onGrind).toBe(false);
+
+    rollTo(run, 20 - 1.2);
+    run.input("tap");
+    rollTo(run, 20.3);
+    const chained = run.getState();
+    expect(chained.combo).toBe(2);
+    expect(chained.popup).toBe(Math.round(TRICK_POINTS.crooked.perfect * 1.5));
+    expect(chained.trickPoints).toBe(TRICK_POINTS.crooked.perfect + chained.popup);
+
+    const missed = createRunnerController({
+      spawn: false,
+      obstacles: [
+        obstacle({ id: 1, kind: "rail", lane: 1, z: 8 }),
+        obstacle({ id: 2, kind: "box", lane: 1, z: 20 }),
+      ],
+    });
+    rollTo(missed, 8 - 1.2);
+    missed.input("tap");
+    rollTo(missed, 20 + BOX_LENGTH + 0.4);
+    expect(missed.getState().onGrind).toBe(false);
+    expect(missed.getState().combo).toBe(0);
+    expect(missed.getState().misses).toBe(1);
+  });
+});
+
+describe("what does not lock", () => {
+  it("ignores a feature in another lane", () => {
+    const run = createRunnerController({
       spawn: false,
       obstacles: [obstacle({ kind: "rail", lane: 0, z: 4 })],
     });
-    otherLane.step(0.5);
-    expect(otherLane.getState().onRail).toBe(false);
+    run.input("tap");
+    rollTo(run, 4 + RAIL_LENGTH + 0.4);
+    expect(run.getState().onGrind).toBe(false);
+    expect(run.getState().misses).toBe(0);
+    expect(run.getState().status).toBe("playing");
+  });
 
-    const ducked = createRunnerController({
-      spawn: false,
-      obstacles: [obstacle({ kind: "rail", lane: 1, z: 4 })],
-    });
-    ducked.input("duck");
-    ducked.step(0.4);
-    expect(ducked.getState().onRail).toBe(false);
-
-    const airborne = createRunnerController({
+  it("lets a powerslide roll through a lip without locking", () => {
+    const run = createRunnerController({
       spawn: false,
       obstacles: [obstacle({ kind: "rail", lane: 1, z: 3 })],
     });
-    airborne.input("ollie");
-    airborne.step(0.28);
-    expect(airborne.getState().ollie).toBeGreaterThan(0);
-    expect(airborne.getState().onRail).toBe(false);
+    run.input("tap");
+    run.input("duck");
+    expect(run.getState().armed).toBeNull();
+    expect(run.getState().duck).toBe(0);
+    expect(run.getState().trickName).toBe("POWERSLIDE");
+    rollTo(run, 3 + RAIL_LENGTH + 0.4);
+    expect(run.getState().onGrind).toBe(false);
+    expect(run.getState().misses).toBe(1);
+    expect(run.getState().status).toBe("playing");
+  });
+
+  it("bails a trick thrown after the late window", () => {
+    const z = 2;
+    const run = createRunnerController({
+      spawn: false,
+      obstacles: [obstacle({ kind: "rail", lane: 1, z, length: RAIL_LENGTH })],
+    });
+    rollTo(run, z + LATE_LOCK + 0.35);
+    expect(run.getState().status).toBe("playing");
+    run.input("flip");
+    expect(run.getState().status).toBe("gameover");
+    expect(run.getState().onGrind).toBe(false);
+    run.input("tap");
+    expect(run.getState().armed).toBeNull();
+  });
+
+  it("ends the run after three missed features in the current lane", () => {
+    const run = createRunnerController({
+      spawn: false,
+      obstacles: [
+        obstacle({ id: 1, kind: "box", lane: 1, z: 3 }),
+        obstacle({ id: 2, kind: "rail", lane: 1, z: 12 }),
+        obstacle({ id: 3, kind: "box", lane: 1, z: 22 }),
+      ],
+    });
+    rollTo(run, 40);
+    expect(run.getState().status).toBe("gameover");
+    expect(run.getState().misses).toBe(3);
   });
 });
 
 describe("score and the street", () => {
-  it("counts distance and caps speed, and a pause holds the run still", () => {
+  it("counts distance, climbs slowly, and a pause holds the run still", () => {
     const run = createRunnerController({ spawn: false });
     const hud = run.getHud();
     run.step(0.01);
     expect(run.getHud()).toBe(hud);
 
     run.step(1);
-    expect(run.getState().distance).toBeGreaterThan(BASE_SPEED * 0.9);
-    expect(run.getState().score).toBe(Math.floor(run.getState().distance));
+    const moved = run.getState();
+    expect(moved.distance).toBeGreaterThan(BASE_SPEED * 0.9);
+    expect(moved.distance).toBeLessThan(BASE_SPEED * 1.2);
+    expect(moved.speed).toBeGreaterThan(BASE_SPEED);
+    expect(moved.speed).toBeLessThan(BASE_SPEED + 0.2);
+    expect(moved.score).toBe(Math.floor(moved.distance));
 
     run.pause();
     const held = run.getState().distance;
@@ -217,24 +274,26 @@ describe("score and the street", () => {
     expect(run.getState().distance).toBeGreaterThan(held);
 
     let fast = createRun({ spawn: false });
-    for (let i = 0; i < 800; i += 1) fast = stepRun(fast, MAX_FRAME_DT).state;
+    for (let i = 0; i < 1600; i += 1) fast = stepRun(fast, MAX_FRAME_DT).state;
     expect(fast.speed).toBe(MAX_SPEED);
   });
 
-  it("restarts a fresh run and ignores input while paused or over", () => {
+  it("restarts a fresh run and ignores input while paused", () => {
     const run = createRunnerController({ spawn: false });
+    run.input("tap");
     run.step(0.5);
     run.restart();
     expect(run.getState().distance).toBe(0);
     expect(run.getState().status).toBe("playing");
-    expect(run.getState().boardslides).toBe(0);
+    expect(run.getState().grinds).toBe(0);
+    expect(run.getState().armed).toBeNull();
 
     const paused = createRun({ startPaused: true, spawn: false });
     expect(stepRun(paused, 0.2).state).toBe(paused);
-    expect(applyAction(paused, "ollie").events).toEqual([]);
+    expect(applyAction(paused, "tap").events).toEqual([]);
   });
 
-  it("spawns a survivable street and keeps the opening cones out of the center lane", () => {
+  it("spawns rails and boxes only, with the opening rail out of the center lane", () => {
     const first = stepRun(createRun({ seed: 4 }), MAX_FRAME_DT);
     const again = stepRun(createRun({ seed: 4 }), MAX_FRAME_DT);
     expect(first.state.obstacles.map((item) => [item.kind, item.lane, item.z])).toEqual(
@@ -242,11 +301,11 @@ describe("score and the street", () => {
     );
 
     const opening = first.state.obstacles.find((item) => item.z === FIRST_ROW_Z);
-    expect(opening).toMatchObject({ kind: "cone", lane: 0 });
+    expect(opening).toMatchObject({ kind: "rail", lane: 0 });
 
     const rows = new Map<number, Set<Lane>>();
     for (const item of first.state.obstacles) {
-      if (item.kind === "rail") continue;
+      expect(item.kind === "rail" || item.kind === "box").toBe(true);
       const lanes = rows.get(item.z) ?? new Set<Lane>();
       lanes.add(item.lane);
       rows.set(item.z, lanes);
@@ -261,18 +320,5 @@ describe("score and the street", () => {
     expect(sample.value).toBeGreaterThanOrEqual(0);
     expect(sample.value).toBeLessThan(1);
     expect(sample.seed).not.toBe(1);
-  });
-});
-
-describe("actions while the run is over", () => {
-  it("does not ollie after a crash", () => {
-    const run = createRunnerController({
-      spawn: false,
-      obstacles: [obstacle({ kind: "barrier", lane: 1, z: 2 })],
-    });
-    run.step(0.3);
-    expect(run.getState().status).toBe("gameover");
-    run.input("ollie");
-    expect(run.getState().ollie).toBe(-1);
   });
 });

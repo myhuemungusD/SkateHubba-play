@@ -1,12 +1,16 @@
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import type { Group, Object3D } from "three";
-import { LANE_X, RAIL_LENGTH } from "../constants";
+import { BOX_LENGTH, LANE_X, RAIL_LENGTH } from "../constants";
 import type { RunnerController } from "../controller";
 import type { Obstacle, ObstacleKind } from "../types";
+import { flatMaterial, metalMaterial, waxMaterial } from "./textures";
 
-const POOL = 32;
-const KINDS: readonly ObstacleKind[] = ["cone", "barrier", "overhead", "rail"];
+const POOL = 16;
+const KINDS: readonly ObstacleKind[] = ["rail", "box"];
+const post = flatMaterial("#4e565c");
+const ledge = flatMaterial("#8a8176");
+const coping = flatMaterial("#b7b1a6", "#2a2620");
 
 function showKind(group: Object3D, kind: ObstacleKind): void {
   for (const name of KINDS) {
@@ -19,14 +23,21 @@ function visibleObstacles(obstacles: readonly Obstacle[], distance: number): Obs
   const shown: Obstacle[] = [];
   for (const obstacle of obstacles) {
     if (obstacle.z + obstacle.length < distance - 6) continue;
-    if (obstacle.z > distance + 72) continue;
+    if (obstacle.z > distance + 64) continue;
     shown.push(obstacle);
     if (shown.length === POOL) break;
   }
   return shown;
 }
 
-/** Fixed pool of low-poly props. Slots are hidden and reused as the street scrolls. */
+function stretch(group: Object3D, name: string, length: number, base: number): void {
+  const mesh = group.getObjectByName(name);
+  if (!mesh) return;
+  mesh.scale.z = length / base;
+  mesh.position.z = -length / 2;
+}
+
+/** Fixed pool of rails and waxed ledges. Slots are hidden and reused. */
 export function ObstaclePool({ controller }: { controller: RunnerController }) {
   const slots = useRef<(Group | null)[]>([]);
 
@@ -44,13 +55,16 @@ export function ObstaclePool({ controller }: { controller: RunnerController }) {
       slot.visible = true;
       slot.position.set(LANE_X[obstacle.lane], 0, -(obstacle.z - state.distance));
       showKind(slot, obstacle.kind);
+      const kind = slot.getObjectByName(obstacle.kind);
+      if (!kind) continue;
       if (obstacle.kind === "rail") {
-        const rail = slot.getObjectByName("rail");
-        if (rail) {
-          const length = obstacle.length > 0 ? obstacle.length : RAIL_LENGTH;
-          rail.scale.z = length / RAIL_LENGTH;
-          rail.position.z = -length / 2;
-        }
+        stretch(kind, "rail-beam", obstacle.length, RAIL_LENGTH);
+        const far = kind.getObjectByName("rail-post-far");
+        if (far) far.position.z = -obstacle.length;
+      } else {
+        stretch(kind, "box-body", obstacle.length, BOX_LENGTH);
+        stretch(kind, "box-wax", obstacle.length, BOX_LENGTH);
+        stretch(kind, "box-coping", obstacle.length, BOX_LENGTH);
       }
     }
   });
@@ -65,32 +79,28 @@ export function ObstaclePool({ controller }: { controller: RunnerController }) {
           }}
           visible={false}
         >
-          <mesh name="cone" position={[0, 0.28, 0]} castShadow={false}>
-            <coneGeometry args={[0.28, 0.55, 6]} />
-            <meshLambertMaterial color="#ff6b00" />
-          </mesh>
-          <mesh name="barrier" position={[0, 0.55, 0]} visible={false} castShadow={false}>
-            <boxGeometry args={[0.95, 1.1, 0.4]} />
-            <meshLambertMaterial color="#ff3d00" />
-          </mesh>
-          <group name="overhead" visible={false}>
-            <mesh position={[-0.46, 0.6, 0]}>
-              <boxGeometry args={[0.08, 1.2, 0.08]} />
-              <meshLambertMaterial color="#d5d5d5" />
+          <group name="rail">
+            <mesh name="rail-beam" position={[0, 0.36, -RAIL_LENGTH / 2]} material={metalMaterial()}>
+              <boxGeometry args={[0.1, 0.08, RAIL_LENGTH]} />
             </mesh>
-            <mesh position={[0.46, 0.6, 0]}>
-              <boxGeometry args={[0.08, 1.2, 0.08]} />
-              <meshLambertMaterial color="#d5d5d5" />
+            <mesh name="rail-post-near" position={[0, 0.18, 0]} material={post}>
+              <boxGeometry args={[0.06, 0.36, 0.06]} />
             </mesh>
-            <mesh position={[0, 1.18, 0]}>
-              <boxGeometry args={[1.15, 0.1, 0.1]} />
-              <meshLambertMaterial color="#f4f4f4" />
+            <mesh name="rail-post-far" position={[0, 0.18, -RAIL_LENGTH]} material={post}>
+              <boxGeometry args={[0.06, 0.36, 0.06]} />
             </mesh>
           </group>
-          <mesh name="rail" position={[0, 0.28, -RAIL_LENGTH / 2]} visible={false} castShadow={false}>
-            <boxGeometry args={[0.14, 0.08, RAIL_LENGTH]} />
-            <meshLambertMaterial color="#c5ccd1" />
-          </mesh>
+          <group name="box" visible={false}>
+            <mesh name="box-body" position={[0, 0.16, -BOX_LENGTH / 2]} material={ledge}>
+              <boxGeometry args={[0.85, 0.32, BOX_LENGTH]} />
+            </mesh>
+            <mesh name="box-wax" position={[0, 0.325, -BOX_LENGTH / 2]} material={waxMaterial()}>
+              <boxGeometry args={[0.72, 0.02, BOX_LENGTH]} />
+            </mesh>
+            <mesh name="box-coping" position={[0.34, 0.3, -BOX_LENGTH / 2]} material={coping}>
+              <boxGeometry args={[0.08, 0.05, BOX_LENGTH]} />
+            </mesh>
+          </group>
         </group>
       ))}
     </group>

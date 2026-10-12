@@ -1,32 +1,50 @@
 import {
+  ARM_RANGE,
   BASE_SPEED,
-  BOARDSLIDE_BONUS,
-  CONE_CLEAR_Y,
+  BOX_LENGTH,
+  BOX_Y,
+  DOUBLE_TAP,
   DUCK_DURATION,
   FIRST_ROW_Z,
+  FLIP_DURATION,
+  GOOD_MAX,
   LANE_SLIDE,
   LANE_X,
   LANES,
+  LATE_LOCK,
   MAX_FRAME_DT,
   MAX_SPEED,
-  OLLIE_DURATION,
-  OLLIE_PEAK,
+  MISS_LIMIT,
+  PERFECT_MAX,
+  PERFECT_MIN,
   RAIL_LENGTH,
-  RAIL_LOCK_Y,
   RAIL_Y,
   ROW_GAP,
   SPAWN_AHEAD,
   SPEED_RAMP,
-  TRICK_BOARDSLIDE,
+  TRICK_NAMES,
+  TRICK_POINTS,
+  TRICK_POWERSLIDE,
+  multiplierFor,
 } from "./constants";
 import { nextUnit } from "./rng";
-import type { Action, Lane, Obstacle, ObstacleKind, RunnerEvent, RunnerState, Tick } from "./types";
+import type {
+  Action,
+  Grade,
+  Lane,
+  Obstacle,
+  ObstacleKind,
+  RunnerEvent,
+  RunnerState,
+  Tick,
+  Trick,
+} from "./types";
 
 export interface CreateRunOptions {
   seed?: number;
   lane?: Lane;
   obstacles?: Obstacle[];
-  /** When false, the street stays empty. Tests place their own obstacles. */
+  /** When false, the street stays empty. Tests place their own features. */
   spawn?: boolean;
   startPaused?: boolean;
 }
@@ -37,10 +55,15 @@ export function laneAfter(lane: Lane, direction: "left" | "right"): Lane {
   return next as Lane;
 }
 
-/** Sine hop. 0 at the takeoff and the landing, `peak` at the halfway point. */
-export function ollieArc(elapsed: number, duration = OLLIE_DURATION, peak = OLLIE_PEAK): number {
-  if (!(elapsed >= 0) || elapsed >= duration || duration <= 0) return 0;
-  return Math.sin((elapsed / duration) * Math.PI) * peak;
+/**
+ * Lead is how many units before the lip the trick was armed.
+ * Negative lead means the input landed after the lip and is sloppy
+ * if it is still inside the late window.
+ */
+export function gradeForLead(lead: number): Grade {
+  if (lead >= PERFECT_MIN && lead <= PERFECT_MAX) return "perfect";
+  if (lead >= 0 && lead <= GOOD_MAX) return "good";
+  return "sloppy";
 }
 
 export function createRun(options: CreateRunOptions = {}): RunnerState {
@@ -54,11 +77,19 @@ export function createRun(options: CreateRunOptions = {}): RunnerState {
     lane,
     x: LANE_X[lane],
     y: 0,
-    ollie: -1,
     duck: -1,
-    onRail: false,
-    railId: null,
+    flip: -1,
+    onGrind: false,
+    grindId: null,
+    grindTrick: null,
+    grade: null,
+    armed: null,
+    armedDistance: 0,
+    armAge: 0,
     score: 0,
+    trickPoints: 0,
+    popup: 0,
+    combo: 0,
     trickName: null,
     trickTime: 0,
     obstacles,
@@ -66,9 +97,55 @@ export function createRun(options: CreateRunOptions = {}): RunnerState {
     spawnedUntil: options.spawn === false ? Number.POSITIVE_INFINITY : 0,
     rng: options.seed ?? 1,
     elapsed: 0,
-    boardslides: 0,
+    grinds: 0,
+    misses: 0,
     hasInput: false,
   };
+}
+
+function commit(prev: RunnerState, trick: Trick): Tick {
+  return {
+    state: {
+      ...prev,
+      armed: trick,
+      armedDistance: prev.distance,
+      armAge: trick === "nose" ? prev.armAge : 0,
+      duck: -1,
+      flip: trick === "kickflip" ? 0 : -1,
+    },
+    events: [],
+  };
+}
+
+function bail(prev: RunnerState): Tick {
+  return {
+    state: {
+      ...prev,
+      status: "gameover",
+      onGrind: false,
+      grindId: null,
+      grindTrick: null,
+      armed: null,
+      flip: -1,
+      duck: -1,
+      trickName: null,
+      trickTime: 0,
+      grade: null,
+      popup: 0,
+      y: 0,
+    },
+    events: ["bail"],
+  };
+}
+
+/** A trick input after the late window, while the feature is still under the board. */
+function slamming(state: RunnerState): boolean {
+  for (const obstacle of state.obstacles) {
+    if (obstacle.lane !== state.lane || obstacle.resolved || obstacle.awarded) continue;
+    const end = obstacle.z + obstacle.length;
+    if (state.distance > obstacle.z + LATE_LOCK && state.distance < end) return true;
+  }
+  return false;
 }
 
 export function applyAction(prev: RunnerState, action: Action): Tick {
@@ -76,18 +153,36 @@ export function applyAction(prev: RunnerState, action: Action): Tick {
   switch (action) {
     case "left":
     case "right": {
-      if (prev.onRail) return { state: prev, events: [] };
+      if (prev.onGrind) return { state: prev, events: [] };
       const lane = laneAfter(prev.lane, action);
       if (lane === prev.lane) return { state: prev, events: [] };
       return { state: { ...prev, lane }, events: [] };
     }
-    case "ollie": {
-      if (prev.onRail || prev.ollie >= 0 || prev.duck >= 0) return { state: prev, events: [] };
-      return { state: { ...prev, ollie: 0, y: 0 }, events: ["ollie"] };
+    case "tap": {
+      if (prev.onGrind) return { state: prev, events: [] };
+      if (slamming(prev)) return bail(prev);
+      if (prev.armed === "crooked" && prev.armAge <= DOUBLE_TAP) return commit(prev, "nose");
+      return commit(prev, "crooked");
+    }
+    case "flip": {
+      if (prev.onGrind) return { state: prev, events: [] };
+      if (slamming(prev)) return bail(prev);
+      return commit(prev, "kickflip");
     }
     case "duck": {
-      if (prev.onRail || prev.ollie >= 0 || prev.duck >= 0) return { state: prev, events: [] };
-      return { state: { ...prev, duck: 0 }, events: [] };
+      if (prev.onGrind || prev.duck >= 0) return { state: prev, events: [] };
+      const showSlide = prev.trickTime <= 0 && !prev.trickName;
+      return {
+        state: {
+          ...prev,
+          duck: 0,
+          armed: null,
+          flip: -1,
+          trickName: showSlide ? TRICK_POWERSLIDE : prev.trickName,
+          trickTime: showSlide ? 0.55 : prev.trickTime,
+        },
+        events: ["powerslide"],
+      };
     }
     default: {
       const neverAction: never = action;
@@ -107,19 +202,13 @@ function pickLane(state: RunnerState): Lane {
   return LANES[index] ?? 1;
 }
 
-function pickKind(roll: number): ObstacleKind {
-  if (roll < 0.34) return "cone";
-  if (roll < 0.67) return "barrier";
-  return "overhead";
-}
-
-function makeObstacle(state: RunnerState, kind: ObstacleKind, lane: Lane, z: number, length: number): Obstacle {
+function makeObstacle(state: RunnerState, kind: ObstacleKind, lane: Lane, z: number): Obstacle {
   const obstacle: Obstacle = {
     id: state.nextId,
     kind,
     lane,
     z,
-    length,
+    length: kind === "rail" ? RAIL_LENGTH : BOX_LENGTH,
     awarded: false,
     resolved: false,
   };
@@ -127,110 +216,114 @@ function makeObstacle(state: RunnerState, kind: ObstacleKind, lane: Lane, z: num
   return obstacle;
 }
 
-/** Fill the street ahead. Every row leaves at least one lane open. */
+/** One or two grind spots per row. The third lane stays open. */
 function spawnAhead(state: RunnerState): void {
   let guard = 0;
-  while (state.spawnedUntil < state.distance + SPAWN_AHEAD && guard < 16) {
+  while (state.spawnedUntil < state.distance + SPAWN_AHEAD && guard < 12) {
     guard += 1;
     const z = state.spawnedUntil === 0 ? FIRST_ROW_Z : state.spawnedUntil + ROW_GAP;
     const rowIndex = state.spawnedUntil === 0 ? 0 : Math.round((z - FIRST_ROW_Z) / ROW_GAP);
     if (rowIndex < 2) {
-      // Opening cones sit in the left lane so the center start is a free run.
-      state.obstacles.push(makeObstacle(state, "cone", 0, z, 0));
+      // Opening features sit in the left lane so the center start is a free roll.
+      state.obstacles.push(makeObstacle(state, rowIndex === 0 ? "rail" : "box", 0, z));
     } else {
-      const roll = take(state);
-      if (roll < 0.18) {
-        state.obstacles.push(makeObstacle(state, "rail", pickLane(state), z, RAIL_LENGTH));
-      } else if (roll < 0.45) {
-        const open = pickLane(state);
-        for (const lane of LANES) {
-          if (lane === open) continue;
-          state.obstacles.push(makeObstacle(state, pickKind(take(state)), lane, z, 0));
-        }
-      } else {
-        state.obstacles.push(makeObstacle(state, pickKind(take(state)), pickLane(state), z, 0));
+      const kind: ObstacleKind = take(state) < 0.55 ? "rail" : "box";
+      const lane = pickLane(state);
+      state.obstacles.push(makeObstacle(state, kind, lane, z));
+      if (take(state) < 0.3) {
+        const other = LANES.find((candidate) => candidate !== lane) ?? lane;
+        const second: ObstacleKind = kind === "rail" ? "box" : "rail";
+        state.obstacles.push(makeObstacle(state, second, other, z));
       }
     }
     state.spawnedUntil = z;
   }
 }
 
-function clears(state: RunnerState, obstacle: Obstacle): boolean {
-  switch (obstacle.kind) {
-    case "cone":
-      return state.y >= CONE_CLEAR_Y;
-    case "barrier":
-      return false;
-    case "overhead":
-      return state.duck >= 0 && state.ollie < 0;
-    case "rail":
-      return true;
-    default: {
-      const neverKind: never = obstacle.kind;
-      return neverKind;
-    }
+function award(state: RunnerState, trick: Trick, grade: Grade): void {
+  const chain = grade === "sloppy" ? Math.max(state.combo, 1) : state.combo + 1;
+  const mult = grade === "sloppy" ? 1 : multiplierFor(chain);
+  const points = Math.round(TRICK_POINTS[trick][grade] * mult);
+  if (grade !== "sloppy") state.combo = chain;
+  state.trickPoints += points;
+  state.popup = points;
+  state.grade = grade;
+  state.trickName = TRICK_NAMES[trick];
+  state.trickTime = 0;
+  state.grinds += 1;
+  state.misses = 0;
+}
+
+function tryLock(state: RunnerState, prevDistance: number, events: RunnerEvent[]): void {
+  if (state.onGrind || state.duck >= 0 || !state.armed) return;
+  if (prevDistance - state.armedDistance > ARM_RANGE) return;
+  for (const obstacle of state.obstacles) {
+    if (obstacle.lane !== state.lane || obstacle.resolved || obstacle.awarded) continue;
+    const windowEnd = obstacle.z + LATE_LOCK;
+    if (prevDistance > windowEnd || state.distance < obstacle.z) continue;
+    if (state.armedDistance > windowEnd) continue;
+    const trick = state.armed;
+    obstacle.awarded = true;
+    state.onGrind = true;
+    state.grindId = obstacle.id;
+    state.grindTrick = trick;
+    state.lane = obstacle.lane;
+    state.x = LANE_X[obstacle.lane];
+    state.y = obstacle.kind === "rail" ? RAIL_Y : BOX_Y;
+    state.armed = null;
+    state.flip = -1;
+    state.duck = -1;
+    award(state, trick, gradeForLead(obstacle.z - state.armedDistance));
+    events.push("lock");
+    return;
   }
 }
 
-function followRail(state: RunnerState, events: RunnerEvent[]): void {
-  const rail = state.obstacles.find((obstacle) => obstacle.id === state.railId);
-  const end = rail ? rail.z + rail.length : state.distance;
-  if (rail) {
-    state.lane = rail.lane;
-    state.x = LANE_X[rail.lane];
+function followGrind(state: RunnerState, events: RunnerEvent[]): void {
+  const feature = state.obstacles.find((obstacle) => obstacle.id === state.grindId);
+  const end = feature ? feature.z + feature.length : state.distance;
+  if (feature) {
+    state.lane = feature.lane;
+    state.x = LANE_X[feature.lane];
+    state.y = feature.kind === "rail" ? RAIL_Y : BOX_Y;
   }
-  state.y = RAIL_Y;
-  state.trickName = TRICK_BOARDSLIDE;
-  if (!rail || state.distance >= end) {
-    state.onRail = false;
-    state.railId = null;
+  if (!feature || state.distance >= end) {
+    state.onGrind = false;
+    state.grindId = null;
     state.y = 0;
-    state.trickTime = 0.9;
+    state.trickTime = 1.15;
     events.push("land");
   }
 }
 
-function tryLockRail(state: RunnerState, events: RunnerEvent[]): void {
-  if (state.onRail || state.duck >= 0 || state.y > RAIL_LOCK_Y) return;
+function resolvePasses(state: RunnerState, events: RunnerEvent[]): void {
   for (const obstacle of state.obstacles) {
-    if (obstacle.kind !== "rail" || obstacle.awarded) continue;
+    if (obstacle.resolved || obstacle.awarded) continue;
+    if (state.distance <= obstacle.z + obstacle.length) continue;
+    obstacle.resolved = true;
     if (obstacle.lane !== state.lane) continue;
-    const end = obstacle.z + obstacle.length;
-    if (state.distance < obstacle.z || state.distance > end) continue;
-    state.onRail = true;
-    state.railId = obstacle.id;
-    state.ollie = -1;
-    state.y = RAIL_Y;
-    state.x = LANE_X[obstacle.lane];
-    state.trickName = TRICK_BOARDSLIDE;
-    state.trickTime = 0;
-    obstacle.awarded = true;
-    state.boardslides += 1;
-    events.push("boardslide");
-    return;
-  }
-}
-
-function collide(state: RunnerState, prevDistance: number, events: RunnerEvent[]): void {
-  for (const obstacle of state.obstacles) {
-    if (obstacle.kind === "rail" || obstacle.resolved) continue;
-    if (obstacle.z <= prevDistance || obstacle.z > state.distance) continue;
-    if (state.onRail || obstacle.lane !== state.lane || clears(state, obstacle)) {
-      obstacle.resolved = true;
-      continue;
+    state.combo = 0;
+    state.misses += 1;
+    if (state.misses >= MISS_LIMIT) {
+      state.status = "gameover";
+      state.onGrind = false;
+      state.grindId = null;
+      state.armed = null;
+      state.flip = -1;
+      state.trickName = null;
+      state.trickTime = 0;
+      state.grade = null;
+      state.popup = 0;
+      state.y = 0;
+      events.push("bail");
+      return;
     }
-    state.status = "gameover";
-    state.trickName = null;
-    state.onRail = false;
-    state.railId = null;
-    events.push("crash");
-    return;
   }
 }
 
 /**
  * Advance one slice. `dt` should be at most MAX_FRAME_DT; larger values are
- * clamped so a single call cannot skip an obstacle.
+ * clamped so a single call cannot skip a lip.
  */
 export function stepRun(prev: RunnerState, dt: number): Tick {
   if (prev.status !== "playing") return { state: prev, events: [] };
@@ -247,49 +340,50 @@ export function stepRun(prev: RunnerState, dt: number): Tick {
     state.duck += slice;
     if (state.duck >= DUCK_DURATION) state.duck = -1;
   }
-
-  if (state.ollie >= 0) {
-    state.ollie += slice;
-    state.y = ollieArc(state.ollie);
-    if (state.ollie >= OLLIE_DURATION) {
-      state.ollie = -1;
-      state.y = 0;
-      events.push("land");
-    }
-  } else if (!state.onRail) {
-    state.y = 0;
+  if (state.flip >= 0 && state.flip < FLIP_DURATION) {
+    state.flip = Math.min(FLIP_DURATION, state.flip + slice);
   }
+  if (state.armed) state.armAge += slice;
 
   const prevDistance = state.distance;
   state.distance += state.speed * slice;
   state.elapsed += slice;
   state.speed = Math.min(MAX_SPEED, state.speed + SPEED_RAMP * slice);
 
-  if (state.onRail) {
-    followRail(state, events);
+  if (state.onGrind) {
+    followGrind(state, events);
   } else {
     const target = LANE_X[state.lane];
     const dx = target - state.x;
     const step = Math.min(Math.abs(dx), LANE_SLIDE * slice);
     state.x += Math.sign(dx) * step;
-    tryLockRail(state, events);
+    state.y = 0;
+    tryLock(state, prevDistance, events);
+    if (state.armed && state.distance - state.armedDistance > ARM_RANGE) {
+      state.armed = null;
+      state.flip = -1;
+    }
   }
 
-  if (state.status === "playing") collide(state, prevDistance, events);
+  if (state.status === "playing") resolvePasses(state, events);
 
   if (state.status === "playing") {
     spawnAhead(state);
-    const railId = state.railId;
+    const grindId = state.grindId;
     state.obstacles = state.obstacles.filter(
-      (obstacle) => obstacle.id === railId || obstacle.z + obstacle.length >= state.distance - 16,
+      (obstacle) => obstacle.id === grindId || obstacle.z + obstacle.length >= state.distance - 12,
     );
   }
 
-  state.score = Math.floor(state.distance) + state.boardslides * BOARDSLIDE_BONUS;
+  state.score = Math.floor(state.distance) + state.trickPoints;
 
-  if (!state.onRail && state.trickTime > 0) {
+  if (!state.onGrind && state.trickTime > 0) {
     state.trickTime = Math.max(0, state.trickTime - slice);
-    if (state.trickTime === 0) state.trickName = null;
+    if (state.trickTime === 0) {
+      state.trickName = null;
+      state.grade = null;
+      state.popup = 0;
+    }
   }
 
   return { state, events };

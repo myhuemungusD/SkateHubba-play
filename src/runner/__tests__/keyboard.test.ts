@@ -8,9 +8,11 @@ describe("keyboard", () => {
     expect(actionForKey("A")).toBe("left");
     expect(actionForKey("ArrowRight")).toBe("right");
     expect(actionForKey("d")).toBe("right");
-    expect(actionForKey("ArrowUp")).toBe("ollie");
-    expect(actionForKey("w")).toBe("ollie");
-    expect(actionForKey(" ")).toBe("ollie");
+    expect(actionForKey("ArrowUp")).toBe("tap");
+    expect(actionForKey("w")).toBe("tap");
+    expect(actionForKey("f")).toBe("tap");
+    expect(actionForKey(" ")).toBe("flip");
+    expect(actionForKey("k")).toBe("flip");
     expect(actionForKey("ArrowDown")).toBe("duck");
     expect(actionForKey("s")).toBe("duck");
     expect(actionForKey("Escape")).toBe("pause");

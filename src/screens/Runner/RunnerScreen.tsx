@@ -13,10 +13,11 @@ interface Props {
 }
 
 /**
- * Endless street. The sim ticks here, on requestAnimationFrame, so a missing
- * WebGL context still scores the run. The canvas is a view of that state.
- * three.js is only imported by the lazy world module, never by this file's
- * callers — App loads this screen with React.lazy.
+ * Endless street of rails and ledges. The sim ticks here, on
+ * requestAnimationFrame, so a missing WebGL context still scores the run.
+ * The canvas is a view of that state. three.js is only imported by the lazy
+ * world module, never by this file's callers — App loads this screen with
+ * React.lazy. The score stays on this run.
  */
 export function RunnerScreen({ controller: injected }: Props = {}) {
   const reduced = useReducedMotion();

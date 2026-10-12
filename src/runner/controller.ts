@@ -1,7 +1,7 @@
-import { MAX_FRAME_DT, TRICK_BOARDSLIDE } from "./constants";
+import { MAX_FRAME_DT, multiplierFor } from "./constants";
 import { playRunnerHaptic } from "./haptics";
 import { applyAction, createRun, stepRun, type CreateRunOptions } from "./logic";
-import type { Action, Lane, RunnerEvent, RunnerState, RunnerStatus } from "./types";
+import type { Action, Grade, Lane, RunnerEvent, RunnerState, RunnerStatus, Trick } from "./types";
 
 export interface HudSnapshot {
   status: RunnerStatus;
@@ -9,6 +9,11 @@ export interface HudSnapshot {
   distance: number;
   lane: Lane;
   trickName: string | null;
+  grade: Grade | null;
+  popup: number;
+  combo: number;
+  multiplier: number;
+  armed: Trick | null;
   showHint: boolean;
   announce: string;
 }
@@ -41,7 +46,7 @@ function laneName(lane: Lane): string {
 
 function announceFor(state: RunnerState): string {
   if (state.status === "gameover") return `Game over. Score ${state.score}.`;
-  if (state.trickName === TRICK_BOARDSLIDE) return TRICK_BOARDSLIDE;
+  if (state.trickName && (state.onGrind || state.trickTime > 0)) return state.trickName;
   if (state.status === "paused") return state.distance === 0 ? "Skate Runner" : "Paused";
   return laneName(state.lane);
 }
@@ -53,6 +58,11 @@ function toHud(state: RunnerState): HudSnapshot {
     distance: Math.floor(state.distance),
     lane: state.lane,
     trickName: state.trickName,
+    grade: state.grade,
+    popup: state.popup,
+    combo: state.combo,
+    multiplier: multiplierFor(state.combo),
+    armed: state.armed,
     showHint: state.status === "playing" && !state.hasInput,
     announce: announceFor(state),
   };
@@ -65,6 +75,11 @@ function sameHud(a: HudSnapshot, b: HudSnapshot): boolean {
     a.distance === b.distance &&
     a.lane === b.lane &&
     a.trickName === b.trickName &&
+    a.grade === b.grade &&
+    a.popup === b.popup &&
+    a.combo === b.combo &&
+    a.multiplier === b.multiplier &&
+    a.armed === b.armed &&
     a.showHint === b.showHint &&
     a.announce === b.announce
   );
@@ -109,7 +124,7 @@ export function createRunnerController(options: CreateRunOptions = {}): RunnerCo
         state = tick.state;
         events.push(...tick.events);
         left -= slice;
-        if (tick.events.includes("crash")) break;
+        if (tick.events.includes("bail")) break;
       }
       buzz(events);
       publish();

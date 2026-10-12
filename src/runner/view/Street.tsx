@@ -1,15 +1,21 @@
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import type { Group } from "three";
-import { LANE_X, SEGMENT_LENGTH } from "../constants";
+import { SEGMENT_LENGTH } from "../constants";
 import type { RunnerController } from "../controller";
+import { flatMaterial, roadMaterial, sidewalkMaterial } from "./textures";
 
 const SEGMENTS = [0, 1, 2] as const;
+const curb = flatMaterial("#5e5954");
+const building = flatMaterial("#3c434c");
+const buildingAlt = flatMaterial("#343a42");
+const windowMat = flatMaterial("#1b242c", "#0c1218");
+const dash = flatMaterial("#d8d2c4");
 
 /**
- * Three street slabs repositioned as the run moves. The meshes are created
- * once and recycled, which is the whole "endless street" — nothing is
- * allocated per meter.
+ * Three street slabs repositioned as the run moves. Meshes and textures are
+ * created once. The ground is concrete, the edges are a curb and sidewalk,
+ * and the blocks behind them are a low street wall — no per-meter allocation.
  */
 export function Street({ controller }: { controller: RunnerController }) {
   const group = useRef<Group>(null);
@@ -22,7 +28,6 @@ export function Street({ controller }: { controller: RunnerController }) {
     for (let i = 0; i < SEGMENTS.length; i += 1) {
       const slab = root.children[i];
       if (!slab) continue;
-      // One slab sits behind the skater so the camera is not looking at a hole.
       const center = (index - 1 + i) * SEGMENT_LENGTH + SEGMENT_LENGTH / 2;
       slab.position.z = -(center - distance);
     }
@@ -32,23 +37,37 @@ export function Street({ controller }: { controller: RunnerController }) {
     <group ref={group}>
       {SEGMENTS.map((index) => (
         <group key={index}>
-          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow={false}>
-            <planeGeometry args={[8.4, SEGMENT_LENGTH]} />
-            <meshLambertMaterial color="#2a2a2a" />
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} material={roadMaterial()}>
+            <planeGeometry args={[5.4, SEGMENT_LENGTH]} />
           </mesh>
-          {LANE_X.slice(0, 2).map((laneX, line) => (
-            <mesh key={line} position={[(laneX + (LANE_X[line + 1] ?? laneX)) / 2, 0.01, 0]}>
-              <boxGeometry args={[0.04, 0.02, SEGMENT_LENGTH]} />
-              <meshLambertMaterial color="#6d6d6d" />
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-3.7, 0.06, 0]} material={sidewalkMaterial()}>
+            <planeGeometry args={[2.1, SEGMENT_LENGTH]} />
+          </mesh>
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[3.7, 0.06, 0]} material={sidewalkMaterial()}>
+            <planeGeometry args={[2.1, SEGMENT_LENGTH]} />
+          </mesh>
+          <mesh position={[-2.55, 0.05, 0]} material={curb}>
+            <boxGeometry args={[0.16, 0.1, SEGMENT_LENGTH]} />
+          </mesh>
+          <mesh position={[2.55, 0.05, 0]} material={curb}>
+            <boxGeometry args={[0.16, 0.1, SEGMENT_LENGTH]} />
+          </mesh>
+          {[-12, -4, 4, 12].map((z) => (
+            <mesh key={z} position={[0, 0.015, z]} material={dash}>
+              <boxGeometry args={[0.08, 0.02, 1.4]} />
             </mesh>
           ))}
-          <mesh position={[-3.55, 0.9, -8]}>
-            <boxGeometry args={[1.3, 1.8, 6]} />
-            <meshLambertMaterial color={index === 1 ? "#242424" : "#1c1c1c"} />
+          <mesh position={[-4.3, 1.15, -6]} material={index === 1 ? buildingAlt : building}>
+            <boxGeometry args={[1.1, 2.3, 8]} />
           </mesh>
-          <mesh position={[3.55, 1.15, 6]}>
-            <boxGeometry args={[1.3, 2.3, 5]} />
-            <meshLambertMaterial color={index === 2 ? "#262626" : "#1a1a1a"} />
+          <mesh position={[-4.3, 1.35, -6]} material={windowMat}>
+            <boxGeometry args={[0.08, 0.7, 5]} />
+          </mesh>
+          <mesh position={[4.35, 1.45, 8]} material={index === 2 ? building : buildingAlt}>
+            <boxGeometry args={[1.15, 2.9, 7]} />
+          </mesh>
+          <mesh position={[4.35, 1.7, 8]} material={windowMat}>
+            <boxGeometry args={[0.08, 0.9, 4.2]} />
           </mesh>
         </group>
       ))}

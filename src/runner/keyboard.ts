@@ -15,8 +15,13 @@ export function actionForKey(key: string): KeyAction | null {
     case "ArrowUp":
     case "w":
     case "W":
+    case "f":
+    case "F":
+      return "tap";
     case " ":
-      return "ollie";
+    case "k":
+    case "K":
+      return "flip";
     case "ArrowDown":
     case "s":
     case "S":
@@ -30,7 +35,7 @@ export function actionForKey(key: string): KeyAction | null {
   }
 }
 
-/** Ignore keys aimed at a text field so a future input cannot ollie by accident. */
+/** Ignore keys aimed at a text field so a future input cannot fire a trick by accident. */
 export function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;

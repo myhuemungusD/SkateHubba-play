@@ -1,6 +1,14 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { Link } from "react-router";
+import { ARM_LABELS } from "../../runner/constants";
 import type { HudSnapshot } from "../../runner/controller";
+import type { Grade } from "../../runner/types";
+
+const GRADE_LABEL: Record<Grade, string> = {
+  perfect: "PERFECT",
+  good: "GOOD",
+  sloppy: "SLOPPY",
+};
 
 interface Props {
   hud: HudSnapshot;
@@ -12,6 +20,10 @@ interface Props {
 
 const BTN =
   "min-h-11 rounded-xl px-4 font-display tracking-wider focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
+
+function comboLabel(multiplier: number): string {
+  return Number.isInteger(multiplier) ? `x${multiplier}` : `x${multiplier.toFixed(1)}`;
+}
 
 export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) {
   const restartRef = useRef<HTMLButtonElement>(null);
@@ -34,6 +46,9 @@ export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) 
             {hud.score}
           </p>
           <p className="font-body text-xs text-white/60">{hud.distance} m</p>
+          {hud.combo >= 2 ? (
+            <p className="font-display text-sm tracking-widest text-brand-orange">{comboLabel(hud.multiplier)}</p>
+          ) : null}
         </div>
         <div className="pointer-events-auto flex flex-col items-end gap-2">
           <p className="font-body text-[10px] tracking-wider text-white/50" aria-hidden>
@@ -54,25 +69,41 @@ export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) 
       </div>
 
       <p className="sr-only" id="runner-help">
-        Three lanes. Swipe left or right to change lanes, swipe up to ollie, swipe down to powerslide under a bar.
-        Arrow keys do the same on a keyboard. The score is only for this run. It is not part of S.K.A.T.E.
+        Three lanes. Swipe left or right to change lanes. Tap for a crooked grind, tap twice for a nose slide, swipe
+        up to kickflip into the grind. Swipe down to powerslide. The score is only for this run.
       </p>
       <p className="sr-only" aria-live="polite" data-testid="runner-announce">
         {hud.announce}
       </p>
 
       {hud.trickName ? (
+        <div className="pointer-events-none absolute left-1/2 top-[28%] flex -translate-x-1/2 flex-col items-center">
+          <p aria-hidden className="font-display text-4xl tracking-[0.16em] text-brand-orange">
+            {hud.trickName}
+          </p>
+          {hud.grade ? (
+            <p aria-hidden className="font-display text-sm tracking-[0.3em] text-white">
+              {GRADE_LABEL[hud.grade]}
+            </p>
+          ) : null}
+          {hud.popup > 0 ? (
+            <p aria-hidden data-testid="runner-popup" className="font-display text-2xl text-white">
+              +{hud.popup}
+            </p>
+          ) : null}
+        </div>
+      ) : hud.armed ? (
         <p
           aria-hidden
-          className="pointer-events-none absolute left-1/2 top-[32%] -translate-x-1/2 font-display text-5xl tracking-[0.2em] text-brand-orange"
+          className="pointer-events-none absolute left-1/2 top-[30%] -translate-x-1/2 font-display text-2xl tracking-[0.2em] text-white/80"
         >
-          {hud.trickName}
+          {ARM_LABELS[hud.armed]}
         </p>
       ) : null}
 
       {hud.showHint ? (
         <p className="pointer-events-none mt-6 text-center font-body text-sm text-white/80">
-          Swipe or arrow keys. Up ollies. Down ducks.
+          Tap a crooked grind. Double-tap nose. Swipe up flips in.
         </p>
       ) : null}
 
@@ -93,7 +124,7 @@ export function RunnerHud({ hud, fpsRef, onPause, onResume, onRestart }: Props) 
             </h2>
             <p className="mt-2 font-body text-sm text-white/70">
               {hud.distance === 0
-                ? "Ollie the cones. Duck the bars. Lock the rail for a boardslide."
+                ? "Pick a lane. Tap the grind. Double-tap for nose. Swipe up to flip in."
                 : "The street is frozen."}
             </p>
             <button

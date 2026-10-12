@@ -10,15 +10,22 @@ function touchEvent(type: string, x: number, y: number): Event {
 }
 
 describe("swipe recognition", () => {
-  it("commits on the way, one action per gesture, and treats up as an ollie", () => {
+  it("commits on the way, one action per gesture, and treats up as a kickflip", () => {
     const gesture = createGestureRecognizer();
     expect(gesture.down({ x: 200, y: 200 }, 400)).toBe(true);
     expect(gesture.ownsGesture()).toBe(true);
     expect(gesture.move({ x: 210, y: 190 })).toBeNull();
-    expect(gesture.move({ x: 200, y: 150 })).toBe("ollie");
+    expect(gesture.move({ x: 200, y: 150 })).toBe("flip");
     expect(gesture.move({ x: 40, y: 40 })).toBeNull();
-    gesture.up();
+    expect(gesture.up()).toBeNull();
     expect(gesture.move({ x: 10, y: 10 })).toBeNull();
+  });
+
+  it("treats a lift that never crossed the threshold as a tap", () => {
+    const gesture = createGestureRecognizer();
+    gesture.down({ x: 200, y: 200 }, 400);
+    expect(gesture.move({ x: 208, y: 194 })).toBeNull();
+    expect(gesture.up()).toBe("tap");
   });
 
   it("maps the other three directions by the dominant axis", () => {
@@ -56,19 +63,23 @@ describe("swipe recognition", () => {
     el.dispatchEvent(touchEvent("touchstart", 200, 200));
     el.dispatchEvent(owned);
     expect(owned.defaultPrevented).toBe(true);
-    expect(actions).toEqual(["ollie"]);
+    expect(actions).toEqual(["flip"]);
 
     const edge = touchEvent("touchmove", 80, 40);
     el.dispatchEvent(touchEvent("touchend", 200, 120));
     el.dispatchEvent(touchEvent("touchstart", 2, 80));
     el.dispatchEvent(edge);
     expect(edge.defaultPrevented).toBe(false);
-    expect(actions).toEqual(["ollie"]);
+    expect(actions).toEqual(["flip"]);
 
     el.dispatchEvent(touchEvent("touchcancel", 2, 80));
+    el.dispatchEvent(touchEvent("touchstart", 180, 180));
+    el.dispatchEvent(touchEvent("touchend", 184, 176));
+    expect(actions).toEqual(["flip", "tap"]);
+
     stop();
     el.dispatchEvent(touchEvent("touchstart", 200, 200));
     el.dispatchEvent(touchEvent("touchmove", 200, 100));
-    expect(actions).toEqual(["ollie"]);
+    expect(actions).toEqual(["flip", "tap"]);
   });
 });

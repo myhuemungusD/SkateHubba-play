@@ -21,7 +21,11 @@ export interface GestureRecognizer {
   move(point: PointerPoint): Action | null;
   /** True after a non-edge touchstart until touchend. */
   ownsGesture(): boolean;
-  up(): void;
+  /**
+   * A lift that never crossed the swipe threshold is a tap (crooked grind,
+   * or a nose slide when it is the second tap). A finished swipe returns null.
+   */
+  up(): Action | null;
 }
 
 export function createGestureRecognizer(
@@ -47,16 +51,18 @@ export function createGestureRecognizer(
       if (Math.abs(dx) < threshold && Math.abs(dy) < threshold) return null;
       fired = true;
       if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? "right" : "left";
-      // Screen Y grows downward, so a finger moving up is an ollie.
-      return dy > 0 ? "duck" : "ollie";
+      // Screen Y grows downward. Up is the kickflip-in. Down is the powerslide.
+      return dy > 0 ? "duck" : "flip";
     },
     ownsGesture() {
       return owned;
     },
     up() {
+      const tapped = owned && !fired && origin !== null;
       origin = null;
       fired = false;
       owned = false;
+      return tapped ? "tap" : null;
     },
   };
 }
@@ -92,7 +98,8 @@ export function bindRunnerTouch(
   };
 
   const up = () => {
-    recognize.up();
+    const action = recognize.up();
+    if (action) onAction(action);
   };
 
   el.addEventListener("touchstart", down, { passive: true });

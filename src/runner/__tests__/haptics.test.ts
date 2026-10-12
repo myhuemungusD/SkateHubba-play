@@ -23,17 +23,17 @@ describe("runner haptics", () => {
   });
 
   it("stays silent in the browser", () => {
-    playRunnerHaptic("ollie");
+    playRunnerHaptic("powerslide");
     playRunnerHaptic("land");
     expect(playHaptic).not.toHaveBeenCalled();
   });
 
-  it("uses a light tap for ollie, landing, and boardslide on a native shell", () => {
+  it("uses a light tap for a powerslide, a lock, and the landing on a native shell", () => {
     isNative.mockReturnValue(true);
-    playRunnerHaptic("ollie");
+    playRunnerHaptic("powerslide");
+    playRunnerHaptic("lock");
     playRunnerHaptic("land");
-    playRunnerHaptic("boardslide");
-    playRunnerHaptic("crash");
+    playRunnerHaptic("bail");
     expect(playHaptic.mock.calls).toEqual([["toast"], ["toast"], ["toast"]]);
   });
 });
