@@ -344,6 +344,9 @@ service cloud.firestore {
         // One profile per UID — prevent a race condition from overwriting an existing profile
         && !exists(/databases/$(database)/documents/users/$(uid))
         && request.resource.data.uid == uid
+        // Absence is a deny, not an evaluation error. A present clock must
+        // be request.time — a client cannot backdate the profile.
+        && 'createdAt' in request.resource.data
         && request.resource.data.createdAt == request.time
         && request.resource.data.username is string
         && request.resource.data.username.size() >= 3  // USERNAME_MIN

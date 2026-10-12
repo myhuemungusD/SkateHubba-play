@@ -1,6 +1,6 @@
 import { getAuth } from "firebase-admin/auth";
 import { FieldValue, type DocumentReference, type Firestore } from "firebase-admin/firestore";
-import { preferAccountCreatedMs } from "./accountAge.js";
+import { preferAccountCreatedMs } from "./moderation/reporters.js";
 
 /**
  * Outcome of an {@link applyGameStats} run. The union exists for observability

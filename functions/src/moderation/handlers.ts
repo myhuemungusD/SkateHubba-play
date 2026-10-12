@@ -1,7 +1,7 @@
 import { getAuth } from "firebase-admin/auth";
 import { FieldValue, type Firestore } from "firebase-admin/firestore";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
-import { preferAccountCreatedMs } from "../accountAge.js";
+import { preferAccountCreatedMs } from "./reporters.js";
 import { VIDEO_API_POLL_MS, VIDEO_API_TIMEOUT_MS } from "./config.js";
 import { clipBadgeDelta, nextClipsPosted } from "./clipBadge.js";
 import { adminPatch, shouldApplyUploadDecision, shouldAutoHideClip, type SaveGuard } from "./patches.js";
