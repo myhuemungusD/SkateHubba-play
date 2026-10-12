@@ -271,6 +271,25 @@ describe("games.turnHistory — growth caps", () => {
       );
     });
 
+    it("denied: a miss cannot append a landed TurnRecord", async () => {
+      const forgedLand = arrayUnion(makeTurnRecord(1, { landed: true, letterTo: null }));
+      await seedMatching([]);
+      await assertFails(
+        updateDoc(gameRef(asP2()), {
+          turnHistory: forgedLand,
+          p2Letters: 1,
+          phase: "setting",
+          currentTurn: P1_UID,
+          turnNumber: 2,
+          currentTrickName: null,
+          currentTrickVideoUrl: null,
+          matchVideoUrl: VALID_MATCH_URL,
+          turnDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
+          updatedAt: serverTimestamp(),
+        }),
+      );
+    });
+
     function seedFrozenClaim(): Promise<void> {
       return seedGame({
         phase: "pendingReview",
@@ -362,12 +381,44 @@ describe("games.turnHistory — growth caps", () => {
       seedMatching(existingHistory, { turnDeadline: new Date(Date.now() - 60_000) });
 
     it("legitimate: forfeit with exactly +1 turnHistory entry succeeds", async () => {
+      // The player on the clock writes this in the app, which is the request
+      // that also has to walk the matching rule before the forfeit branch.
       await seedExpiredMatching([]);
       await assertSucceeds(
-        updateDoc(gameRef(asP1()), {
+        updateDoc(gameRef(asP2()), {
           status: "forfeit",
           winner: P1_UID,
           turnHistory: arrayUnion(makeTurnRecord(1, { letterTo: P2_UID })),
+          updatedAt: serverTimestamp(),
+        }),
+      );
+    });
+
+    it("legitimate: an expired setting turn forfeits for the opponent", async () => {
+      await seedGame({
+        turnDeadline: new Date(Date.now() - 60_000),
+        phase: "setting",
+        currentSetter: P1_UID,
+        currentTurn: P1_UID,
+        turnHistory: [],
+      });
+      await assertSucceeds(
+        updateDoc(gameRef(asP1()), {
+          winner: P2_UID,
+          status: "forfeit",
+          updatedAt: serverTimestamp(),
+          turnHistory: arrayUnion(makeTurnRecord(1, { letterTo: P1_UID })),
+        }),
+      );
+    });
+
+    it("attack: a forfeit cannot append a landed entry", async () => {
+      await seedExpiredMatching([]);
+      await assertFails(
+        updateDoc(gameRef(asP2()), {
+          status: "forfeit",
+          winner: P1_UID,
+          turnHistory: arrayUnion(makeTurnRecord(1, { landed: true, letterTo: null })),
           updatedAt: serverTimestamp(),
         }),
       );
