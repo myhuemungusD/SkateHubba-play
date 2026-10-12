@@ -1,14 +1,18 @@
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { CylinderGeometry, MeshBasicMaterial, type Group, type Mesh } from "three";
+import { mikeWhiteBoardUrl } from "../artSlots";
 import { boardPose } from "../boardPose";
 import type { RunnerController } from "../controller";
-import { flatMaterial, gripMaterial } from "./textures";
+import { useCustomBoardArt } from "./customArt";
+import { deckMaterial, flatMaterial, gripMaterial, truckMaterial } from "./textures";
 
-const wood = flatMaterial("#c4a06a");
+const wood = deckMaterial();
+const ply = flatMaterial("#6e4528");
 const graphic = flatMaterial("#e85d04", "#5a2408");
-const truck = flatMaterial("#d5dbe0", "#2a2e32");
-const hanger = flatMaterial("#b7c0c8", "#1c2024");
+const logo = flatMaterial("#f4f1ea");
+const truck = truckMaterial();
+const hanger = truckMaterial();
 const wheel = new MeshBasicMaterial({ color: "#f4f4f4" });
 const hub = new MeshBasicMaterial({ color: "#141414" });
 const bolt = flatMaterial("#8d949a");
@@ -27,6 +31,7 @@ export function Board({ controller }: { controller: RunnerController }) {
   const root = useRef<Group>(null);
   const shadow = useRef<Mesh>(null);
   const wheels = useRef<(Group | null)[]>([]);
+  useCustomBoardArt(root);
 
   useFrame((_, dt) => {
     const state = controller.getState();
@@ -85,7 +90,10 @@ export function Board({ controller }: { controller: RunnerController }) {
         <circleGeometry args={[0.48, 16]} />
         <meshBasicMaterial color="#140e0a" transparent opacity={0.4} depthWrite={false} />
       </mesh>
-      <group ref={root}>
+      <group ref={root} name="BoardRig" userData={{ mikeWhiteBoard: mikeWhiteBoardUrl() }}>
+        <mesh name="DeckPly" position={[0, 0.236, 0]} material={ply}>
+          <boxGeometry args={[0.6, 0.012, 1.32]} />
+        </mesh>
         <mesh name="Deck" position={[0, 0.26, 0]} material={wood}>
           <boxGeometry args={[0.58, 0.04, 1.28]} />
         </mesh>
@@ -106,6 +114,15 @@ export function Board({ controller }: { controller: RunnerController }) {
         </mesh>
         <mesh name="Graphic" position={[0, 0.306, 0.12]} material={graphic}>
           <boxGeometry args={[0.18, 0.008, 0.28]} />
+        </mesh>
+        <mesh
+          name="LogoDecal"
+          position={[0, 0.31, -0.28]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          visible={false}
+          material={logo}
+        >
+          <planeGeometry args={[0.14, 0.14]} />
         </mesh>
         {truckAt("TruckNose", -0.46)}
         {truckAt("TruckTail", 0.46)}

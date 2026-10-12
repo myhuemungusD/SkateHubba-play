@@ -3,19 +3,19 @@ import { useFrame } from "@react-three/fiber";
 import type { Group } from "three";
 import { SEGMENT_LENGTH } from "../constants";
 import type { RunnerController } from "../controller";
-import { flatMaterial, roadMaterial, sidewalkMaterial } from "./textures";
+import { brickBuildingMaterial, brickMaterial, flatMaterial, roadMaterial, sidewalkMaterial } from "./textures";
 
 const SEGMENTS = [0, 1, 2] as const;
 const curb = flatMaterial("#5e5954");
-const building = flatMaterial("#3c434c");
-const buildingAlt = flatMaterial("#343a42");
+const wall = brickMaterial();
+const building = brickBuildingMaterial();
 const windowMat = flatMaterial("#1b242c", "#0c1218");
 const dash = flatMaterial("#d8d2c4");
 
 /**
- * Three street slabs repositioned as the run moves. Meshes and textures are
- * created once. The ground is concrete, the edges are a curb and sidewalk,
- * and the blocks behind them are a low street wall — no per-meter allocation.
+ * Three street slabs repositioned as the run moves. Meshes are created once.
+ * The road is asphalt, the edges are concrete, and a brick wall sits behind
+ * the sidewalk. No per-meter allocation.
  */
 export function Street({ controller }: { controller: RunnerController }) {
   const group = useRef<Group>(null);
@@ -57,13 +57,19 @@ export function Street({ controller }: { controller: RunnerController }) {
               <boxGeometry args={[0.08, 0.02, 1.4]} />
             </mesh>
           ))}
-          <mesh position={[-4.3, 1.15, -6]} material={index === 1 ? buildingAlt : building}>
+          <mesh position={[-5.15, 1.15, 0]} material={wall}>
+            <boxGeometry args={[0.35, 2.3, SEGMENT_LENGTH]} />
+          </mesh>
+          <mesh position={[5.15, 1.15, 0]} material={wall}>
+            <boxGeometry args={[0.35, 2.3, SEGMENT_LENGTH]} />
+          </mesh>
+          <mesh position={[-4.3, 1.15, -6]} material={building}>
             <boxGeometry args={[1.1, 2.3, 8]} />
           </mesh>
           <mesh position={[-4.3, 1.35, -6]} material={windowMat}>
             <boxGeometry args={[0.08, 0.7, 5]} />
           </mesh>
-          <mesh position={[4.35, 1.45, 8]} material={index === 2 ? building : buildingAlt}>
+          <mesh position={[4.35, 1.45, 8]} material={building}>
             <boxGeometry args={[1.15, 2.9, 7]} />
           </mesh>
           <mesh position={[4.35, 1.7, 8]} material={windowMat}>

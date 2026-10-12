@@ -6,9 +6,9 @@ An endless three-lane street. You are a skateboard. Rails and waxed ledges are t
 
 The switch is `VITE_FEATURE_RUNNER_ENABLED`. It works like Roll Dice: only the literal string `true` enables it. Unset, empty, `TRUE`, and `false` all leave the game hidden.
 
-| Switch | Where | Default | What it does |
-| --- | --- | --- | --- |
-| `VITE_FEATURE_RUNNER_ENABLED` | Vercel env, inlined at build time | unset | Shows `/play/runner` and the lobby card. Anything except the literal `true` redirects that URL the way other frozen routes redirect. |
+| Switch                        | Where                             | Default | What it does                                                                                                                         |
+| ----------------------------- | --------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `VITE_FEATURE_RUNNER_ENABLED` | Vercel env, inlined at build time | unset   | Shows `/play/runner` and the lobby card. Anything except the literal `true` redirects that URL the way other frozen routes redirect. |
 
 `VITE_*` values are baked in at build time. Changing the variable does nothing until that deployment is rebuilt.
 
@@ -28,14 +28,14 @@ Touch counts on the way, not when you lift, except a tap. A finger that never mo
 
 The outer 32px on each side of the screen is left for iOS swipe-back and Android gesture navigation. Those strips use `touch-action: pan-y` and sit outside the canvas (`touch-action: none` is only on the canvas). The screen uses `overscroll-behavior: none`.
 
-| | Phone | Keyboard |
-| --- | --- | --- |
-| Change lane | Swipe left or right | Arrow keys, A, D |
-| Crooked grind | Tap once as you reach the lip | Arrow up, W, F |
-| Nose slide | Tap twice, quickly | The same key twice |
-| Kickflip into crooked | Swipe up (extra input on the way in) | Space, K |
-| Powerslide | Swipe down | Arrow down, S |
-| Pause | Pause button | Escape, P |
+|                       | Phone                                | Keyboard           |
+| --------------------- | ------------------------------------ | ------------------ |
+| Change lane           | Swipe left or right                  | Arrow keys, A, D   |
+| Crooked grind         | Tap once as you reach the lip        | Arrow up, W, F     |
+| Nose slide            | Tap twice, quickly                   | The same key twice |
+| Kickflip into crooked | Swipe up (extra input on the way in) | Space, K           |
+| Powerslide            | Swipe down                           | Arrow down, S      |
+| Pause                 | Pause button                         | Escape, P          |
 
 A powerslide cancels a trick you had armed and slides the board. It does not lock a grind. Use it to let a feature go by, or just to slide.
 
@@ -45,11 +45,11 @@ Lane choice commits on the swipe. The board slides over visually after that. You
 
 Arm the trick as the lip gets close. The grade is how far ahead of the lip you committed:
 
-| Grade | When | Crooked | Nose slide | Kickflip crooked |
-| --- | --- | --- | --- | --- |
-| Perfect | A short beat before the lip | 400 | 650 | 1000 |
-| Good | A little early or a little tighter | 250 | 400 | 600 |
-| Sloppy | Very early, or after the lip but still on the feature | 80 | 120 | 180 |
+| Grade   | When                                                  | Crooked | Nose slide | Kickflip crooked |
+| ------- | ----------------------------------------------------- | ------- | ---------- | ---------------- |
+| Perfect | A short beat before the lip                           | 400     | 650        | 1000             |
+| Good    | A little early or a little tighter                    | 250     | 400        | 600              |
+| Sloppy  | Very early, or after the lip but still on the feature | 80      | 120        | 180              |
 
 The names on screen are `CROOKED GRIND`, `NOSE SLIDE`, and `KICKFLIP CROOKED`, with the grade and a `+points` popup.
 
@@ -65,7 +65,7 @@ The street starts at 6 units per second (about 30% slower than round 2, which st
 
 ## Phone performance
 
-The canvas caps `devicePixelRatio` at 1.5, turns MSAA off, and does not render shadow maps. The board has a blob shadow, and the lights are a hemisphere plus two directionals. Concrete, metal, and griptape are small generated textures, reused. Street slabs, rails, and ledges are created once and recycled. Sparks and speed lines are a fixed pool. The sim pauses when the document is hidden, and the canvas stops drawing while paused or after a bail. An FPS number sits in the corner for device playtests.
+The canvas caps `devicePixelRatio` at 1.5, turns MSAA off, and does not render shadow maps. The board has a blob shadow. Lights are a hemisphere plus two directionals, with a 1k daytime HDRI on the environment for reflections once it loads. Road, sidewalk, rails, ledges, and the brick walls use compressed CC0 PBR maps (512 WebP, mipmaps). Griptape and the deck wood grain are still generated. Street slabs, rails, and ledges are created once and recycled. Sparks and speed lines are a fixed pool. The sim pauses when the document is hidden, and the canvas stops drawing while paused or after a bail. An FPS number sits in the corner for device playtests. The texture list, licenses, and the empty slots for a deck graphic, a logo, and the Mike White model are in [RUNNER_ASSETS.md](RUNNER_ASSETS.md).
 
 three.js and React Three Fiber load only when `/play/runner` is opened (`React.lazy` in `App.tsx`). `npm run build` fails if any of that code shows up in the initial JavaScript. The procedural board does not import drei, so the runner chunk does not pull the drei barrel. `@react-three/drei` stays in the project for a later model; import it from a core subpath (`core/Gltf`) if a file is added, not from the package root.
 
@@ -73,13 +73,15 @@ three.js and React Three Fiber load only when `/play/runner` is opened (`React.l
 
 There is no skater in this build. The player is the deck, griptape, trucks, and wheels drawn in `src/runner/view/Board.tsx`. Poses live in `src/runner/boardPose.ts` and are applied to the root group (nose toward **-Z**, down the street). `spin` is a 0..1 kickflip turn.
 
-A later deck model can parent under that group and hide the procedural meshes. Node names already on the procedural board:
+A later deck model can parent under that group and hide the procedural meshes. The switch for that file, and for a deck graphic and a logo decal, is `src/runner/artSlots.ts`. Those three are null until the files exist. Node names already on the procedural board:
 
-`Deck`, `Griptape`, `Graphic`, `TruckNose`, `TruckTail`, `WheelNoseLeft`, `WheelNoseRight`, `WheelTailLeft`, `WheelTailRight`.
+`Deck`, `DeckPly`, `Griptape`, `Graphic`, `LogoDecal`, `TruckNose`, `TruckTail`, `WheelNoseLeft`, `WheelNoseRight`, `WheelTailLeft`, `WheelTailRight`.
+
+`LogoDecal` stays hidden until `CUSTOM_LOGO_DECAL` is a URL. `Graphic` is the orange placeholder until `CUSTOM_BOARD_GRAPHIC` is set.
 
 The runner code moves the group. Do not bake root motion into a file. Tricks are these poses, not animation clips: ride, powerslide (yaw), crooked (yaw and roll onto one truck), nose slide (nose down), kickflip (a full roll on the way in, then the crooked pose), bail.
 
-Placeholder geometry is original. It is not a third-party pack.
+Placeholder geometry is original. It is not a third-party pack. The PBR surfaces under it are CC0 and listed in [RUNNER_ASSETS.md](RUNNER_ASSETS.md).
 
 ## What this does not do
 

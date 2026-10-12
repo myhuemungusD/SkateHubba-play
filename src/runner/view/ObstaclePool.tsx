@@ -4,14 +4,14 @@ import type { Group, Object3D } from "three";
 import { BOX_LENGTH, LANE_X, RAIL_LENGTH } from "../constants";
 import type { RunnerController } from "../controller";
 import type { Obstacle, ObstacleKind } from "../types";
-import { flatMaterial, waxMaterial } from "./textures";
+import { ledgeMaterial, metalMaterial, postMaterial, waxMaterial } from "./textures";
 
 const POOL = 16;
 const KINDS: readonly ObstacleKind[] = ["rail", "box"];
-const post = flatMaterial("#6a757c", "#1c2428");
-const railMetal = flatMaterial("#d7e0e6", "#2a343a");
-const ledge = flatMaterial("#8a8176");
-const coping = flatMaterial("#b7b1a6", "#2a2620");
+const post = postMaterial();
+const railMetal = metalMaterial();
+const ledge = ledgeMaterial();
+const coping = metalMaterial();
 
 function showKind(group: Object3D, kind: ObstacleKind): void {
   for (const name of KINDS) {

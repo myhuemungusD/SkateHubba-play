@@ -1,10 +1,68 @@
-import { CanvasTexture, MeshLambertMaterial, RepeatWrapping, SRGBColorSpace, type Texture } from "three";
+import {
+  CanvasTexture,
+  LinearFilter,
+  LinearMipmapLinearFilter,
+  MeshStandardMaterial,
+  NoColorSpace,
+  PMREMGenerator,
+  RepeatWrapping,
+  SRGBColorSpace,
+  TextureLoader,
+  type ColorSpace,
+  type Scene,
+  type Texture,
+  type WebGLRenderer,
+} from "three";
+import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
+import asphaltColorUrl from "../assets/asphalt-color.webp";
+import asphaltNormalUrl from "../assets/asphalt-normal.webp";
+import asphaltRoughnessUrl from "../assets/asphalt-roughness.webp";
+import brickColorUrl from "../assets/brick-color.webp";
+import brickNormalUrl from "../assets/brick-normal.webp";
+import brickRoughnessUrl from "../assets/brick-roughness.webp";
+import concreteColorUrl from "../assets/concrete-color.webp";
+import concreteNormalUrl from "../assets/concrete-normal.webp";
+import concreteRoughnessUrl from "../assets/concrete-roughness.webp";
+import hdriUrl from "../assets/kloofendal_48d_partly_cloudy_puresky_1k.hdr?url";
+import metalColorUrl from "../assets/metal-color.webp";
+import metalMetalnessUrl from "../assets/metal-metalness.webp";
+import metalNormalUrl from "../assets/metal-normal.webp";
+import metalRoughnessUrl from "../assets/metal-roughness.webp";
 
-function paintTexture(
-  width: number,
-  height: number,
-  paint: (ctx: CanvasRenderingContext2D) => void,
-): Texture | null {
+/**
+ * CC0 PBR maps for the runner only. Sources and the empty board slots are
+ * listed in docs/RUNNER_ASSETS.md. Maps load after the lazy route mounts;
+ * importing this module does not fetch them.
+ */
+
+interface MapSet {
+  color: Texture;
+  normal: Texture;
+  roughness: Texture;
+  metalness?: Texture;
+}
+
+const repeats = new Map<string, Texture>();
+
+let asphalt: MapSet | null = null;
+let concrete: MapSet | null = null;
+let metalMaps: MapSet | null = null;
+let brickMaps: MapSet | null = null;
+let mapsPromise: Promise<void> | null = null;
+
+let road: MeshStandardMaterial | null = null;
+let sidewalk: MeshStandardMaterial | null = null;
+let ledge: MeshStandardMaterial | null = null;
+let wax: MeshStandardMaterial | null = null;
+let metal: MeshStandardMaterial | null = null;
+let post: MeshStandardMaterial | null = null;
+let brick: MeshStandardMaterial | null = null;
+let brickBuilding: MeshStandardMaterial | null = null;
+let deck: MeshStandardMaterial | null = null;
+let grip: MeshStandardMaterial | null = null;
+let truck: MeshStandardMaterial | null = null;
+
+function paintTexture(width: number, height: number, paint: (ctx: CanvasRenderingContext2D) => void): Texture | null {
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -19,107 +77,265 @@ function paintTexture(
   return texture;
 }
 
-function speck(ctx: CanvasRenderingContext2D, count: number, color: string, size: number): void {
-  ctx.fillStyle = color;
-  for (let i = 0; i < count; i += 1) {
-    const x = Math.random() * ctx.canvas.width;
-    const y = Math.random() * ctx.canvas.height;
-    ctx.fillRect(x, y, size, size);
+function woodGrain(): Texture | null {
+  return paintTexture(64, 128, (ctx) => {
+    ctx.fillStyle = "#c4a06a";
+    ctx.fillRect(0, 0, 64, 128);
+    ctx.strokeStyle = "rgba(92, 58, 28, 0.45)";
+    ctx.lineWidth = 1;
+    for (let x = 4; x < 64; x += 7) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.bezierCurveTo(x + 3, 36, x - 2, 80, x + 1, 128);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(255, 236, 210, 0.18)";
+    ctx.fillRect(0, 0, 64, 3);
+  });
+}
+
+function gripGrain(): Texture | null {
+  return paintTexture(64, 64, (ctx) => {
+    ctx.fillStyle = "#141414";
+    ctx.fillRect(0, 0, 64, 64);
+    ctx.fillStyle = "rgba(70,70,70,0.9)";
+    for (let i = 0; i < 280; i += 1) {
+      ctx.fillRect((i * 17) % 64, (i * 29) % 64, 1, 1);
+    }
+  });
+}
+
+function standard(color: string, roughness: number, metalness: number, envMapIntensity: number): MeshStandardMaterial {
+  return new MeshStandardMaterial({
+    color,
+    roughness,
+    metalness,
+    envMapIntensity,
+  });
+}
+
+function prepare(texture: Texture, colorSpace: ColorSpace): Texture {
+  texture.colorSpace = colorSpace;
+  texture.wrapS = RepeatWrapping;
+  texture.wrapT = RepeatWrapping;
+  texture.anisotropy = 4;
+  texture.generateMipmaps = true;
+  texture.minFilter = LinearMipmapLinearFilter;
+  texture.magFilter = LinearFilter;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function tiled(source: Texture, repeat: readonly [number, number]): Texture {
+  const key = `${source.uuid}:${repeat[0]}:${repeat[1]}`;
+  const cached = repeats.get(key);
+  if (cached) return cached;
+  const copy = source.clone();
+  copy.repeat.set(repeat[0], repeat[1]);
+  copy.needsUpdate = true;
+  repeats.set(key, copy);
+  return copy;
+}
+
+function assign(
+  material: MeshStandardMaterial,
+  maps: MapSet,
+  repeat: readonly [number, number],
+  rough: boolean,
+  tint: string | null,
+): void {
+  material.map = tiled(maps.color, repeat);
+  material.normalMap = tiled(maps.normal, repeat);
+  if (rough) {
+    material.roughnessMap = tiled(maps.roughness, repeat);
+    material.roughness = 1;
+  }
+  if (maps.metalness) {
+    material.metalnessMap = tiled(maps.metalness, repeat);
+    material.metalness = 1;
+  }
+  if (tint) material.color.set(tint);
+  material.needsUpdate = true;
+}
+
+function applyMaps(): void {
+  if (asphalt) assign(roadMaterial(), asphalt, [3, 22], true, "#ffffff");
+  if (concrete) {
+    assign(sidewalkMaterial(), concrete, [2, 20], true, "#ffffff");
+    assign(ledgeMaterial(), concrete, [1, 2], true, "#ffffff");
+    assign(waxMaterial(), concrete, [1, 2], false, null);
+  }
+  if (metalMaps) {
+    assign(metalMaterial(), metalMaps, [2, 6], true, "#ffffff");
+    assign(postMaterial(), metalMaps, [1, 1], true, "#c5cbcf");
+    assign(truckMaterial(), metalMaps, [1, 1], true, "#ffffff");
+  }
+  if (brickMaps) {
+    // 40m backdrop, about 2m per tile. Building faces are ~8m.
+    assign(brickMaterial(), brickMaps, [20, 1.1], true, "#ffffff");
+    assign(brickBuildingMaterial(), brickMaps, [4, 1.15], true, "#e4dfda");
   }
 }
 
-let concreteTex: Texture | null | undefined;
-let metalTex: Texture | null | undefined;
-let gripTex: Texture | null | undefined;
+async function loadSet(
+  loader: TextureLoader,
+  colorUrl: string,
+  normalUrl: string,
+  roughnessUrl: string,
+  metalnessUrl?: string,
+): Promise<MapSet> {
+  const color = prepare(await loader.loadAsync(colorUrl), SRGBColorSpace);
+  const normal = prepare(await loader.loadAsync(normalUrl), NoColorSpace);
+  const roughness = prepare(await loader.loadAsync(roughnessUrl), NoColorSpace);
+  const metalness = metalnessUrl ? prepare(await loader.loadAsync(metalnessUrl), NoColorSpace) : undefined;
+  return { color, normal, roughness, metalness };
+}
 
-function concreteTexture(): Texture | null {
-  if (concreteTex !== undefined) return concreteTex;
-  concreteTex = paintTexture(256, 256, (ctx) => {
-    ctx.fillStyle = "#7c776f";
-    ctx.fillRect(0, 0, 256, 256);
-    speck(ctx, 900, "rgba(40,36,32,0.35)", 2);
-    speck(ctx, 400, "rgba(230,224,214,0.18)", 1);
-    ctx.strokeStyle = "rgba(50,46,42,0.45)";
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 7; i += 1) {
-      ctx.beginPath();
-      ctx.moveTo(Math.random() * 256, Math.random() * 256);
-      ctx.lineTo(Math.random() * 256, Math.random() * 256);
-      ctx.stroke();
+function loadMaps(): Promise<void> {
+  const loader = new TextureLoader();
+  return Promise.all([
+    loadSet(loader, asphaltColorUrl, asphaltNormalUrl, asphaltRoughnessUrl),
+    loadSet(loader, concreteColorUrl, concreteNormalUrl, concreteRoughnessUrl),
+    loadSet(loader, metalColorUrl, metalNormalUrl, metalRoughnessUrl, metalMetalnessUrl),
+    loadSet(loader, brickColorUrl, brickNormalUrl, brickRoughnessUrl),
+  ]).then(([nextAsphalt, nextConcrete, nextMetal, nextBrick]) => {
+    asphalt = nextAsphalt;
+    concrete = nextConcrete;
+    metalMaps = nextMetal;
+    brickMaps = nextBrick;
+    applyMaps();
+  });
+}
+
+export function ensureRunnerMaps(): Promise<void> {
+  mapsPromise ??= loadMaps().catch((error: unknown) => {
+    mapsPromise = null;
+    throw error;
+  });
+  return mapsPromise;
+}
+
+/**
+ * Image maps stay cached for the session. The HDRI is decoded per visit
+ * and thrown away on leave, and it lights reflections only — the background
+ * stays the street fog color.
+ */
+export function mountRunnerEnvironment(gl: WebGLRenderer, scene: Scene): () => void {
+  let disposed = false;
+  let env: Texture | null = null;
+  let hdr: Texture | null = null;
+
+  void (async () => {
+    const hdrPromise = new RGBELoader().loadAsync(hdriUrl);
+    try {
+      await Promise.all([hdrPromise, ensureRunnerMaps()]);
+      const loaded = await hdrPromise;
+      if (disposed) {
+        loaded.dispose();
+        return;
+      }
+      const pmrem = new PMREMGenerator(gl);
+      const baked = pmrem.fromEquirectangular(loaded);
+      pmrem.dispose();
+      if (disposed) {
+        baked.texture.dispose();
+        loaded.dispose();
+        return;
+      }
+      hdr = loaded;
+      env = baked.texture;
+      scene.environment = env;
+    } catch (error: unknown) {
+      console.warn("Runner environment failed to load", error);
+      void hdrPromise.then((texture) => texture.dispose()).catch(() => undefined);
     }
-  });
-  if (concreteTex) concreteTex.repeat.set(2, 6);
-  return concreteTex;
+  })();
+
+  return () => {
+    disposed = true;
+    if (scene.environment === env) scene.environment = null;
+    env?.dispose();
+    hdr?.dispose();
+  };
 }
 
-function metalTexture(): Texture | null {
-  if (metalTex !== undefined) return metalTex;
-  metalTex = paintTexture(128, 64, (ctx) => {
-    ctx.fillStyle = "#8b98a1";
-    ctx.fillRect(0, 0, 128, 64);
-    ctx.fillStyle = "rgba(255,255,255,0.18)";
-    for (let y = 0; y < 64; y += 3) ctx.fillRect(0, y, 128, 1);
-    ctx.fillStyle = "rgba(90,62,40,0.55)";
-    for (let i = 0; i < 8; i += 1) {
-      ctx.fillRect(Math.random() * 120, Math.random() * 56, 10 + Math.random() * 18, 2);
-    }
-    ctx.fillStyle = "rgba(20,24,28,0.35)";
-    ctx.fillRect(0, 0, 128, 3);
-  });
-  if (metalTex) metalTex.repeat.set(1, 3);
-  return metalTex;
-}
-
-function gripTexture(): Texture | null {
-  if (gripTex !== undefined) return gripTex;
-  gripTex = paintTexture(128, 128, (ctx) => {
-    ctx.fillStyle = "#141414";
-    ctx.fillRect(0, 0, 128, 128);
-    speck(ctx, 700, "rgba(70,70,70,0.9)", 1);
-    speck(ctx, 200, "rgba(20,20,20,0.8)", 2);
-  });
-  return gripTex;
-}
-
-function lambert(color: string, map: Texture | null, emissive?: string): MeshLambertMaterial {
-  return new MeshLambertMaterial({
-    color,
-    map: map ?? undefined,
-    emissive: emissive ?? "#000000",
-  });
-}
-
-let road: MeshLambertMaterial | null = null;
-let sidewalk: MeshLambertMaterial | null = null;
-let metal: MeshLambertMaterial | null = null;
-let grip: MeshLambertMaterial | null = null;
-let wax: MeshLambertMaterial | null = null;
-
-export function roadMaterial(): MeshLambertMaterial {
-  road ??= lambert("#ffffff", concreteTexture());
+export function roadMaterial(): MeshStandardMaterial {
+  road ??= standard("#3a3a38", 0.92, 0, 0.22);
   return road;
 }
 
-export function sidewalkMaterial(): MeshLambertMaterial {
-  sidewalk ??= lambert("#c9c2b6", concreteTexture());
+export function sidewalkMaterial(): MeshStandardMaterial {
+  sidewalk ??= standard("#b8b8b8", 0.9, 0, 0.28);
   return sidewalk;
 }
 
-export function metalMaterial(): MeshLambertMaterial {
-  metal ??= lambert("#ffffff", metalTexture(), "#1a2228");
-  return metal;
+export function ledgeMaterial(): MeshStandardMaterial {
+  ledge ??= standard("#b8b8b8", 0.9, 0, 0.3);
+  return ledge;
 }
 
-export function gripMaterial(): MeshLambertMaterial {
-  grip ??= lambert("#ffffff", gripTexture());
-  return grip;
-}
-
-export function waxMaterial(): MeshLambertMaterial {
-  wax ??= new MeshLambertMaterial({ color: "#e6d3a1", emissive: "#3a2e14" });
+export function waxMaterial(): MeshStandardMaterial {
+  wax ??= standard("#f0e2c0", 0.32, 0.08, 0.62);
   return wax;
 }
 
-export function flatMaterial(color: string, emissive?: string): MeshLambertMaterial {
-  return new MeshLambertMaterial({ color, emissive: emissive ?? "#000000" });
+export function metalMaterial(): MeshStandardMaterial {
+  metal ??= standard("#b0b3b4", 0.45, 1, 0.9);
+  return metal;
+}
+
+export function postMaterial(): MeshStandardMaterial {
+  if (!post) {
+    post = metalMaterial().clone();
+    post.color.set("#8e9599");
+    post.envMapIntensity = 0.65;
+  }
+  return post;
+}
+
+export function brickMaterial(): MeshStandardMaterial {
+  brick ??= standard("#dcd7d2", 0.92, 0, 0.18);
+  return brick;
+}
+
+export function brickBuildingMaterial(): MeshStandardMaterial {
+  if (!brickBuilding) {
+    brickBuilding = brickMaterial().clone();
+    brickBuilding.color.set("#cfc8c2");
+  }
+  return brickBuilding;
+}
+
+export function deckMaterial(): MeshStandardMaterial {
+  if (!deck) {
+    deck = standard("#c4a06a", 0.72, 0, 0.12);
+    deck.map = woodGrain() ?? null;
+  }
+  return deck;
+}
+
+export function gripMaterial(): MeshStandardMaterial {
+  if (!grip) {
+    grip = standard("#141414", 0.96, 0, 0.05);
+    grip.map = gripGrain() ?? null;
+  }
+  return grip;
+}
+
+export function truckMaterial(): MeshStandardMaterial {
+  if (!truck) {
+    truck = metalMaterial().clone();
+    truck.envMapIntensity = 0.85;
+  }
+  return truck;
+}
+
+export function flatMaterial(color: string, emissive?: string): MeshStandardMaterial {
+  return new MeshStandardMaterial({
+    color,
+    emissive: emissive ?? "#000000",
+    roughness: 0.86,
+    metalness: 0,
+    envMapIntensity: 0.12,
+  });
 }

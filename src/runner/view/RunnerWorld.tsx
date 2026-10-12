@@ -1,12 +1,13 @@
-import { Component, memo, useRef, type ReactNode, type RefObject } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { Color } from "three";
+import { Component, memo, useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { ACESFilmicToneMapping, Color } from "three";
 import type { RunnerController } from "../controller";
 import { noteFps, type FpsBucket } from "../webgl";
 import { Board } from "./Board";
 import { Effects } from "./Effects";
 import { ObstaclePool } from "./ObstaclePool";
 import { Street } from "./Street";
+import { mountRunnerEnvironment } from "./textures";
 
 interface WorldProps {
   controller: RunnerController;
@@ -64,10 +65,18 @@ function CameraRig({
   return null;
 }
 
+function RunnerEnvironment() {
+  const gl = useThree((state) => state.gl);
+  const scene = useThree((state) => state.scene);
+  useEffect(() => mountRunnerEnvironment(gl, scene), [gl, scene]);
+  return null;
+}
+
 /**
  * The 3D view. three.js stays in this lazy chunk. Pixel ratio is capped,
  * MSAA is off, and lights do not cast shadow maps — the board carries a
  * blob shadow instead, which is what holds 60fps on a mid-range phone.
+ * The HDRI is environment lighting only. It arrives with this route.
  */
 function RunnerCanvas({ controller, reducedMotion, active, fpsRef }: WorldProps) {
   return (
@@ -79,14 +88,17 @@ function RunnerCanvas({ controller, reducedMotion, active, fpsRef }: WorldProps)
       camera={{ position: [0.15, 4.7, 5.6], fov: 55, near: 0.05, far: 120 }}
       onCreated={({ gl, scene }) => {
         gl.shadowMap.enabled = false;
+        gl.toneMapping = ACESFilmicToneMapping;
+        gl.toneMappingExposure = 1;
         scene.background = new Color("#241f1b");
       }}
     >
+      <RunnerEnvironment />
       <fog attach="fog" args={["#241f1b", 36, 100]} />
-      <hemisphereLight args={["#f0e2c8", "#3a3228", 0.72]} />
-      <ambientLight intensity={0.22} />
-      <directionalLight position={[5, 8, 3]} intensity={1.25} color="#fff1d6" castShadow={false} />
-      <directionalLight position={[-4, 3, -6]} intensity={0.28} color="#7f93a8" castShadow={false} />
+      <hemisphereLight args={["#f0e2c8", "#3a3228", 0.85]} />
+      <ambientLight intensity={0.28} />
+      <directionalLight position={[5, 8, 3]} intensity={1.7} color="#fff1d6" castShadow={false} />
+      <directionalLight position={[-4, 3, -6]} intensity={0.35} color="#7f93a8" castShadow={false} />
       <CameraRig controller={controller} reducedMotion={reducedMotion} fpsRef={fpsRef} />
       <Street controller={controller} />
       <ObstaclePool controller={controller} />
