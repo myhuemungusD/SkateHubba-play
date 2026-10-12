@@ -39,7 +39,7 @@ import {
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { doc, setDoc, updateDoc, deleteDoc, setLogLevel } from "firebase/firestore";
+import { doc, setDoc, updateDoc, deleteDoc, serverTimestamp, setLogLevel } from "firebase/firestore";
 import { seedUsernameReservation } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-users-selfinflate";
@@ -244,7 +244,13 @@ describe("users/{uid} create — Tier-1 counters must start at zero", () => {
   const TIER_1_COUNTERS = ["gamesPlayed", "currentWinStreak", "bestWinStreak"] as const;
 
   function newProfile(extra: Record<string, unknown> = {}): Record<string, unknown> {
-    return { uid: ALICE_UID, username: "alice", stance: "Regular", ...extra };
+    return {
+      uid: ALICE_UID,
+      username: "alice",
+      stance: "Regular",
+      createdAt: serverTimestamp(),
+      ...extra,
+    };
   }
 
   it.each(TIER_1_COUNTERS)("denied: cannot create a profile with a non-zero %s", async (field) => {
@@ -317,6 +323,7 @@ async function createProfileWithCounter(field: string, value: number): Promise<v
     uid: ALICE_UID,
     username: "alice",
     stance: "Regular",
+    createdAt: serverTimestamp(),
     [field]: value,
   });
 }
@@ -515,6 +522,7 @@ describe("users/{uid} recentResults — client writes are DENIED", () => {
         uid: ALICE_UID,
         username: "alice",
         stance: "Regular",
+        createdAt: serverTimestamp(),
         recentResults: ["W", "W", "W"],
       }),
     );
@@ -527,6 +535,7 @@ describe("users/{uid} recentResults — client writes are DENIED", () => {
         uid: ALICE_UID,
         username: "alice",
         stance: "Regular",
+        createdAt: serverTimestamp(),
         recentResults: [],
       }),
     );
@@ -586,6 +595,7 @@ describe("users/{uid} XP counters — client writes are DENIED", () => {
     await assertSucceeds(
       setDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
         ...ALICE_PROFILE,
+        createdAt: serverTimestamp(),
         level: 1,
         xp: 0,
       }),

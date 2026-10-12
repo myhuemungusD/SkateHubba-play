@@ -240,7 +240,9 @@ describe("ban survives profile deletion (regression guard)", () => {
     // so the profile legitimately comes back "clean" — which is exactly
     // why the profile must not be the enforcement point.
     await seedUsernameReservation(getEnv(), TARGET, "target");
-    await assertSucceeds(setDoc(userRef(ctx, TARGET), { uid: TARGET, username: "target" }));
+    await assertSucceeds(
+      setDoc(userRef(ctx, TARGET), { uid: TARGET, username: "target", createdAt: serverTimestamp() }),
+    );
     await assertFails(publishClip(ctx, TARGET));
     await assertFails(comment(ctx, TARGET, "c2"));
     await assertFails(vote(ctx, TARGET));
@@ -312,9 +314,18 @@ describe("users.banned — admin-only display mirror", () => {
 
   it("attack: the mirror cannot be seeded at profile-create time", async () => {
     const ctx = userCtx("u-fresh");
-    await assertFails(setDoc(userRef(ctx, "u-fresh"), { uid: "u-fresh", username: "fresh", banned: false }));
+    await assertFails(
+      setDoc(userRef(ctx, "u-fresh"), {
+        uid: "u-fresh",
+        username: "fresh",
+        createdAt: serverTimestamp(),
+        banned: false,
+      }),
+    );
     await seedUsernameReservation(getEnv(), "u-fresh", "fresh");
-    await assertSucceeds(setDoc(userRef(ctx, "u-fresh"), { uid: "u-fresh", username: "fresh" }));
+    await assertSucceeds(
+      setDoc(userRef(ctx, "u-fresh"), { uid: "u-fresh", username: "fresh", createdAt: serverTimestamp() }),
+    );
   });
 
   it("a user with only the MIRROR set (no tombstone) is NOT actually gated", async () => {

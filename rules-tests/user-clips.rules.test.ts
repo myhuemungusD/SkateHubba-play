@@ -339,12 +339,19 @@ describe("users — lastClipCreatedAt anchor is not client-forgeable", () => {
       setDoc(doc(ctx.firestore(), "users", "u-new"), {
         uid: "u-new",
         username: "newbie",
+        createdAt: serverTimestamp(),
         lastClipCreatedAt: new Date(0),
       }),
     );
     // Positive control: the same create without the anchor is fine.
     await seedUsernameReservation(getEnv(), "u-new", "newbie");
-    await assertSucceeds(setDoc(doc(ctx.firestore(), "users", "u-new"), { uid: "u-new", username: "newbie" }));
+    await assertSucceeds(
+      setDoc(doc(ctx.firestore(), "users", "u-new"), {
+        uid: "u-new",
+        username: "newbie",
+        createdAt: serverTimestamp(),
+      }),
+    );
   });
 });
 
