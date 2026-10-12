@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createRunnerController, type RunnerController } from "../../runner/controller";
 import { bindRunnerTouch, createGestureRecognizer } from "../../runner/gestures";
-import { FLICK_SENSITIVITY } from "../../runner/tune";
+import { FEEL_PRESETS, FLICK_SENSITIVITY, GRIND_ASSIST_DEFAULT, type FeelPresetId } from "../../runner/tune";
 import { actionForKey, isTypingTarget } from "../../runner/keyboard";
 import { mixRunnerAudio, preloadRunnerSfx } from "../../runner/sfx";
 import { canUseWebGL, frameDelta, noteFps, type FpsBucket } from "../../runner/webgl";
@@ -31,6 +31,8 @@ export function RunnerScreen({ controller: injected }: Props = {}) {
   const fpsRef = useRef<HTMLSpanElement>(null);
   const gesture = useRef(createGestureRecognizer());
   const [sensitivity, setSensitivity] = useState(FLICK_SENSITIVITY);
+  const [assist, setAssist] = useState(GRIND_ASSIST_DEFAULT);
+  const [feel, setFeel] = useState<FeelPresetId>("street");
 
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -119,6 +121,8 @@ export function RunnerScreen({ controller: injected }: Props = {}) {
           airborne: heard.airborne,
           duck: heard.duck,
           status: heard.status,
+          grindTime: heard.grindTime,
+          balance: heard.balance,
         },
         dt,
       );
@@ -164,6 +168,20 @@ export function RunnerScreen({ controller: injected }: Props = {}) {
         onSensitivity={(value) => {
           setSensitivity(value);
           gesture.current.setSensitivity(value);
+        }}
+        assist={assist}
+        feelLabel={FEEL_PRESETS.find((preset) => preset.id === feel)?.label ?? "Street"}
+        onAssist={(value) => {
+          setAssist(value);
+          controller.setGrindAssist(value);
+        }}
+        onCycleFeel={() => {
+          const order: FeelPresetId[] = ["street", "heavy", "classic"];
+          const next = order[(order.indexOf(feel) + 1) % order.length] ?? "street";
+          const preset = FEEL_PRESETS.find((item) => item.id === next);
+          setFeel(next);
+          if (preset) setAssist(preset.grindAssist);
+          controller.setFeelPreset(next);
         }}
       />
     </div>

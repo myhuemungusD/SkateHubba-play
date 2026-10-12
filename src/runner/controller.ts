@@ -1,5 +1,14 @@
 import { boardPose } from "./boardPose";
-import { FIXED_DT, GRIND_PULSE, INPUT_BUFFER, LANE_X, multiplierFor } from "./constants";
+import {
+  FIXED_DT,
+  GRIND_ASSIST_DEFAULT,
+  GRIND_PULSE,
+  INPUT_BUFFER,
+  LANE_X,
+  feelPresetById,
+  multiplierFor,
+  type FeelPresetId,
+} from "./constants";
 import { loadBest, noteSample, saveBest, type GhostSample, type PersonalBest } from "./ghost";
 import { playRunnerHaptic, pulseGrindHaptic } from "./haptics";
 import { applyAction, applyLean, createRun, stepRun, type CreateRunOptions } from "./logic";
@@ -51,6 +60,10 @@ export interface RunnerController {
   isStreamlined: () => boolean;
   /** -1..1 while a finger or key is held. Zero clears it. */
   setLean: (lean: number) => void;
+  setFeelPreset: (id: FeelPresetId) => void;
+  feelPreset: () => FeelPresetId;
+  setGrindAssist: (assist: number) => void;
+  grindAssist: () => number;
   step: (dt: number) => void;
   pause: () => void;
   resume: () => void;
@@ -166,6 +179,8 @@ export function createRunnerController(options: CreateRunOptions = {}): RunnerCo
   let best: PersonalBest = loadBest();
   let isNewBest = false;
   let streamlined = false;
+  let feel: FeelPresetId = "street";
+  let assist = GRIND_ASSIST_DEFAULT;
   let hud = toHud(state, best.score, isNewBest, streamlined);
   let accumulator = 0;
   let lean = 0;
@@ -314,8 +329,28 @@ export function createRunnerController(options: CreateRunOptions = {}): RunnerCo
       state = { ...state, status: "playing" };
       publish();
     },
+    setFeelPreset: (id) => {
+      feel = id;
+      const preset = feelPresetById(id);
+      assist = preset.grindAssist;
+      state = { ...state, fallScale: preset.fallGravity, grindAssist: assist };
+      publish(true);
+    },
+    feelPreset: () => feel,
+    setGrindAssist: (value) => {
+      assist = Math.max(0, Math.min(100, value));
+      state = { ...state, grindAssist: assist };
+      publish(true);
+    },
+    grindAssist: () => assist,
     restart: () => {
-      state = createRun({ seed, startPaused: false });
+      const preset = feelPresetById(feel);
+      state = createRun({
+        seed,
+        startPaused: false,
+        fallScale: preset.fallGravity,
+        grindAssist: assist,
+      });
       accumulator = 0;
       lean = 0;
       queued = null;

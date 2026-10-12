@@ -85,7 +85,7 @@ describe("physics state machine", () => {
     expect(state.grade).toBe("clean");
   });
 
-  it("keeps a tap through the lock freeze, then pops off", () => {
+  it("pops off a grind on the same step as the tap, including during the lock freeze", () => {
     const run = createRunnerController({ spawn: false, obstacles: [rail(8)] });
     for (let i = 0; i < 800 && run.getState().distance < 6.5; i += 1) run.step(FIXED_DT);
     run.input("tap");
@@ -93,8 +93,6 @@ describe("physics state machine", () => {
     expect(run.getState().onGrind).toBe(true);
     expect(run.getState().hitStop).toBeGreaterThan(0);
     run.input("tap");
-    expect(run.getState().onGrind).toBe(true);
-    for (let i = 0; i < 8 && run.getState().onGrind; i += 1) run.step(FIXED_DT);
     expect(run.getState().onGrind).toBe(false);
     expect(run.getState().airborne).toBe(true);
   });
@@ -123,8 +121,12 @@ describe("timing windows", () => {
     const madeState = made.getState();
     expect(madeState.distance).toBeGreaterThan(z);
     expect(madeState.distance).toBeLessThan(z + LATE_LOCK + coyoteDistance(madeState.speed));
+    madeState.airborne = true;
+    madeState.y = 0.4;
+    madeState.vy = -2;
+    madeState.popV0 = 0;
     made.input("tap");
-    for (let i = 0; i < 40 && !made.getState().onGrind && !made.getState().crashed; i += 1) made.step(FIXED_DT);
+    made.step(FIXED_DT);
     expect(made.getState().onGrind).toBe(true);
     expect(made.getState().grade).toBe("sketchy");
 

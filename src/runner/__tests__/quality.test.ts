@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runnerDpr, runnerQualityFor, runnerUsesBloom } from "../quality";
+import { BLOOM_MIPS, BLOOM_THRESHOLD } from "../tune";
 
 describe("runner quality", () => {
   it("drops phones and small devices to the low tier", () => {
@@ -48,5 +49,8 @@ describe("runner quality", () => {
     expect(runnerDpr("high")).toEqual([1, 1.5]);
     expect(runnerUsesBloom("low")).toBe(false);
     expect(runnerUsesBloom("high")).toBe(true);
+    expect(BLOOM_MIPS).toBeGreaterThanOrEqual(4);
+    expect(BLOOM_MIPS).toBeLessThanOrEqual(5);
+    expect(BLOOM_THRESHOLD).toBeGreaterThanOrEqual(0.9);
   });
 });

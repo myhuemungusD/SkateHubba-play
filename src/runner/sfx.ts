@@ -2,7 +2,7 @@ import grindUrl from "./assets/sfx/grind.wav?url";
 import landUrl from "./assets/sfx/land.wav?url";
 import popUrl from "./assets/sfx/pop.wav?url";
 import { mixLevels, type MixSnapshot } from "./audioMix";
-import { MIX_RESPONSE, PITCH_JITTER, SFX_VOLUME } from "./tune";
+import { GRIND_TAIL, MIX_RESPONSE, PITCH_JITTER, SFX_VOLUME } from "./tune";
 import type { RunnerEvent } from "./types";
 
 const FILES = {
@@ -20,6 +20,7 @@ let loading: Promise<void> | null = null;
 let pitchSalt = 1;
 let loops: Record<LoopName, { source: AudioBufferSourceNode; gain: GainNode }> | null = null;
 let shown = { rollGain: 0, grindGain: 0, rollRate: 1, grindRate: 1 };
+let wasGrinding = false;
 
 /** Pop and land wander by ±5%. Grind stays put so the rail reads as one sound. */
 function playbackRate(name: SoundName): number {
@@ -151,16 +152,46 @@ export function playRunnerSfx(event: RunnerEvent): void {
   source.start();
 }
 
+/** Short metal tail when a grind ends. Original noise, so it needs no license file. */
+function playGrindTail(audio: AudioContext): void {
+  const rate = audio.sampleRate;
+  const count = Math.max(1, Math.floor(rate * GRIND_TAIL));
+  const data = new Float32Array(count);
+  let noise = 53;
+  let low = 0;
+  for (let i = 0; i < count; i += 1) {
+    noise = (noise * 16807 + 11) % 2147483647;
+    const white = (noise / 2147483647) * 2 - 1;
+    low += 0.35 * (white - low);
+    const env = Math.sin((Math.PI * i) / count);
+    data[i] = low * 0.55 * env;
+  }
+  const buffer = audio.createBuffer(1, count, rate);
+  buffer.copyToChannel(data, 0);
+  const source = audio.createBufferSource();
+  const gain = audio.createGain();
+  source.buffer = buffer;
+  gain.gain.value = SFX_VOLUME * 0.55;
+  source.connect(gain);
+  gain.connect(audio.destination);
+  source.start();
+}
+
 /**
- * Chase the roll and grind loops toward this frame. Pop and land stay
+ * Chase the roll and the grind body toward this frame. The lock one-shot is
+ * the start layer. Leaving a grind plays the end layer. Pop and land stay
  * one-shots from `playRunnerSfx`. No AudioContext means silence.
  */
 export function mixRunnerAudio(snapshot: MixSnapshot, dt: number): void {
   const audio = context();
   if (!audio) return;
+  const grinding = snapshot.onGrind && snapshot.status === "playing";
+  const ended = wasGrinding && !grinding && snapshot.status === "playing";
+  wasGrinding = grinding;
   ensureLoops(audio);
   if (!loops) return;
   if (audio.state === "suspended") void audio.resume().catch(() => undefined);
+  if (ended) playGrindTail(audio);
   const target = mixLevels(snapshot);
   const step = 1 - Math.exp(-Math.max(0, dt) * MIX_RESPONSE);
   shown = {

@@ -36,7 +36,7 @@ Lane changes ease over 0.14 seconds. A second swipe while the board is still sli
 
 Adopted as a closed-form arc.
 
-Apex height is 1.1 and the symmetric air time is 0.58 seconds, so gravity is 8h/T² and launch speed is 4h/T. The way down uses 1.6× that gravity, so the landing snaps and the real air time is a bit under 0.58 seconds. The nose stays up for 0.14 seconds before the spring levels it. An earlier pass used 0.65 seconds and a 0.11 second nose hold. The shorter air time is the skate pop. The longer nose hold is so the trick still reads. A kickflip is one roll around the board's length, over 0.38 seconds, starting 50ms after the pop, easing out at the end. The last 120ms of a descent levels pitch, yaw, and roll unless a grind is already targeted. A kickflip that locks may finish blending for 80ms after contact.
+Apex height is 1.1 and the symmetric air time is 0.58 seconds, so gravity is 8h/T² and launch speed is 4h/T. The way down uses 1.85× that gravity, so the landing snaps and the real air time is under 0.58 seconds. The nose stays up for 0.14 seconds before the spring levels it. An earlier pass used 0.65 seconds, a 0.11 second nose hold, and 1.6× fall gravity. The shorter air time is the skate pop. The heavier fall is the fix for the float players complain about. The longer nose hold is so the trick still reads. A kickflip is one roll around the board's length, over 0.38 seconds, starting 50ms after the pop, easing out at the end. The last 120ms of a descent levels pitch, yaw, and roll unless a grind is already targeted. A kickflip that locks may finish blending for 80ms after contact. A flip that is still turning when it meets the rail does not bail.
 
 Rail and ledge heights stayed at 0.30 and 0.34. The brief's 0.6–0.9 band is in `SUGGESTED`. The low-rail mesh and the skatepark coping are fitted to the lower numbers, and raising them would float the grind off the model.
 
@@ -44,9 +44,13 @@ Rail and ledge heights stayed at 0.30 and 0.34. The brief's 0.6–0.9 band is in
 
 Adopted in part.
 
-An armed trick eases onto the feature over 90ms (`MAGNET_SNAP`), then the lock pins the lane and the height. 60ms felt like a teleport. 90ms lets the trucks settle and is still fast at these speeds. Lane changes take 0.16 seconds for the same reason: a thumb swipe should have a little weight. Crooked yaw is 32 degrees, inside the 15–35 degree band, nose down. A nose slide is 90 degrees, inside 75–105, nose on the ledge. The gesture picks the trick. The board does not choose the grind from a free yaw measurement, because the player cannot shove the board onto an arbitrary angle in this mode.
+An armed trick eases onto the feature over 90ms (`MAGNET_SNAP`), then the lock pins the height. 60ms felt like a teleport. 90ms lets the trucks settle and is still fast at these speeds. How far that ease reaches is the grind-assist slider. 100 is a 0.35 m radius and the full lead. The street default is 30, so the pull stays short. 0 does not pull. A lock still requires the grind gesture. Lane changes take 0.16 seconds: a thumb swipe should have a little weight. Crooked yaw is 32 degrees, inside the 15–35 degree band, nose down. A nose slide is 90 degrees, inside 75–105, nose on the ledge. The gesture picks the trick. The board does not choose the grind from a free yaw measurement, because the player cannot shove the board onto an arbitrary angle in this mode.
 
-We did not pull the player in from the next lane. `SUGGESTED.laneAssist` is 1. Live assist is none. A feature in another lane is a lane choice, not a magnet. The horizontal radius of 0.35 and the vertical band of 0.25 are in `SUGGESTED`. The live window is the approach range already tuned for a street that moves at 6 to 9.
+A rising board does not lock. Rolling, or coming down, does. The grind gesture is the tap or the kickflip flick, kept for the buffer. Swipe up is the whole kickflip-into-crooked: one gesture, no second tap and no lift. A tap during a grind pops off on that same step, including during the lock freeze.
+
+Rails are a curve. The board stores how far along the rail it is and reads position from that curve, so the trucks do not jitter off the metal. The curve bows 0.16 m at mid-rail and is back on the lane at both lips. A ledge grind sits on the coping, 0.34 m off the box center. The lock also asks that velocity agrees with the tangent, dot at least 0.25. A sideways or backward approach does not lock. Entry speed is clamped up to the grind floor so a slow board does not stall.
+
+We did not pull the player in from the next lane. `SUGGESTED.laneAssist` is 1. Live assist is the slider above, and it never changes lanes for you. A feature in another lane is a lane choice, not a magnet.
 
 ## 6. Balance meter
 
@@ -104,13 +108,15 @@ Each of these pages links its license to CC0 1.0 (`http://creativecommons.org/pu
 - [skateboard ollie](https://freesound.org/people/nolimitkid/sounds/515229/) by nolimitkid. The sound page is CC0. Pack [28982](https://freesound.org/people/nolimitkid/packs/28982/) labels its files Creative Commons 0. We did not download the rest of the pack, so this note only covers the ollie page plus the pack's CC0 badges.
 - [Skateboarding Rail Slide](https://freesound.org/people/C-V/sounds/845524/) by C-V. 2.2 MB, 24-bit stereo, 8 seconds.
 
-Those takes are too heavy for the lazy runner chunk. Pop, grind, and land stay the short CC0 one-shots generated for the game. Pop and land pitch wander by ±5%. The roll and the grind are loops synthesized in the audio context from filtered noise, also original and CC0, so they are not extra files. The roll plays while the wheels are down and its gain and playback rate rise from cruise speed to the cap. A lock ducks the roll and brings up the grind loop. A powerslide uses a quieter scrape. The one-shot still marks the moment the lock or the slide starts.
+Those takes are too heavy for the lazy runner chunk. Pop, grind, and land stay the short CC0 one-shots generated for the game. Pop and land pitch wander by ±5%. The roll and the grind body are loops synthesized in the audio context from filtered noise, also original and CC0, so they are not extra files. The roll plays while the wheels are down and its gain and playback rate rise from cruise speed to the cap. A lock ducks the roll. The grind one-shot is the start layer. The body loop fades in over 40ms and its rate wobbles ±3% with the balance needle. Leaving the rail plays a short synthesized tail, the end layer. A powerslide uses a quieter scrape.
+
+Pass 2 listed more Freesound files (nolimitkid pack 28982, FOSSarts wheels, BlackNeon1234 grinds). The brief says those CC0 badges were not opened per file, because freesound.org blocked the fetch. They are not in the game. Sonniss is royalty-free and not CC0, and it forbids redistributing the raw files, so it is not in the game either.
 
 ## 13. Mobile WebGL
 
-The phone tier draws at pixel ratio 1, with the blob shadow, no shadow map, no bloom, and one key light. The desktop tier caps pixel ratio at 1.5, draws one 512 soft shadow, and runs a short bloom pass (strength 0.22, radius 0.36, threshold 0.86) on the lamps and the additive sparks. The lamp card stays on both tiers. The road, sidewalks, curbs, brick walls, and lane dashes are instanced. Sparks, dust, and speed lines are one instanced draw call each. Rails and ledges stay a recycled pool that shares the decoded mesh. The frame loop mutates refs and does not call setState per frame. We do not import the drei barrel. The same goals are in [three.js practice notes](https://www.utsubo.com/blog/threejs-best-practices-100-tips) and the [R3F pitfalls](https://r3f.docs.pmnd.rs/advanced/pitfalls).
+The phone tier draws at pixel ratio 1, with the blob shadow, no shadow map, no bloom, and one key light. The desktop tier caps pixel ratio at 1.5, draws one 512 soft shadow, and runs one bloom composer (strength 0.3, radius 0.4, threshold 0.92, five mip levels) on the lamps and the additive sparks. The lamp card stays on both tiers. The road, sidewalks, curbs, brick walls, and lane dashes are instanced. Sparks, dust, and speed lines are one instanced draw call each. Rails and ledges stay a recycled pool that shares the decoded mesh. Poles, the awning, the stripe, and the dumpsters share one palette material. The frame loop mutates refs and does not call setState per frame. We do not import the drei barrel. The same goals are in [three.js practice notes](https://www.utsubo.com/blog/threejs-best-practices-100-tips) and the [R3F pitfalls](https://r3f.docs.pmnd.rs/advanced/pitfalls).
 
-Tiling maps are KTX2. Color and normals are UASTC with zstd. Roughness and metalness are ETC1S. The GLB files stay Meshopt geometry plus their existing textures. The loader still accepts Draco and KTX2 when a model ships them.
+Tiling maps are KTX2. Color and normals are UASTC with zstd. Roughness and metalness are ETC1S. The alley palette is one UASTC KTX2, nearest-filtered, so the cells do not blur together. The GLB files stay Meshopt geometry plus their existing textures. The loader still accepts Draco and KTX2 when a model ships them. Quality is chosen from the device: a phone, or a machine with 4 GB or fewer, or 4 cores or fewer, is the low tier. That auto tier is what ships. There is no settings screen for it.
 
 ## 14. Playtest on a phone viewport
 
@@ -129,4 +135,31 @@ A real phone GPU is not SwiftShader. The tier split is what keeps that GPU off t
 - THPS 1+2: a balance needle that gets harder as the combo stacks, and a clean exit at the end of a short grind.
 - Celeste: coyote time and a buffer so a close tap still counts.
 - Subway Surfers / Alto: one-gesture inputs and a camera that shows the next obstacle. The camera numbers stayed with the earlier framing pass.
-- Session / Skater XL: not the target. The flick score is the only piece we borrowed.
+- Session / Skater XL: not the target. The flick score is the only piece we borrowed from the first pass. Pass 2 takes the float, the sticky grind, and the grind-out lag from what players said about those games.
+
+## 16. Pass 2, what players asked for
+
+Adopted from the second brief. Sources are in that note. A line here is the choice we shipped.
+
+Heavier fall gravity. Street is 1.85×, frozen. Players called float the first complaint, and the fixes they posted were a higher fall, not a lower apex ([Skater XL +45%](https://steamcommunity.com/app/962730/discussions/0/2823131567372748668/), [True Skate gravity](https://www.reddit.com/r/TrueSkate/comments/1uk2m9p/)). Heavy is an opt-in 2×. Classic is the previous 1.6× with a stickier assist of 50. The pause card cycles Street, Heavy, and Classic. The street constants in `tune.ts` do not move when you pick another preset. True Skate's 2026 default change is why the feel is versioned instead of edited in place ([the thread](https://www.reddit.com/r/TrueSkate/comments/1uimewa/)).
+
+Popping out of a grind happens on the same step as the tap, including during the 50ms lock freeze. Session players described a delay on that input ([the thread](https://www.reddit.com/r/projectsession/comments/l9k8xx/)). The approach buffer is unchanged.
+
+Grind assist defaults to 30 out of 100. EA's default of 50 was called too sticky ([IGN](https://www.ign.com/articles/skate-early-access-review), [the slider](https://www.ea.com/able/resources/skate)). 0 does not pull. The lock still needs a grind gesture and a descent. A board that is still going up does not lock, which is the accidental-grind case Session patched.
+
+Kickflip into crooked is one swipe up. The flick arms the grind. There is no release between the pop and the grind, which is Session's "No Release" default ([the update note](https://www.nacongaming.com/en/blog/session-new-update-19-02)).
+
+Rails are polylines with an arclength. The grind stores the feature and the distance along it. Render position comes from the curve. The direction gate is a dot of at least 0.25, from 3deric's `get_path_dir` ([godot-skateboarding-game](https://github.com/3deric/godot-skateboarding-game)). Ledges lock on the coping edge. A flip that is still playing on contact does not bail. tutasmaster's controller bails in that case. We kept the opposite, which pass 1 already allowed for 80ms, and pass 2 makes it a rule.
+
+Quality tiers stay automatic. Bruno Simon's folio and Slow Roads both ship a mobile preset and accept that not every browser holds 60 ([folio case study](https://www.awwwards.com/brunos-portfolio-case-study.html), [Slow Roads](https://web.dev/case-studies/slow-roads)). The high tier's bloom is one composer with five mip levels and a threshold of 0.92, so lamps and sparks glow and the street does not ([mip bloom](https://pmndrs.github.io/postprocessing/public/docs/class/src/effects/BloomEffect.js~BloomEffect.html)). We did not add the postprocessing package. three's UnrealBloomPass already builds those five mips.
+
+The alley props that are flat color share one KTX2 palette and one material. Posters, the lamp head, and the additive glow stay on their own materials so the bloom still has something bright to catch.
+
+Left out, on purpose:
+
+- Balance as a direction flip, and the ±2–4° wobble. The needle we have is already what the balance tests cover.
+- A minimum of 90% speed on a clean landing. A clean landing already keeps its speed. Grind drag and the powerslide are the losses, and they are part of the frozen street feel.
+- The +3 m/s hop off the end of a rail. The exit pop is already tuned.
+- New SFX files. No per-file CC0 page was opened for the pass 2 list, so the start, body, and end are the generated one-shot plus synthesized noise.
+- Baking a lightmap. The lamp card is the baked glow. A Blender UV2 bake is a later art pass.
+- `gltf-transform optimize` on the models. They stay Meshopt plus the textures they shipped with.

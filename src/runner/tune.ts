@@ -56,15 +56,17 @@ export const LANE_SLIDE = 14;
 /**
  * Closed-form ollie. Apex h and air time T give g = 8h/T² and v0 = 4h/T.
  * The way down uses FALL_GRAVITY_SCALE so the landing snaps.
- * 0.58s keeps the 1.1m apex and brings the board back sooner, closer to a
- * skate pop than a floaty hop.
+ * 0.58s keeps the 1.1m apex. The fall scale is 1.85, inside the 1.45–2.0
+ * band players use to kill float. These street numbers are frozen.
+ * A different feel is a preset, not an edit here.
  */
 export const OLLIE_HEIGHT = 1.1;
 export const OLLIE_AIRTIME = 0.58;
 export const OLLIE_GRAVITY = (8 * OLLIE_HEIGHT) / (OLLIE_AIRTIME * OLLIE_AIRTIME);
 export const OLLIE_POP = (4 * OLLIE_HEIGHT) / OLLIE_AIRTIME;
 export const GRAVITY = OLLIE_GRAVITY;
-export const FALL_GRAVITY_SCALE = 1.6;
+/** Frozen street fall. Classic preset keeps the previous 1.6. Heavy is 2. */
+export const FALL_GRAVITY_SCALE = 1.85;
 /** Nose-up angular speed (radians/sec) on the pop. Positive pitch lifts the nose. */
 export const POP_NOSE = 7.5;
 /** Seconds the nose stays up before the spring levels the board for the landing. */
@@ -115,6 +117,19 @@ export const MAGNET_LEAD = 1.35;
 export const MAGNET_SNAP = 0.09;
 /** Older pull rate. The snap time above is what the sim uses. */
 export const MAGNET_PULL = 1 / MAGNET_SNAP;
+/**
+ * Full-assist reach, in meters. The slider scales it. 100 is this radius.
+ * 0 does not pull. Default 30 stays short so a grind is a choice.
+ */
+export const MAGNET_RADIUS = 0.35;
+/** Grind assist 0–100. 30 is the street default. 50 was the sticky complaint. */
+export const GRIND_ASSIST_DEFAULT = 30;
+/** Velocity must agree with the rail tangent. 0.25 is about 75 degrees off. */
+export const GRIND_DIR_DOT = 0.25;
+/** Lateral bow of a rail, in meters, zero at both lips and highest in the middle. */
+export const RAIL_BOW = 0.16;
+/** Ledge grinds sit on the coping, not the center of the box. */
+export const COPING_OFFSET = 0.34;
 
 export const RAIL_Y = 0.3;
 export const BOX_Y = 0.34;
@@ -220,6 +235,20 @@ export const SCRAPE_GAIN = 0.11;
 export const SCRAPE_RATE = 0.78;
 /** How fast the loops chase a new mix, in 1/seconds. */
 export const MIX_RESPONSE = 14;
+/** Body loop fades in over this long so the start one-shot can lead. */
+export const GRIND_ATTACK = 0.04;
+/** End-layer length. Original noise, not a downloaded file. */
+export const GRIND_TAIL = 0.09;
+/** Grind playback wanders with the balance needle, ±3%. */
+export const GRIND_RATE_WOBBLE = 0.03;
+/**
+ * One composer, five mip blurs, high tier only. Threshold stays near 1
+ * so the street stays dark and the lamps and sparks are what bloom.
+ */
+export const BLOOM_MIPS = 5;
+export const BLOOM_STRENGTH = 0.3;
+export const BLOOM_RADIUS = 0.4;
+export const BLOOM_THRESHOLD = 0.92;
 
 /** One haptic at a time. A grind ticks a light pulse on this interval. */
 export const HAPTIC_GAP_MS = 50;
@@ -235,6 +264,31 @@ export const FLICK_SENSITIVITY = 50;
  * The camera, the rail mesh height, and adjacent-lane grabs stayed as they
  * were. docs/RUNNER_PHYSICS.md says why.
  */
+export type FeelPresetId = "street" | "heavy" | "classic";
+
+export interface FeelPreset {
+  id: FeelPresetId;
+  label: string;
+  fallGravity: number;
+  grindAssist: number;
+}
+
+const STREET_PRESET: FeelPreset = {
+  id: "street",
+  label: "Street",
+  fallGravity: FALL_GRAVITY_SCALE,
+  grindAssist: GRIND_ASSIST_DEFAULT,
+};
+const HEAVY_PRESET: FeelPreset = { id: "heavy", label: "Heavy", fallGravity: 2, grindAssist: 15 };
+const CLASSIC_PRESET: FeelPreset = { id: "classic", label: "Classic", fallGravity: 1.6, grindAssist: 50 };
+
+/**
+ * Street is the frozen default. Heavy and Classic are opt-in.
+ * Changing a number in the street block does not change a run on another preset,
+ * and the other way around. Street is what a new run uses.
+ */
+export const FEEL_PRESETS: readonly FeelPreset[] = [STREET_PRESET, HEAVY_PRESET, CLASSIC_PRESET];
+
 export const SUGGESTED = {
   rapierFrameClamp: 0.5,
   commonFrameClamp: 0.25,
@@ -292,4 +346,33 @@ export function multiplierFor(combo: number): number {
 
 export function coyoteDistance(speed: number): number {
   return Math.max(0, speed) * COYOTE_TIME;
+}
+
+function assistUnit(assist: number): number {
+  return Math.max(0, Math.min(100, assist)) / 100;
+}
+
+/** How far before the lip the board eases toward the feature. 0 assist does not pull. */
+export function magnetLeadFor(assist: number): number {
+  return MAGNET_LEAD * assistUnit(assist);
+}
+
+/** How far, in meters, the ease will reach. Full assist is MAGNET_RADIUS. */
+export function magnetRadiusFor(assist: number): number {
+  return MAGNET_RADIUS * assistUnit(assist);
+}
+
+export function feelPresetById(id: FeelPresetId): FeelPreset {
+  switch (id) {
+    case "street":
+      return STREET_PRESET;
+    case "heavy":
+      return HEAVY_PRESET;
+    case "classic":
+      return CLASSIC_PRESET;
+    default: {
+      const neverId: never = id;
+      return neverId;
+    }
+  }
 }

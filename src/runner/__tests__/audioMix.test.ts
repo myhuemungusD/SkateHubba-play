@@ -8,6 +8,8 @@ const rolling = {
   airborne: false,
   duck: -1,
   status: "playing",
+  grindTime: 0,
+  balance: 0,
 };
 
 describe("layered audio", () => {
@@ -20,8 +22,10 @@ describe("layered audio", () => {
     expect(mixLevels({ ...rolling, airborne: true }).rollGain).toBe(0);
   });
 
-  it("replaces the roll with a grind, and a powerslide with a quieter scrape", () => {
-    const grind = mixLevels({ ...rolling, onGrind: true });
+  it("fades the grind body in, then sits above a powerslide scrape", () => {
+    const attack = mixLevels({ ...rolling, onGrind: true, grindTime: 0 });
+    const grind = mixLevels({ ...rolling, onGrind: true, grindTime: 1 });
+    expect(attack.grindGain).toBe(0);
     const slide = mixLevels({ ...rolling, duck: 0.2 });
     expect(grind.rollGain).toBe(0);
     expect(grind.grindGain).toBeGreaterThan(slide.grindGain);

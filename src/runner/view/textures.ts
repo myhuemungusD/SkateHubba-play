@@ -1,8 +1,10 @@
 import {
   CanvasTexture,
+  ClampToEdgeWrapping,
   LinearFilter,
   LinearMipmapLinearFilter,
   MeshStandardMaterial,
+  NearestFilter,
   NoColorSpace,
   PMREMGenerator,
   RepeatWrapping,
@@ -14,6 +16,7 @@ import {
 } from "three";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
 import { KTX2Loader } from "three/examples/jsm/loaders/KTX2Loader.js";
+import alleyPaletteUrl from "../assets/alley-palette.ktx2?url";
 import asphaltColorUrl from "../assets/asphalt-color.ktx2?url";
 import asphaltNormalUrl from "../assets/asphalt-normal.ktx2?url";
 import asphaltRoughnessUrl from "../assets/asphalt-roughness.ktx2?url";
@@ -29,6 +32,7 @@ import metalMetalnessUrl from "../assets/metal-metalness.ktx2?url";
 import metalNormalUrl from "../assets/metal-normal.ktx2?url";
 import metalRoughnessUrl from "../assets/metal-roughness.ktx2?url";
 import { ensureBrandArt } from "./brandArt";
+import { assignAlleyPalette } from "./palette";
 
 /**
  * CC0 PBR maps plus the Design Mainline posters for the runner only.
@@ -133,6 +137,18 @@ function prepare(texture: Texture, colorSpace: ColorSpace): Texture {
   return texture;
 }
 
+/** One texel per alley color. Mips would blend the cells, so this stays nearest. */
+function preparePalette(texture: Texture): Texture {
+  texture.colorSpace = SRGBColorSpace;
+  texture.wrapS = ClampToEdgeWrapping;
+  texture.wrapT = ClampToEdgeWrapping;
+  texture.generateMipmaps = false;
+  texture.minFilter = NearestFilter;
+  texture.magFilter = NearestFilter;
+  texture.needsUpdate = true;
+  return texture;
+}
+
 function tiled(source: Texture, repeat: readonly [number, number]): Texture {
   const key = `${source.uuid}:${repeat[0]}:${repeat[1]}`;
   const cached = repeats.get(key);
@@ -214,13 +230,15 @@ function loadMaps(gl: WebGLRenderer): Promise<void> {
     loadSet(loader, concreteColorUrl, concreteNormalUrl, concreteRoughnessUrl),
     loadSet(loader, metalColorUrl, metalNormalUrl, metalRoughnessUrl, metalMetalnessUrl),
     loadSet(loader, brickColorUrl, brickNormalUrl, brickRoughnessUrl),
+    loader.loadAsync(alleyPaletteUrl).then((texture) => preparePalette(texture)),
   ])
-    .then(([nextAsphalt, nextConcrete, nextMetal, nextBrick]) => {
+    .then(([nextAsphalt, nextConcrete, nextMetal, nextBrick, palette]) => {
       asphalt = nextAsphalt;
       concrete = nextConcrete;
       metalMaps = nextMetal;
       brickMaps = nextBrick;
       applyMaps();
+      assignAlleyPalette(palette);
     })
     .finally(() => {
       loader.dispose();

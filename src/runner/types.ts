@@ -100,6 +100,12 @@ export interface RunnerState {
   pendingLanding: boolean;
   /** Seconds since this grind locked. Balance cannot bail during the grace. */
   grindTime: number;
+  /** Distance along the current feature. The picture reads the curve from this. */
+  grindS: number;
+  /** Fall gravity divided by the ollie gravity. Street is frozen. A preset can replace it. */
+  fallScale: number;
+  /** 0–100. How far the board eases toward a lip before the lock. */
+  grindAssist: number;
   /** Seconds of frozen sim left after a lock. */
   hitStop: number;
   /** Seconds into the powerslide, or -1. */

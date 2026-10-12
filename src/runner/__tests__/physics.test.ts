@@ -65,14 +65,17 @@ describe("board physics", () => {
     expect(LANDING_BONUS.perfect).toBeGreaterThan(LANDING_BONUS.clean);
   });
 
-  it("still locks a beat after the lip, and a tap during the freeze pops off after it", () => {
+  it("still locks a beat after the lip when coming down, and a grind tap pops off immediately", () => {
     const z = 6;
     const coyote = createRunnerController({ spawn: false, obstacles: [rail(z)] });
     for (let i = 0; i < 400 && coyote.getState().distance < z + LATE_LOCK + 0.2; i += 1) coyote.step(0.05);
+    const late = coyote.getState();
+    late.airborne = true;
+    late.y = 0.45;
+    late.vy = -3;
+    late.popV0 = 0;
     coyote.input("tap");
-    for (let i = 0; i < 30 && !coyote.getState().onGrind && coyote.getState().status === "playing"; i += 1) {
-      coyote.step(0.02);
-    }
+    coyote.step(1 / 60);
     expect(coyote.getState().onGrind).toBe(true);
 
     const locked = createRunnerController({ spawn: false, obstacles: [rail(8)] });
@@ -81,8 +84,6 @@ describe("board physics", () => {
     for (let i = 0; i < 40 && !locked.getState().onGrind; i += 1) locked.step(0.02);
     expect(locked.getState().hitStop).toBeGreaterThan(0);
     locked.input("tap");
-    expect(locked.getState().onGrind).toBe(true);
-    locked.step(0.2);
     expect(locked.getState().onGrind).toBe(false);
     expect(locked.getState().airborne).toBe(true);
   });
@@ -92,13 +93,14 @@ describe("board physics", () => {
     for (let i = 0; i < 400 && run.getState().distance < 6.8; i += 1) run.step(0.05);
     run.input("tap");
     for (let i = 0; i < 40 && !run.getState().onGrind; i += 1) run.step(0.02);
+    expect(run.getState().onGrind).toBe(true);
     const before = run.getState().balance;
     run.input("left");
     expect(run.getState().lane).toBe(1);
     expect(run.getState().balance).toBeLessThan(before);
     run.getState().balance = 1.3;
     run.getState().grindTime = 3.2;
-    run.step(0.05);
+    run.step(0.08);
     expect(run.getState().crashed).toBe(true);
     run.step(0.2);
     expect(run.getState().status).toBe("gameover");
@@ -160,7 +162,10 @@ describe("runner sfx", () => {
       playRunnerSfx("lock");
       playRunnerSfx("land");
       playRunnerSfx("bail");
-      mixRunnerAudio({ speed: 6, onGrind: false, airborne: false, duck: -1, status: "playing" }, 1 / 60);
+      mixRunnerAudio(
+        { speed: 6, onGrind: false, airborne: false, duck: -1, status: "playing", grindTime: 0, balance: 0 },
+        1 / 60,
+      );
     }).not.toThrow();
   });
 });

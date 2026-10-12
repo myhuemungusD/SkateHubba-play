@@ -19,6 +19,7 @@ The PBR maps, the HDRI, and the three runner one-shots shipped here are CC0. The
 | `brick-color.ktx2`           |  235200 | Wall and building albedo, UASTC           |
 | `brick-normal.ktx2`          |  262029 | Wall and building normal, UASTC           |
 | `brick-roughness.ktx2`       |   71742 | Wall and building roughness, ETC1S        |
+| `alley-palette.ktx2`         |     325 | Shared alley colors, UASTC, no mips       |
 | `sunset_jhbcentral_1k.hdr` | 1573705 | Dusk environment light and reflections     |
 | `board-logo.webp`          |   42058 | Deck underside, top mark, and wall poster  |
 | `graff-wall.webp`          |   47304 | Left-wall mural                            |
@@ -30,7 +31,7 @@ The PBR maps, the HDRI, and the three runner one-shots shipped here are CC0. The
 | `sfx/grind.wav`            |    9746 | Grind attack and powerslide one-shot       |
 | `sfx/land.wav`             |    6218 | Landing one-shot                           |
 
-The 13 KTX2 maps are 1,850,903 bytes. The WebP files they were encoded from stay in the folder (531,154 bytes) and are not imported, so the runner does not download them. Roll and grind loops are synthesized at runtime and are not files.
+The 13 tiling KTX2 maps are 1,850,903 bytes. The alley palette adds 325 bytes and is the only map on the pole, awning, stripe, dumpster, and lid. The WebP files they were encoded from stay in the folder (531,154 bytes) and are not imported, so the runner does not download them. Roll and grind loops are synthesized at runtime and are not files.
 
 Maps are 512×512. Color and normals are UASTC, zstd packed, with mipmaps. Roughness and metalness are ETC1S with mipmaps. Anisotropy is capped at 4. The logo is 512×512 WebP. The murals are 640×960 WebP. The HDRI is the official 1k RGBE file, used as `scene.environment` only. The background stays the dusk street color.
 

@@ -8,6 +8,7 @@ import {
   LATE_LOCK,
   MAX_FRAME_DT,
   MAX_SPEED,
+  RAIL_BOW,
   RAIL_LENGTH,
   SPEED_RAMP,
   TRICK_POINTS,
@@ -87,7 +88,7 @@ describe("trick timing", () => {
     });
     rollTo(run, z - 1.2);
     run.input("tap");
-    rollTo(run, z + 0.3);
+    for (let i = 0; i < 120 && !run.getState().onGrind; i += 1) run.step(0.02);
     const locked = run.getState();
     expect(locked.onGrind).toBe(true);
     expect(locked.grindTrick).toBe("crooked");
@@ -97,7 +98,7 @@ describe("trick timing", () => {
     expect(locked.combo).toBe(1);
     expect(locked.grinds).toBe(1);
     expect(locked.score).toBe(Math.floor(locked.distance) + TRICK_POINTS.crooked.perfect);
-    expect(locked.x).toBe(LANE_X[1]);
+    expect(Math.abs(locked.x - 0)).toBeLessThanOrEqual(RAIL_BOW + 1e-6);
 
     run.input("left");
     expect(run.getState().lane).toBe(1);
@@ -118,7 +119,7 @@ describe("trick timing", () => {
     nose.input("tap");
     nose.input("tap");
     expect(nose.getState().armed).toBe("nose");
-    rollTo(nose, 8.2);
+    for (let i = 0; i < 120 && !nose.getState().onGrind; i += 1) nose.step(0.02);
     expect(nose.getState().grindTrick).toBe("nose");
     expect(nose.getState().grade).toBe("perfect");
     expect(nose.getState().popup).toBe(TRICK_POINTS.nose.perfect);
@@ -130,9 +131,10 @@ describe("trick timing", () => {
     rollTo(flip, 8 - 1.2);
     flip.input("flip");
     expect(flip.getState().flip).toBe(0);
+    expect(flip.getState().armed).toBe("kickflip");
     flip.step(0.05);
     expect(flip.getState().flip).toBeGreaterThan(0);
-    rollTo(flip, 8.2);
+    for (let i = 0; i < 120 && !flip.getState().onGrind; i += 1) flip.step(0.02);
     expect(flip.getState().grindTrick).toBe("kickflip");
     expect(flip.getState().trickName).toBe("KICKFLIP CROOKED");
     expect(flip.getState().grade).toBe("perfect");

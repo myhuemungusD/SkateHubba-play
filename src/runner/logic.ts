@@ -5,18 +5,19 @@ import {
   BALANCE_NUDGE,
   BASE_SPEED,
   BOX_LENGTH,
-  BOX_Y,
   COYOTE_TIME,
   DOUBLE_TAP,
   DUCK_DURATION,
   EXIT_EARLY,
   EXIT_POP,
+  FALL_GRAVITY_SCALE,
   FIRST_ROW_Z,
   FLIP_DURATION,
   FLIP_COMPLETE,
   FLIP_LOCK_BLEND,
   FLIP_SLOP,
   GOOD_MAX,
+  GRIND_ASSIST_DEFAULT,
   GRIND_DRAG,
   GRIND_MIN_SPEED,
   HIT_STOP,
@@ -39,7 +40,6 @@ import {
   PERFECT_MIN,
   POP_NOSE,
   RAIL_LENGTH,
-  RAIL_Y,
   RIDE_PITCH,
   ROW_GAP,
   SPAWN_AHEAD,
@@ -51,6 +51,7 @@ import {
   coyoteDistance,
   multiplierFor,
 } from "./constants";
+import { curveSample, grindDirectionOk } from "./railCurve";
 import { gradeTouchdown, integrateMotion, popScale, stepBalance, timeToGround } from "./physics";
 import { nextUnit } from "./rng";
 import type {
@@ -75,6 +76,8 @@ export interface CreateRunOptions {
   /** When false, the street stays empty. Tests place their own features. */
   spawn?: boolean;
   startPaused?: boolean;
+  fallScale?: number;
+  grindAssist?: number;
 }
 
 export function laneAfter(lane: Lane, direction: "left" | "right"): Lane {
@@ -132,6 +135,9 @@ export function createRun(options: CreateRunOptions = {}): RunnerState {
     earlyPop: false,
     pendingLanding: false,
     grindTime: 0,
+    grindS: 0,
+    fallScale: options.fallScale ?? FALL_GRAVITY_SCALE,
+    grindAssist: options.grindAssist ?? GRIND_ASSIST_DEFAULT,
     hitStop: 0,
     duck: -1,
     flip: -1,
@@ -283,8 +289,8 @@ export function applyAction(prev: RunnerState, action: Action, flick: FlickGrade
     }
     case "tap":
     case "flip": {
-      if (prev.hitStop > 0) return { state: prev, events: [] };
       if (prev.onGrind) return popOff(prev);
+      if (prev.hitStop > 0) return { state: prev, events: [] };
       if (prev.pendingLanding && prev.airborne && (timeToGround(prev) <= TRICK_BUFFER || prev.exitCoyote > 0)) {
         const eta = timeToGround(prev);
         return {
@@ -400,14 +406,24 @@ function award(state: RunnerState, trick: Trick, grade: Grade): void {
   state.misses = 0;
 }
 
+/** A rising pop does not lock. Rolling, or coming down, does. */
+function descending(state: RunnerState): boolean {
+  if (!state.airborne) return true;
+  return state.vy < 0;
+}
+
 function tryLock(state: RunnerState, prevDistance: number, events: RunnerEvent[]): void {
   if (state.onGrind || state.duck >= 0 || !state.armed) return;
+  if (!descending(state)) return;
   if (prevDistance - state.armedDistance > ARM_RANGE) return;
   for (const obstacle of state.obstacles) {
     if (obstacle.lane !== state.lane || obstacle.resolved || obstacle.awarded) continue;
     const end = windowEnd(state, obstacle);
     if (prevDistance > end || state.distance < obstacle.z) continue;
     if (state.armedDistance > end) continue;
+    const along = Math.max(0, state.distance - obstacle.z);
+    const sample = curveSample(obstacle, along);
+    if (!grindDirectionOk(state.vx, state.speed, sample.tx, sample.tz)) continue;
     const trick = state.armed;
     const grade = gradeForLead(obstacle.z - state.armedDistance);
     obstacle.awarded = true;
@@ -415,10 +431,11 @@ function tryLock(state: RunnerState, prevDistance: number, events: RunnerEvent[]
     state.grindId = obstacle.id;
     state.grindTrick = trick;
     state.grindTime = 0;
+    state.grindS = along;
     state.lane = obstacle.lane;
-    state.x = LANE_X[obstacle.lane];
+    state.x = sample.x;
     state.vx = 0;
-    state.y = obstacle.kind === "rail" ? RAIL_Y : BOX_Y;
+    state.y = sample.y;
     state.vy = 0;
     state.airborne = false;
     state.pendingLanding = false;
@@ -430,6 +447,7 @@ function tryLock(state: RunnerState, prevDistance: number, events: RunnerEvent[]
     state.flipBlend = state.flip >= 0 ? FLIP_LOCK_BLEND : 0;
     if (state.flipBlend === 0) state.flip = -1;
     state.duck = -1;
+    if (state.speed < GRIND_MIN_SPEED) state.speed = GRIND_MIN_SPEED;
     state.hitStop = Math.min(HIT_STOP_MAX, HIT_STOP);
     award(state, trick, grade);
     events.push("lock");
@@ -441,9 +459,12 @@ function followGrind(state: RunnerState): void {
   const feature = state.obstacles.find((obstacle) => obstacle.id === state.grindId);
   const end = feature ? feature.z + feature.length : state.distance;
   if (feature) {
+    const along = Math.max(0, state.distance - feature.z);
+    const sample = curveSample(feature, along);
+    state.grindS = along;
     state.lane = feature.lane;
-    state.x = LANE_X[feature.lane];
-    state.y = feature.kind === "rail" ? RAIL_Y : BOX_Y;
+    state.x = sample.x;
+    state.y = sample.y;
   }
   if (!feature || state.distance < end) return;
   state.onGrind = false;

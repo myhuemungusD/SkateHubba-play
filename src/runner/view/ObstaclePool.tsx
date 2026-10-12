@@ -7,6 +7,7 @@ import type { RunnerQuality } from "../quality";
 import type { Obstacle, ObstacleKind } from "../types";
 import { useLowRail } from "./lowRail";
 import { useSkateparkLedges } from "./skatepark";
+import { railBeamGeometry } from "./railBow";
 import { ledgeMaterial, metalMaterial, postMaterial, waxMaterial } from "./textures";
 
 const POOL = 16;
@@ -94,12 +95,11 @@ export function ObstaclePool({ controller, quality }: { controller: RunnerContro
             <mesh
               name="rail-beam"
               position={[0, 0.42, -RAIL_LENGTH / 2]}
+              geometry={railBeamGeometry()}
               material={railMetal}
               castShadow={high}
               receiveShadow={high}
-            >
-              <boxGeometry args={[0.18, 0.12, RAIL_LENGTH]} />
-            </mesh>
+            />
             <mesh name="rail-post-near" position={[0, 0.2, 0]} material={post} castShadow={high}>
               <boxGeometry args={[0.1, 0.4, 0.1]} />
             </mesh>

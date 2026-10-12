@@ -1,8 +1,9 @@
 import { AdditiveBlending, MeshBasicMaterial, MeshStandardMaterial } from "three";
 import { graffPosterMaterial, hubbaPosterMaterial, logoPosterMaterial, shopSignMaterial } from "./brandArt";
+import { PALETTE, alleyPaletteMaterial, paletteBox, paletteCylinder } from "./palette";
 import { brickBuildingMaterial } from "./textures";
 
-const poleMat = new MeshStandardMaterial({ color: "#2a261f", roughness: 0.62, metalness: 0.45 });
+const alleyMat = alleyPaletteMaterial();
 const lampHeadMat = new MeshStandardMaterial({
   color: "#4a3014",
   emissive: "#ffb020",
@@ -25,8 +26,6 @@ const poolMat = new MeshBasicMaterial({
   blending: AdditiveBlending,
   toneMapped: false,
 });
-const awningMat = new MeshStandardMaterial({ color: "#1a4334", roughness: 0.78, metalness: 0 });
-const stripeMat = new MeshStandardMaterial({ color: "#f2c14a", roughness: 0.55, metalness: 0 });
 const doorMat = new MeshStandardMaterial({
   color: "#3a2412",
   emissive: "#ff9a3c",
@@ -39,8 +38,6 @@ const glassMat = new MeshStandardMaterial({
   emissiveIntensity: 0.35,
   roughness: 0.18,
 });
-const dumpsterMat = new MeshStandardMaterial({ color: "#1c3a2c", roughness: 0.84, metalness: 0.06 });
-const lidMat = new MeshStandardMaterial({ color: "#24503a", roughness: 0.7, metalness: 0.1 });
 
 /**
  * Sodium lamps, a dumpster, graffiti posters, and the HubbaSpot shop.
@@ -79,9 +76,12 @@ function Lamp({ position, high }: { position: readonly [number, number]; high: b
   const [x, z] = position;
   return (
     <group position={[x, 0, z]}>
-      <mesh position={[0, 1.55, 0]} material={poleMat} castShadow={high}>
-        <cylinderGeometry args={[0.045, 0.06, 3.1, 6]} />
-      </mesh>
+      <mesh
+        position={[0, 1.55, 0]}
+        material={alleyMat}
+        geometry={paletteCylinder(0.045, 0.06, 3.1, PALETTE.pole)}
+        castShadow={high}
+      />
       <mesh position={[0, 3.12, 0]} material={lampHeadMat}>
         <boxGeometry args={[0.22, 0.1, 0.62]} />
       </mesh>
@@ -99,12 +99,20 @@ function Dumpster({ position, high }: { position: readonly [number, number]; hig
   const [x, z] = position;
   return (
     <group position={[x, 0, z]}>
-      <mesh position={[0, 0.42, 0]} material={dumpsterMat} castShadow={high} receiveShadow={high}>
-        <boxGeometry args={[0.9, 0.84, 1.25]} />
-      </mesh>
-      <mesh position={[0, 0.9, -0.08]} rotation={[0.35, 0, 0]} material={lidMat} castShadow={high}>
-        <boxGeometry args={[0.94, 0.08, 1.15]} />
-      </mesh>
+      <mesh
+        position={[0, 0.42, 0]}
+        material={alleyMat}
+        geometry={paletteBox(0.9, 0.84, 1.25, PALETTE.dumpster)}
+        castShadow={high}
+        receiveShadow={high}
+      />
+      <mesh
+        position={[0, 0.9, -0.08]}
+        rotation={[0.35, 0, 0]}
+        material={alleyMat}
+        geometry={paletteBox(0.94, 0.08, 1.15, PALETTE.lid)}
+        castShadow={high}
+      />
     </group>
   );
 }
@@ -115,12 +123,13 @@ function Shop({ high }: { high: boolean }) {
       <mesh position={[0.05, 1.7, 0]} material={brickBuildingMaterial()} castShadow={high} receiveShadow={high}>
         <boxGeometry args={[0.4, 3.4, 4.2]} />
       </mesh>
-      <mesh position={[-0.42, 2.55, 0]} material={awningMat} castShadow={high}>
-        <boxGeometry args={[0.85, 0.12, 3.6]} />
-      </mesh>
-      <mesh position={[-0.42, 2.46, 0]} material={stripeMat}>
-        <boxGeometry args={[0.86, 0.05, 3.62]} />
-      </mesh>
+      <mesh
+        position={[-0.42, 2.55, 0]}
+        material={alleyMat}
+        geometry={paletteBox(0.85, 0.12, 3.6, PALETTE.awning)}
+        castShadow={high}
+      />
+      <mesh position={[-0.42, 2.46, 0]} material={alleyMat} geometry={paletteBox(0.86, 0.05, 3.62, PALETTE.stripe)} />
       <mesh position={[-0.2, 0.95, 0.15]} material={doorMat}>
         <boxGeometry args={[0.08, 1.7, 0.95]} />
       </mesh>

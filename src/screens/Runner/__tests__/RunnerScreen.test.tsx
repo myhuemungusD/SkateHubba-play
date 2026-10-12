@@ -145,6 +145,11 @@ describe("RunnerScreen", () => {
     expect(screen.getByTestId("runner-control-mode")).toHaveTextContent("Easy flicks");
     fireEvent.change(screen.getByLabelText("Flick sensitivity"), { target: { value: "80" } });
     expect(screen.getByLabelText("Flick sensitivity")).toHaveValue("80");
+    fireEvent.change(screen.getByLabelText("Grind assist"), { target: { value: "12" } });
+    expect(controller.grindAssist()).toBe(12);
+    await user.click(screen.getByTestId("runner-feel"));
+    expect(controller.feelPreset()).toBe("heavy");
+    expect(screen.getByTestId("runner-feel")).toHaveTextContent("Heavy");
 
     await user.click(screen.getByRole("button", { name: "Resume" }));
     expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();

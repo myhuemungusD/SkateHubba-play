@@ -2,6 +2,7 @@ import { useEffect, type RefObject } from "react";
 import { Mesh, type Group, type Material, type MeshStandardMaterial, type Object3D, type WebGLRenderer } from "three";
 import { lowRailModelUrl } from "../artSlots";
 import { RAIL_LENGTH } from "../constants";
+import { bowFittedRail } from "./railBow";
 import { fitSkateboard, loadRunnerModel } from "./skateboardModel";
 
 const MAP_KEYS = ["map", "emissiveMap", "normalMap", "roughnessMap", "metalnessMap", "aoMap"] as const;
@@ -65,6 +66,7 @@ export function useLowRail(slots: RefObject<(Group | null)[]>, renderer: WebGLRe
           return;
         }
         fitSkateboard(loaded, false, RAIL_LENGTH);
+        bowFittedRail(loaded);
         loaded.name = "LowRail";
         source = loaded;
         for (const slot of slots.current) {

@@ -10,7 +10,6 @@ import {
   BALANCE_REPEAT,
   BOUNCE,
   BOUNCE_STOP,
-  BOX_Y,
   CROOKED_PITCH,
   CROOKED_ROLL,
   CROOKED_YAW,
@@ -24,20 +23,21 @@ import {
   LANE_ACCEL,
   LANE_X,
   LATE_LOCK,
-  MAGNET_LEAD,
   MAGNET_SNAP,
+  magnetLeadFor,
+  magnetRadiusFor,
   NOSE_PITCH,
   NOSE_ROLL,
   NOSE_YAW,
   OLLIE_GRAVITY,
   PITCH_HOLD_DAMP,
   POP_HOLD,
-  RAIL_Y,
   RIDE_PITCH,
   SQUASH_GAIN,
   SQUASH_MAX,
   SQUASH_RECOVER,
 } from "./tune";
+import { curveSample } from "./railCurve";
 import type { Grade, RunnerState, Trick } from "./types";
 
 export interface BoardAngles {
@@ -81,8 +81,8 @@ export function popScale(speed: number): number {
   return FLICK_POP_MIN + ((score - 1) / 4) * (1 - FLICK_POP_MIN);
 }
 
-/** Height and vertical speed of a pop at time t. Up uses g, down uses 1.6 g. */
-export function ollieArc(t: number, v0: number): { y: number; vy: number } {
+/** Height and vertical speed of a pop at time t. Up uses g, down uses the fall scale. */
+export function ollieArc(t: number, v0: number, fallScale = FALL_GRAVITY_SCALE): { y: number; vy: number } {
   const gUp = OLLIE_GRAVITY;
   const apexAt = v0 / gUp;
   if (t <= apexAt) {
@@ -90,8 +90,12 @@ export function ollieArc(t: number, v0: number): { y: number; vy: number } {
   }
   const height = (v0 * v0) / (2 * gUp);
   const fall = t - apexAt;
-  const gDown = gUp * FALL_GRAVITY_SCALE;
+  const gDown = gUp * fallScale;
   return { y: height - 0.5 * gDown * fall * fall, vy: -gDown * fall };
+}
+
+function fallOf(state: RunnerState): number {
+  return state.fallScale > 0 ? state.fallScale : FALL_GRAVITY_SCALE;
 }
 
 /** Seconds until the wheels meet the ground. Large when the board is still rising. */
@@ -101,12 +105,12 @@ export function timeToGround(state: RunnerState): number {
     const gUp = OLLIE_GRAVITY;
     const apexAt = state.popV0 / gUp;
     const height = (state.popV0 * state.popV0) / (2 * gUp);
-    const gDown = gUp * FALL_GRAVITY_SCALE;
+    const gDown = gUp * fallOf(state);
     const total = apexAt + Math.sqrt((2 * height) / gDown);
     return Math.max(0, total - state.popAge);
   }
   if (state.vy >= 0) return 1;
-  const g = OLLIE_GRAVITY * FALL_GRAVITY_SCALE;
+  const g = OLLIE_GRAVITY * fallOf(state);
   const disc = state.vy * state.vy + 2 * g * Math.max(0, state.y);
   return Math.max(0, (state.vy + Math.sqrt(disc)) / g);
 }
@@ -146,18 +150,22 @@ function spring(value: number, vel: number, target: number, dt: number, rate: nu
   return { value: value + nextVel * dt, vel: nextVel };
 }
 
-function featureHeight(state: RunnerState): number | null {
-  if (!state.armed || state.duck >= 0) return null;
-  let bestLead = MAGNET_LEAD;
-  let height: number | null = null;
+function featurePull(state: RunnerState): { x: number; y: number } | null {
+  const leadLimit = magnetLeadFor(state.grindAssist);
+  const radius = magnetRadiusFor(state.grindAssist);
+  if (!state.armed || state.duck >= 0 || leadLimit <= 0 || radius <= 0) return null;
+  let bestLead = leadLimit;
+  let pull: { x: number; y: number } | null = null;
   for (const obstacle of state.obstacles) {
     if (obstacle.lane !== state.lane || obstacle.resolved || obstacle.awarded) continue;
     const lead = obstacle.z - state.distance;
     if (lead < -LATE_LOCK || lead > bestLead) continue;
+    const sample = curveSample(obstacle, Math.max(0, -lead));
+    if (Math.abs(state.y - sample.y) > radius) continue;
     bestLead = lead;
-    height = obstacle.kind === "rail" ? RAIL_Y : BOX_Y;
+    pull = { x: sample.x, y: sample.y };
   }
-  return height;
+  return pull;
 }
 
 /**
@@ -228,13 +236,14 @@ export function integrateMotion(state: RunnerState, dt: number): MotionResult {
   state.yawVel = yawed.vel;
 
   let touched = false;
-  const magnet = featureHeight(state);
+  const magnet = featurePull(state);
+  const fall = fallOf(state);
   if (!state.airborne) {
     state.vy = 0;
     state.popV0 = 0;
     if (magnet === null) state.y = 0;
   } else if (state.popV0 > 0) {
-    const sample = ollieArc(state.popAge, state.popV0);
+    const sample = ollieArc(state.popAge, state.popV0, fall);
     state.y = sample.y;
     state.vy = sample.vy;
     if (sample.y <= 0 && state.popAge > dt) {
@@ -253,7 +262,7 @@ export function integrateMotion(state: RunnerState, dt: number): MotionResult {
       touched = true;
     }
   } else {
-    state.vy -= OLLIE_GRAVITY * FALL_GRAVITY_SCALE * dt;
+    state.vy -= OLLIE_GRAVITY * fall * dt;
     state.y += state.vy * dt;
     if (state.y <= 0) {
       const impact = Math.max(0, -state.vy);
@@ -272,8 +281,8 @@ export function integrateMotion(state: RunnerState, dt: number): MotionResult {
 
   if (magnet !== null && !touched) {
     const pull = Math.min(1, dt / MAGNET_SNAP);
-    state.y += (magnet - state.y) * pull;
-    state.x += (target - state.x) * pull;
+    state.y += (magnet.y - state.y) * pull;
+    state.x += (magnet.x - state.x) * pull;
   }
   return { touched };
 }

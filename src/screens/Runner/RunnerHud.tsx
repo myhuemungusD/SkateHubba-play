@@ -38,6 +38,10 @@ interface Props {
   sensitivity: number;
   onToggleControl: () => void;
   onSensitivity: (value: number) => void;
+  assist: number;
+  feelLabel: string;
+  onAssist: (value: number) => void;
+  onCycleFeel: () => void;
 }
 
 const BTN =
@@ -80,6 +84,10 @@ export function RunnerHud({
   sensitivity,
   onToggleControl,
   onSensitivity,
+  assist,
+  feelLabel,
+  onAssist,
+  onCycleFeel,
 }: Props) {
   const restartRef = useRef<HTMLButtonElement>(null);
   const playRef = useRef<HTMLButtonElement>(null);
@@ -222,6 +230,27 @@ export function RunnerHud({
             >
               {hud.streamlined ? "Easy flicks" : "Classic tricks"}
             </button>
+            <button
+              type="button"
+              data-testid="runner-feel"
+              className={`${BTN} mt-2 w-full bg-white/10 text-white`}
+              onClick={onCycleFeel}
+            >
+              Feel {feelLabel}
+            </button>
+            <label className="mt-3 block text-left font-body text-xs text-white/60">
+              Grind assist {assist}
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={assist}
+                aria-label="Grind assist"
+                className="mt-1 w-full accent-[#f2c14a]"
+                onChange={(event) => onAssist(Number(event.target.value))}
+              />
+            </label>
             <label className="mt-3 block text-left font-body text-xs text-white/60">
               Flick sensitivity {sensitivity}
               <input
