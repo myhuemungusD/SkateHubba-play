@@ -122,6 +122,8 @@ _As originally filed:_ when a matcher claimed a land on the honor path, `games.m
 
 ### P1-4 · Games/spots creation cooldowns are trivially bypassable
 
+**Status: CLOSED** — games were bound with `getAfter()` earlier (`firestore.rules` /games create). Spots now match: `createSpot` commits the spot and `users/{uid}.lastSpotCreatedAt` in one batch, and the /spots create rule requires the anchor via `getAfter()`. Covered in `rules-tests/spots.rules.test.ts` (omitted anchor, inside cooldown, after cooldown, no profile).
+
 `firestore.rules:1165-1169` (games) and `:2021-2025` (spots) read `lastGameCreatedAt`/`lastSpotCreatedAt` with `get()` (pre-state); the advancing write is fire-and-forget on the client (`games.create.ts:168-176`, `spots.ts:268`). A client that never writes the anchor never trips the cooldown. The file flags the asymmetry itself (`:166-169`).
 **Fix (one line each):** add `getAfter(users/{uid}).data.lastGameCreatedAt == request.time`, mirroring `clipRateLimitOk()`.
 
@@ -193,6 +195,8 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 ~2,400 lines of stateful game/upload logic live next to components (`useGamePlayController.ts` 456 LOC, `useUserClipUpload.ts`, `useClipsFeedController.ts`, etc.) so they face the 80% UI floor, not the 100% `src/hooks/**` floor. No global coverage threshold means `src/context`, `src/lib`, `src/utils` can regress to 0%.
 
 ### P2-9 · `firestore.rules` at ~76% of Firebase's hard limit, no size guard
+
+**Status: PARTIALLY CLOSED** — `scripts/check-rules-size.mjs` runs first in `npm run test:rules` (PR gate on rules changes, and before every rules deploy): warns past 80% of 256 KiB, fails past 90%. Measured 214.3 KiB (83.7%) on 2026-10-14. The guard stops a surprise deploy failure; shrinking the file is still open.
 
 193.9 KB / 256 KB (3,335 lines, measured 2026-10-01; 189.5 KB at the original audit), growing every feature; the per-evaluation node ceiling has already been hit once (`firestore.rules:880-895`). No CI check on rules size — failure mode is a deploy that hard-fails at the Firebase API. Add a size/complexity guard to `firebase-rules-deploy.yml`.
 

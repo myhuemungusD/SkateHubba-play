@@ -175,8 +175,8 @@ service cloud.firestore {
     // ── User-clip creation rate limit (30s) ──
     // Same two-part idiom as /reports + reports_limits: a pre-state read
     // proves the cooldown elapsed, and a getAfter() on the SAME batch
-    // proves the caller advanced the anchor. Unlike the best-effort
-    // lastSpotCreatedAt gate, the getAfter() makes the companion write
+    // proves the caller advanced the anchor. As with the games and spots
+    // gates, the getAfter() makes the companion write
     // MANDATORY — a client that simply omits it is denied instead of
     // silently skipping the cooldown forever. The anchor lives on
     // users/{uid}.lastClipCreatedAt, pinned to request.time by the owner-
@@ -667,8 +667,8 @@ service cloud.firestore {
         // creation (see /spots create rule). Exact same attack surface and
         // exact same three-branch guard — kept in lockstep with
         // lastGameCreatedAt above. The spot-create flow writes this via
-        // `setDoc(…, { lastSpotCreatedAt: serverTimestamp() }, { merge: true })`
-        // in src/services/spots.ts after addDoc().
+        // `batch.set(…, { lastSpotCreatedAt: serverTimestamp() }, { merge: true })`
+        // in the same batch as the spot (src/services/spots.ts).
         && (
           (!('lastSpotCreatedAt' in request.resource.data)
             && !('lastSpotCreatedAt' in resource.data))
@@ -2277,9 +2277,13 @@ service cloud.firestore {
         && request.resource.data.isVerified == false
         && request.resource.data.isActive == true
         // Rate limit: at most one spot creation per 30 seconds per user.
+        // Same two-part idiom as /games create: the pre-write anchor must be
+        // absent or older than 30s, AND the same batch must stamp it to
+        // request.time (getAfter), so omitting the anchor write is denied
+        // instead of silently skipping the cooldown.
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('lastSpotCreatedAt', null) == request.time
         && (
-          !exists(/databases/$(database)/documents/users/$(request.auth.uid))
-          || !('lastSpotCreatedAt' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
+          !('lastSpotCreatedAt' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
           || request.time > get(/databases/$(database)/documents/users/$(request.auth.uid)).data.lastSpotCreatedAt + duration.value(30, 's')
         );
 

@@ -211,7 +211,7 @@ describe("users create — red-team against cooldown-anchor seeding at profile c
 describe("users.lastSpotCreatedAt — red-team against stale-timestamp cooldown reset", () => {
   // Structural mirror of the lastGameCreatedAt block above. The spot-create
   // flow in src/services/spots.ts is byte-for-byte identical in shape:
-  //   setDoc(users/{uid}, { lastSpotCreatedAt: serverTimestamp() }, { merge: true })
+  //   batch.set(users/{uid}, { lastSpotCreatedAt: serverTimestamp() }, { merge: true })
   // so the rule must enforce identical invariants.
   beforeEach(async () => {
     await seedUser();
@@ -239,7 +239,7 @@ describe("users.lastSpotCreatedAt — red-team against stale-timestamp cooldown 
   });
 
   it("legitimate: owner CAN set lastSpotCreatedAt via serverTimestamp()", async () => {
-    // Mirrors the exact write in src/services/spots.ts after addDoc().
+    // Mirrors the anchor write src/services/spots.ts batches with the spot.
     await assertSucceeds(
       setDoc(doc(asOwner().firestore(), "users", OWNER_UID), { lastSpotCreatedAt: serverTimestamp() }, { merge: true }),
     );

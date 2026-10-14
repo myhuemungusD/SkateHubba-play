@@ -30,6 +30,8 @@ import {
   query,
   where,
   orderBy,
+  serverTimestamp,
+  writeBatch,
 } from "firebase/firestore";
 
 const PROJECT_ID = "demo-skatehubba-rules-spots";
@@ -82,6 +84,31 @@ function asUnverified(): RulesTestContext {
 
 function asAnonymous(): RulesTestContext {
   return testEnv.unauthenticatedContext();
+}
+
+/** Seed a minimal users/{uid} profile, optionally carrying a cooldown anchor. */
+async function seedUser(uid: string, overrides: Record<string, unknown> = {}): Promise<void> {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "users", uid), {
+      uid,
+      username: uid.replace(/-/g, ""),
+      wins: 0,
+      losses: 0,
+      ...overrides,
+    });
+  });
+}
+
+/**
+ * Mirrors createSpot in src/services/spots.ts: the spot and the
+ * users/{uid}.lastSpotCreatedAt cooldown anchor commit in ONE batch.
+ */
+function createSpot(ctx: RulesTestContext, spot: Record<string, unknown>, uid = OWNER_UID): Promise<void> {
+  const db = ctx.firestore();
+  const batch = writeBatch(db);
+  batch.set(doc(collection(db, "spots")), spot);
+  batch.set(doc(db, "users", uid), { lastSpotCreatedAt: serverTimestamp() }, { merge: true });
+  return batch.commit();
 }
 
 /** Ban `uid` by seeding the authoritative `bans/{uid}` tombstone (notBanned()). */
@@ -180,75 +207,97 @@ describe("spots — read", () => {
  * ──────────────────────────────────────────── */
 
 describe("spots — create", () => {
+  beforeEach(async () => {
+    await seedUser(OWNER_UID);
+    await seedUser("unverified-uid");
+  });
+
   it("rejects an anonymous create", async () => {
-    await assertFails(addDoc(collection(asAnonymous().firestore(), "spots"), makeValidSpot()));
+    await assertFails(createSpot(asAnonymous(), makeValidSpot()));
   });
 
   it("rejects a signed-in but unverified-email create", async () => {
-    await assertFails(addDoc(collection(asUnverified().firestore(), "spots"), makeValidSpot()));
+    await assertFails(createSpot(asUnverified(), makeValidSpot({ createdBy: "unverified-uid" }), "unverified-uid"));
   });
 
   it("accepts an email-verified create when createdBy matches the auth uid", async () => {
-    await assertSucceeds(addDoc(collection(asOwner().firestore(), "spots"), makeValidSpot()));
+    await assertSucceeds(createSpot(asOwner(), makeValidSpot()));
   });
 
   it("rejects a create where createdBy doesn't match the caller", async () => {
-    await assertFails(addDoc(collection(asOwner().firestore(), "spots"), makeValidSpot({ createdBy: OTHER_UID })));
+    await assertFails(createSpot(asOwner(), makeValidSpot({ createdBy: OTHER_UID })));
   });
 
   it("rejects a create from a banned account (notBanned() guard)", async () => {
     await ban(OWNER_UID);
-    await assertFails(addDoc(collection(asOwner().firestore(), "spots"), makeValidSpot()));
+    await assertFails(createSpot(asOwner(), makeValidSpot()));
   });
 
   it("rejects an empty name", async () => {
-    await assertFails(addDoc(collection(asOwner().firestore(), "spots"), makeValidSpot({ name: "" })));
+    await assertFails(createSpot(asOwner(), makeValidSpot({ name: "" })));
   });
 
   it("rejects a name longer than 80 characters", async () => {
-    await assertFails(addDoc(collection(asOwner().firestore(), "spots"), makeValidSpot({ name: "x".repeat(81) })));
+    await assertFails(createSpot(asOwner(), makeValidSpot({ name: "x".repeat(81) })));
   });
 
   it("accepts a description that is null", async () => {
-    await assertSucceeds(addDoc(collection(asOwner().firestore(), "spots"), makeValidSpot({ description: null })));
+    await assertSucceeds(createSpot(asOwner(), makeValidSpot({ description: null })));
   });
 
   it("rejects a non-string non-null description", async () => {
-    await assertFails(addDoc(collection(asOwner().firestore(), "spots"), makeValidSpot({ description: 42 })));
+    await assertFails(createSpot(asOwner(), makeValidSpot({ description: 42 })));
   });
 
   it("rejects a description longer than 500 characters", async () => {
-    await assertFails(
-      addDoc(collection(asOwner().firestore(), "spots"), makeValidSpot({ description: "x".repeat(501) })),
-    );
+    await assertFails(createSpot(asOwner(), makeValidSpot({ description: "x".repeat(501) })));
   });
 
   it("rejects out-of-range latitude", async () => {
-    await assertFails(addDoc(collection(asOwner().firestore(), "spots"), makeValidSpot({ latitude: 91 })));
-    await assertFails(addDoc(collection(asOwner().firestore(), "spots"), makeValidSpot({ latitude: -91 })));
+    await assertFails(createSpot(asOwner(), makeValidSpot({ latitude: 91 })));
+    await assertFails(createSpot(asOwner(), makeValidSpot({ latitude: -91 })));
   });
 
   it("rejects out-of-range longitude", async () => {
-    await assertFails(addDoc(collection(asOwner().firestore(), "spots"), makeValidSpot({ longitude: 181 })));
-    await assertFails(addDoc(collection(asOwner().firestore(), "spots"), makeValidSpot({ longitude: -181 })));
+    await assertFails(createSpot(asOwner(), makeValidSpot({ longitude: 181 })));
+    await assertFails(createSpot(asOwner(), makeValidSpot({ longitude: -181 })));
   });
 
   it("rejects ratings outside 1-5", async () => {
-    await assertFails(addDoc(collection(asOwner().firestore(), "spots"), makeValidSpot({ gnarRating: 0 })));
-    await assertFails(addDoc(collection(asOwner().firestore(), "spots"), makeValidSpot({ bustRisk: 6 })));
+    await assertFails(createSpot(asOwner(), makeValidSpot({ gnarRating: 0 })));
+    await assertFails(createSpot(asOwner(), makeValidSpot({ bustRisk: 6 })));
   });
 
   it("rejects more than 5 photoUrls", async () => {
     const photoUrls = Array.from({ length: 6 }, (_, i) => `https://example.com/${i}.jpg`);
-    await assertFails(addDoc(collection(asOwner().firestore(), "spots"), makeValidSpot({ photoUrls })));
+    await assertFails(createSpot(asOwner(), makeValidSpot({ photoUrls })));
   });
 
   it("rejects a client that tries to self-verify", async () => {
-    await assertFails(addDoc(collection(asOwner().firestore(), "spots"), makeValidSpot({ isVerified: true })));
+    await assertFails(createSpot(asOwner(), makeValidSpot({ isVerified: true })));
   });
 
   it("rejects a client that creates with isActive=false", async () => {
-    await assertFails(addDoc(collection(asOwner().firestore(), "spots"), makeValidSpot({ isActive: false })));
+    await assertFails(createSpot(asOwner(), makeValidSpot({ isActive: false })));
+  });
+
+  it("rejects a create that omits the cooldown anchor write (bare addDoc)", async () => {
+    // P1-4: before the getAfter() binding, skipping the anchor skipped the cooldown.
+    await assertFails(addDoc(collection(asOwner().firestore(), "spots"), makeValidSpot()));
+  });
+
+  it("rejects a create inside the 30s cooldown", async () => {
+    await seedUser(OWNER_UID, { lastSpotCreatedAt: new Date(Date.now() - 5_000) });
+    await assertFails(createSpot(asOwner(), makeValidSpot()));
+  });
+
+  it("accepts a create once the 30s cooldown has elapsed", async () => {
+    await seedUser(OWNER_UID, { lastSpotCreatedAt: new Date(Date.now() - 60_000) });
+    await assertSucceeds(createSpot(asOwner(), makeValidSpot()));
+  });
+
+  it("rejects a create from a caller with no users/{uid} profile", async () => {
+    await assertFails(createSpot(asOtherVerified(), makeValidSpot({ createdBy: OTHER_UID }), OTHER_UID));
   });
 });
 
