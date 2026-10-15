@@ -168,7 +168,7 @@ platform :ios do
       clean: true,
       output_directory: "ios/build",
       output_name: "SkateHubba.ipa",
-      export_method: "app-store-connect",
+      export_method: "app-store",
       # Release signs manually (see project.pbxproj): the team comes from the
       # environment so no developer identity is hardcoded in the repo, and the
       # profile is the match-managed App Store profile synced by :certificates.
