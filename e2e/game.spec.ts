@@ -348,6 +348,9 @@ const P3 = { email: "p3@test.com", password: "password123", username: "p3skater"
 test("landed claim → setter disputes → a third player votes bail", async ({ browser }) => {
   // The vote buttons live on the Clips feed, which is hidden when extras are off.
   test.skip(!EXTRAS_ENABLED, EXTRAS_SKIP_REASON);
+  // Three full sessions (two players + a voter sign-up) run ~25s locally,
+  // so the default 30s budget times out on slower CI runners.
+  test.slow();
 
   const { ctx: p1Ctx, page: p1 } = await openSetterSession(browser, P1, P2);
   await setterSetsTrick(p1, "Kickflip");
