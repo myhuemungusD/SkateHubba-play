@@ -134,6 +134,20 @@ platform :ios do
     unless keychain_name.empty?
       options[:keychain_name] = keychain_name
       options[:keychain_password] = keychain_password unless keychain_password.empty?
+      # match imports into this keychain but does not create it. On a fresh
+      # CI runner it does not exist yet, so make it (unlocked, no timeout).
+      keychain_path = File.expand_path("~/Library/Keychains/#{keychain_name}-db")
+      if !File.exist?(keychain_path) && !keychain_password.empty?
+        create_keychain(
+          name: keychain_name,
+          password: keychain_password,
+          default_keychain: false,
+          unlock: true,
+          timeout: 0,
+          lock_when_sleeps: false,
+          add_to_search_list: true,
+        )
+      end
     end
     match(options)
   end
