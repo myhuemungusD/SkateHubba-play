@@ -197,7 +197,7 @@ The `verify-no-cloud-functions` CI gate scopes to `^functions/src/` — the drai
 
 Auto-forfeit runs on two paths: the client's `forfeitExpiredTurn` on game open, and `api/cron/sweep-expired-turns.ts` on a 15-minute GitHub Actions schedule. Both share the `decideExpiredForfeit` helper in `src/services/turnForfeit.shared.ts`, so they cannot diverge.
 
-### 4.5 Security rules (the real backend, 3335 lines / ~194 KB)
+### 4.5 Security rules (the real backend, 3,054 lines / ~171 KB)
 
 Firestore rules enforce:
 
@@ -262,7 +262,7 @@ SkateHubba-play/
 │   │   ├── games.turns.ts            # turn submission (runTransaction)
 │   │   ├── games.judge.ts            # judge action (runTransaction)
 │   │   ├── games.match.ts            # match action (runTransaction)
-│   │   ├── games.subscriptions.ts    # three-listener onSnapshot OR-query merge
+│   │   ├── games.subscriptions.ts    # six-listener onSnapshot OR-query merge
 │   │   ├── games.mappers.ts          # Firestore <-> domain shape
 │   │   ├── auth.ts                   # OAuth popup + redirect fallback
 │   │   ├── storage.ts                # webm/mp4, 1KB–50MB, withRetry
@@ -289,9 +289,9 @@ SkateHubba-play/
 ├── public/                    # PWA manifest, firebase-messaging-sw.js, static assets
 ├── infra/                     # backup + lifecycle shell scripts
 ├── scripts/                   # check-test-duplication.mjs, check-file-length.mjs, ...
-├── docs/                      # 22 docs (see §4.13)
+├── docs/                      # 31 docs (see §4.13)
 ├── fastlane/
-├── firestore.rules            # 3335 lines / ~194 KB — the real backend
+├── firestore.rules            # 3,054 lines / ~171 KB — the real backend
 ├── storage.rules
 ├── firebase.json
 ├── vercel.json
@@ -344,11 +344,12 @@ These are the approved majors. Minors and patches track upstream via the caret r
 ```
 API.md, APPCHECK_ROLLOUT.md, ARCHITECTURE.md, CHARTER.md (this file),
 CLIP_MODERATION.md, DATABASE.md, DECISIONS.md, DEPLOY_FUNCTIONS.md, DEPLOYMENT.md, DEVELOPMENT.md,
-DISPUTE_BINDING_DESIGN.md, DSA_COMPLIANCE.md, ECONOMY.md,
-GAME_MECHANICS.md, GAME_STATE_MACHINE.md, GAPS.md, MAPBOX_STYLE.md,
-NOTIFICATION_AUDIT.md, PERMISSION_DENIED_RUNBOOK.md, SENTRY_ALERTS.md,
-STATS.md, STATUS_REPORT.md, STORE_PRIVACY_ANSWERS.md, TESTING.md
-(24 files)
+DICE.md, DISPUTE_BINDING_DESIGN.md, DSA_COMPLIANCE.md, ECONOMY.md, EMAIL_VERIFICATION.md,
+FIRESTORE_RULES_NOTES.md, GAME_MECHANICS.md, GAME_STATE_MACHINE.md, GAPS.md, IOS_RELEASE.md,
+MAPBOX_STYLE.md, MFA_TOTP.md, mobile-phone-layout.md, NOTIFICATION_AUDIT.md,
+PERMISSION_DENIED_RUNBOOK.md, SENTRY_ALERTS.md, STATS.md, STATUS_REPORT.md,
+STORE_PRIVACY_ANSWERS.md, TESTING.md, XP_LEVELS.md
+(31 files)
 
 archive/   — superseded audits and plans; history only, never a current
              risk register:

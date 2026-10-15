@@ -220,7 +220,7 @@ skatehubba-play/
 ├── api/                       # Vercel serverless endpoints (cron sweeps, push drain, account deletion, social cards)
 ├── functions/                 # Maintainer-approved stats close-out Cloud Function (CI-pinned file set)
 ├── e2e/                       # Playwright E2E specs (auth, game, forfeit, invite, map, clips, onboarding, offline, …)
-├── rules-tests/               # Firestore + Storage rules tests incl. red-team suites (53 files)
+├── rules-tests/               # Firestore + Storage rules tests incl. red-team suites (56 files)
 ├── docs/                      # Documentation suite
 │   └── screenshots/           # README images + brand assets
 ├── firestore.rules            # Firestore security rules (turn order, scores, rate limits)

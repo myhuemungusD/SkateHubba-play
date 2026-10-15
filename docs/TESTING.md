@@ -323,7 +323,7 @@ Every exported service function and custom hook has dedicated unit tests with 10
 ## Security-Rules Tests (`rules-tests/`)
 
 `firestore.rules` and `storage.rules` are the real backend, so they get their own
-suite — currently 53 files — run against the emulators with
+suite — currently 56 files — run against the emulators with
 `@firebase/rules-unit-testing`:
 
 ```bash
