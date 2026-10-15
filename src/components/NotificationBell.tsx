@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNotifications, type AppNotification } from "../context/NotificationContext";
 import { NotificationRow } from "./NotificationRow";
+import { BellGlyph, SoundGlyph } from "./NotificationBellIcons";
 import { getNotificationGame } from "../services/notifications";
 import type { GameDoc } from "../services/games";
 
@@ -132,22 +133,11 @@ export function NotificationBell({
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
         aria-expanded={open}
       >
-        <svg
+        <BellGlyph
           key={notifyKey}
           className={`text-muted hover:text-white transition-colors ${notifyKey > 0 ? "animate-bell-shake" : ""}`}
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-          <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-        </svg>
+          size="16"
+        />
         {unreadCount > 0 && (
           <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 flex items-center justify-center rounded-full bg-brand-orange font-display text-xs text-black leading-none">
             {unreadCount > 99 ? "99+" : unreadCount}
@@ -173,39 +163,7 @@ export function NotificationBell({
                 aria-label={soundEnabled ? "Mute sounds" : "Unmute sounds"}
                 title={soundEnabled ? "Mute sounds" : "Unmute sounds"}
               >
-                {soundEnabled ? (
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                  </svg>
-                ) : (
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                    <line x1="23" y1="9" x2="17" y2="15" />
-                    <line x1="17" y1="9" x2="23" y2="15" />
-                  </svg>
-                )}
+                <SoundGlyph on={soundEnabled} />
               </button>
               {/* Mark all read */}
               {unreadCount > 0 && (
@@ -224,21 +182,7 @@ export function NotificationBell({
           <div className="min-h-0 flex-1 overflow-y-auto no-scrollbar">
             {notifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10">
-                <svg
-                  className="text-[#2E2E2E] mb-2"
-                  width="28"
-                  height="28"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                </svg>
+                <BellGlyph className="text-[#2E2E2E] mb-2" size="28" strokeWidth="1.5" />
                 <p className="font-body text-xs text-faint">No notifications yet</p>
               </div>
             ) : (

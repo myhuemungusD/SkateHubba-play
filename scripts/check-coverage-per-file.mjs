@@ -101,7 +101,9 @@ function loadSummary() {
     if (key === "total") continue;
     const file = toPosix(relative(REPO_ROOT, key));
     const pct = {};
-    for (const m of METRICS) pct[m] = round2(data[m].pct);
+    // A type-only module (interfaces, `export type`) has nothing executable,
+    // so V8 reports 0/0 as 0%. Nothing can be uncovered there: treat it as met.
+    for (const m of METRICS) pct[m] = data[m].total === 0 ? 100 : round2(data[m].pct);
     files.set(file, pct);
   }
   return files;

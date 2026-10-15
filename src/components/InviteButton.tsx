@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { trackEvent } from "../services/analytics";
 import { copyText, isShareAvailable, shareUrl } from "../services/nativeBridge";
+import { contactPhones, inviteSocials, inviteText } from "./inviteLinks";
 
 export function InviteButton({ username, className = "" }: { username?: string; className?: string }) {
   const [showPanel, setShowPanel] = useState(false);
@@ -24,12 +25,8 @@ export function InviteButton({ username, className = "" }: { username?: string; 
   };
 
   const url = import.meta.env.VITE_APP_URL || window.location.origin;
-  const text = username
-    ? `I'm playing S.K.A.T.E. on SkateHubba — challenge me! My handle: @${username}`
-    : "Play S.K.A.T.E. on SkateHubba — the first async trick battle game!";
+  const text = inviteText(username);
   const fullMessage = `${text}\n${url}`;
-  const encodedText = encodeURIComponent(fullMessage);
-  const encodedUrl = encodeURIComponent(url);
 
   const flash = (msg: string, ms = 3000) => {
     setStatusMsg(msg);
@@ -45,11 +42,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
       const contacts = await navigator.contacts.select(["name", "tel"], { multiple: true });
       if (!contacts.length) return;
 
-      const phones = contacts
-        .flatMap((c) => c.tel || [])
-        .filter(Boolean)
-        .map((p) => p.replace(/[^0-9+\-().# ]/g, "").trim())
-        .filter((p) => p.length > 0);
+      const phones = contactPhones(contacts);
       if (phones.length === 0) {
         flash("Selected contacts have no phone numbers.");
         return;
@@ -85,18 +78,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
     }
   };
 
-  const socials = [
-    { name: "X", icon: "𝕏", href: `https://twitter.com/intent/tweet?text=${encodedText}` },
-    { name: "WhatsApp", icon: "WA", href: `https://wa.me/?text=${encodedText}` },
-    { name: "Snapchat", icon: "SC", href: `https://www.snapchat.com/scan?attachmentUrl=${encodedUrl}` },
-    { name: "Facebook", icon: "FB", href: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}` },
-    {
-      name: "Reddit",
-      icon: "Re",
-      href: `https://www.reddit.com/submit?url=${encodedUrl}&title=${encodeURIComponent(text)}`,
-    },
-    { name: "Telegram", icon: "TG", href: `https://t.me/share/url?url=${encodedUrl}&text=${encodeURIComponent(text)}` },
-  ];
+  const socials = inviteSocials(text, url);
 
   const tileBase =
     "rounded-xl bg-surface-alt border border-border hover:border-brand-orange/40 hover:bg-brand-orange/[0.03] active:scale-[0.97] transition-all duration-300";
