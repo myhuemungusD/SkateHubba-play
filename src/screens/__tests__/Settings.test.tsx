@@ -120,6 +120,20 @@ vi.mock("../../context/OnboardingContext", () => ({
   useOnboardingContext: () => ({ replay: replayTutorialMock }),
 }));
 
+// Stub the picker so the Settings tests only cover how it is opened/closed.
+vi.mock("../../components/AvatarPicker", () => ({
+  AvatarPicker: ({ onUploaded, onClose }: { onUploaded: (url: string) => void; onClose: () => void }) => (
+    <div data-testid="avatar-picker-stub">
+      <button type="button" onClick={() => onUploaded("https://example.com/a.webp")}>
+        stub uploaded
+      </button>
+      <button type="button" onClick={onClose}>
+        stub close
+      </button>
+    </div>
+  ),
+}));
+
 /* ── Helpers ───────────────────────────────────────────── */
 
 const profile: UserProfile = {
@@ -660,5 +674,24 @@ describe("Settings", () => {
       expect(screen.queryByRole("button", { name: /Turn on notifications/ })).toBeNull();
       expect(screen.getByText(/Enable notifications in your device settings/i)).toBeInTheDocument();
     });
+  });
+});
+
+describe("Settings — tutorial replay and avatar picker", () => {
+  it("replays onboarding and returns to the previous screen", async () => {
+    const onBack = vi.fn();
+    render(wrap(<Settings profile={profile} onBack={onBack} />));
+    await userEvent.click(screen.getByRole("button", { name: /Replay onboarding/i }));
+    await waitFor(() => expect(onBack).toHaveBeenCalledTimes(1));
+    expect(replayTutorialMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["stub uploaded", "stub close"])("opens the avatar picker and dismisses it via %s", async (label) => {
+    render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+    expect(screen.queryByTestId("avatar-picker-stub")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /Edit Avatar/i }));
+    expect(screen.getByTestId("avatar-picker-stub")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: label }));
+    expect(screen.queryByTestId("avatar-picker-stub")).toBeNull();
   });
 });

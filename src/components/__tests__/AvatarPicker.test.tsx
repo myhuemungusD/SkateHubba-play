@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -33,7 +33,12 @@ vi.mock("@capacitor/core", () => ({
 }));
 
 import { AvatarPicker } from "../AvatarPicker";
-import { AvatarBorderlineError, AvatarRejectedError } from "../../services/avatars";
+import {
+  AvatarBorderlineError,
+  AvatarRejectedError,
+  AvatarTooLargeError,
+  AvatarTooSmallError,
+} from "../../services/avatars";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -253,6 +258,102 @@ describe("AvatarPicker — URL scheme validation (audit B-ISSUE-1)", () => {
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
       fetchSpy.mockRestore();
+    }
+  });
+});
+
+describe("AvatarPicker — size rejections", () => {
+  it.each([
+    [new AvatarTooLargeError(9_000_000), "Image too large after compression. Try a different photo."],
+    [new AvatarTooSmallError(10), "Image too small. Try a different photo."],
+  ])("maps %s to its message", async (err, message) => {
+    mockUploadAvatar.mockRejectedValueOnce(err);
+    renderPicker();
+    await pickFileAndOpenPreview();
+    await userEvent.click(screen.getByText("Confirm"));
+    await waitFor(() => expect(screen.getByText(message)).toBeInTheDocument());
+  });
+});
+
+describe("AvatarPicker — paste URL screen", () => {
+  async function submitUrl(response: Response | Error): Promise<void> {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    if (response instanceof Error) fetchSpy.mockRejectedValue(response);
+    else fetchSpy.mockResolvedValue(response);
+    renderPicker();
+    await userEvent.click(screen.getByText("Paste Image URL"));
+    await userEvent.type(screen.getByPlaceholderText("https://…/avatar.png"), "https://example.com/a.png");
+    await userEvent.click(screen.getByText("Continue"));
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("fetches the image and opens the preview", async () => {
+    const blob = new Blob([new Uint8Array(16)], { type: "image/png" });
+    await submitUrl({ ok: true, blob: async () => blob } as unknown as Response);
+    await waitFor(() => expect(screen.getByAltText("Avatar preview")).toBeInTheDocument());
+  });
+
+  it.each([new Response(null, { status: 404 }), new Error("offline")])(
+    "shows the fetch error for %s",
+    async (response) => {
+      await submitUrl(response);
+      await waitFor(() =>
+        expect(screen.getByText("Couldn't fetch that URL. Try a different image.")).toBeInTheDocument(),
+      );
+    },
+  );
+
+  it("returns to the menu from the URL screen", async () => {
+    renderPicker();
+    await userEvent.click(screen.getByText("Paste Image URL"));
+    await userEvent.click(screen.getByText("Back"));
+    expect(screen.getByText("Take Photo")).toBeInTheDocument();
+  });
+});
+
+describe("AvatarPicker — native capture success", () => {
+  it.each([
+    ["png", "Take Photo"],
+    ["webp", "Choose From Gallery"],
+    ["jpeg", "Take Photo"],
+  ])("opens the preview for a %s photo from %s", async (format, button) => {
+    const { Capacitor } = await import("@capacitor/core");
+    const spy = vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(true);
+    vi.doMock("@capacitor/camera", () => ({
+      Camera: { getPhoto: vi.fn().mockResolvedValue({ base64String: btoa("img"), format }) },
+      CameraResultType: { Base64: "base64" },
+      CameraSource: { Camera: "CAMERA", Photos: "PHOTOS" },
+    }));
+    try {
+      renderPicker();
+      await userEvent.click(screen.getByText(button));
+      await waitFor(() => expect(screen.getByAltText("Avatar preview")).toBeInTheDocument());
+    } finally {
+      spy.mockRestore();
+      vi.doUnmock("@capacitor/camera");
+    }
+  });
+
+  it("stays on the menu when the plugin returns no image", async () => {
+    const { Capacitor } = await import("@capacitor/core");
+    const spy = vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(true);
+    vi.doMock("@capacitor/camera", () => ({
+      Camera: { getPhoto: vi.fn().mockResolvedValue({}) },
+      CameraResultType: { Base64: "base64" },
+      CameraSource: { Camera: "CAMERA", Photos: "PHOTOS" },
+    }));
+    try {
+      renderPicker();
+      await userEvent.click(screen.getByText("Take Photo"));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(screen.queryByAltText("Avatar preview")).toBeNull();
+      expect(screen.getByText("Take Photo")).toBeInTheDocument();
+    } finally {
+      spy.mockRestore();
+      vi.doUnmock("@capacitor/camera");
     }
   });
 });

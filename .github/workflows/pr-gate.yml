@@ -186,11 +186,10 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-      - name: Report files over length budget (non-blocking)
-        # Soft budget: surface the report in logs but never fail the PR gate.
-        # Use --strict locally to enforce; CI stays informational.
-        continue-on-error: true
-        run: node scripts/check-file-length.mjs
+      - name: Enforce file length budget
+        # Hard budget: every file is under its LOC budget, so any growth past
+        # it fails the PR gate. Split by responsibility rather than raising it.
+        run: node scripts/check-file-length.mjs --strict
 
   validate-firebase-rules:
     name: Validate Firebase rules changes
