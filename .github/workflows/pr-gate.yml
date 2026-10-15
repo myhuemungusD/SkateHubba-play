@@ -201,6 +201,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check firestore.rules size (Firebase 256 KiB limit)
+        run: node scripts/check-rules-size.mjs firestore.rules
+
       - name: Detect rules-related changes
         id: changed
         run: |

@@ -27,7 +27,6 @@
  */
 
 import {
-  addDoc,
   collection,
   doc,
   getDoc,
@@ -37,8 +36,8 @@ import {
   query,
   runTransaction,
   serverTimestamp,
-  setDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import type { CreateSpotRequest, ObstacleType, Spot, SpotComment } from "../types/spot";
@@ -268,16 +267,16 @@ export async function createSpot(req: CreateSpotRequest, uid: string): Promise<S
     updatedAt: serverTimestamp(),
   };
 
-  const docRef = await addDoc(spotsRef(), payload);
+  // Atomic spot create + cooldown anchor. The spots create rule requires
+  // getAfter(users/{uid}).lastSpotCreatedAt == request.time, so the anchor
+  // write is MANDATORY and must land in the same batch as the spot.
+  const db = requireDb();
+  const docRef = doc(spotsRef());
+  const batch = writeBatch(db);
+  batch.set(docRef, payload);
+  batch.set(doc(db, "users", uid), { lastSpotCreatedAt: serverTimestamp() }, { merge: true });
+  await batch.commit();
   lastSpotCreatedAt = Date.now();
-
-  // Best-effort rate-limit timestamp on the user doc (matches createGame).
-  setDoc(doc(requireDb(), "users", uid), { lastSpotCreatedAt: serverTimestamp() }, { merge: true }).catch((err) => {
-    logger.warn("spot_rate_limit_timestamp_write_failed", {
-      uid,
-      error: parseFirebaseError(err),
-    });
-  });
 
   // Optimistic return — populate timestamps locally since the server-resolved
   // values aren't available until the next read. Callers that need authoritative
