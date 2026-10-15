@@ -15,13 +15,15 @@ Doc-only pass. Each status below was re-checked against the source at `ae0c296`.
 - **P1-4 CLOSED** (#681): both cooldown anchors are bound with `getAfter()`, and `createSpot` writes the spot and its anchor in one batch.
 - **P1-8 CLOSED**: all three cron workflows run the shared `cron-failure-alert` step.
 - **P2-1 Sentry half CLOSED**: the account-deletion, player-meta and three cron endpoints report through `api/_sentry.ts` (the static `well-known` files don't need it). The coverage half is still open.
-- **P2-5 REGRESSED**: the CodeQL workflow exists, but on 2026-10-14 every `Analyze` job on #680 failed at the SARIF upload with `Code scanning is not enabled for this repository`. It passed on `main` on 2026-10-12, so the repo setting was turned off in between.
+- **P2-5 REGRESSED**: no static analysis runs at all. On 2026-10-14 every CodeQL `Analyze` job failed at the SARIF upload because code scanning was turned off in the repo settings. Then, at 04:41 UTC on 2026-10-15, the `CodeQL` workflow itself was disabled manually in Actions; GitHub reports its state as `disabled_manually`.
 - **P2-6 PARTIALLY CLOSED**: `functions/src/moderation/` screens user-uploaded public clips with Video Intelligence and auto-hides a clip after 3 reports. It is gated by `MODERATION_ENABLED`, which defaults to off; whether production has it on is not visible from the repo.
 - **P2-7 PARTIALLY CLOSED**: e2e now covers the community dispute vote, clip upload and clip upvote.
+- **P2-10 progress**: `clips`, `disputes` and `reports` now carry `keys().hasOnly()` checks; `games`, `spots` and `nudges` still have none, and spots `photoUrls` is still type-checked only.
 - **P2-9 CLOSED** (#681): `firestore.rules` is 171,390 bytes (65.4% of the limit), with a size check in `pr-gate.yml` and the rules deploy.
 - **P3-1 MOSTLY CLOSED**: the state-machine docs, `DISPUTE_BINDING_DESIGN.md`, the CHARTER collection inventory and its deps list were updated in earlier passes. This pass fixed the remaining stale figures.
 - **P3-6**: `LevelChip` is no longer dead code, and both PR-gate guards now scan `api/`. Both are closed.
-- **Still open, re-confirmed:** P0-4, P1-1 (by design), the P1-5 anonymous notice route, P2-1 coverage half, P2-2, P2-3, P2-4, P2-8, P2-10, P3-2, P3-3, P3-4, and the rest of P3-6.
+- **Still open, re-checked in code:** P1-1 (by design), the P1-5 anonymous notice route (`reports` create still requires a signed-in, verified user), P2-1 coverage half, P2-2, P2-4, P2-8, P2-10 (partly), P3-2 (clips still reuse game video URLs), P3-3 (no tags, still `1.1.0`), P3-4.
+- **Still open, carried forward without re-checking** (not visible in the repo): P0-4 (account-level DSA tasks), P2-3 (App Check enforcement is a Console setting), and the remaining P3-6 bullets.
 
 ---
 
@@ -207,7 +209,7 @@ _As originally filed:_ when a matcher claimed a land on the honor path, `games.m
 
 **Status (2026-10-08): MOSTLY CLOSED** — `.github/workflows/codeql.yml` (CodeQL for JS/TS, Actions, Python) landed in #616, and GitHub secret scanning with push protection is enabled on the repo. Still no gitleaks/Semgrep workflow.
 
-**Status (2026-10-15): REGRESSED.** Code scanning is now disabled on the repo, so every `CodeQL / Analyze` job fails at the SARIF upload (`Code scanning is not enabled for this repository`). Seen on #680 on 2026-10-14; the same workflow passed on `main` on 2026-10-12. **Fix:** a repo admin re-enables it under Settings → Code security → Code scanning.
+**Status (2026-10-15): REGRESSED.** No static analysis runs at all. On 2026-10-14 code scanning was off in the repo settings, so every `CodeQL / Analyze` job on #680 failed at the SARIF upload (`Code scanning is not enabled for this repository`); it had passed on `main` on 2026-10-12. Then, at 04:41 UTC on 2026-10-15, the `CodeQL` workflow was disabled manually in Actions, so it no longer runs on PRs, on `main` or on its weekly schedule. **Fix:** re-enable code scanning under Settings → Code security, then re-enable the `CodeQL` workflow under Actions.
 
 12 workflows, none CodeQL/Semgrep/gitleaks. The stated threat model (`SECURITY.md:89`) includes AI agents pushing code, and the repo handles service-account JSON in env — a committed-secret scanner is the obvious missing control.
 
@@ -298,7 +300,7 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 
 ## Recommended sequence
 
-1. **Today:** P0-4 (the remaining P0; DSA account tasks have external lead time — start the clock), and re-enable code scanning (P2-5 regression). P0-1, P0-2, and P0-3 are closed.
+1. **Today:** P0-4 (the remaining P0; DSA account tasks have external lead time — start the clock), and turn CodeQL back on (P2-5 regression: re-enable code scanning, then the workflow). P0-1, P0-2, and P0-3 are closed.
 2. **This cycle:** the P1-5 anonymous notice route. Every other P1 is closed (P1-1 as far as it safely can be).
 3. **Schedule:** P2 block — `api/` coverage floor, App Check enforcement, rate limiting, game-video moderation.
 4. **Batch:** P3 doc rewrite (P3-1 first — the state-machine docs actively mislead), release hygiene.

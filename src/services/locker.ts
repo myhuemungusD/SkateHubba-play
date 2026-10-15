@@ -19,8 +19,8 @@
  * is responsible for falling back to a default icon/treatment on a value it
  * doesn't recognise.
  *
- * Items are minted server-side (`firestore.rules` → users/{uid}/locker allows
- * create only for an admin-claim holder and denies ordinary clients), so this
+ * Items are minted only from the admin console (`admin.ts`): `firestore.rules`
+ * → users/{uid}/locker allows create only for an admin-claim holder, so this
  * module is read-only by design.
  *
  * Ordering is done in memory rather than with a Firestore `orderBy` for the
