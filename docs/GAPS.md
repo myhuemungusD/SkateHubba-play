@@ -21,8 +21,9 @@ Doc-only pass. Each status below was re-checked against the source at `ae0c296`.
 - **P2-10 progress**: `clips`, `disputes` and `reports` now carry `keys().hasOnly()` checks; `games`, `spots` and `nudges` still have none, and spots `photoUrls` is still type-checked only.
 - **P2-9 CLOSED** (#681): `firestore.rules` is 171,390 bytes (65.4% of the limit), with a size check in `pr-gate.yml` and the rules deploy.
 - **P3-1 MOSTLY CLOSED**: the state-machine docs, `DISPUTE_BINDING_DESIGN.md`, the CHARTER collection inventory and its deps list were updated in earlier passes. This pass fixed the remaining stale figures.
+- **P3-4 CLOSED** (#683, merged after this sweep started): every file is within budget and the PR gate enforces it.
 - **P3-6**: `LevelChip` is no longer dead code, and both PR-gate guards now scan `api/`. Both are closed.
-- **Still open, re-checked in code:** P1-1 (by design), the P1-5 anonymous notice route (`reports` create still requires a signed-in, verified user), P2-1 coverage half, P2-2, P2-4, P2-8, P2-10 (partly), P3-2 (clips still reuse game video URLs), P3-3 (no tags, still `1.1.0`), P3-4.
+- **Still open, re-checked in code:** P1-1 (by design), the P1-5 anonymous notice route (`reports` create still requires a signed-in, verified user), P2-1 coverage half, P2-2, P2-4, P2-8, P2-10 (partly), P3-2 (clips still reuse game video URLs), P3-3 (no tags, still `1.1.0`).
 - **Still open, carried forward without re-checking** (not visible in the repo): P0-4 (account-level DSA tasks), P2-3 (App Check enforcement is a Console setting), and the remaining P3-6 bullets.
 
 ---
@@ -269,7 +270,7 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 
 ### P3-4 · File-length budget enforced nowhere; 10 files over
 
-**Status (2026-10-15): still open and worse — 15 files over budget** (`Settings.tsx` 606/350, `Landing.tsx` 506/350, `useGamePlayController.ts` 467/350, `AddSpotSheet.tsx` 405/250). The figures below are from `9d97f09`.
+**Status (2026-10-15): CLOSED** (#683, `ed34627`). The 15 over-budget files were split by responsibility, and `check:file-length` reports every file within budget. The PR gate now runs it with `--strict`, so it blocks. It is still not part of `npm run verify`. The figures below are from `9d97f09`.
 
 `check:file-length` is not in `verify` and only `continue-on-error` in `pr-gate.yml:146-150`. Worst (at HEAD `9d97f09`): `Settings.tsx` (**594**/350 — up from 561 at baseline; the in-app PWA install section from `3485e88` added +33), `Landing.tsx` (553/350), `AddSpotSheet.tsx` (391/250), `useGamePlayController.ts` (463/350 — up from 456). Still 10 files over budget. `Settings.tsx` now carries 4 independent concerns (blocked-profile hydration, native push permission, push prefs, PWA install) that extract cleanly into hooks — it is the one file the recent work regressed.
 

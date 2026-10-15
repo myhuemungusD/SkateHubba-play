@@ -244,7 +244,7 @@ Storage rules enforce:
 - ESLint 9 + Prettier 3.8 + Husky + lint-staged
 - TypeScript strict mode, no `any` (CI gate `guard-as-any-casts` enforces)
 - No TODO/FIXME/HACK in `src/` (CI gate `guard-todo-fixme-hack`)
-- File-length budgets (soft): services 400 LOC, screens 350 LOC, components 250 LOC — reported by the `check-file-length` job (non-blocking, `continue-on-error`)
+- File-length budgets (hard since #683): services 400 LOC, screens 350 LOC, components 250 LOC — enforced by the `check-file-length` job (`--strict`, blocking)
 - Test duplication gate via `scripts/check-test-duplication.mjs` and `check-test-duplication` job
 - Release-please for versioning
 

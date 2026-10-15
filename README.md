@@ -170,7 +170,7 @@ For full setup including Firebase emulators, see [docs/DEVELOPMENT.md](docs/DEVE
 | `npm run lint:fix`          | Lint and auto-fix where possible                                    |
 | `npm run format`            | Format `src/**/*.{ts,tsx}` with Prettier                            |
 | `npm run check:test-dup`    | Flag duplicated test cases (CI gate)                                |
-| `npm run check:file-length` | Report files over the LOC budgets (non-blocking)                    |
+| `npm run check:file-length` | Fail on any file over its LOC budget (blocking in the PR gate)      |
 | `npm run verify`            | Full CI gate: type-check, lint, coverage, build, test-dup           |
 | `npm run emulators`         | Start the Firebase emulator suite locally                           |
 | `npm run cap:sync`          | Sync the web build into iOS/Android Capacitor projects              |
