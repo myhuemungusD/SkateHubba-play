@@ -55,7 +55,7 @@ export interface AppNotification {
   appealPath?: string;
 }
 
-interface NotifyOpts {
+export interface NotifyOpts {
   type: NotificationType;
   title: string;
   message: string;
