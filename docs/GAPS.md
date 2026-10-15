@@ -122,6 +122,10 @@ _As originally filed:_ when a matcher claimed a land on the honor path, `games.m
 
 ### P1-4 · Games/spots creation cooldowns are trivially bypassable
 
+**Status (2026-10-14): CLOSED.** Games half verified in code: the `/games` create rule requires `getAfter(users/{uid}).data.get('lastGameCreatedAt', null) == request.time`, and `games.create.ts` writes the anchor in the same batch. Spots half fixed in `fix/rules-size-and-spot-cooldown`: new `spotRateLimitOk()` (mirrors `clipRateLimitOk()`) requires `getAfter(users/{uid}).data.lastSpotCreatedAt == request.time`, and `spots.ts` `createSpot` now commits the spot and the anchor in one `writeBatch`. Covered by `rules-tests/spots.rules.test.ts` (omitted-anchor bypass denied, second create within 30s denied, create after cooldown allowed).
+
+**Original finding:**
+
 `firestore.rules:1165-1169` (games) and `:2021-2025` (spots) read `lastGameCreatedAt`/`lastSpotCreatedAt` with `get()` (pre-state); the advancing write is fire-and-forget on the client (`games.create.ts:168-176`, `spots.ts:268`). A client that never writes the anchor never trips the cooldown. The file flags the asymmetry itself (`:166-169`).
 **Fix (one line each):** add `getAfter(users/{uid}).data.lastGameCreatedAt == request.time`, mirroring `clipRateLimitOk()`.
 
@@ -149,6 +153,10 @@ _As originally filed:_ when a matcher claimed a land on the honor path, `games.m
 
 ### P1-8 · Three cron workflows have no failure alerting → silent P0 reintroduction
 
+**Status (2026-10-14): CLOSED** — verified in code: `sweep-expired-turns.yml`, `drain-push-dispatch.yml` and `resolve-expired-disputes.yml` each have a `Failure alert / auto-resolve` step (`if: always()`, `issues: write`) that opens/closes a labelled tracking issue, same pattern as `firebase-rules-deploy.yml`.
+
+**Original finding:**
+
 `sweep-expired-turns.yml`, `drain-push-dispatch.yml`, `resolve-expired-disputes.yml` have no `if: failure` / issue-open step. A red `sweep` run stops **all** turn-forfeiting silently (reintroducing the exact P0 the sweeper closed); a red `drain` stops **all** push. The correct pattern already exists in `firebase-rules-deploy.yml:305-333` (opens/closes a labelled tracking issue).
 **Fix:** apply that failure-alert step to all three.
 
@@ -157,6 +165,10 @@ _As originally filed:_ when a matcher claimed a land on the honor path, `games.m
 ## P2 — Schedule
 
 ### P2-1 · `api/` has zero test-coverage floor and zero Sentry
+
+**Status (2026-10-14): PARTIALLY CLOSED.** Sentry half **CLOSED** — verified in code: `api/_sentry.ts` reports server failures to Sentry and is used by `api/account/delete.ts`, `api/player-meta.ts` and all three `api/cron/*` endpoints. **Still open:** `api/` remains outside the coverage `include` (its tests live in `src/services/__tests__/`, but no floor is enforced).
+
+**Original finding:**
 
 `vite.config.ts:91` coverage `include` is `src/**` only. 2,947 lines of admin-SDK, internet-facing code (account erasure, cron sweepers) have **no coverage threshold** while React components have an 80% floor — the sharpest inconsistency in the repo. No `Sentry`/`captureException` anywhere in `api/`; every failure is `console.warn` into Vercel logs with no alert routing. A failed `account_delete_erasure_failed` (`delete.ts:288`) — a GDPR/store commitment — alerts nobody. `docs/SENTRY_ALERTS.md` has no server-side rules.
 
@@ -193,6 +205,10 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 ~2,400 lines of stateful game/upload logic live next to components (`useGamePlayController.ts` 456 LOC, `useUserClipUpload.ts`, `useClipsFeedController.ts`, etc.) so they face the 80% UI floor, not the 100% `src/hooks/**` floor. No global coverage threshold means `src/context`, `src/lib`, `src/utils` can regress to 0%.
 
 ### P2-9 · `firestore.rules` at ~76% of Firebase's hard limit, no size guard
+
+**Status (2026-10-14): CLOSED.** Measured 219,118 bytes (83.6% of 262,144) at `9fc20e3`. Shrunk to 171,390 bytes (65.4%) with zero behavior change: shared `fsGet`/`fsGetAfter`/`fsExists`/`fsExistsAfter` lookup helpers, and 45 long comment blocks (10+ lines) moved verbatim to `docs/FIRESTORE_RULES_NOTES.md` (first line + anchor kept in place). New CI guard `scripts/check-rules-size.mjs` runs in `pr-gate.yml` (every PR) and `firebase-rules-deploy.yml`: warns above 225,000 bytes, fails above 240,000, and prints the size and percentage.
+
+**Original finding:**
 
 193.9 KB / 256 KB (3,335 lines, measured 2026-10-01; 189.5 KB at the original audit), growing every feature; the per-evaluation node ceiling has already been hit once (`firestore.rules:880-895`). No CI check on rules size — failure mode is a deploy that hard-fails at the Firebase API. Add a size/complexity guard to `firebase-rules-deploy.yml`.
 
