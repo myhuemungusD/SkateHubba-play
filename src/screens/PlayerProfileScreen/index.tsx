@@ -24,6 +24,7 @@ import { ProfileStatsGrid } from "./components/ProfileStatsGrid";
 import { SignUpToChallengeCta } from "./components/SignUpToChallengeCta";
 import { AddedSpotsSection } from "./components/AddedSpotsSection";
 import { WinStreakBanner } from "./components/WinStreakBanner";
+import { ProShowcaseGate } from "./components/ProShowcaseGate";
 
 /**
  * Streak length before the banner appears. A "1 win streak" is just a win —
@@ -259,6 +260,18 @@ export function PlayerProfileScreen({
           isOwnProfile={isOwnProfile}
           uid={profile.uid}
           xp={profile.xp}
+        />
+
+        <ProShowcaseGate
+          username={profile.username}
+          wins={profile.wins ?? 0}
+          losses={profile.losses ?? 0}
+          viewerUid={viewerUid}
+          onPlayPro={
+            !isOwnProfile && hasViewer && onChallenge && !c.isBlocked
+              ? () => onChallenge(profile.uid, profile.username)
+              : undefined
+          }
         />
 
         {isOwnProfile && (

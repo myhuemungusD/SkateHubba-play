@@ -40,6 +40,7 @@ interface ImportMetaEnv {
   /** Roll Dice switch: "true" shows /dice. Unset (default) hides it.
    *  Read via isDiceEnabled() — not the extras flag. */
   readonly VITE_FEATURE_DICE_ENABLED?: string;
+  readonly VITE_FEATURE_PRO_PROFILES?: string;
   /** XP and levels switch: "true" shows the chip, bar, level-up, and ribbon.
    *  Unset (default) hides them. Read via isXpEnabled() — not the extras flag. */
   readonly VITE_FEATURE_XP_ENABLED?: string;
