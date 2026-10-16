@@ -83,6 +83,7 @@ import {
   MfaFlowError,
   beginTotpEnrollment,
   confirmTotpEnrollment,
+  hasPasswordSignIn,
   listTotpFactors,
   reauthMethod,
   reauthenticateForMfa,
@@ -128,6 +129,26 @@ beforeEach(() => {
   mockUnenroll.mockResolvedValue(undefined);
   mockReauthCredential.mockResolvedValue(undefined);
   mockReauthPopup.mockResolvedValue(undefined);
+});
+
+describe("hasPasswordSignIn", () => {
+  it("is true for an email/password user", () => {
+    expect(hasPasswordSignIn()).toBe(true);
+  });
+  it("is false for a Google-only user", () => {
+    mockRequireAuth.mockReturnValue({
+      currentUser: user({ providerData: [{ providerId: "google.com" }] as User["providerData"] }),
+    });
+    expect(hasPasswordSignIn()).toBe(false);
+  });
+  it("is false when signed out or auth is unavailable", () => {
+    mockRequireAuth.mockReturnValue({ currentUser: null });
+    expect(hasPasswordSignIn()).toBe(false);
+    mockRequireAuth.mockImplementation(() => {
+      throw new Error("no auth");
+    });
+    expect(hasPasswordSignIn()).toBe(false);
+  });
 });
 
 describe("listTotpFactors", () => {
@@ -242,7 +263,9 @@ describe("unenrollTotpFactor", () => {
 describe("reauthMethod", () => {
   it("prefers password when it is linked", () => {
     mockRequireAuth.mockReturnValue({
-      currentUser: user({ providerData: [{ providerId: "google.com" }, { providerId: "password" }] as User["providerData"] }),
+      currentUser: user({
+        providerData: [{ providerId: "google.com" }, { providerId: "password" }] as User["providerData"],
+      }),
     });
     expect(reauthMethod()).toBe("password");
   });
