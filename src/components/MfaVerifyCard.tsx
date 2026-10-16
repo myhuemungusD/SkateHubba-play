@@ -5,6 +5,9 @@ import {
   hintPhoneNumber,
   isPhoneHint,
   isTotpHint,
+  canSendSmsCodeHere,
+  MFA_SMS_UNAVAILABLE_NATIVE,
+  SMS_UNAVAILABLE_NATIVE_MESSAGE,
   startSmsMfaSignIn,
   type MfaChallenge,
 } from "../services/mfa";
@@ -39,7 +42,10 @@ function hintLabel(hint: MfaHint): string {
  * the fallback for codes nothing has claimed.
  */
 function mfaErrorMessage(code: string): string {
-  return getAuthErrorMessage(code) ?? "Verification failed. Please try again.";
+  if (code === MFA_SMS_UNAVAILABLE_NATIVE || code === "auth/operation-not-supported-in-this-environment") {
+    return SMS_UNAVAILABLE_NATIVE_MESSAGE;
+  }
+  return getAuthErrorMessage(code) ?? `Verification failed${code ? ` (${code})` : ""}. Please try again.`;
 }
 
 /**
@@ -62,7 +68,12 @@ export function MfaVerifyCard({
 }) {
   const hints = challenge.hints;
   // Auto-select the only factor so the common case skips the picker entirely.
-  const [hint, setHint] = useState<MfaHint | null>(hints.length === 1 ? hints[0] : null);
+  // In the native app SMS can't be sent, so an enrolled authenticator app wins.
+  const [hint, setHint] = useState<MfaHint | null>(() => {
+    if (hints.length === 1) return hints[0];
+    if (!canSendSmsCodeHere()) return hints.find((h) => isTotpHint(h)) ?? null;
+    return null;
+  });
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);

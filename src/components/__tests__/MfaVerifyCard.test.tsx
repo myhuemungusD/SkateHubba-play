@@ -7,6 +7,7 @@ import type { MfaChallenge } from "../../services/mfa";
 const mockStartSms = vi.fn();
 const mockCompleteSms = vi.fn();
 const mockCompleteTotp = vi.fn();
+const mockCanSendSms = vi.fn(() => true);
 
 vi.mock("../../services/mfa", () => ({
   startSmsMfaSignIn: (...args: unknown[]) => mockStartSms(...args),
@@ -15,6 +16,9 @@ vi.mock("../../services/mfa", () => ({
   hintPhoneNumber: (h: { phoneNumber?: unknown }) => (typeof h.phoneNumber === "string" ? h.phoneNumber : ""),
   isPhoneHint: (h: { factorId: string }) => h.factorId === "phone",
   isTotpHint: (h: { factorId: string }) => h.factorId === "totp",
+  canSendSmsCodeHere: () => mockCanSendSms(),
+  MFA_SMS_UNAVAILABLE_NATIVE: "mfa/sms-unavailable-native",
+  SMS_UNAVAILABLE_NATIVE_MESSAGE: "SMS not available in app",
 }));
 
 const mockLoggerWarn = vi.fn();
@@ -104,7 +108,9 @@ describe("MfaVerifyCard", () => {
       renderCard([totpHint]);
       await submitCode("333333");
 
-      await waitFor(() => expect(screen.getByText("Verification failed. Please try again.")).toBeInTheDocument());
+      await waitFor(() =>
+        expect(screen.getByText("Verification failed (auth/some-new-code). Please try again.")).toBeInTheDocument(),
+      );
     });
 
     it("dismisses the error banner", async () => {
@@ -228,5 +234,29 @@ describe("MfaVerifyCard", () => {
 
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onDone).not.toHaveBeenCalled();
+  });
+
+  describe("native app (no SMS)", () => {
+    afterEach(() => mockCanSendSms.mockReturnValue(true));
+
+    it("auto-selects the authenticator app over SMS", () => {
+      mockCanSendSms.mockReturnValue(false);
+      renderCard([phoneHint, totpHint]);
+      expect(screen.getByText("Enter the 6-digit code from your authenticator app.")).toBeInTheDocument();
+      expect(mockStartSms).not.toHaveBeenCalled();
+    });
+
+    it("explains why the text never comes when SMS is the only factor", async () => {
+      mockCanSendSms.mockReturnValue(false);
+      mockStartSms.mockRejectedValueOnce({ code: "mfa/sms-unavailable-native" });
+      renderCard([phoneHint]);
+      await waitFor(() => expect(screen.getByText("SMS not available in app")).toBeInTheDocument());
+    });
+
+    it("maps the WebView reCAPTCHA failure to the same explanation", async () => {
+      mockStartSms.mockRejectedValueOnce({ code: "auth/operation-not-supported-in-this-environment" });
+      renderCard([phoneHint]);
+      await waitFor(() => expect(screen.getByText("SMS not available in app")).toBeInTheDocument());
+    });
   });
 });
