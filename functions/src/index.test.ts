@@ -113,12 +113,11 @@ describe("v2 runtime identity", () => {
       "moderateNewClip",
       "moderateClipReport",
       "decideClipModeration",
+      "proBlessing",
     ] as const satisfies ReadonlyArray<keyof FunctionsModule>;
 
     expect(loaded).not.toBeNull();
-    const endpoints = Object.fromEntries(
-      names.map((name) => [name, loaded?.[name].__endpoint.serviceAccountEmail]),
-    );
+    const endpoints = Object.fromEntries(names.map((name) => [name, loaded?.[name].__endpoint.serviceAccountEmail]));
     expect(endpoints).toEqual({
       onGameCompleted: RUNTIME_SERVICE_ACCOUNT,
       diceAction: RUNTIME_SERVICE_ACCOUNT,
@@ -126,6 +125,7 @@ describe("v2 runtime identity", () => {
       moderateNewClip: RUNTIME_SERVICE_ACCOUNT,
       moderateClipReport: RUNTIME_SERVICE_ACCOUNT,
       decideClipModeration: RUNTIME_SERVICE_ACCOUNT,
+      proBlessing: RUNTIME_SERVICE_ACCOUNT,
     });
 
     // Per-function options still win over the shared defaults.

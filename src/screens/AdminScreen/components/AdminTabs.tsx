@@ -1,7 +1,7 @@
 export type AdminTab = "verify" | "awards" | "reports" | "clips" | "pro" | "more";
 
 const TABS: ReadonlyArray<{ id: AdminTab; label: string }> = [
-  { id: "verify", label: "Verify Pro" },
+  { id: "verify", label: "Seed Pro" },
   { id: "awards", label: "Awards" },
   { id: "reports", label: "Reports" },
   { id: "clips", label: "Clips" },

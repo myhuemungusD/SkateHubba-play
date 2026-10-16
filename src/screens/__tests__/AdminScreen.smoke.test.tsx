@@ -54,8 +54,8 @@ describe("AdminScreen", () => {
   it("opens on the Verify Pro tab", () => {
     render(<AdminScreen adminUid="admin1" onBack={vi.fn()} />, { wrapper: Wrapper });
 
-    expect(screen.getByRole("region", { name: "Verify Pro" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "VERIFY PRO" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("region", { name: "Seed Pro" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "SEED PRO" })).toHaveAttribute("aria-pressed", "true");
     // No queue read until the operator asks for it.
     expect(mockFetchReports).not.toHaveBeenCalled();
   });
@@ -66,7 +66,7 @@ describe("AdminScreen", () => {
 
     await user.click(screen.getByRole("button", { name: "AWARDS" }));
     expect(screen.getByRole("region", { name: "Awards" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Verify Pro" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Seed Pro" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "REPORTS" }));
     expect(screen.getByRole("region", { name: "Reports" })).toBeInTheDocument();
@@ -94,8 +94,8 @@ describe("AdminScreen — feature freeze (VITE_FEATURE_EXTRAS_ENABLED unset, the
   it("hides the Verify Pro tab and panel and opens on Awards", () => {
     render(<AdminScreen adminUid="admin1" onBack={vi.fn()} />, { wrapper: Wrapper });
 
-    expect(screen.queryByRole("button", { name: "VERIFY PRO" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Verify Pro" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "SEED PRO" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Seed Pro" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "AWARDS" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("region", { name: "Awards" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "REPORTS" })).toBeInTheDocument();

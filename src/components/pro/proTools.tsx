@@ -31,7 +31,8 @@ export const PRO_TOOLS: readonly ProTool[] = [
   {
     icon: <Swords size={16} />,
     title: "Pro challenges",
-    description: "Post a trick for the community to match; best makes get featured and earn a pro-signed badge.",
+    description:
+      "Post a trick for the community to match; best makes get featured and earn a pro-signed shout-out (never a pro badge).",
   },
   {
     icon: <Sparkles size={16} />,
@@ -47,7 +48,8 @@ export const PRO_TOOLS: readonly ProTool[] = [
   },
   {
     icon: <Award size={16} />,
-    title: "Pro badges",
-    description: "Hand out a signature badge to skaters who beat you or nail your trick.",
+    title: "Pro props",
+    description:
+      "Give a signature props sticker to skaters who beat you or nail your trick. Props are not pro status; only a blessing is.",
   },
 ];

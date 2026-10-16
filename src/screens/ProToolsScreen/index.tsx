@@ -1,13 +1,15 @@
 import { ArrowLeft } from "lucide-react";
 import { ComingSoonCard } from "../../components/pro/ComingSoonCard";
 import { PRO_TOOLS } from "../../components/pro/proTools";
+import { BlessingHero } from "../../components/pro/BlessingHero";
 import { useIsAdmin } from "../../hooks/useIsAdmin";
-import { isProProfilesEnabled } from "../../lib/featureFlags";
+import { isProBlessingEnabled, isProProfilesEnabled } from "../../lib/featureFlags";
 import { NotFound } from "../NotFound";
 import { Spinner } from "../../components/ui/Spinner";
 import { resolveProToolsAccess } from "./access";
 
 interface ScreenProps {
+  uid?: string | null;
   reviewMode: boolean;
   onBack: () => void;
 }
@@ -17,7 +19,7 @@ interface ScreenProps {
  * admin services: a pro reaches these tools without the admin claim, so no
  * ban, report, moderation, verify-pro or award control can render here.
  */
-export function ProToolsScreen({ reviewMode, onBack }: ScreenProps) {
+export function ProToolsScreen({ uid = null, reviewMode, onBack }: ScreenProps) {
   return (
     <div className="mx-auto min-h-dvh max-w-lg px-5 pb-24 pt-6" data-testid="pro-tools-screen">
       <button
@@ -41,6 +43,7 @@ export function ProToolsScreen({ reviewMode, onBack }: ScreenProps) {
           Review mode: you are seeing what verified pros will see. Pros get these tools without admin access.
         </p>
       )}
+      <BlessingHero uid={uid} live={!reviewMode && isProBlessingEnabled()} />
       <div className="space-y-3">
         {PRO_TOOLS.map((t) => (
           <ComingSoonCard key={t.title} icon={t.icon} title={t.title} description={t.description} status={t.status} />
@@ -66,5 +69,5 @@ export function ProToolsRoute({ uid, isVerifiedPro, onBack }: RouteProps) {
   if (!proOpen && loading) return <Spinner />;
   const access = resolveProToolsAccess({ flagOn, isVerifiedPro, isAdmin });
   if (!access) return <NotFound onBack={onBack} />;
-  return <ProToolsScreen reviewMode={access === "review"} onBack={onBack} />;
+  return <ProToolsScreen uid={uid} reviewMode={access === "review"} onBack={onBack} />;
 }

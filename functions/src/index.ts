@@ -4,11 +4,12 @@ import { setGlobalOptions, type GlobalOptions } from "firebase-functions/v2";
 import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onCall } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { defineBoolean, defineString } from "firebase-functions/params";
+import { defineBoolean, defineInt, defineString } from "firebase-functions/params";
 import { applyGameStats } from "./applyGameStats.js";
 import { handleDiceCall } from "./dice/callable.js";
 import { sweepExpiredDiceGames } from "./dice/handlers.js";
 import { adminDiceDb } from "./dice/store.js";
+import { handleBlessingCall } from "./pro/callable.js";
 import { handleClipCreated, handleClipReport, handleDecideClip } from "./moderation/handlers.js";
 import { adminClipStore } from "./moderation/publish.js";
 
@@ -117,6 +118,33 @@ export const diceAction = onCall({ region: "us-central1", enforceAppCheck: false
 export const diceSweep = onSchedule({ schedule: "every 15 minutes", region: "us-central1" }, async () => {
   await sweepExpiredDiceGames(adminDiceDb(getFirestore(DATABASE_ID)), Date.now());
 });
+
+/**
+ * Pro blessing kill switch. Default off. While off, only uids in
+ * PRO_BLESSING_TESTER_UIDS can bless or answer a blessing; admin revoke
+ * always works. A pro badge cannot be earned: this callable is the only
+ * non-admin path that sets isVerifiedPro. See docs/PRO_BLESSING.md.
+ */
+const proBlessingEnabled = defineBoolean("PRO_BLESSING_ENABLED", { default: false });
+const proBlessingTesterUids = defineString("PRO_BLESSING_TESTER_UIDS", { default: "" });
+const proBlessingLimit = defineInt("PRO_BLESSING_LIMIT", { default: 2 });
+const proBlessingWindowDays = defineInt("PRO_BLESSING_WINDOW_DAYS", { default: 30 });
+const proBlessingMinAccountDays = defineInt("PRO_BLESSING_MIN_ACCOUNT_DAYS", { default: 30 });
+
+export const proBlessing = onCall({ region: "us-central1", enforceAppCheck: false }, (request) =>
+  handleBlessingCall(request, {
+    enabled: proBlessingEnabled.value(),
+    testers: proBlessingTesterUids.value(),
+    nowMs: Date.now(),
+    db: adminDiceDb(getFirestore(DATABASE_ID)),
+    config: {
+      limit: proBlessingLimit.value(),
+      windowDays: proBlessingWindowDays.value(),
+      minAccountAgeDays: proBlessingMinAccountDays.value(),
+      offerTtlDays: 14,
+    },
+  }),
+);
 
 /**
  * Public-clip screener. Default off. While off, pending clips are left
