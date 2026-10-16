@@ -1,3 +1,4 @@
+import { isObjectionableUsername, OBJECTIONABLE_USERNAME_MESSAGE } from "../utils/objectionable";
 import {
   collection,
   doc,
@@ -303,6 +304,7 @@ export async function isUsernameAvailable(username: string): Promise<boolean> {
   const normalized = username.toLowerCase().trim();
   if (normalized.length < USERNAME_MIN || normalized.length > USERNAME_MAX) return false;
   if (!USERNAME_RE.test(normalized)) return false;
+  if (isObjectionableUsername(normalized)) return false;
 
   const snap = await withRetry(() => getDoc(doc(requireDb(), "usernames", normalized)));
   return !snap.exists();
@@ -360,6 +362,7 @@ export async function createProfile(
   if (!USERNAME_RE.test(normalized)) {
     throw new Error("Username may only contain lowercase letters, numbers, and underscores");
   }
+  if (isObjectionableUsername(normalized)) throw new Error(OBJECTIONABLE_USERNAME_MESSAGE);
 
   const db = requireDb();
   const profile = await runTransaction(db, async (tx) => {
