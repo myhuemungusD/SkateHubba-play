@@ -5,6 +5,7 @@ import {
   MFA_UNAVAILABLE,
   beginTotpEnrollment,
   confirmTotpEnrollment,
+  hasPasswordSignIn,
   listTotpFactors,
   reauthMethod,
   reauthenticateForMfa,
@@ -146,6 +147,7 @@ export function TwoFactorSection() {
 
   const method: ReauthMethod = pending ? reauthMethod() : "unsupported";
   const enrolled = factors[0];
+  const oauthOnly = !hasPasswordSignIn();
 
   return (
     <div className="p-4 rounded-2xl glass-card" data-testid="two-factor-section">
@@ -160,7 +162,13 @@ export function TwoFactorSection() {
         </p>
       )}
 
-      {!unavailable && !setup && !pending && !enrolled && (
+      {!unavailable && !setup && !pending && !enrolled && oauthOnly && (
+        <p className="font-body text-sm text-muted mt-3" data-testid="two-factor-provider-managed">
+          You sign in with Google or Apple, so their 2-step verification already protects your account.
+        </p>
+      )}
+
+      {!unavailable && !setup && !pending && !enrolled && !oauthOnly && (
         <button
           type="button"
           onClick={() => void startEnroll()}
