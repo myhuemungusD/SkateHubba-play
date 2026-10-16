@@ -3,8 +3,11 @@
  *
  * REVIEW DATA. Every field with `placeholder: true` is a stand-in that Jason
  * must replace with copy the pro has approved. Nothing biographical here is
- * a fact about the person: bios, sponsors, hometowns, stance and tricks are
- * all placeholders until confirmed. The UI tags placeholder fields visibly.
+ * a fact about the person: taglines, sponsors and hometowns are
+ * placeholders until confirmed. Stance is NOT here: it is real data read
+ * from the pro's own user doc (`users/{uid}.stance`). Bios and signature
+ * tricks are pro-written (`proBio`, `proSignatureTricks`); the only default
+ * here is a trick Jason confirmed, shown until the pro picks their own. The UI tags placeholder fields visibly.
  */
 export interface ProField {
   value: string;
@@ -15,11 +18,10 @@ export interface ProField {
 export interface ProProfileContent {
   displayName: string;
   tagline: ProField;
-  bio: ProField;
   hometown: ProField;
-  stance: ProField;
   sponsors: ProField[];
-  signatureTricks: ProField[];
+  /** Confirmed defaults only (never invented). Empty = show nothing. */
+  signatureTricks: string[];
 }
 
 const ph = (value: string): ProField => ({ value, placeholder: true });
@@ -28,24 +30,17 @@ export const PRO_PROFILES: Readonly<Record<string, ProProfileContent>> = {
   bryanherman: {
     displayName: "Bryan Herman",
     tagline: ph("Tagline — one line in Bryan's own words"),
-    bio: ph(
-      "Bio placeholder. Two or three sentences Bryan approves: where he skates, what he's into, what he wants from SkateHubba.",
-    ),
     hometown: ph("Hometown"),
-    stance: ph("Stance"),
     sponsors: [ph("Sponsor 1"), ph("Sponsor 2"), ph("Sponsor 3")],
-    signatureTricks: [ph("Signature trick 1"), ph("Signature trick 2"), ph("Signature trick 3")],
+    // Hardflip confirmed by Jason, 2026-10-16. Replaced once Bryan picks his own.
+    signatureTricks: ["Hardflip"],
   },
   mikewhite: {
     displayName: "Mike White",
     tagline: ph("Tagline — one line in Mike's own words"),
-    bio: ph(
-      "Bio placeholder. Two or three sentences Mike approves: where he skates, what he's into, what he wants from SkateHubba.",
-    ),
     hometown: ph("Hometown"),
-    stance: ph("Stance"),
     sponsors: [ph("Shake Junt (confirm)"), ph("Sponsor 2"), ph("Sponsor 3")],
-    signatureTricks: [ph("Signature trick 1"), ph("Signature trick 2"), ph("Signature trick 3")],
+    signatureTricks: [],
   },
 };
 
