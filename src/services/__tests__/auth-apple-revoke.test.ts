@@ -30,6 +30,15 @@ describe("revokeAppleTokensIfNeeded", () => {
     expect(mockSignInWithApple).not.toHaveBeenCalled();
   });
 
+  it("skips accounts with no provider data", async () => {
+    expect(await revokeAppleTokensIfNeeded({ uid: "u3" } as unknown as User)).toBe("not-apple");
+  });
+
+  it("fails open when the sheet returns no credential", async () => {
+    mockSignInWithApple.mockResolvedValue({});
+    expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("failed");
+  });
+
   it("skips on the web", async () => {
     mockIsNative.mockReturnValue(false);
     expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("not-apple");
