@@ -10,6 +10,7 @@ const unenrollTotpFactor = vi.fn();
 const reauthMethod = vi.fn();
 const reauthenticateForMfa = vi.fn();
 const toDataURL = vi.fn();
+const hasPasswordSignIn = vi.fn();
 
 vi.mock("qrcode", () => ({
   default: { toDataURL: (...args: unknown[]) => toDataURL(...args) },
@@ -18,6 +19,7 @@ vi.mock("qrcode", () => ({
 vi.mock("../../services/mfa.enroll", () => ({
   MFA_UNAVAILABLE: "mfa/unavailable",
   listTotpFactors: () => listTotpFactors(),
+  hasPasswordSignIn: () => hasPasswordSignIn(),
   beginTotpEnrollment: (...args: unknown[]) => beginTotpEnrollment(...args),
   confirmTotpEnrollment: (...args: unknown[]) => confirmTotpEnrollment(...args),
   unenrollTotpFactor: (...args: unknown[]) => unenrollTotpFactor(...args),
@@ -42,6 +44,7 @@ function recentLogin(): Error {
 beforeEach(() => {
   vi.clearAllMocks();
   listTotpFactors.mockReturnValue([]);
+  hasPasswordSignIn.mockReturnValue(true);
   reauthMethod.mockReturnValue("password");
   toDataURL.mockResolvedValue("data:image/png;base64,qr");
   beginTotpEnrollment.mockResolvedValue({ secret, secretKey: "SECRETKEY", qrCodeUrl: "otpauth://totp/x" });
@@ -51,6 +54,20 @@ beforeEach(() => {
 });
 
 describe("TwoFactorSection", () => {
+  it("does not offer app 2-step to Google/Apple-only users", () => {
+    hasPasswordSignIn.mockReturnValue(false);
+    render(<TwoFactorSection />);
+    expect(screen.getByTestId("two-factor-provider-managed")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Set up authenticator app" })).not.toBeInTheDocument();
+  });
+
+  it("still lets a Google/Apple user turn off a factor they already have", () => {
+    hasPasswordSignIn.mockReturnValue(false);
+    listTotpFactors.mockReturnValue([factor]);
+    render(<TwoFactorSection />);
+    expect(screen.getByRole("button", { name: "Turn off" })).toBeInTheDocument();
+  });
+
   it("starts enrollment and shows the QR code and manual key", async () => {
     const user = userEvent.setup();
     render(<TwoFactorSection />);

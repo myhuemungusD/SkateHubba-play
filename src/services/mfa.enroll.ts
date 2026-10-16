@@ -85,6 +85,21 @@ function rejectMapped(err: unknown, op: string): never {
 }
 
 /** Enrolled authenticator factors for the signed-in user. Empty when signed out or Auth is not ready. */
+/**
+ * True when the signed-in user has an email/password login. Google/Apple-only
+ * users already get 2-step from their identity provider, so the app doesn't
+ * offer its own second factor on top (same as top apps).
+ */
+export function hasPasswordSignIn(): boolean {
+  try {
+    const user = requireAuth().currentUser;
+    if (!user) return false;
+    return user.providerData.some((provider) => provider.providerId === "password");
+  } catch {
+    return false;
+  }
+}
+
 export function listTotpFactors(): MultiFactorInfo[] {
   try {
     const user = requireAuth().currentUser;
