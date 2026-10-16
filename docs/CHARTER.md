@@ -197,7 +197,7 @@ The `verify-no-cloud-functions` CI gate scopes to `^functions/src/` — the drai
 
 Auto-forfeit runs on two paths: the client's `forfeitExpiredTurn` on game open, and `api/cron/sweep-expired-turns.ts` on a 15-minute GitHub Actions schedule. Both share the `decideExpiredForfeit` helper in `src/services/turnForfeit.shared.ts`, so they cannot diverge.
 
-### 4.5 Security rules (the real backend, 3,054 lines / ~171 KB)
+### 4.5 Security rules (the real backend, 3,082 lines / ~173 KB)
 
 Firestore rules enforce:
 
@@ -291,7 +291,7 @@ SkateHubba-play/
 ├── scripts/                   # check-test-duplication.mjs, check-file-length.mjs, ...
 ├── docs/                      # 31 docs (see §4.13)
 ├── fastlane/
-├── firestore.rules            # 3,054 lines / ~171 KB — the real backend
+├── firestore.rules            # 3,082 lines / ~173 KB — the real backend
 ├── storage.rules
 ├── firebase.json
 ├── vercel.json
