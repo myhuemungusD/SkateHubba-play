@@ -65,12 +65,14 @@ jobs:
           #     server rolls every die; clients never write diceGames.
           #   • Public clip moderation (approved 2026-10-10). Video
           #     Intelligence plus the report auto-hide and admin decision.
+          #   • Pro blessing — proBlessing (requested by Jason 2026-10-16).
+          #     The only non-admin writer of isVerifiedPro.
           # Any other changed file under functions/src/ hard-fails.
           VIOLATIONS=""
           while IFS= read -r file; do
             [ -z "$file" ] && continue
             case "$file" in
-              functions/src/index.ts|functions/src/index.test.ts|functions/src/applyGameStats.ts|functions/src/applyGameStats.test.ts|functions/src/dice/*.ts|functions/src/moderation/*.ts) ;;
+              functions/src/index.ts|functions/src/index.test.ts|functions/src/applyGameStats.ts|functions/src/applyGameStats.test.ts|functions/src/dice/*.ts|functions/src/moderation/*.ts|functions/src/pro/*.ts) ;;
               *) VIOLATIONS="${VIOLATIONS}${file}"$'\n' ;;
             esac
           done < <(git diff origin/main...HEAD --name-only | grep -E '^functions/src/' || true)
@@ -85,6 +87,7 @@ jobs:
             echo "  functions/src/applyGameStats.test.ts"
             echo "  functions/src/dice/*.ts  (Roll Dice, approved 2026-10)"
             echo "  functions/src/moderation/*.ts  (public clip moderation, approved 2026-10-10)"
+            echo "  functions/src/pro/*.ts  (pro blessing, 2026-10-16)"
             echo "Any other functions/src/ code requires explicit maintainer approval."
             echo "See .github/BRANCH_PROTECTION.md for details."
             exit 1
