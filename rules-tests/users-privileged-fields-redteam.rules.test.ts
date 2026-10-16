@@ -274,3 +274,60 @@ describe("users/{uid} — legitimate non-privileged updates still SUCCEED", () =
     );
   });
 });
+
+// ── Pro-authored fields (proBio, proSignatureTricks) ──
+// Only an already-verified pro may write their OWN bio (<= 280 chars) and
+// signature tricks (<= 3 strings, each <= 40). Everyone else is denied.
+describe("users/{uid} — pro-authored bio and signature tricks", () => {
+  const ownerDoc = () => doc(asOwner().firestore(), "users", OWNER_UID);
+  const asPro = () => seedCleanPublicUser({ isVerifiedPro: true });
+
+  it("allows a verified pro a capped bio and up to three tricks, and clearing them", async () => {
+    await asPro();
+    await assertSucceeds(
+      updateDoc(ownerDoc(), { proBio: "x".repeat(280), proSignatureTricks: ["Hardflip", "Kickflip", "Tre Flip"] }),
+    );
+    await assertSucceeds(updateDoc(ownerDoc(), { proBio: "", proSignatureTricks: [] }));
+  });
+
+  it("attack: pro CANNOT exceed caps or write the wrong types", async () => {
+    await asPro();
+    for (const bad of [
+      { proBio: "x".repeat(281) },
+      { proBio: 42 },
+      { proSignatureTricks: ["a", "b", "c", "d"] },
+      { proSignatureTricks: ["a", 1] },
+      { proSignatureTricks: ["a", "b", "x".repeat(41)] },
+      { proSignatureTricks: "Hardflip" },
+      { proBio: "hi", isVerifiedPro: false },
+    ]) {
+      await assertFails(updateDoc(ownerDoc(), bad));
+    }
+  });
+
+  it("attack: a non-pro CANNOT write a bio or tricks on their own doc", async () => {
+    await assertFails(updateDoc(ownerDoc(), { proBio: "hi" }));
+    await assertFails(updateDoc(ownerDoc(), { proSignatureTricks: ["Ollie"] }));
+  });
+
+  it("attack: nobody else CAN write a pro's bio", async () => {
+    await asPro();
+    const other = testEnv.authenticatedContext("other-uid", { email_verified: true }).firestore();
+    await assertFails(updateDoc(doc(other, "users", OWNER_UID), { proBio: "hacked" }));
+    await assertFails(
+      updateDoc(doc(testEnv.unauthenticatedContext().firestore(), "users", OWNER_UID), { proBio: "x" }),
+    );
+  });
+
+  it("attack: CANNOT set proBio at profile creation", async () => {
+    const ctx = testEnv.authenticatedContext("fresh-uid", { email_verified: true });
+    await assertFails(
+      setDoc(doc(ctx.firestore(), "users", "fresh-uid"), {
+        uid: "fresh-uid",
+        username: "fresh",
+        stance: "Regular",
+        proBio: "hi",
+      }),
+    );
+  });
+});

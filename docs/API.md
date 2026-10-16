@@ -376,7 +376,7 @@ subscribeToMyGames(
 ): Unsubscribe
 ```
 
-Defined in `src/services/games.subscriptions.ts`. Runs three parallel Firestore `onSnapshot` queries (`player1Uid == uid`, `player2Uid == uid`, and `judgeId == uid`), each capped at `limitCount`. Merges and deduplicates results by document ID. Sorts active games first, then by `turnNumber` descending. Returns a composite unsubscribe that cancels all three listeners.
+Defined in `src/services/games.subscriptions.ts`. Runs six parallel Firestore `onSnapshot` queries: for each of `player1Uid == uid`, `player2Uid == uid` and `judgeId == uid`, one for active games (newest 50) and one for finished games (`complete`/`forfeit`, newest `limitCount`). Merges and deduplicates results by document ID. Sorts active games first, then by `turnNumber` descending. Returns a composite unsubscribe that cancels all six listeners.
 
 ---
 

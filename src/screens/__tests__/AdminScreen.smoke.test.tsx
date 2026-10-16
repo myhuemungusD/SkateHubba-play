@@ -102,3 +102,18 @@ describe("AdminScreen — feature freeze (VITE_FEATURE_EXTRAS_ENABLED unset, the
     expect(screen.getByRole("button", { name: "CLIPS" })).toBeInTheDocument();
   });
 });
+
+describe("AdminScreen pro + roadmap tabs", () => {
+  it("shows pro tool placeholders and planned admin sections", async () => {
+    const user = userEvent.setup();
+    render(<AdminScreen adminUid="admin1" onBack={vi.fn()} />, { wrapper: Wrapper });
+
+    await user.click(screen.getByRole("button", { name: "PRO" }));
+    expect(screen.getByTestId("pro-tools-panel")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Pro review queue (coming soon)" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "MORE" }));
+    expect(screen.getByTestId("admin-roadmap-panel")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Audit log (coming soon)" })).toBeInTheDocument();
+  });
+});

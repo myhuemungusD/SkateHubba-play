@@ -2,7 +2,11 @@
 # in a private git repo, encrypted with MATCH_PASSWORD. The certificate is
 # created once, on the GitHub macOS runner, by the ios-signing-bootstrap
 # workflow (MATCH_READONLY=false). Later TestFlight runs only read it.
-require_relative "ci_helpers"
+# Fastlane evals this file, so require_relative cannot infer a base path
+# here. The Fastfile already loads ci_helpers; fall back to the cwd copy.
+unless defined?(SkatehubbaCI)
+  require File.expand_path("ci_helpers", File.exist?("ci_helpers.rb") ? Dir.pwd : File.join(Dir.pwd, "fastlane"))
+end
 
 git_url(SkatehubbaCI.match_git_url)
 git_branch(SkatehubbaCI::MATCH_GIT_BRANCH)
