@@ -184,6 +184,12 @@ describe("createSpot", () => {
     expect(payload.description).toBe("ledge");
   });
 
+  it("rejects slurs in the spot name or description (App Store 1.2)", async () => {
+    await expect(createSpot({ ...validRequest, name: "just kys" }, "creator-uid")).rejects.toThrow(/don't allow/);
+    await expect(createSpot({ ...validRequest, description: "N1GG3RS" }, "creator-uid")).rejects.toThrow(/don't allow/);
+    expect(mockBatchSet).not.toHaveBeenCalled();
+  });
+
   it("normalizes a missing description to null", async () => {
     await createSpot({ ...validRequest, description: undefined }, "creator-uid");
     const payload = mockBatchSet.mock.calls[0][1];
@@ -669,6 +675,7 @@ describe("addSpotComment", () => {
 
   it("trims the content and rejects empty comments", async () => {
     await expect(addSpotComment(VALID_ID, "   ", "u")).rejects.toThrow(/empty/);
+    await expect(addSpotComment(VALID_ID, "you're a f4gg0t", "u")).rejects.toThrow(/don't allow/);
     expect(mockRunTransaction).not.toHaveBeenCalled();
   });
 
