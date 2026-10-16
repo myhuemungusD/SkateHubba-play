@@ -1,17 +1,35 @@
-import { Film, MapPin, Swords } from "lucide-react";
+import { Film, MapPin, Swords, Wrench } from "lucide-react";
 import type { ProProfileContent } from "../../../constants/proProfiles";
 import { ProFieldText } from "../../../components/pro/ProFieldText";
 import { ComingSoonCard } from "../../../components/pro/ComingSoonCard";
+import { ProProfileEditor } from "../../../components/pro/ProProfileEditor";
+import { useState } from "react";
 
 interface Props {
   content: ProProfileContent;
   username: string;
+  /** Real stance from the pro's user doc ("regular" / "goofy"). */
+  stance: string;
+  /** Pro-written bio from the user doc; empty/undefined = not written yet. */
+  bio?: string;
+  /** Pro-picked tricks from the user doc; undefined = never picked. */
+  signatureTricks?: string[];
+  /** The pro's own uid, passed only on their own profile: enables editing. */
+  editableUid?: string;
   wins: number;
   losses: number;
   /** Shown as a review banner while the showcase is admin-only. */
   reviewMode: boolean;
   /** Starts a S.K.A.T.E. game against the pro. Omitted on your own profile / signed out. */
   onPlayPro?: () => void;
+  /** Opens the pro-only Pro tools screen. Only passed on the pro's own profile. */
+  onOpenProTools?: () => void;
+}
+
+/** "goofy" -> "Goofy"; empty -> "Not set". */
+export function formatStance(stance: string): string {
+  const s = stance.trim();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : "Not set";
 }
 
 const H3 = "mb-2 font-display text-[11px] tracking-[0.2em] text-brand-orange";
@@ -22,8 +40,25 @@ const CARD = "mb-4 rounded-2xl border border-white/[0.06] bg-surface p-4 shadow-
  * clip reel, spots, record and the "Play a pro" challenge. Content comes from
  * src/constants/proProfiles.ts; placeholder fields are tagged in the UI.
  */
-export function ProShowcase({ content, username, wins, losses, reviewMode, onPlayPro }: Props) {
+export function ProShowcase({
+  content,
+  username,
+  stance,
+  bio: docBio,
+  signatureTricks: docTricks,
+  editableUid,
+  wins,
+  losses,
+  reviewMode,
+  onPlayPro,
+  onOpenProTools,
+}: Props) {
   const games = wins + losses;
+  const [saved, setSaved] = useState<{ bio: string; signatureTricks: string[] } | null>(null);
+  const [editing, setEditing] = useState(false);
+  const bio = (saved?.bio ?? docBio ?? "").trim();
+  const tricks = saved?.signatureTricks ?? docTricks ?? content.signatureTricks;
+  const canEdit = !!editableUid;
   return (
     <div data-testid="pro-showcase" className="mb-6">
       {reviewMode && (
@@ -54,9 +89,7 @@ export function ProShowcase({ content, username, wins, losses, reviewMode, onPla
           </div>
           <div>
             <dt className="text-white/60">Stance</dt>
-            <dd>
-              <ProFieldText field={content.stance} />
-            </dd>
+            <dd data-testid="pro-stance">{formatStance(stance)}</dd>
           </div>
         </dl>
       </section>
@@ -72,12 +105,49 @@ export function ProShowcase({ content, username, wins, losses, reviewMode, onPla
         </button>
       )}
 
-      <section aria-label="Bio" className={CARD}>
-        <h3 className={H3}>BIO</h3>
-        <p className="font-body text-sm leading-relaxed text-white/90">
-          <ProFieldText field={content.bio} />
-        </p>
-      </section>
+      {onOpenProTools && (
+        <button
+          type="button"
+          onClick={onOpenProTools}
+          data-testid="open-pro-tools"
+          className="mb-4 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-amber-300/30 bg-surface font-display text-xs tracking-[0.15em] text-amber-100 shadow-card hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+        >
+          <Wrench size={14} aria-hidden="true" />
+          PRO TOOLS
+        </button>
+      )}
+
+      {editing && editableUid ? (
+        <ProProfileEditor
+          uid={editableUid}
+          initial={{ bio, signatureTricks: tricks }}
+          onSaved={(v) => {
+            setSaved(v);
+            setEditing(false);
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      ) : (
+        canEdit &&
+        (!bio || tricks.length === 0) && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            data-testid="pro-profile-prompt"
+            className="mb-4 w-full rounded-2xl border border-dashed border-amber-300/40 bg-amber-300/5 p-4 text-left font-body text-sm text-amber-100"
+          >
+            {!bio ? "Add your bio" : "Pick your signature tricks"}
+            <span className="block text-xs text-white/60">Only you can see this until you add it.</span>
+          </button>
+        )
+      )}
+
+      {bio && (
+        <section aria-label="Bio" className={CARD}>
+          <h3 className={H3}>BIO</h3>
+          <p className="whitespace-pre-line font-body text-sm leading-relaxed text-white/90">{bio}</p>
+        </section>
+      )}
 
       <section aria-label="Sponsors" className={CARD}>
         <h3 className={H3}>SPONSORS</h3>
@@ -93,17 +163,30 @@ export function ProShowcase({ content, username, wins, losses, reviewMode, onPla
         </ul>
       </section>
 
-      <section aria-label="Signature tricks" className={CARD}>
-        <h3 className={H3}>SIGNATURE TRICKS</h3>
-        <ol className="space-y-1.5">
-          {content.signatureTricks.map((t, i) => (
-            <li key={i} className="flex items-center gap-2 font-body text-sm">
-              <span className="font-display text-xs text-brand-orange tabular-nums">{i + 1}</span>
-              <ProFieldText field={t} />
-            </li>
-          ))}
-        </ol>
-      </section>
+      {tricks.length > 0 && (
+        <section aria-label="Signature tricks" className={CARD}>
+          <h3 className={H3}>SIGNATURE TRICKS</h3>
+          <ol className="space-y-1.5">
+            {tricks.map((t, i) => (
+              <li key={t} className="flex items-center gap-2 font-body text-sm">
+                <span className="font-display text-xs text-brand-orange tabular-nums">{i + 1}</span>
+                {t}
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
+      {canEdit && !editing && bio && tricks.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          data-testid="edit-pro-profile"
+          className="mb-4 min-h-[44px] w-full rounded-xl border border-white/[0.08] bg-surface font-display text-xs tracking-wider text-white/80"
+        >
+          EDIT BIO &amp; TRICKS
+        </button>
+      )}
 
       <section aria-label="Pro record" className={CARD}>
         <h3 className={H3}>S.K.A.T.E. RECORD</h3>

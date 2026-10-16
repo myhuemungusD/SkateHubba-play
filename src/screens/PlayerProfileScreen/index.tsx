@@ -81,6 +81,8 @@ interface Props {
    * rather than a button that leads nowhere.
    */
   onViewMyStats?: () => void;
+  /** Opens the pro-only Pro tools screen. Shown on a verified pro's own profile. */
+  onOpenProTools?: () => void;
 }
 
 /**
@@ -131,6 +133,7 @@ export function PlayerProfileScreen({
   onSignUp,
   onEditProfile,
   onViewMyStats,
+  onOpenProTools,
 }: Props) {
   const c = usePlayerProfileController({
     viewedUid,
@@ -264,11 +267,16 @@ export function PlayerProfileScreen({
 
         <ProShowcaseGate
           username={profile.username}
+          stance={profile.stance ?? ""}
+          bio={profile.proBio}
+          signatureTricks={profile.proSignatureTricks}
+          canEdit={isOwnProfile && profile.isVerifiedPro === true}
           wins={profile.wins ?? 0}
           losses={profile.losses ?? 0}
           viewerUid={viewerUid}
           uid={profile.uid}
           onPlayPro={!isOwnProfile && hasViewer && !c.isBlocked ? onChallenge : undefined}
+          onOpenProTools={isOwnProfile && profile.isVerifiedPro ? onOpenProTools : undefined}
         />
 
         {isOwnProfile && (

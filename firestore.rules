@@ -419,6 +419,9 @@ service cloud.firestore {
         && !('isVerifiedPro' in request.resource.data)
         && !('verifiedBy' in request.resource.data)
         && !('verifiedAt' in request.resource.data)
+        // Pro-authored profile fields: never at creation (no one is a pro yet)
+        && !('proBio' in request.resource.data)
+        && !('proSignatureTricks' in request.resource.data)
         // Sensitive fields MUST live in users/{uid}/private/* instead of
         // the public profile doc. Strict on CREATE — no new doc may
         // introduce them. (Legacy docs are handled by the update rule below.)
@@ -497,6 +500,31 @@ service cloud.firestore {
             // back when that approval is undone.
             && fsGetAfter('clips', request.resource.data.clipsPostedClipId).data.moderationStatus == 'active'
             && !('moderation' in fsGetAfter('clips', request.resource.data.clipsPostedClipId).data)
+          )
+        )
+        // Pro-authored fields: only an already-verified pro may write their
+        // own bio (string <= 280) and signature tricks (list of <= 3 short
+        // strings). Every other pro power stays server/admin-only.
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['proBio', 'proSignatureTricks'])
+          || (
+            resource.data.get('isVerifiedPro', false) == true
+            && (!('proBio' in request.resource.data)
+                || (request.resource.data.proBio is string
+                    && request.resource.data.proBio.size() <= 280))
+            && (!('proSignatureTricks' in request.resource.data)
+                || (request.resource.data.proSignatureTricks is list
+                    && request.resource.data.proSignatureTricks.size() <= 3
+                    && (request.resource.data.proSignatureTricks.size() < 1
+                        || (request.resource.data.proSignatureTricks[0] is string
+                            && request.resource.data.proSignatureTricks[0].size() <= 40))
+                    && (request.resource.data.proSignatureTricks.size() < 2
+                        || (request.resource.data.proSignatureTricks[1] is string
+                            && request.resource.data.proSignatureTricks[1].size() <= 40))
+                    && (request.resource.data.proSignatureTricks.size() < 3
+                        || (request.resource.data.proSignatureTricks[2] is string
+                            && request.resource.data.proSignatureTricks[2].size() <= 40))))
           )
         )
         // Cannot change username or uid after creation
