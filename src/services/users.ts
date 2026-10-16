@@ -136,6 +136,10 @@ export interface UserProfile {
   verifiedBy?: string;
   /** Timestamp when pro status was granted (serverTimestamp on write, Firestore Timestamp on read). */
   verifiedAt?: FieldValue | null;
+  /** Pro-written bio (verified pros only, owner-written, <= 280 chars). */
+  proBio?: string;
+  /** Pro-picked signature tricks from TRICK_CATALOG (verified pros only, <= 3). */
+  proSignatureTricks?: string[];
   /**
    * Custom avatar URL — Firebase Storage download URL pinned to this
    * project's bucket and the calling UID by both client-side guard

@@ -68,6 +68,7 @@ const TermsOfService = lazy(() => import("./screens/TermsOfService").then((m) =>
 const DataDeletion = lazy(() => import("./screens/DataDeletion").then((m) => ({ default: m.DataDeletion })));
 const NotFound = lazy(() => import("./screens/NotFound").then((m) => ({ default: m.NotFound })));
 const MapPage = lazy(() => import("./screens/MapPage").then((m) => ({ default: m.MapPage })));
+const ProToolsRoute = lazy(() => import("./screens/ProToolsScreen").then((m) => ({ default: m.ProToolsRoute })));
 const FeedScreen = lazy(() => import("./screens/FeedScreen").then((m) => ({ default: m.FeedScreen })));
 const SpotDetailPage = lazy(() => import("./screens/SpotDetailPage").then((m) => ({ default: m.SpotDetailPage })));
 const Settings = lazy(() => import("./screens/Settings").then((m) => ({ default: m.Settings })));
@@ -662,6 +663,7 @@ function AppRoutes() {
                     onRefreshProfile={auth.refreshProfile}
                     onEditProfile={() => navigate("/settings")}
                     onViewMyStats={() => navigate("/my-stats")}
+                    onOpenProTools={() => navigate("/pro")}
                   />
                 ) : (
                   <Navigate to="/" replace />
@@ -826,6 +828,17 @@ function AppRoutes() {
                 <Route path="/feed" element={<Navigate to={frozenRedirect} replace />} />
               </>
             )}
+
+            <Route
+              path="/pro"
+              element={
+                <ProToolsRoute
+                  uid={auth.user?.uid ?? null}
+                  isVerifiedPro={auth.activeProfile?.isVerifiedPro === true}
+                  onBack={() => nav.setScreen(auth.user ? "me" : "landing")}
+                />
+              }
+            />
 
             <Route
               path="/admin"

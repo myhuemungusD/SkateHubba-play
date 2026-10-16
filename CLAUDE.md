@@ -130,7 +130,7 @@ When something breaks, work through this in order:
 | `src/services/games.match.ts`         | `setTrick`, `failSetTrick`, `submitMatchAttempt`, `acceptLanded`. All `runTransaction`                                                                                                                |
 | `src/services/games.judge.ts`         | `callBSOnSetTrick`, `judgeRuleSetTrick`, `resolveDispute` (judge-only paths)                                                                                                                          |
 | `src/services/games.turns.ts`         | `forfeitExpiredTurn`, client-side rate limits                                                                                                                                                         |
-| `src/services/games.subscriptions.ts` | `subscribeToGame`, `subscribeToMyGames` (**three** `onSnapshot` listeners for the OR query: player1Uid, player2Uid, judgeId)                                                                          |
+| `src/services/games.subscriptions.ts` | `subscribeToGame`, `subscribeToMyGames` (**six** `onSnapshot` listeners for the OR query: active + finished for each of player1Uid, player2Uid, judgeId)                                              |
 | `src/services/auth.ts`                | Google OAuth uses popup with redirect fallback (Safari/mobile compatibility)                                                                                                                          |
 | `src/services/storage.ts`             | Video upload/download. WebM (web) and MP4 (native/Capacitor), 1KB–50MB. Retry with exponential backoff                                                                                                |
 | `firestore.rules`                     | The real backend. Enforces turn order, score increments, timer, rate limits                                                                                                                           |
@@ -141,13 +141,13 @@ When something breaks, work through this in order:
 
 ## File length budgets
 
-Soft budgets (warnings, not hard errors) for production source files:
+Hard budgets for production source files (enforced by the PR gate since #683):
 
 - `src/services/**` — 400 LOC
 - `src/screens/**` — 350 LOC
 - `src/components/**` — 250 LOC
 
-LOC = non-empty, non-comment lines. Run `npm run check:file-length` locally; add `--strict` to fail on any overage. CI reports this non-blocking. Over-budget files are a signal to extract helpers, not an excuse for a drive-by refactor.
+LOC = non-empty, non-comment lines. Run `npm run check:file-length` locally (it runs `--strict` and fails on any overage). The PR gate's `check-file-length` job runs the same strict check, so an over-budget file fails the PR. Split by responsibility rather than raising a budget.
 
 ---
 

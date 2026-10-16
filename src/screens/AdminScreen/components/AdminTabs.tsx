@@ -1,10 +1,12 @@
-export type AdminTab = "verify" | "awards" | "reports" | "clips";
+export type AdminTab = "verify" | "awards" | "reports" | "clips" | "pro" | "more";
 
 const TABS: ReadonlyArray<{ id: AdminTab; label: string }> = [
   { id: "verify", label: "Verify Pro" },
   { id: "awards", label: "Awards" },
   { id: "reports", label: "Reports" },
   { id: "clips", label: "Clips" },
+  { id: "pro", label: "Pro" },
+  { id: "more", label: "More" },
 ];
 
 /**
@@ -27,7 +29,7 @@ export function AdminTabs({
     <div
       role="group"
       aria-label="Admin sections"
-      className={`mb-6 grid ${tabs.length >= 4 ? "grid-cols-4" : "grid-cols-3"} gap-1 rounded-xl border border-border bg-surface/40 p-0.5`}
+      className={`mb-6 grid grid-cols-3 gap-1 rounded-xl border border-border bg-surface/40 p-0.5`}
     >
       {tabs.map(({ id, label }) => {
         const pressed = tab === id;

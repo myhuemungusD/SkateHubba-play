@@ -24,6 +24,7 @@ import { ProfileStatsGrid } from "./components/ProfileStatsGrid";
 import { SignUpToChallengeCta } from "./components/SignUpToChallengeCta";
 import { AddedSpotsSection } from "./components/AddedSpotsSection";
 import { WinStreakBanner } from "./components/WinStreakBanner";
+import { ProShowcaseGate } from "./components/ProShowcaseGate";
 
 /**
  * Streak length before the banner appears. A "1 win streak" is just a win —
@@ -80,6 +81,8 @@ interface Props {
    * rather than a button that leads nowhere.
    */
   onViewMyStats?: () => void;
+  /** Opens the pro-only Pro tools screen. Shown on a verified pro's own profile. */
+  onOpenProTools?: () => void;
 }
 
 /**
@@ -130,6 +133,7 @@ export function PlayerProfileScreen({
   onSignUp,
   onEditProfile,
   onViewMyStats,
+  onOpenProTools,
 }: Props) {
   const c = usePlayerProfileController({
     viewedUid,
@@ -259,6 +263,20 @@ export function PlayerProfileScreen({
           isOwnProfile={isOwnProfile}
           uid={profile.uid}
           xp={profile.xp}
+        />
+
+        <ProShowcaseGate
+          username={profile.username}
+          stance={profile.stance ?? ""}
+          bio={profile.proBio}
+          signatureTricks={profile.proSignatureTricks}
+          canEdit={isOwnProfile && profile.isVerifiedPro === true}
+          wins={profile.wins ?? 0}
+          losses={profile.losses ?? 0}
+          viewerUid={viewerUid}
+          uid={profile.uid}
+          onPlayPro={!isOwnProfile && hasViewer && !c.isBlocked ? onChallenge : undefined}
+          onOpenProTools={isOwnProfile && profile.isVerifiedPro ? onOpenProTools : undefined}
         />
 
         {isOwnProfile && (

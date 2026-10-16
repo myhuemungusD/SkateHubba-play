@@ -75,3 +75,12 @@ export function isRefereeEnabled(): boolean {
 export function isClipModerationEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_CLIP_MODERATION_ENABLED);
 }
+
+/**
+ * Pro profile showcase (hero, bio, sponsors, signature tricks, "Play a pro")
+ * and the admin Pro tools tab. Off in production; while off, admins still see
+ * it so the content can be reviewed before it goes public. Literal "true" only.
+ */
+export function isProProfilesEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_PRO_PROFILES);
+}
