@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { BadgeCheck, ShieldOff } from "lucide-react";
-import { grantVerifiedPro, revokeVerifiedPro } from "../../../services/admin";
+import { grantVerifiedPro } from "../../../services/admin";
+import { revokePro } from "../../../services/proBlessing";
 import { useNotifications } from "../../../context/NotificationContext";
 import { useAdminUserLookup } from "../useAdminUserLookup";
 import { errorMessage } from "../utils";
@@ -30,7 +31,8 @@ export function VerifyProPanel({ adminUid }: { adminUid: string }) {
       if (grant) {
         await grantVerifiedPro(adminUid, target.uid);
       } else {
-        await revokeVerifiedPro(adminUid, target.uid);
+        // Server path: also marks accepted blessings revoked (lineage stays honest).
+        await revokePro(target.uid);
       }
       notify({
         type: "success",

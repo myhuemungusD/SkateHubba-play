@@ -35,8 +35,10 @@ vi.mock("../analytics", () => ({ trackEvent: vi.fn() }));
 vi.mock("../logger", () => ({ logger: { warn: vi.fn() } }));
 
 import {
+  ADMIN_REVOKE_REASON,
   answerBlessing,
   blessSkater,
+  revokePro,
   blessingErrorMessage,
   fetchLineage,
   fetchMyBlessings,
@@ -109,6 +111,13 @@ describe("proBlessing service", () => {
     await expect(answerBlessing("b9", false)).rejects.toThrow("bad response");
     expect(blessingErrorMessage(new Error("limit_reached"))).toMatch(/blessings for now/);
     expect(blessingErrorMessage("x")).toBe("That didn't work. Try again.");
+  });
+
+  it("revokes through the callable with a default audit reason", async () => {
+    callable.mockResolvedValue({ data: { blessingId: "b2", status: "revoked" } });
+    expect(await revokePro("t")).toBe("revoked");
+    expect(callable).toHaveBeenCalledWith({ action: "revoke", targetUid: "t", reason: ADMIN_REVOKE_REASON });
+    expect(ADMIN_REVOKE_REASON.length).toBeGreaterThanOrEqual(10);
   });
 
   it("handles listener errors, a missing db, a missing app and the emulator", async () => {
