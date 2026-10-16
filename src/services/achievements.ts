@@ -10,9 +10,11 @@
  * The doc id IS the badge key ("century", "club150", "og", "streak10",
  * "pioneer", …) — the UI maps it to a label/icon, this service does not.
  *
- * Grants are Admin-SDK-only (`firestore.rules` → users/{uid}/achievements
- * denies client create/update outright), so this module is read-only by
- * design: a client that can mint a badge has no reputation system.
+ * Badges are written by the stats close-out function and backfill script
+ * (Admin SDK) and by the admin console (`admin.ts`). `firestore.rules` →
+ * users/{uid}/achievements allows a client create only for an admin-claim
+ * holder and denies update outright, so this module is read-only by design:
+ * a client that can mint a badge has no reputation system.
  *
  * Forward compatibility
  * ─────────────────────
