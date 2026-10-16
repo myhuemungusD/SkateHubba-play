@@ -52,6 +52,14 @@
 				<string>com.googleusercontent.apps.665573979824-hmmbb9o722r57457n42n5a7kg0eo1t6t</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>firebase-auth-recaptcha</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>app-1-665573979824-ios-963170cbd0b1f053ee2d75</string>
+			</array>
+		</dict>
 	</array>
 	<key>FirebaseAppDelegateProxyEnabled</key>
 	<false/>
