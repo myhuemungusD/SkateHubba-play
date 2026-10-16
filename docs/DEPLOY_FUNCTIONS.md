@@ -101,9 +101,14 @@ DICE_ENABLED=false
 DICE_TESTER_UIDS=
 MODERATION_ENABLED=false
 SENTRY_DSN=
+PRO_BLESSING_ENABLED=false
+PRO_BLESSING_TESTER_UIDS=
+PRO_BLESSING_LIMIT=2
+PRO_BLESSING_WINDOW_DAYS=30
+PRO_BLESSING_MIN_ACCOUNT_DAYS=30
 ```
 
-`XP_ENABLED`, `DICE_ENABLED`, and `MODERATION_ENABLED` must be `true` or `false`. The other three may be empty.
+`XP_ENABLED`, `DICE_ENABLED`, `MODERATION_ENABLED`, and `PRO_BLESSING_ENABLED` must be `true` or `false`. The tester lists and `SENTRY_DSN` may be empty.
 
 Copy the live values before the first run. A wrong file overwrites production on the next deploy (it can turn dice or moderation off).
 

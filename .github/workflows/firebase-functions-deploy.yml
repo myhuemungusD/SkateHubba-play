@@ -144,13 +144,13 @@ jobs:
           DEST="functions/.env.${PROJECT_ID}"
           printf '%s\n' "$FUNCTIONS_DOTENV" > "$DEST"
           missing=0
-          for key in XP_ENABLED XP_TESTER_UIDS DICE_ENABLED DICE_TESTER_UIDS MODERATION_ENABLED SENTRY_DSN; do
+          for key in XP_ENABLED XP_TESTER_UIDS DICE_ENABLED DICE_TESTER_UIDS MODERATION_ENABLED SENTRY_DSN PRO_BLESSING_ENABLED PRO_BLESSING_TESTER_UIDS PRO_BLESSING_LIMIT PRO_BLESSING_WINDOW_DAYS PRO_BLESSING_MIN_ACCOUNT_DAYS; do
             if ! grep -Eq "^${key}=" "$DEST"; then
               echo "::error::FUNCTIONS_DOTENV is missing ${key}=. Use KEY=value lines, with no export prefix."
               missing=1
             fi
           done
-          for key in XP_ENABLED DICE_ENABLED MODERATION_ENABLED; do
+          for key in XP_ENABLED DICE_ENABLED MODERATION_ENABLED PRO_BLESSING_ENABLED; do
             val=$(grep -E "^${key}=" "$DEST" | head -n 1 | cut -d= -f2- | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]' || true)
             if [ "$val" != "true" ] && [ "$val" != "false" ]; then
               echo "::error::${key} must be true or false."

@@ -104,6 +104,9 @@ jobs:
           # Roll Dice stays off. Do not turn this into a secret that can flip it on.
           VITE_FEATURE_DICE_ENABLED: "false"
           VITE_FEATURE_EXTRAS_ENABLED: "false"
+          # Pro blessing UI. The proBlessing function still gates who can act
+          # (PRO_BLESSING_ENABLED / PRO_BLESSING_TESTER_UIDS, docs/PRO_BLESSING.md).
+          VITE_FEATURE_PRO_BLESSING: "true"
           # Store builds must fail when the service worker would ship with
           # unreplaced Firebase placeholders (see vite.config.ts).
           REQUIRE_SW_CONFIG: "1"
