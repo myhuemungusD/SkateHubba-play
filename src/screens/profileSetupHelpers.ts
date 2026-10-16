@@ -1,3 +1,4 @@
+import { isObjectionableUsername, OBJECTIONABLE_USERNAME_MESSAGE } from "../utils/objectionable";
 import { USERNAME_MAX, USERNAME_MIN } from "../services/users";
 
 export const STANCES = [
@@ -19,6 +20,7 @@ export function usernameNote(name: string, available: boolean | null, availabili
   // request, App Check stall) we fall back to the canonical uniqueness
   // check inside createProfile's transaction — so stop showing "Checking..."
   // forever and let the user submit.
+  if (isObjectionableUsername(name)) return OBJECTIONABLE_USERNAME_MESSAGE;
   if (availabilityError) return "Couldn't verify — we'll double-check when you submit";
   if (available === null) return "Checking...";
   const handle = `@${name}`;
