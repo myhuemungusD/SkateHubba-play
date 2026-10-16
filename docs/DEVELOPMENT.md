@@ -49,7 +49,7 @@ Open [http://localhost:5173](http://localhost:5173).
 | `npm run lint:fix`                          | Lint and auto-fix where possible                                            |
 | `npm run format`                            | Format `src/**/*.{ts,tsx}` with Prettier                                    |
 | `npm run check:test-dup`                    | Flag duplicated test cases (CI gate, part of `verify`)                      |
-| `npm run check:file-length`                 | Report files over the LOC budgets (non-blocking)                            |
+| `npm run check:file-length`                 | Fail on any file over its LOC budget (blocking in the PR gate)              |
 | `npm run verify`                            | Full CI gate: `tsc -b && lint && test:coverage && build && check:test-dup`  |
 | `npm run emulators`                         | Start the Firebase emulator suite locally                                   |
 | `npm run cap:sync`                          | Sync the web build into the iOS/Android Capacitor projects                  |
