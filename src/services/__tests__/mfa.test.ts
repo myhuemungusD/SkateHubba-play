@@ -55,6 +55,9 @@ vi.mock("firebase/auth", () => {
 
 vi.mock("../../firebase");
 
+const mockIsNative = vi.fn(() => false);
+vi.mock("@capacitor/core", () => ({ Capacitor: { isNativePlatform: () => mockIsNative() } }));
+
 import {
   getMfaChallenge,
   startSmsMfaSignIn,
@@ -271,5 +274,17 @@ describe("hintPhoneNumber", () => {
     const hint = { ...PHONE_HINT, phoneNumber: 5551234 } as unknown as MultiFactorInfo;
 
     expect(hintPhoneNumber(hint)).toBe("");
+  });
+
+  describe("native app SMS guard", () => {
+    it("refuses to start an SMS send on native without touching reCAPTCHA", async () => {
+      mockIsNative.mockReturnValueOnce(true);
+      const hint = { uid: "sms-1", factorId: "phone" } as never;
+      const challenge = { resolver: { session: {} }, hints: [hint] } as never;
+      await expect(startSmsMfaSignIn(challenge, hint, "c")).rejects.toMatchObject({
+        code: "mfa/sms-unavailable-native",
+      });
+      expect(mockRecaptchaCtor).not.toHaveBeenCalled();
+    });
   });
 });
