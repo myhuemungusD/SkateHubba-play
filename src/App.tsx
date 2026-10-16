@@ -24,7 +24,7 @@ import { KeyboardInset } from "./components/KeyboardInset";
 import { ScrollToTop } from "./components/ScrollToTop";
 import { DeleteAccountRetryBanner } from "./components/DeleteAccountRetryBanner";
 import { useAnalyticsConsent } from "./hooks/useAnalyticsConsent";
-import { isDiceEnabled, isExtrasEnabled } from "./lib/featureFlags";
+import { isDiceEnabled, isExtrasEnabled, isProBlessingEnabled } from "./lib/featureFlags";
 import { prefetchLikelyRoutes } from "./lib/routePrefetch";
 import { registerCacheWorker } from "./lib/registerCacheSw";
 import {
@@ -68,6 +68,8 @@ const TermsOfService = lazy(() => import("./screens/TermsOfService").then((m) =>
 const DataDeletion = lazy(() => import("./screens/DataDeletion").then((m) => ({ default: m.DataDeletion })));
 const NotFound = lazy(() => import("./screens/NotFound").then((m) => ({ default: m.NotFound })));
 const MapPage = lazy(() => import("./screens/MapPage").then((m) => ({ default: m.MapPage })));
+// Pro blessing "turned pro" moment. Lazy so nothing loads with the flag off.
+const TurnedProGate = lazy(() => import("./components/pro/TurnedProGate").then((m) => ({ default: m.TurnedProGate })));
 const ProToolsRoute = lazy(() => import("./screens/ProToolsScreen").then((m) => ({ default: m.ProToolsRoute })));
 const FeedScreen = lazy(() => import("./screens/FeedScreen").then((m) => ({ default: m.FeedScreen })));
 const SpotDetailPage = lazy(() => import("./screens/SpotDetailPage").then((m) => ({ default: m.SpotDetailPage })));
@@ -427,6 +429,11 @@ function AppRoutes() {
 
   return (
     <>
+      {isProBlessingEnabled() && auth.user && auth.activeProfile && auth.activeProfile.isVerifiedPro !== true && (
+        <Suspense fallback={null}>
+          <TurnedProGate uid={auth.user.uid} onTurnedPro={() => void auth.refreshProfile()} />
+        </Suspense>
+      )}
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:rounded-xl focus:bg-brand-orange focus:text-[#1a1a1a] focus:font-display focus:tracking-wider focus:outline-none"

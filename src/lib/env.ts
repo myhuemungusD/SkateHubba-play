@@ -68,6 +68,13 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Pro blessing (pros turn other skaters pro). DEFAULTS TO OFF. Read via
+  // isProBlessingEnabled(); the proBlessing callable has its own server gate.
+  VITE_FEATURE_PRO_BLESSING: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // XP, levels, and the achievements ribbon. DEFAULTS TO OFF, and it is not
   // part of the extras switch. Read via isXpEnabled() in featureFlags.ts.
   VITE_FEATURE_XP_ENABLED: z

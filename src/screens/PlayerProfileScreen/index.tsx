@@ -12,7 +12,9 @@ import { usePlayerProfileController } from "./usePlayerProfileController";
 import { BlockControls } from "./components/BlockControls";
 import { ChallengeButton } from "./components/ChallengeButton";
 import { RollDiceButton } from "./components/RollDiceButton";
-import { isDiceEnabled, isExtrasEnabled, isXpEnabled } from "../../lib/featureFlags";
+import { isDiceEnabled, isExtrasEnabled, isProBlessingEnabled, isXpEnabled } from "../../lib/featureFlags";
+import { BlessProButton } from "../../components/pro/BlessProButton";
+import { BlessedByLine } from "../../components/pro/BlessedByLine";
 import { AchievementsRibbon } from "./components/AchievementsRibbon";
 import { GameHistorySection } from "./components/GameHistorySection";
 import { OpponentList } from "./components/OpponentList";
@@ -265,6 +267,10 @@ export function PlayerProfileScreen({
           xp={profile.xp}
         />
 
+        {isProBlessingEnabled() && profile.isVerifiedPro === true && (
+          <BlessedByLine uid={profile.uid} onViewPlayer={onViewPlayer} />
+        )}
+
         <ProShowcaseGate
           username={profile.username}
           stance={profile.stance ?? ""}
@@ -328,6 +334,13 @@ export function PlayerProfileScreen({
         {!isOwnProfile && hasViewer && onChallenge && !c.isBlocked && (
           <ChallengeButton username={profile.username} uid={profile.uid} onChallenge={onChallenge} />
         )}
+
+        {/* Pro is never earned: only a verified pro can bless another skater. */}
+        {isProBlessingEnabled() &&
+          !isOwnProfile &&
+          currentUserProfile?.isVerifiedPro === true &&
+          profile.isVerifiedPro !== true &&
+          !c.isBlocked && <BlessProButton targetUid={profile.uid} username={profile.username} />}
 
         {isDiceEnabled() && !isOwnProfile && hasViewer && !c.isBlocked && <RollDiceButton opponentUid={profile.uid} />}
 

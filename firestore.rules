@@ -3078,5 +3078,18 @@ service cloud.firestore {
     match /diceCreateLimits/{uid} {
       allow read, write: if false;
     }
+
+    // Pro blessing lineage. Written only by the proBlessing callable (Admin
+    // SDK). A pro badge cannot be earned: no client can create, edit or
+    // delete a blessing. Accepted and revoked records are public lineage;
+    // pending and declined offers are visible only to the two skaters and
+    // admins. Rationale: docs/PRO_BLESSING.md.
+    match /proBlessings/{blessingId} {
+      allow get, list: if resource.data.status in ['accepted', 'revoked']
+        || (isSignedIn() && (request.auth.uid == resource.data.blesserUid
+          || request.auth.uid == resource.data.targetUid
+          || isAdmin()));
+      allow create, update, delete: if false;
+    }
   }
 }

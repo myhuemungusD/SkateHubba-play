@@ -84,3 +84,13 @@ export function isClipModerationEnabled(): boolean {
 export function isProProfilesEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_PRO_PROFILES);
 }
+
+/**
+ * Pro blessing: a verified pro turns another skater pro (the only non-admin
+ * way to get the badge). Off by default; the proBlessing callable has its own
+ * server switch (PRO_BLESSING_ENABLED / PRO_BLESSING_TESTER_UIDS), which is
+ * the real gate. Literal "true" only.
+ */
+export function isProBlessingEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_PRO_BLESSING);
+}
