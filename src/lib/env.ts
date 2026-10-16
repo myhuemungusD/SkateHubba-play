@@ -61,6 +61,13 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Pro profile showcase + pro tools review UI. DEFAULTS TO OFF. Admins see
+  // it regardless (review mode). Read via isProProfilesEnabled().
+  VITE_FEATURE_PRO_PROFILES: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // XP, levels, and the achievements ribbon. DEFAULTS TO OFF, and it is not
   // part of the extras switch. Read via isXpEnabled() in featureFlags.ts.
   VITE_FEATURE_XP_ENABLED: z
