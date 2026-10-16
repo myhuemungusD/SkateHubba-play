@@ -1,3 +1,4 @@
+import { isObjectionableUsername, OBJECTIONABLE_USERNAME_MESSAGE } from "../utils/objectionable";
 import { useState, useEffect, useCallback } from "react";
 import {
   AgeVerificationRequiredError,
@@ -170,6 +171,10 @@ export function ProfileSetup({
       return;
     }
     /* v8 ignore stop */
+    if (isObjectionableUsername(normalized)) {
+      setLocalError(OBJECTIONABLE_USERNAME_MESSAGE);
+      return;
+    }
     if (available === false) {
       setLocalError("Username is taken");
       return;

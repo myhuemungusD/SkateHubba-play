@@ -477,6 +477,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           code,
         },
       });
+      if (code === "account-delete/cancelled") {
+        // The user backed out of the Apple sheet; nothing was deleted.
+        clearPendingDeleteUid();
+        setPendingDeleteUid(null);
+        throw err;
+      }
       if (code === "auth/requires-recent-login") {
         throw new Error(
           "For security, please sign out and sign back in, then tap Finish deletion to finish removing your account.",

@@ -301,6 +301,11 @@ describe("users service", () => {
   });
 
   describe("isUsernameAvailable", () => {
+    it("returns false for a blocked username without a read", async () => {
+      expect(await isUsernameAvailable("hitler_fan")).toBe(false);
+      expect(mockGetDoc).not.toHaveBeenCalled();
+    });
+
     it("returns true when username doc does not exist", async () => {
       mockGetDoc.mockResolvedValueOnce({ exists: () => false });
       expect(await isUsernameAvailable("sk8r")).toBe(true);
@@ -333,6 +338,10 @@ describe("users service", () => {
 
   describe("createProfile", () => {
     const VALID_DOB = "2000-01-15";
+
+    it("rejects a blocked username", async () => {
+      await expect(createProfile("u1", "hitler_fan", "regular", false, VALID_DOB)).rejects.toThrow(/isn't allowed/);
+    });
 
     // Helper: run the create-profile transaction and capture the two
     // tx.set payloads we care about — the public users/{uid} doc

@@ -4,6 +4,7 @@ import { requireAuth } from "../firebase";
 import { captureException } from "../lib/sentry";
 import { parseFirebaseError } from "../utils/helpers";
 import { logger } from "./logger";
+import { revokeAppleTokensIfNeeded } from "./auth.appleRevoke";
 
 /** Server-side erasure endpoint. See `api/account/delete.ts`. */
 const ACCOUNT_DELETE_PATH = "/api/account/delete";
@@ -66,6 +67,13 @@ export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean
     throw new Error("Auth uid does not match requested delete uid");
   }
   logger.info("delete_account_attempt", { uid });
+
+  // Guideline 5.1.1(v): revoke Sign in with Apple tokens before the account
+  // goes. A dismissed Apple sheet stops here with nothing deleted.
+  const revoke = await revokeAppleTokensIfNeeded(user);
+  if (revoke === "cancelled") {
+    throw new CodedError("account-delete/cancelled", "Account deletion was cancelled. Nothing was deleted.");
+  }
 
   const idToken = await user.getIdToken();
 

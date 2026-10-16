@@ -118,6 +118,7 @@ describe("createClipComment", () => {
 
   it("rejects a whitespace-only comment before touching the network", async () => {
     await expect(createClipComment("p1", "alice", "uc1", "   ")).rejects.toThrow(/Write something/);
+    await expect(createClipComment("p1", "alice", "uc1", "just kys")).rejects.toThrow(/language we don't allow/);
     expect(mockAddDoc).not.toHaveBeenCalled();
   });
 

@@ -88,7 +88,11 @@ export function Lobby({
 
         {hasMoreGames && games.length > 0 && <LoadMoreButton loading={gamesLoading} onClick={() => onLoadMore?.()} />}
 
-        {games.length === 0 && <EmptyLobbyState emailVerified={emailVerified} onChallenge={onChallenge} />}
+        {/* No game in progress: always offer a clear way to start one. A
+            skater with only finished games used to see a near-empty Home. */}
+        {c.myTurn.length === 0 && c.theirTurn.length === 0 && (
+          <EmptyLobbyState emailVerified={emailVerified} onChallenge={onChallenge} returning={games.length > 0} />
+        )}
       </div>
     </div>
   );
