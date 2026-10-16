@@ -1,10 +1,30 @@
 # SkateHubba Gap Analysis & Prioritization
 
-**Date:** 2026-09-19
+**Date:** 2026-09-19 · **Last status sweep:** 2026-10-15 at `ae0c296`
 **Scope:** `SkateHubba-play` (full audit). _(The original report also carried a DesignMainline static-site pass; that section was removed 2026-08-26 as out-of-repo scope — those findings live with that repo.)_
 **Method:** Five parallel code audits (roadmap-vs-code, rules/service parity, test coverage, security/infra/ops, code-quality/UX), plus the full `npm run verify` gate. Highest-severity findings were re-verified by hand against source. Line references are `file:line` at the audited commit (`5091db4`).
 
 The verify gate was **green** end to end at the audit baseline (`tsc -b`, lint, coverage thresholds, build, test-dup all passed). The gaps below are things the gate does not catch: security-rule holes, missing compliance controls, doc drift, and coverage/observability blind spots. Status annotations record fixes landed after the baseline.
+
+---
+
+## Status sweep at HEAD `ae0c296` (2026-10-15)
+
+Doc-only pass. Each status below was re-checked against the source at `ae0c296`. No new audit was run.
+
+- **P1-4 CLOSED** (#681): both cooldown anchors are bound with `getAfter()`, and `createSpot` writes the spot and its anchor in one batch.
+- **P1-8 CLOSED**: all three cron workflows run the shared `cron-failure-alert` step.
+- **P2-1 Sentry half CLOSED**: the account-deletion, player-meta and three cron endpoints report through `api/_sentry.ts` (the static `well-known` files don't need it). The coverage half is still open.
+- **P2-5 REGRESSED**: no static analysis runs at all. On 2026-10-14 every CodeQL `Analyze` job failed at the SARIF upload because code scanning was turned off in the repo settings. Then, at 04:41 UTC on 2026-10-15, the `CodeQL` workflow itself was disabled manually in Actions; GitHub reports its state as `disabled_manually`.
+- **P2-6 PARTIALLY CLOSED**: `functions/src/moderation/` screens user-uploaded public clips with Video Intelligence and auto-hides a clip after 3 reports. It is gated by `MODERATION_ENABLED`, which defaults to off; whether production has it on is not visible from the repo.
+- **P2-7 PARTIALLY CLOSED**: e2e now covers the community dispute vote, clip upload and clip upvote.
+- **P2-10 progress**: `clips`, `disputes` and `reports` now carry `keys().hasOnly()` checks; `games`, `spots` and `nudges` still have none, and spots `photoUrls` is still type-checked only.
+- **P2-9 CLOSED** (#681): `firestore.rules` is 171,390 bytes (65.4% of the limit), with a size check in `pr-gate.yml` and the rules deploy.
+- **P3-1 MOSTLY CLOSED**: the state-machine docs, `DISPUTE_BINDING_DESIGN.md`, the CHARTER collection inventory and its deps list were updated in earlier passes. This pass fixed the remaining stale figures.
+- **P3-4 CLOSED** (#683, merged after this sweep started): every file is within budget and the PR gate enforces it.
+- **P3-6**: `LevelChip` is no longer dead code, and both PR-gate guards now scan `api/`. Both are closed.
+- **Still open, re-checked in code:** P1-1 (by design), the P1-5 anonymous notice route (`reports` create still requires a signed-in, verified user), P2-1 coverage half, P2-2, P2-4, P2-8, P2-10 (partly), P3-2 (clips still reuse game video URLs), P3-3 (no tags, still `1.1.0`).
+- **Still open, carried forward without re-checking** (not visible in the repo): P0-4 (account-level DSA tasks), P2-3 (App Check enforcement is a Console setting), and the remaining P3-6 bullets.
 
 ---
 
@@ -122,7 +142,7 @@ _As originally filed:_ when a matcher claimed a land on the honor path, `games.m
 
 ### P1-4 · Games/spots creation cooldowns are trivially bypassable
 
-**Status (2026-10-14): CLOSED.** Games half verified in code: the `/games` create rule requires `getAfter(users/{uid}).data.get('lastGameCreatedAt', null) == request.time`, and `games.create.ts` writes the anchor in the same batch. Spots half fixed in `fix/rules-size-and-spot-cooldown`: new `spotRateLimitOk()` (mirrors `clipRateLimitOk()`) requires `getAfter(users/{uid}).data.lastSpotCreatedAt == request.time`, and `spots.ts` `createSpot` now commits the spot and the anchor in one `writeBatch`. Covered by `rules-tests/spots.rules.test.ts` (omitted-anchor bypass denied, second create within 30s denied, create after cooldown allowed).
+**Status (2026-10-14): CLOSED.** Games half verified in code: the `/games` create rule requires `getAfter(users/{uid}).data.get('lastGameCreatedAt', null) == request.time`, and `games.create.ts` writes the anchor in the same batch. Spots half fixed in #681 (`ae0c296`): new `spotRateLimitOk()` (mirrors `clipRateLimitOk()`) requires `getAfter(users/{uid}).data.lastSpotCreatedAt == request.time`, and `spots.ts` `createSpot` now commits the spot and the anchor in one `writeBatch`. Covered by `rules-tests/spots.rules.test.ts` (omitted-anchor bypass denied, second create within 30s denied, create after cooldown allowed).
 
 **Original finding:**
 
@@ -190,13 +210,19 @@ _As originally filed:_ when a matcher claimed a land on the honor path, `games.m
 
 **Status (2026-10-08): MOSTLY CLOSED** — `.github/workflows/codeql.yml` (CodeQL for JS/TS, Actions, Python) landed in #616, and GitHub secret scanning with push protection is enabled on the repo. Still no gitleaks/Semgrep workflow.
 
+**Status (2026-10-15): REGRESSED.** No static analysis runs at all. On 2026-10-14 code scanning was off in the repo settings, so every `CodeQL / Analyze` job on #680 failed at the SARIF upload (`Code scanning is not enabled for this repository`); it had passed on `main` on 2026-10-12. Then, at 04:41 UTC on 2026-10-15, the `CodeQL` workflow was disabled manually in Actions, so it no longer runs on PRs, on `main` or on its weekly schedule. **Fix:** re-enable code scanning under Settings → Code security, then re-enable the `CodeQL` workflow under Actions.
+
 12 workflows, none CodeQL/Semgrep/gitleaks. The stated threat model (`SECURITY.md:89`) includes AI agents pushing code, and the repo handles service-account JSON in env — a committed-secret scanner is the obvious missing control.
 
 ### P2-6 · Content moderation is avatar-only, client-side, and fail-open; video unscreened
 
+**Status (2026-10-15): PARTIALLY CLOSED.** `functions/src/moderation/` (approved 2026-10-10, see `docs/CLIP_MODERATION.md`) screens user-uploaded public clips (`source: "user"`) with Video Intelligence on create, auto-hides a clip after 3 eligible reports, and gives admins a keep/remove callable. It is off unless `MODERATION_ENABLED` is set; the default is `false`. **Still open:** game videos are unscreened, and avatar screening is still client-side and fail-open.
+
 `src/services/avatarModeration.ts:63-73,99-103` — on model-load failure `isAvatarSafe` resolves `{ok:true}` (fail-open); storage rules can't inspect pixels. It's client-side (skippable via direct upload). **`userClips/*` and game videos get zero proactive screening** — the primary content type of a video app has only reactive reports.
 
 ### P2-7 · Missing e2e coverage on high-risk flows
+
+**Status (2026-10-15): PARTIALLY CLOSED.** Now covered: the community dispute vote (`game.spec.ts` "a third player votes bail"), clip upload (`clip-upload.spec.ts`) and clip upvote (`clip-voting.spec.ts`). **Still no e2e for:** third-party judging, clip downvote, admin ban/unban/award, and account deletion. The onboarding `test.fixme` is still there (now `onboarding.spec.ts:122`).
 
 No e2e for: third-party judging, community dispute→verdict→tally, user-clip upload + downvote, admin ban/unban/award, **account deletion** (irreversible cascade). All have unit tests but no browser-level test. Also: `e2e/onboarding.spec.ts:131` is a permanent `test.fixme`.
 
@@ -224,6 +250,8 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 
 ### P3-1 · Documentation describes a product two releases old (highest-value P3)
 
+**Status (2026-10-15): MOSTLY CLOSED.** Verified fixed: the state-machine docs cover `pendingReview`/`communityReview`, `DISPUTE_BINDING_DESIGN.md` is marked SHIPPED, `ECONOMY.md` describes the admin-only create correctly, CHARTER lists the collections and deps named below, and MFA, clip moderation, stats and XP have their own docs. The 2026-10-15 pass also fixed the stale rules size, test counts and docs index (CHARTER, STATUS_REPORT, TESTING, README) and the `achievements.ts` / `locker.ts` docstrings. **Still open:** two shipped prod deps, `qrcode` (MFA QR codes) and `@sentry/node` (`api/` error reporting), are missing from CHARTER §4.12's approved list. Per CHARTER that list needs Chief Engineer sign-off, so they were not added.
+
 - **`GAME_MECHANICS.md` / `GAME_STATE_MACHINE.md` describe a state machine that no longer exists.** They say a landed claim "swaps roles immediately, no review" (`GAME_MECHANICS.md:58,142-145`); the code freezes into `pendingReview` with a 24h window (`games.match.ts:207-222`). The state tables omit `pendingReview`/`communityReview` (`games.mappers.ts:27`). These are the two docs a new contributor reads for the core loop.
 - **`P0-SECURITY-AUDIT.md` declared a fixed P0 as still-open** (server-side turn timer — the sweeper exists at `api/cron/sweep-expired-turns.ts` + `sweep-expired-turns.yml`). **Resolved 2026-08-26:** moved to `docs/archive/P0-SECURITY-AUDIT.md` with a superseded banner; this file is now the risk register of record.
 - **ECONOMY.md + two service docstrings claim client writes are denied "outright"** for achievements/locker (`ECONOMY.md:34,62`; `achievements.ts:14`; `locker.ts:22`) — the rules actually allow `isAdmin()` _client_ writes (`firestore.rules:765,791`). Materially wrong security claim.
@@ -242,6 +270,8 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 
 ### P3-4 · File-length budget enforced nowhere; 10 files over
 
+**Status (2026-10-15): CLOSED** (#683, `ed34627`). The 15 over-budget files were split by responsibility, and `check:file-length` reports every file within budget. The PR gate now runs it with `--strict`, so it blocks. It is still not part of `npm run verify`. The figures below are from `9d97f09`.
+
 `check:file-length` is not in `verify` and only `continue-on-error` in `pr-gate.yml:146-150`. Worst (at HEAD `9d97f09`): `Settings.tsx` (**594**/350 — up from 561 at baseline; the in-app PWA install section from `3485e88` added +33), `Landing.tsx` (553/350), `AddSpotSheet.tsx` (391/250), `useGamePlayController.ts` (463/350 — up from 456). Still 10 files over budget. `Settings.tsx` now carries 4 independent concerns (blocked-profile hydration, native push permission, push prefs, PWA install) that extract cleanly into hooks — it is the one file the recent work regressed.
 
 ### P3-5 · Accessibility edges
@@ -256,8 +286,8 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 - ~~`init_failed` 500 echoes raw `JSON.parse` message (may embed input snippet of the service-account key) — `sweep-expired-turns.ts:682`; match `delete.ts:228`'s flat "Server misconfiguration."~~ **CLOSED in #581.**
 - ~~`public/sw-cleanup.js:4-5` has 2 real lint errors, invisible because lint is scoped to `src/ api/`.~~ **CLOSED in #581** — the file is now in `npm run lint`.
 - `@tensorflow/tfjs` is an undeclared direct dep (auto-peer-installed via nsfwjs) → unmanaged by Dependabot, floating version, ships in bundle.
-- `LevelChip.tsx` is a hardcoded `level = 1` stub already removed from its only call site — dead code.
-- `guard-as-any-casts` / `guard-todo-fixme-hack` don't scan `api/` — the most privileged code can carry `as any` and TODOs unchecked.
+- ~~`LevelChip.tsx` is a hardcoded `level = 1` stub already removed from its only call site — dead code.~~ **CLOSED:** it now renders the real XP level in `GameOverScreen` and `ProfileIdentityCard`.
+- ~~`guard-as-any-casts` / `guard-todo-fixme-hack` don't scan `api/` — the most privileged code can carry `as any` and TODOs unchecked.~~ **CLOSED:** both guards in `pr-gate.yml` now scan `api/` (the `as any` guard also covers `functions/src/`).
 - ~~**(new, from the native rework)**~~ **CLOSED in #580.** `nativeBridge.ts` `subscribeToNetworkStatus` stores connectivity in a single module-level global (`nativeOnline`) that its unsubscribe unconditionally nulls. `useOnlineStatus` wires it through `useSyncExternalStore`, which subscribes once per mounted consumer — so with two+ consumers, unmounting one wipes the cached value for the others and `getNetworkSnapshot()` falls back to `navigator.onLine`, which is pinned `true` in iOS WKWebView (the exact case this module exists to work around). Not user-visible today (only `OfflineBanner` consumes it, single instance), but a trap for the next consumer. Fix: ref-count the listener, or hold state per-subscription instead of one global.
 
 ### P3-7 · Verified NOT problems (no action)
@@ -271,9 +301,9 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 
 ## Recommended sequence
 
-1. **Today:** P0-4 (the remaining P0; DSA account tasks have external lead time — start the clock). P0-1, P0-2, and P0-3 are closed.
-2. **This cycle:** P1-4, the P1-5 anonymous notice route, and P1-8 (P1-2/P1-3/P1-6/P1-7 are closed; P1-1 is closed as far as it safely can be; the signed-in P1-5 UI is in).
-3. **Schedule:** P2 block — `api/` observability + coverage, App Check rollout, moderation.
+1. **Today:** P0-4 (the remaining P0; DSA account tasks have external lead time — start the clock), and turn CodeQL back on (P2-5 regression: re-enable code scanning, then the workflow). P0-1, P0-2, and P0-3 are closed.
+2. **This cycle:** the P1-5 anonymous notice route. Every other P1 is closed (P1-1 as far as it safely can be).
+3. **Schedule:** P2 block — `api/` coverage floor, App Check enforcement, rate limiting, game-video moderation.
 4. **Batch:** P3 doc rewrite (P3-1 first — the state-machine docs actively mislead), release hygiene.
 
 Nothing here blocks the current green build; everything here is what the green build doesn't see.
