@@ -9,7 +9,10 @@ interface Props {
   losses: number;
   /** Signed-in viewer uid, or "" when signed out. */
   viewerUid: string;
-  onPlayPro?: () => void;
+  /** The pro's uid, handed to onPlayPro. */
+  uid: string;
+  /** Starts a S.K.A.T.E. challenge; omit to hide "Play a pro". */
+  onPlayPro?: (uid: string, username: string) => void;
 }
 
 /**
@@ -17,7 +20,7 @@ interface Props {
  * content qualify. With VITE_FEATURE_PRO_PROFILES on, everyone sees it; off
  * (production default), only admin-claim holders see it, in review mode.
  */
-export function ProShowcaseGate({ username, wins, losses, viewerUid, onPlayPro }: Props) {
+export function ProShowcaseGate({ username, wins, losses, viewerUid, uid, onPlayPro }: Props) {
   const content = getProProfileContent(username);
   const flagOn = isProProfilesEnabled();
   // Skip the claim lookup entirely when there's nothing to show or the flag already opens it.
@@ -30,7 +33,7 @@ export function ProShowcaseGate({ username, wins, losses, viewerUid, onPlayPro }
       wins={wins}
       losses={losses}
       reviewMode={!flagOn}
-      onPlayPro={onPlayPro}
+      onPlayPro={onPlayPro ? () => onPlayPro(uid, username) : undefined}
     />
   );
 }

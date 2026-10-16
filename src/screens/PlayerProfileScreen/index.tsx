@@ -267,11 +267,8 @@ export function PlayerProfileScreen({
           wins={profile.wins ?? 0}
           losses={profile.losses ?? 0}
           viewerUid={viewerUid}
-          onPlayPro={
-            !isOwnProfile && hasViewer && onChallenge && !c.isBlocked
-              ? () => onChallenge(profile.uid, profile.username)
-              : undefined
-          }
+          uid={profile.uid}
+          onPlayPro={!isOwnProfile && hasViewer && !c.isBlocked ? onChallenge : undefined}
         />
 
         {isOwnProfile && (
