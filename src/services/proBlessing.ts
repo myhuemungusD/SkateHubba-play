@@ -174,3 +174,17 @@ export async function answerBlessing(blessingId: string, accept: boolean): Promi
   trackEvent(accept ? "pro_blessing_accepted" : "pro_blessing_declined", { blessingId });
   return res.status;
 }
+
+/** Default audit reason for a Seed Pro revoke (the server needs 10–280 chars). */
+export const ADMIN_REVOKE_REASON = "Revoked by an admin from the Seed Pro tab";
+
+/**
+ * Admin-only: revoke verified-pro status through the proBlessing callable, so
+ * the badge and every accepted blessing in the lineage flip together on the
+ * server instead of a direct client write to users/{uid}.
+ */
+export async function revokePro(targetUid: string, reason: string = ADMIN_REVOKE_REASON): Promise<string> {
+  const res = await callBlessing({ action: "revoke", targetUid, reason });
+  trackEvent("pro_blessing_revoked", { blessingId: res.blessingId });
+  return res.status;
+}
