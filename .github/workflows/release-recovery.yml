@@ -43,6 +43,11 @@ permissions:
   contents: write
   pull-requests: write
 
+# Never cancel a recovery mid-flight; queue a second one instead.
+concurrency:
+  group: release-recovery
+  cancel-in-progress: false
+
 jobs:
   recover-v1-1-0:
     if: github.event.inputs.confirm == 'YES'
