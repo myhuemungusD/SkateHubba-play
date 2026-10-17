@@ -94,3 +94,12 @@ export function isProProfilesEnabled(): boolean {
 export function isProBlessingEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_PRO_BLESSING);
 }
+
+/**
+ * Skate clip editor: speed ramps, landing-marker trim, VX/VHS looks, color
+ * presets, line cuts, trick captions, beat-synced music, skate SFX and
+ * full-quality export (native AVFoundation on iOS). Literal "true" only.
+ */
+export function isClipEditorEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_CLIP_EDITOR);
+}

@@ -103,6 +103,13 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Skate clip editor (speed ramps, looks, music, SFX, 4K export). DEFAULTS
+  // TO OFF. Read via isClipEditorEnabled() in featureFlags.ts.
+  VITE_FEATURE_CLIP_EDITOR: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // ── Optional: third-party integrations ──────────────────────────────
   VITE_MAPBOX_TOKEN: z.string().optional(),
   // Format validation (mapbox://styles/ prefix or https URL) deliberately
