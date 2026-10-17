@@ -584,4 +584,23 @@ describe("native pro-capture extras", () => {
     mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
     expect(await setNativeFisheye(true, 3.0)).toBe(false);
   });
+
+  it("returns false when native functions are not available", async () => {
+    // Test the defensive !pro.xxx checks by temporarily removing those methods
+    const VideoRecorder = await import("@capacitor-community/video-recorder").then((m) => m.VideoRecorder);
+    const originalSetPreRoll = VideoRecorder.setPreRoll;
+    const originalSetNativeFisheye = VideoRecorder.setNativeFisheye;
+
+    // Temporarily remove the methods
+    delete (VideoRecorder as { setPreRoll?: unknown }).setPreRoll;
+    delete (VideoRecorder as { setNativeFisheye?: unknown }).setNativeFisheye;
+
+    const { setNativePreRoll, setNativeFisheye } = await import("../nativeVideo");
+    expect(await setNativePreRoll(true)).toBe(false);
+    expect(await setNativeFisheye(true)).toBe(false);
+
+    // Restore the methods
+    VideoRecorder.setPreRoll = originalSetPreRoll;
+    VideoRecorder.setNativeFisheye = originalSetNativeFisheye;
+  });
 });
