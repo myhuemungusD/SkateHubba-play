@@ -1,3 +1,8 @@
+import {
+  containsObjectionableText,
+  OBJECTIONABLE_COMMENT_MESSAGE,
+  OBJECTIONABLE_TEXT_MESSAGE,
+} from "../utils/objectionable";
 /**
  * Firestore service for the skate spots feature.
  *
@@ -212,9 +217,11 @@ function validateCreateRequest(req: CreateSpotRequest): string | null {
     return "name is required";
   }
   if (req.name.length > 80) return "name must be 80 characters or less";
+  if (containsObjectionableText(req.name)) return OBJECTIONABLE_TEXT_MESSAGE;
   if (req.description != null) {
     if (typeof req.description !== "string") return "description must be a string";
     if (req.description.length > 500) return "description must be 500 characters or less";
+    if (containsObjectionableText(req.description)) return OBJECTIONABLE_TEXT_MESSAGE;
   }
   if (typeof req.latitude !== "number" || !Number.isFinite(req.latitude) || req.latitude < -90 || req.latitude > 90) {
     return "latitude must be a finite number between -90 and 90";
@@ -517,6 +524,7 @@ export async function addSpotComment(spotId: string, content: string, uid: strin
   const trimmed = content.trim();
   if (trimmed.length === 0) throw new Error("Comment cannot be empty");
   if (trimmed.length > 300) throw new Error("Comment must be 300 characters or less");
+  if (containsObjectionableText(trimmed)) throw new Error(OBJECTIONABLE_COMMENT_MESSAGE);
 
   // A transaction lets us atomically verify the parent spot exists before
   // writing the comment — prevents orphaned comments if the spot was just

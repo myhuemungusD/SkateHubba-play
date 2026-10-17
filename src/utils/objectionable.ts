@@ -79,4 +79,5 @@ export function isObjectionableUsername(username: string): boolean {
 }
 
 export const OBJECTIONABLE_COMMENT_MESSAGE = "That comment has language we don't allow. Please edit it and try again.";
+export const OBJECTIONABLE_TEXT_MESSAGE = "That has language we don't allow. Please edit it and try again.";
 export const OBJECTIONABLE_USERNAME_MESSAGE = "That username isn't allowed. Please pick another.";
