@@ -422,6 +422,9 @@ service cloud.firestore {
         // Pro-authored profile fields: never at creation (no one is a pro yet)
         && !('proBio' in request.resource.data)
         && !('proSignatureTricks' in request.resource.data)
+        && !('proTagline' in request.resource.data)
+        && !('proHometown' in request.resource.data)
+        && !('proSponsors' in request.resource.data)
         // Sensitive fields MUST live in users/{uid}/private/* instead of
         // the public profile doc. Strict on CREATE — no new doc may
         // introduce them. (Legacy docs are handled by the update rule below.)
@@ -507,7 +510,7 @@ service cloud.firestore {
         // strings). Every other pro power stays server/admin-only.
         && (
           !request.resource.data.diff(resource.data).affectedKeys()
-            .hasAny(['proBio', 'proSignatureTricks'])
+            .hasAny(['proBio', 'proSignatureTricks', 'proTagline', 'proHometown', 'proSponsors'])
           || (
             resource.data.get('isVerifiedPro', false) == true
             && (!('proBio' in request.resource.data)
@@ -525,6 +528,24 @@ service cloud.firestore {
                     && (request.resource.data.proSignatureTricks.size() < 3
                         || (request.resource.data.proSignatureTricks[2] is string
                             && request.resource.data.proSignatureTricks[2].size() <= 40))))
+            && (!('proTagline' in request.resource.data)
+                || (request.resource.data.proTagline is string
+                    && request.resource.data.proTagline.size() <= 80))
+            && (!('proHometown' in request.resource.data)
+                || (request.resource.data.proHometown is string
+                    && request.resource.data.proHometown.size() <= 60))
+            && (!('proSponsors' in request.resource.data)
+                || (request.resource.data.proSponsors is list
+                    && request.resource.data.proSponsors.size() <= 3
+                    && (request.resource.data.proSponsors.size() < 1
+                        || (request.resource.data.proSponsors[0] is string
+                            && request.resource.data.proSponsors[0].size() <= 40))
+                    && (request.resource.data.proSponsors.size() < 2
+                        || (request.resource.data.proSponsors[1] is string
+                            && request.resource.data.proSponsors[1].size() <= 40))
+                    && (request.resource.data.proSponsors.size() < 3
+                        || (request.resource.data.proSponsors[2] is string
+                            && request.resource.data.proSponsors[2].size() <= 40))))
           )
         )
         // Cannot change username or uid after creation

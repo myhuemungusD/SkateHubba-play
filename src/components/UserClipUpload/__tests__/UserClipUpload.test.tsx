@@ -65,6 +65,15 @@ vi.mock("../../VideoRecorder", () => ({
   ),
 }));
 
+vi.mock("../../ClipEditor/ClipEditor", () => ({
+  ClipEditor: ({ onDone, onCancel }: { onDone: (b: Blob) => void; onCancel: () => void }) => (
+    <div data-testid="clip-editor">
+      <button onClick={() => onDone(new Blob(["edited"], { type: "video/mp4" }))}>__editor_done__</button>
+      <button onClick={onCancel}>__editor_cancel__</button>
+    </div>
+  ),
+}));
+
 function renderModal(onPosted = vi.fn(), onClose = vi.fn()) {
   render(<UserClipUploadModal uid="me" username="viewer" onClose={onClose} onPosted={onPosted} />);
   return { onPosted, onClose };
@@ -259,5 +268,30 @@ describe("UserClipUploadModal", () => {
     const { onClose } = renderModal();
     await user.click(screen.getByRole("button", { name: /cancel/i }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("hides Edit clip while VITE_FEATURE_CLIP_EDITOR is off", async () => {
+    const user = userEvent.setup();
+    renderModal();
+    await user.click(screen.getByRole("button", { name: /film it/i }));
+    await user.click(screen.getByText("__take__"));
+    await screen.findByLabelText("TRICK");
+    expect(screen.queryByRole("button", { name: /edit clip/i })).not.toBeInTheDocument();
+  });
+
+  it("opens the editor when the flag is on and stages the edited clip", async () => {
+    vi.stubEnv("VITE_FEATURE_CLIP_EDITOR", "true");
+    const user = userEvent.setup();
+    renderModal();
+    await user.click(screen.getByRole("button", { name: /film it/i }));
+    await user.click(screen.getByText("__take__"));
+    await user.click(await screen.findByRole("button", { name: /edit clip/i }));
+    await user.click(await screen.findByText("__editor_cancel__"));
+    expect(screen.queryByTestId("clip-editor")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /edit clip/i }));
+    await user.click(await screen.findByText("__editor_done__"));
+    expect(screen.queryByTestId("clip-editor")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("TRICK")).toBeInTheDocument();
+    vi.unstubAllEnvs();
   });
 });

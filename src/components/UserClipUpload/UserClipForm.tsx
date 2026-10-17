@@ -14,6 +14,8 @@ export interface UserClipFormProps {
   canSubmit: boolean;
   /** Seconds left on the post cooldown. 0 when the skater may post now. */
   cooldownSeconds: number;
+  /** Opens the clip editor. Omitted (no button) while VITE_FEATURE_CLIP_EDITOR is off. */
+  onEdit?: () => void;
 }
 
 /**
@@ -32,6 +34,7 @@ export function UserClipForm({
   submitting,
   canSubmit,
   cooldownSeconds,
+  onEdit,
 }: UserClipFormProps) {
   const nameId = useId();
   const remaining = TRICK_NAME_MAX_LENGTH - trickName.trim().length;
@@ -47,6 +50,12 @@ export function UserClipForm({
         aria-label="Your clip"
         className="w-full max-h-[320px] rounded-2xl bg-black object-contain"
       />
+
+      {onEdit && (
+        <Btn onClick={onEdit} variant="secondary" disabled={submitting}>
+          Edit clip
+        </Btn>
+      )}
 
       <div>
         <label htmlFor={nameId} className="mb-2 block font-display text-sm tracking-[0.12em] text-dim">

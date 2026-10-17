@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   isAppleSignInEnabled,
+  isClipEditorEnabled,
   isClipModerationEnabled,
   isDiceEnabled,
   isExtrasEnabled,
@@ -190,5 +191,23 @@ describe("isTrickPickerEnabled (VITE_FEATURE_TRICK_PICKER_ENABLED)", () => {
     vi.stubEnv("VITE_FEATURE_EXTRAS_ENABLED", "true");
     vi.stubEnv("VITE_FEATURE_REFEREE_ENABLED", "true");
     expect(isTrickPickerEnabled()).toBe(false);
+  });
+});
+
+describe("isClipEditorEnabled (VITE_FEATURE_CLIP_EDITOR)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is OFF when the env var is unset", () => {
+    expect(import.meta.env.VITE_FEATURE_CLIP_EDITOR).toBeUndefined();
+    expect(isClipEditorEnabled()).toBe(false);
+  });
+
+  it("stays off for anything other than the literal string true", () => {
+    vi.stubEnv("VITE_FEATURE_CLIP_EDITOR", "1");
+    expect(isClipEditorEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_CLIP_EDITOR", "true");
+    expect(isClipEditorEnabled()).toBe(true);
   });
 });

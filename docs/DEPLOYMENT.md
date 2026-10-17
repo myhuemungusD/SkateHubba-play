@@ -181,10 +181,12 @@ rules plus an allowlist-based scan.
 
 ## Cloud Functions Deployment
 
-The stats close-out function under `functions/` is the one application-authored
-Cloud Functions codebase — maintainer-approved (2026-07) to move win/loss stat
-writes server-side after a client-side stats-replay path corrupted production
-counters (see `docs/CHARTER.md §4.14`). Like rules, it is **not** part of the
+`functions/` holds the maintainer-approved Cloud Functions, pinned by the
+`verify-no-cloud-functions` allowlist: the stats close-out (2026-07, see
+`docs/CHARTER.md §4.14`), Roll Dice (`dice/`), clip moderation (`moderation/`)
+and pro blessing (`pro/`, the `proBlessing` callable). A brand-new export needs a
+one-time stub created with the appspot build service account before the
+workflow can update it (see [DEPLOY_FUNCTIONS.md](DEPLOY_FUNCTIONS.md)). Like rules, it is **not** part of the
 Vercel pipeline. Merging to `main` does not upload it.
 
 Deploy from GitHub Actions → **Deploy Firebase Functions**. Type `deploy` in
