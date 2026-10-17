@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { syncFeatureTester } from "../services/featureTesters";
 import { useAuth } from "../hooks/useAuth";
 import {
   signOut as fbSignOut,
@@ -145,6 +146,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!loading) writeAuthHint(user !== null);
   }, [loading, user]);
+
+  // Runtime tester override (config/featureTesters): every flag on for listed uids.
+  const authUid = user?.uid ?? null;
+  useEffect(() => {
+    if (!loading) void syncFeatureTester(authUid);
+  }, [loading, authUid]);
 
   // Resolve any pending Google redirect on mount
   useEffect(() => {

@@ -344,6 +344,17 @@ service cloud.firestore {
 
     // ── Users ──
     // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r7
+    // ── Runtime feature testers ──
+    // config/featureTesters { uids: [...] }. A listed uid may read it (the
+    // client turns every VITE_FEATURE_* flag on); anyone else is denied, so
+    // the list never leaks. Written only from the console / Admin SDK.
+    match /config/featureTesters {
+      allow get: if request.auth != null
+        && resource.data.uids is list
+        && request.auth.uid in resource.data.uids;
+      allow list, write: if false;
+    }
+
     match /users/{uid} {
       // Split read into get/list deliberately. `get` is public so a shared
       // `/player/{uid}` link resolves for a signed-OUT visitor — the link
