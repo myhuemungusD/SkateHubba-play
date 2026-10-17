@@ -24,4 +24,9 @@ describe("saveProProfile", () => {
       proSignatureTricks: out.signatureTricks,
     });
   });
+
+  it("rejects a bio with slurs before writing (App Store 1.2)", async () => {
+    await expect(saveProProfile("u1", { bio: "just kys", signatureTricks: [] })).rejects.toThrow(/don't allow/);
+    expect(mockUpdateDoc).not.toHaveBeenCalled();
+  });
 });

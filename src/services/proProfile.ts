@@ -1,5 +1,6 @@
 import { doc, updateDoc } from "firebase/firestore";
 import { requireDb } from "../firebase";
+import { containsObjectionableText, OBJECTIONABLE_TEXT_MESSAGE } from "../utils/objectionable";
 import { PRO_BIO_MAX, PRO_TRICKS_MAX, TRICK_CATALOG } from "../constants/trickCatalog";
 
 export interface ProProfileEdit {
@@ -14,6 +15,7 @@ export interface ProProfileEdit {
  */
 export async function saveProProfile(uid: string, edit: ProProfileEdit): Promise<ProProfileEdit> {
   const bio = edit.bio.trim().slice(0, PRO_BIO_MAX);
+  if (containsObjectionableText(bio)) throw new Error(OBJECTIONABLE_TEXT_MESSAGE);
   const signatureTricks = [...new Set(edit.signatureTricks)]
     .filter((t) => TRICK_CATALOG.includes(t))
     .slice(0, PRO_TRICKS_MAX);
