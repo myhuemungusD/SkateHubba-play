@@ -7,10 +7,9 @@ on:
     branches: [main]
     # ready_for_review re-runs the gated jobs when a draft PR is marked ready.
     types: [opened, synchronize, reopened, ready_for_review]
-  schedule:
-    # Daily drift audit (see audit-nightly below). 06:13 UTC — off the
-    # top-of-hour spike so the run isn't queued behind everyone else's crons.
-    - cron: "13 6 * * *"
+  # Nightly schedule removed 2026-10-17 (Actions cost, approved by Jason).
+  # audit-nightly now runs only on manual dispatch; Dependabot alerts still
+  # cover new advisories against main's lockfiles.
   # Manual smoke-test hook for audit-nightly: schedule-triggered jobs only
   # fire from the workflow file on the default branch, so this is the only
   # way to exercise that job before (or without) waiting for the cron.
@@ -71,7 +70,7 @@ jobs:
             echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           files=$(git diff --name-only "$BASE...$HEAD" 2>/dev/null || git diff --name-only "$BASE" "$HEAD")
-          if [ -z "$files" ] || echo "$files" | grep -qvE '(\.md$|^docs/|^LICENSE|^\.github/ISSUE_TEMPLATE/)'; then
+          if [ -z "$files" ] || echo "$files" | grep -qvE '(\.md$|^docs/|^design/|^LICENSE|^\.github/ISSUE_TEMPLATE/)'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "Docs-only change — skipping heavy jobs."
