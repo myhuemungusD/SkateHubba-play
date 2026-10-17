@@ -72,6 +72,16 @@ const makeMockReliabilityData = (overrides?: Record<string, unknown>) => ({
   ...overrides,
 });
 
+const defaultReliabilityData = () => ({
+  reliability: {},
+  goldSeen: 0,
+  goldCorrect: 0,
+  trickIq: 0,
+  streakDays: 0,
+  lastAnsweredDay: null,
+  freezesLeft: 1,
+});
+
 describe("fetchWttItems", () => {
   it("returns empty array when no items found", async () => {
     mockGetDocs.mockResolvedValue({ docs: [] });
@@ -212,15 +222,7 @@ describe("fetchWttReliability", () => {
 
     const result = await fetchWttReliability("user123");
 
-    expect(result).toMatchObject({
-      reliability: {},
-      goldSeen: 0,
-      goldCorrect: 0,
-      trickIq: 0,
-      streakDays: 0,
-      lastAnsweredDay: null,
-      freezesLeft: 1,
-    });
+    expect(result).toMatchObject(defaultReliabilityData());
   });
 });
 
@@ -304,15 +306,7 @@ describe("subscribeToWttReliability", () => {
 
     subscribeToWttReliability("user123", callback);
 
-    expect(callback).toHaveBeenCalledWith({
-      reliability: {},
-      goldSeen: 0,
-      goldCorrect: 0,
-      trickIq: 0,
-      streakDays: 0,
-      lastAnsweredDay: null,
-      freezesLeft: 1,
-    });
+    expect(callback).toHaveBeenCalledWith(defaultReliabilityData());
   });
 });
 
