@@ -463,4 +463,38 @@ describe("native pro-capture extras", () => {
     expect(await setNativeLens(2)).toBe(false);
     expect(await focusNativeAt(0.5, 0.5, false)).toBe(false);
   });
+
+  it("sets and queries quality modes", async () => {
+    const { setNativeQuality, getNativeQualityModes } = await import("../nativeVideo");
+    mockPro.mockResolvedValueOnce({ quality: "pro4k60" });
+    expect(await setNativeQuality("pro4k60")).toBe(true);
+    expect(mockPro).toHaveBeenCalledWith("setQuality", { quality: "pro4k60" });
+    mockPro.mockResolvedValueOnce({ modes: ["standard1080p60", "pro4k60", "slomo120"], current: "pro4k60" });
+    const modes = await getNativeQualityModes();
+    expect(modes.modes).toEqual(["standard1080p60", "pro4k60", "slomo120"]);
+    expect(modes.current).toBe("pro4k60");
+    mockPro.mockReset();
+    mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
+    expect(await setNativeQuality("slomo240")).toBe(false);
+  });
+
+  it("fetches performance metrics", async () => {
+    const { getNativeMetrics } = await import("../nativeVideo");
+    mockPro.mockResolvedValueOnce({
+      previewFps: 59.8,
+      droppedFrames: 2,
+      thermalState: "nominal",
+      quality: "standard1080p60",
+    });
+    const metrics = await getNativeMetrics();
+    expect(metrics).toEqual({
+      previewFps: 59.8,
+      droppedFrames: 2,
+      thermalState: "nominal",
+      quality: "standard1080p60",
+    });
+    mockPro.mockReset();
+    mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
+    expect(await getNativeMetrics()).toBeNull();
+  });
 });

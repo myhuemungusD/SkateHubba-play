@@ -279,10 +279,20 @@ export async function recordNativeVideo(
  * the same Capacitor proxy untyped. Every call is best-effort: on Android or
  * an unpatched build the method is missing and we fall back silently.
  */
+export type CaptureQuality = "standard1080p60" | "pro4k60" | "slomo120" | "slomo240";
+
 type ProRecorder = {
   setZoom?: (o: { lens: number }) => Promise<{ lens: number }>;
   getLensInfo?: () => Promise<{ ultraWide: boolean; maxLens: number }>;
   focusAt?: (o: { x: number; y: number; lock: boolean }) => Promise<{ locked: boolean }>;
+  setQuality?: (o: { quality: CaptureQuality }) => Promise<{ quality: string }>;
+  getQualityModes?: () => Promise<{ modes: CaptureQuality[]; current: CaptureQuality }>;
+  getPerformanceMetrics?: () => Promise<{
+    previewFps: number;
+    droppedFrames: number;
+    thermalState: "nominal" | "fair" | "serious" | "critical" | "unknown";
+    quality: CaptureQuality;
+  }>;
 };
 const pro = VideoRecorder as unknown as ProRecorder;
 
@@ -317,5 +327,41 @@ export async function focusNativeAt(x: number, y: number, lock: boolean): Promis
     return true;
   } catch {
     return false;
+  }
+}
+
+/** Set capture quality mode (4K60, 1080p60, slow-mo, etc.). */
+export async function setNativeQuality(quality: CaptureQuality): Promise<boolean> {
+  try {
+    if (!pro.setQuality) return false;
+    await pro.setQuality({ quality });
+    addBreadcrumb({ category: "camera", message: `native quality ${quality}` });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Get available quality modes and current setting. */
+export async function getNativeQualityModes(): Promise<{ modes: CaptureQuality[]; current: CaptureQuality }> {
+  try {
+    const result = await pro.getQualityModes?.();
+    return result || { modes: ["standard1080p60"], current: "standard1080p60" };
+  } catch {
+    return { modes: ["standard1080p60"], current: "standard1080p60" };
+  }
+}
+
+/** Get real-time performance metrics: FPS, dropped frames, thermal state. */
+export async function getNativeMetrics(): Promise<{
+  previewFps: number;
+  droppedFrames: number;
+  thermalState: "nominal" | "fair" | "serious" | "critical" | "unknown";
+  quality: CaptureQuality;
+} | null> {
+  try {
+    return (await pro.getPerformanceMetrics?.()) || null;
+  } catch {
+    return null;
   }
 }

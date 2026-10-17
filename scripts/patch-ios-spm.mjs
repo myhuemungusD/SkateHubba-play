@@ -77,7 +77,10 @@ if (existsSync(recorderSwift)) {
         '        CAPPluginMethod(name: "getDuration", returnType: CAPPluginReturnPromise),\n' +
           '        CAPPluginMethod(name: "setZoom", returnType: CAPPluginReturnPromise),\n' +
           '        CAPPluginMethod(name: "getLensInfo", returnType: CAPPluginReturnPromise),\n' +
-          '        CAPPluginMethod(name: "focusAt", returnType: CAPPluginReturnPromise),\n',
+          '        CAPPluginMethod(name: "focusAt", returnType: CAPPluginReturnPromise),\n' +
+          '        CAPPluginMethod(name: "setQuality", returnType: CAPPluginReturnPromise),\n' +
+          '        CAPPluginMethod(name: "getQualityModes", returnType: CAPPluginReturnPromise),\n' +
+          '        CAPPluginMethod(name: "getPerformanceMetrics", returnType: CAPPluginReturnPromise),\n',
       ],
       [
         "                        if (self.backCamera == nil) {\n",
