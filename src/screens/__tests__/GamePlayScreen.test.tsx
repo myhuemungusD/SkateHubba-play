@@ -425,7 +425,7 @@ describe("GamePlayScreen", () => {
     render(<GamePlayScreen game={makeGame({ trickCategory: "flip" })} profile={profile} onBack={vi.fn()} />);
 
     expect(screen.queryByLabelText("TRICK NAME")).not.toBeInTheDocument();
-    expect(screen.getByText("Flip Tricks only")).toBeInTheDocument();
+    expect(await screen.findByText("Flip Tricks only")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Switch" }));
     await userEvent.click(screen.getByRole("button", { name: "Ledge" }));
     await userEvent.click(screen.getByRole("option", { name: "Kickflip" }));
@@ -450,7 +450,7 @@ describe("GamePlayScreen", () => {
     mockSetTrick.mockResolvedValueOnce(undefined);
 
     render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
-    await userEvent.click(screen.getByRole("option", { name: "Other" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Other" }));
     await userEvent.type(screen.getByLabelText("Custom trick name"), "Casper");
     expect(screen.getByText("Set your Casper")).toBeInTheDocument();
     await landOpenedTake();

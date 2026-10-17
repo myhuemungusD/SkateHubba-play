@@ -20,11 +20,8 @@ import { SetterDecisionPanel } from "./components/SetterDecisionPanel";
 import { MatcherDecisionPanel } from "./components/MatcherDecisionPanel";
 import { PendingReviewPanel } from "./components/PendingReviewPanel";
 import { ReviewStatusPanel } from "./components/ReviewStatusPanel";
-import { TrickPicker as TrickPickerSync } from "../../components/TrickPicker";
 
-const TrickPickerLazy = lazy(() => import("../../components/TrickPicker").then((m) => ({ default: m.TrickPicker })));
-const isTest = import.meta.env.MODE === "test";
-const TrickPicker = isTest ? TrickPickerSync : TrickPickerLazy;
+const TrickPicker = lazy(() => import("../../components/TrickPicker").then((m) => ({ default: m.TrickPicker })));
 
 export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profile: UserProfile; onBack: () => void }) {
   const c = useGamePlayController(game, profile);
