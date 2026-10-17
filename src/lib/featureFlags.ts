@@ -231,5 +231,5 @@ export function isProfileBannerEnabled(): boolean {
  * theme song. Builds on the profile banner. Literal "true" only; off by default.
  */
 export function isProfileCustomEnabled(): boolean {
-  return parseFlag(import.meta.env.VITE_FEATURE_PROFILE_CUSTOM);
+  return flagOn(import.meta.env.VITE_FEATURE_PROFILE_CUSTOM);
 }
