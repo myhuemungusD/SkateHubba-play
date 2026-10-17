@@ -442,7 +442,15 @@ describe("nativeVideo service", () => {
 });
 
 describe("native pro-capture extras", () => {
-  beforeEach(() => mockPro.mockReset());
+  beforeEach(() => {
+    mockPro.mockReset();
+    // Enable pro camera flag for all pro-capture tests
+    vi.stubEnv("VITE_FEATURE_PRO_CAMERA", "true");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
 
   it("lists 0.5x/1x/2x on an ultra-wide phone and 1x only otherwise", async () => {
     const { getNativeLenses } = await import("../nativeVideo");
