@@ -1,6 +1,7 @@
 // Global augmentation for Three.js JSX elements in React Three Fiber
 // Manually defined to avoid import/augmentation issues with skipLibCheck
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 declare namespace JSX {
   interface IntrinsicElements {
     // Three.js object types used in runner
@@ -22,3 +23,4 @@ declare namespace JSX {
     fog: any;
   }
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */
