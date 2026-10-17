@@ -611,6 +611,20 @@ service cloud.firestore {
               && request.resource.data.lastSpotCreatedAt == resource.data.lastSpotCreatedAt)
           || request.resource.data.lastSpotCreatedAt == request.time
         )
+        // lastSpotMessageAt is the 3s cooldown anchor for spot group messages
+        // (see spots/{spotId}/messages create rule). Same attack surface and
+        // same three-branch guard — kept in lockstep with lastGameCreatedAt
+        // and lastSpotCreatedAt above. The spot-message flow writes this via
+        // batch rules in the same write as the message; the message create
+        // rule requires it via getAfter().
+        && (
+          (!('lastSpotMessageAt' in request.resource.data)
+            && !('lastSpotMessageAt' in resource.data))
+          || ('lastSpotMessageAt' in resource.data
+              && 'lastSpotMessageAt' in request.resource.data
+              && request.resource.data.lastSpotMessageAt == resource.data.lastSpotMessageAt)
+          || request.resource.data.lastSpotMessageAt == request.time
+        )
         // lastClipCreatedAt is the 30s cooldown anchor for user-uploaded
         // clip creation (see the /clips user-source create rule, which
         // getAfter()s this exact field). Identical three-branch guard to
@@ -3256,6 +3270,89 @@ service cloud.firestore {
           || request.auth.uid == resource.data.targetUid
           || isAdmin()));
       allow create, update, delete: if false;
+    }
+
+    // ── Spot group messages (spots/{spotId}/messages/{messageId}) ──
+    // Real-time group chat per spot. All signed-in users can read and post.
+    // Word filter blocks known slurs/spam. Rate limit: 1 message per 3 seconds
+    // per user. Admins can hide/unhide messages.
+    match /spots/{spotId}/messages/{messageId} {
+      allow read: if isSignedIn();
+
+      // Simple word filter. Case-insensitive substring matching.
+      function containsBlockedWord(text) {
+        let lower = text.lower();
+        return lower.matches('.*nigger.*')
+          || lower.matches('.*nigga.*')
+          || lower.matches('.*faggot.*')
+          || lower.matches('.*retard.*')
+          || lower.matches('.*tranny.*')
+          || lower.matches('.*chink.*')
+          || lower.matches('.*kike.*')
+          || lower.matches('.*wetback.*')
+          || lower.matches('.*bitcoin.*')
+          || lower.matches('.*crypto.*')
+          || lower.matches('.*buy now.*')
+          || lower.matches('.*click here.*')
+          || lower.matches('.*free money.*')
+          || lower.matches('.*fuck you.*')
+          || lower.matches('.*suck my.*')
+          || lower.matches('.*eat shit.*')
+          || lower.matches('.*kill yourself.*');
+      }
+
+      allow create: if isSignedIn()
+        && notBanned()
+        && request.resource.data.keys().hasOnly(['userId', 'content', 'createdAt', 'isHidden', 'hiddenReason'])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.content is string
+        && request.resource.data.content.size() > 0
+        && request.resource.data.content.size() <= 500
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.isHidden is bool
+        // Rate limit: 3 seconds between messages per spot
+        && (!fsExists('users', request.auth.uid) 
+            || !('lastSpotMessageAt' in fsGet('users', request.auth.uid).data)
+            || request.time > fsGet('users', request.auth.uid).data.lastSpotMessageAt + duration.value(3, 's'))
+        // Word filter enforcement: if content has blocked words, isHidden must be true
+        && (containsBlockedWord(request.resource.data.content) == request.resource.data.isHidden)
+        // If hidden by word filter, reason must be 'word_filter'
+        && (!request.resource.data.isHidden 
+            || (request.resource.data.hiddenReason == 'word_filter'))
+        // Rate limit anchor: user doc must be updated in same batch
+        && fsGetAfter('users', request.auth.uid).data.lastSpotMessageAt == request.time;
+
+      // Admin can hide/unhide messages
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isHidden', 'hiddenReason'])
+        && request.resource.data.isHidden is bool
+        && (!request.resource.data.isHidden 
+            || request.resource.data.hiddenReason in ['word_filter', 'reported', 'user_blocked']);
+
+      allow delete: if false;
+    }
+
+    // Spot message reports (top-level collection for admin review)
+    match /spotMessageReports/{reportId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.reportedBy == request.auth.uid);
+
+      allow create: if isSignedIn()
+        && notBanned()
+        && request.resource.data.keys().hasOnly(['messageId', 'spotId', 'reportedBy', 'reason', 'details', 'createdAt', 'status'])
+        && request.resource.data.messageId is string
+        && request.resource.data.spotId is string
+        && request.resource.data.reportedBy == request.auth.uid
+        && request.resource.data.reason in ['spam', 'harassment', 'inappropriate', 'other']
+        && (!('details' in request.resource.data) || request.resource.data.details is string)
+        && (!('details' in request.resource.data) || request.resource.data.details.size() <= 500)
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time;
+
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && request.resource.data.status in ['pending', 'reviewed', 'dismissed'];
+
+      allow delete: if false;
     }
 
     // ── Closet: catalog (item definitions) ──

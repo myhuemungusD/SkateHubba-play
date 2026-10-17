@@ -94,6 +94,9 @@ interface ImportMetaEnv {
   /** Public-clip moderation. "true" starts user uploads as pending.
    *  Unset (default) leaves uploads visible immediately. */
   readonly VITE_FEATURE_CLIP_MODERATION_ENABLED?: string;
+  /** Spot group chats. "true" lets the UI surface per-spot chat rooms.
+   *  Unset (default) hides them. Read via isSpotChatsEnabled(). */
+  readonly VITE_FEATURE_SPOT_CHATS_ENABLED?: string;
   /** Skate clip editor. Literal "true" only; off by default. */
   readonly VITE_FEATURE_CLIP_EDITOR?: string;
   /** SMS 2FA enrollment. "true" shows SMS enrollment in Settings for email/password

@@ -188,6 +188,14 @@ export function isProCameraEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_PRO_CAMERA);
 }
 
+/**
+ * Spot group chats. Off by default; when on, each spot gets a group chat with
+ * moderation (report, block, word filter, rate limits). Literal "true" only.
+ */
+export function isSpotChatsEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_SPOT_CHATS_ENABLED);
+}
+
 /** Profile banner (background) photo on the profile screen. Literal "true" only; off by default. */
 export function isProfileBannerEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_PROFILE_BANNER);

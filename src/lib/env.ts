@@ -136,6 +136,12 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Spot group chats. DEFAULTS TO OFF. Read via isSpotChatsEnabled().
+  VITE_FEATURE_SPOT_CHATS_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // Skate clip editor (speed ramps, looks, music, SFX, 4K export). DEFAULTS
   // TO OFF. Read via isClipEditorEnabled() in featureFlags.ts.
   VITE_FEATURE_CLIP_EDITOR: z

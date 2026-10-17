@@ -4,22 +4,22 @@ Textures for `/play/runner` only. They are imported from `src/runner/view/textur
 
 The PBR maps, the HDRI, and the three runner one-shots shipped here are CC0. The SkateHubba logo and the two graffiti posters are brand art owned by Design Mainline LLC and are cleared for the game. Skateboard_01, the low rail, and Skatepark Obstacles are CC BY 4.0. The runner loads the KTX2 maps below, not the WebP sources sitting next to them.
 
-| File                         |   Bytes | Use                                        |
-| ---------------------------- | ------: | ------------------------------------------ |
-| `asphalt-color.ktx2`         |  194614 | Road albedo, UASTC                         |
-| `asphalt-normal.ktx2`        |  261875 | Road normal, UASTC                         |
-| `asphalt-roughness.ktx2`     |   71485 | Road roughness, ETC1S                      |
-| `concrete-color.ktx2`        |  146349 | Sidewalk and ledge albedo, UASTC          |
-| `concrete-normal.ktx2`       |  288650 | Sidewalk, ledge, and wax normal, UASTC    |
-| `concrete-roughness.ktx2`    |   42395 | Sidewalk and ledge roughness, ETC1S       |
-| `metal-color.ktx2`           |  171067 | Rail, coping, and truck albedo, UASTC     |
-| `metal-normal.ktx2`          |   64366 | Rail, coping, and truck normal, UASTC     |
-| `metal-roughness.ktx2`       |   26288 | Rail, coping, and truck roughness, ETC1S  |
-| `metal-metalness.ktx2`       |   14843 | Rail, coping, and truck metalness, ETC1S  |
-| `brick-color.ktx2`           |  235200 | Wall and building albedo, UASTC           |
-| `brick-normal.ktx2`          |  262029 | Wall and building normal, UASTC           |
-| `brick-roughness.ktx2`       |   71742 | Wall and building roughness, ETC1S        |
-| `alley-palette.ktx2`         |     325 | Shared alley colors, UASTC, no mips       |
+| File                       |   Bytes | Use                                        |
+| -------------------------- | ------: | ------------------------------------------ |
+| `asphalt-color.ktx2`       |  194614 | Road albedo, UASTC                         |
+| `asphalt-normal.ktx2`      |  261875 | Road normal, UASTC                         |
+| `asphalt-roughness.ktx2`   |   71485 | Road roughness, ETC1S                      |
+| `concrete-color.ktx2`      |  146349 | Sidewalk and ledge albedo, UASTC           |
+| `concrete-normal.ktx2`     |  288650 | Sidewalk, ledge, and wax normal, UASTC     |
+| `concrete-roughness.ktx2`  |   42395 | Sidewalk and ledge roughness, ETC1S        |
+| `metal-color.ktx2`         |  171067 | Rail, coping, and truck albedo, UASTC      |
+| `metal-normal.ktx2`        |   64366 | Rail, coping, and truck normal, UASTC      |
+| `metal-roughness.ktx2`     |   26288 | Rail, coping, and truck roughness, ETC1S   |
+| `metal-metalness.ktx2`     |   14843 | Rail, coping, and truck metalness, ETC1S   |
+| `brick-color.ktx2`         |  235200 | Wall and building albedo, UASTC            |
+| `brick-normal.ktx2`        |  262029 | Wall and building normal, UASTC            |
+| `brick-roughness.ktx2`     |   71742 | Wall and building roughness, ETC1S         |
+| `alley-palette.ktx2`       |     325 | Shared alley colors, UASTC, no mips        |
 | `sunset_jhbcentral_1k.hdr` | 1573705 | Dusk environment light and reflections     |
 | `board-logo.webp`          |   42058 | Deck underside, top mark, and wall poster  |
 | `graff-wall.webp`          |   47304 | Left-wall mural                            |

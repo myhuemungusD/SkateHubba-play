@@ -8,11 +8,31 @@ import {
   isProCameraEnabled,
   isProfileBannerEnabled,
   isRefereeEnabled,
+  isSpotChatsEnabled,
   isRunnerEnabled,
   isTrickPickerEnabled,
   isXpEnabled,
   parseFlag,
 } from "../featureFlags";
+
+describe("isSpotChatsEnabled (VITE_FEATURE_SPOT_CHATS_ENABLED)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("defaults to off so chats stay hidden without the env var", () => {
+    expect(import.meta.env.VITE_FEATURE_SPOT_CHATS_ENABLED).toBeUndefined();
+    expect(isSpotChatsEnabled()).toBe(false);
+  });
+
+  it.each([
+    ["1", false],
+    ["yes", false],
+    ["True", false],
+    ["true", true],
+  ])("parses %j as %s", (raw, expected) => {
+    vi.stubEnv("VITE_FEATURE_SPOT_CHATS_ENABLED", raw);
+    expect(isSpotChatsEnabled()).toBe(expected);
+  });
+});
 
 describe("parseFlag", () => {
   it("accepts only the literal string 'true'", () => {

@@ -28,6 +28,17 @@ vi.mock("../../context/NavigationContext", () => ({
   }),
 }));
 
+const chatFlag = vi.hoisted(() => ({ on: false }));
+vi.mock("../../lib/featureFlags", async (orig) => ({
+  ...(await orig<typeof import("../../lib/featureFlags")>()),
+  isSpotChatsEnabled: () => chatFlag.on,
+}));
+vi.mock("../../components/SpotChat/SpotChat", () => ({
+  SpotChat: ({ onError }: { onError: (m: string) => void }) => (
+    <button onClick={() => onError("chat broke")}>mock chat</button>
+  ),
+}));
+
 import { SpotDetailPage } from "../SpotDetailPage";
 
 const FIXTURE_SPOT: Spot = {
@@ -67,6 +78,7 @@ function renderPage() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  chatFlag.on = false;
   mockUseAuthContext.mockReturnValue({ user: { uid: "viewer-uid" } });
   mockGetSpot.mockResolvedValue(FIXTURE_SPOT);
   mockGetSpotComments.mockResolvedValue([]);
@@ -203,5 +215,18 @@ describe("SpotDetailPage", () => {
       expect(screen.getByText(/signed in/i)).toBeInTheDocument();
     });
     expect(mockAddSpotComment).not.toHaveBeenCalled();
+  });
+
+  it("shows the spot chat only when the flag is on and surfaces its errors", async () => {
+    chatFlag.on = true;
+    renderPage();
+    await userEvent.click(await screen.findByText("mock chat"));
+    expect(await screen.findByText("chat broke")).toBeInTheDocument();
+  });
+
+  it("hides the spot chat while the flag is off", async () => {
+    renderPage();
+    await screen.findByRole("heading", { name: "Test Hubba" });
+    expect(screen.queryByText("mock chat")).toBeNull();
   });
 });
