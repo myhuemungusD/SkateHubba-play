@@ -1,5 +1,5 @@
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
-import { requireAuth, requireStorage } from "../firebase";
+import { ensureStorage, requireAuth, requireStorage } from "../firebase";
 import { analytics } from "./analytics";
 import { isAvatarSafe } from "./avatarModeration";
 import { logger } from "./logger";
@@ -251,6 +251,7 @@ export async function uploadAvatar(uid: string, blob: Blob, opts: UploadAvatarOp
     throw new Error("avatar_upload_unauthenticated");
   }
 
+  await ensureStorage();
   const ref = storageRef(requireStorage(), avatarPath(uid, "webp"));
   // Avatars are immutable from the client's perspective — the storage
   // rule denies UPDATE, so a re-upload requires a delete-then-create.
@@ -305,6 +306,7 @@ export async function uploadAvatar(uid: string, blob: Blob, opts: UploadAvatarOp
  * `setProfileImageUrl(uid, null)` after this resolves.
  */
 export async function deleteAvatar(uid: string): Promise<{ removed: boolean }> {
+  await ensureStorage();
   const storage = requireStorage();
   let removed = false;
   await Promise.all(

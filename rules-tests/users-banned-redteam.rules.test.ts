@@ -87,14 +87,22 @@ function comment(ctx: RulesTestContext, uid: string, id = "c1"): Promise<void> {
   });
 }
 
-/** A clip vote by `uid`. */
+/**
+ * A clip vote by `uid`, paired with the upvote tally. A create that skips
+ * the counter is denied; the ban cases still fail on `notBanned()`.
+ */
 function vote(ctx: RulesTestContext, uid: string): Promise<void> {
-  return setDoc(doc(ctx.firestore(), "clipVotes", `${uid}_${CLIP_ID}`), {
+  const db = ctx.firestore();
+  const clip = doc(db, "clips", CLIP_ID);
+  const batch = writeBatch(db);
+  batch.set(doc(db, "clipVotes", `${uid}_${CLIP_ID}`), {
     uid,
     clipId: CLIP_ID,
     value: 1,
     createdAt: serverTimestamp(),
   });
+  batch.update(clip, { upvoteCount: 1 });
+  return batch.commit();
 }
 
 /** A user-clip publish by `uid`, with the mandatory cooldown companion write. */
@@ -232,7 +240,9 @@ describe("ban survives profile deletion (regression guard)", () => {
     // so the profile legitimately comes back "clean" — which is exactly
     // why the profile must not be the enforcement point.
     await seedUsernameReservation(getEnv(), TARGET, "target");
-    await assertSucceeds(setDoc(userRef(ctx, TARGET), { uid: TARGET, username: "target" }));
+    await assertSucceeds(
+      setDoc(userRef(ctx, TARGET), { uid: TARGET, username: "target", createdAt: serverTimestamp() }),
+    );
     await assertFails(publishClip(ctx, TARGET));
     await assertFails(comment(ctx, TARGET, "c2"));
     await assertFails(vote(ctx, TARGET));
@@ -304,9 +314,18 @@ describe("users.banned — admin-only display mirror", () => {
 
   it("attack: the mirror cannot be seeded at profile-create time", async () => {
     const ctx = userCtx("u-fresh");
-    await assertFails(setDoc(userRef(ctx, "u-fresh"), { uid: "u-fresh", username: "fresh", banned: false }));
+    await assertFails(
+      setDoc(userRef(ctx, "u-fresh"), {
+        uid: "u-fresh",
+        username: "fresh",
+        createdAt: serverTimestamp(),
+        banned: false,
+      }),
+    );
     await seedUsernameReservation(getEnv(), "u-fresh", "fresh");
-    await assertSucceeds(setDoc(userRef(ctx, "u-fresh"), { uid: "u-fresh", username: "fresh" }));
+    await assertSucceeds(
+      setDoc(userRef(ctx, "u-fresh"), { uid: "u-fresh", username: "fresh", createdAt: serverTimestamp() }),
+    );
   });
 
   it("a user with only the MIRROR set (no tombstone) is NOT actually gated", async () => {

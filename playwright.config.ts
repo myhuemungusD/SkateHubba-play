@@ -1,5 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// Production has the Clips feed (and the community vote lane on it) turned on.
+// The suite matches that unless a caller explicitly sets the flag to "false".
+if (process.env.VITE_FEATURE_EXTRAS_ENABLED !== "false") {
+  process.env.VITE_FEATURE_EXTRAS_ENABLED = "true";
+}
+
 /**
  * E2E tests run against Firebase Emulators (Auth :9099, Firestore :8080, Storage :9199).
  *
@@ -80,6 +86,7 @@ export default defineConfig({
       VITE_FIREBASE_MESSAGING_SENDER_ID: "000000000000",
       VITE_FIREBASE_APP_ID: "1:000000000000:web:demo",
       VITE_USE_EMULATORS: "true",
+      VITE_FEATURE_EXTRAS_ENABLED: process.env.VITE_FEATURE_EXTRAS_ENABLED ?? "true",
       // Dummy Mapbox token so the map component initializes. Tests that
       // need the map stub mapbox.com requests via page.route and never
       // actually hit the Mapbox API.

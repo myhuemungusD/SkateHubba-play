@@ -30,6 +30,25 @@
       "collectionGroup": "clips",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "playerUid", "order": "ASCENDING" },
+        { "fieldPath": "source", "order": "ASCENDING" },
+        { "fieldPath": "moderation", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "clips",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "moderation", "order": "ASCENDING" },
+        { "fieldPath": "moderationUpdatedAt", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "clips",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "moderationStatus", "order": "ASCENDING" },
         { "fieldPath": "upvoteCount", "order": "DESCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" },
@@ -74,6 +93,15 @@
       ]
     },
     {
+      "collectionGroup": "games",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "judgeId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "nudges",
       "queryScope": "COLLECTION",
       "fields": [
@@ -86,6 +114,15 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "turnDeadline", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "games",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "phase", "order": "ASCENDING" },
         { "fieldPath": "turnDeadline", "order": "ASCENDING" }
       ]
     },

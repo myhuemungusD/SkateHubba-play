@@ -326,13 +326,23 @@ describe("Lobby", () => {
 
   // ── Empty state & verification notice ──
 
-  it("shows the empty state only when the viewer has no games at all", () => {
+  it("shows the first-game empty state when the viewer has no games at all", () => {
     renderLobby({ games: [] });
     expect(screen.getByText("Ready to S.K.A.T.E.?")).toBeInTheDocument();
   });
 
-  it("hides the empty state when any game exists", () => {
-    renderLobby({ games: [makeGame({ status: "complete", winner: "u2" })] });
+  it("offers a Start a game CTA when every game is finished (no active games)", async () => {
+    const onChallenge = vi.fn();
+    renderLobby({ games: [makeGame({ status: "complete", winner: "u2" })], onChallenge });
+    expect(screen.queryByText("Ready to S.K.A.T.E.?")).not.toBeInTheDocument();
+    expect(screen.getByText("No games going")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Start a game/i }));
+    expect(onChallenge).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the empty state when an active game exists", () => {
+    renderLobby({ games: [makeGame()] });
+    expect(screen.queryByText("No games going")).not.toBeInTheDocument();
     expect(screen.queryByText("Ready to S.K.A.T.E.?")).not.toBeInTheDocument();
   });
 

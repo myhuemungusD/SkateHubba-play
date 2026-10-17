@@ -66,6 +66,9 @@ vi.mock("@capacitor-firebase/authentication", () => ({
 
 vi.mock("../../lib/sentry", () => sentryStub);
 
+const mockAppleRevoke = vi.hoisted(() => vi.fn(() => Promise.resolve("not-apple")));
+vi.mock("../auth.appleRevoke", () => ({ revokeAppleTokensIfNeeded: mockAppleRevoke }));
+
 vi.mock("../../firebase");
 
 vi.stubGlobal("fetch", mockFetch);
@@ -87,6 +90,12 @@ afterEach(() => {
 });
 
 describe("deleteAccount — native shell", () => {
+  it("stops with nothing deleted when the Apple revoke sheet is dismissed", async () => {
+    mockAppleRevoke.mockResolvedValueOnce("cancelled");
+    await expect(deleteAccount("u1")).rejects.toMatchObject({ code: "account-delete/cancelled" });
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
   it("refuses to call a URL that cannot resolve when VITE_APP_URL is unset", async () => {
     vi.stubEnv("VITE_APP_URL", "");
 

@@ -82,6 +82,13 @@ describe("BottomNav", () => {
     expect(labels).toEqual(["Home", "Clips", "Challenge", "Map", "Me"]);
   });
 
+  it("paints the Challenge disc with near-black on orange", () => {
+    renderNav("/lobby");
+    const disc = screen.getByRole("link", { name: "Challenge" }).querySelector("span");
+    expect(disc?.className).toContain("bg-brand-orange");
+    expect(disc?.className).toContain("text-[#1a1a1a]");
+  });
+
   it("marks the current screen as the active tab", () => {
     mockScreen = "map";
     renderNav("/map");

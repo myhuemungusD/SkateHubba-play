@@ -30,7 +30,7 @@ import {
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { doc, deleteDoc, getDoc, setDoc, updateDoc, setLogLevel } from "firebase/firestore";
+import { doc, deleteDoc, getDoc, serverTimestamp, setDoc, updateDoc, setLogLevel } from "firebase/firestore";
 import { seedUsernameReservation } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-users-private-redteam";
@@ -162,70 +162,39 @@ describe("users/{uid} — sensitive fields forbidden at top level on CREATE", ()
     await testEnv.clearFirestore();
   });
 
+  function createPublicProfile(extra: Record<string, unknown> = {}): Promise<void> {
+    return setDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
+      uid: OWNER_UID,
+      username: "alice",
+      stance: "Regular",
+      createdAt: serverTimestamp(),
+      ...extra,
+    });
+  }
+
   it("attack: CANNOT create users/{uid} with email at top level", async () => {
-    await assertFails(
-      setDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
-        uid: OWNER_UID,
-        username: "alice",
-        stance: "Regular",
-        email: "alice@example.com",
-      }),
-    );
+    await assertFails(createPublicProfile({ email: "alice@example.com" }));
   });
 
   it("attack: CANNOT create users/{uid} with emailVerified at top level", async () => {
-    await assertFails(
-      setDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
-        uid: OWNER_UID,
-        username: "alice",
-        stance: "Regular",
-        emailVerified: true,
-      }),
-    );
+    await assertFails(createPublicProfile({ emailVerified: true }));
   });
 
   it("attack: CANNOT create users/{uid} with dob at top level", async () => {
-    await assertFails(
-      setDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
-        uid: OWNER_UID,
-        username: "alice",
-        stance: "Regular",
-        dob: "2000-01-15",
-      }),
-    );
+    await assertFails(createPublicProfile({ dob: "2000-01-15" }));
   });
 
   it("attack: CANNOT create users/{uid} with parentalConsent at top level", async () => {
-    await assertFails(
-      setDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
-        uid: OWNER_UID,
-        username: "alice",
-        stance: "Regular",
-        parentalConsent: true,
-      }),
-    );
+    await assertFails(createPublicProfile({ parentalConsent: true }));
   });
 
   it("attack: CANNOT create users/{uid} with fcmTokens at top level", async () => {
-    await assertFails(
-      setDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
-        uid: OWNER_UID,
-        username: "alice",
-        stance: "Regular",
-        fcmTokens: ["tok-1"],
-      }),
-    );
+    await assertFails(createPublicProfile({ fcmTokens: ["tok-1"] }));
   });
 
   it("legitimate: CAN create users/{uid} with only safe cross-user fields", async () => {
     await seedUsernameReservation(testEnv, OWNER_UID, "alice");
-    await assertSucceeds(
-      setDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
-        uid: OWNER_UID,
-        username: "alice",
-        stance: "Regular",
-      }),
-    );
+    await assertSucceeds(createPublicProfile());
   });
 });
 

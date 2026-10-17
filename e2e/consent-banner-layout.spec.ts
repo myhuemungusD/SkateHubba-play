@@ -9,12 +9,14 @@
  * (unlike every other spec — see helpers/consent.ts) so the banner mounts.
  */
 import { test, expect } from "@playwright/test";
+import { waitForAuthForm } from "./helpers/auth-flow";
 
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
 test("cookie banner never covers the /auth signup actions at 390x844", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Create account", exact: true }).click();
+  await waitForAuthForm(page);
   await expect(page.getByRole("heading", { name: "Create Account" })).toBeVisible();
 
   const banner = page.getByRole("region", { name: "Cookie and analytics notice" });

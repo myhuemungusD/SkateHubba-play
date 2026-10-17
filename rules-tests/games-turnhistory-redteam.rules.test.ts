@@ -248,30 +248,7 @@ describe("games.turnHistory — growth caps", () => {
   });
 
   describe("match-resolution branch (landed, honor system)", () => {
-    it("legitimate: landed path can append a single TurnRecord", async () => {
-      await seedGame({
-        currentTurn: P2_UID,
-        currentSetter: P1_UID,
-        phase: "matching",
-        currentTrickName: "kickflip",
-        currentTrickVideoUrl: VALID_TRICK_URL,
-        turnHistory: [],
-      });
-      await assertSucceeds(
-        updateDoc(gameRef(asP2()), {
-          matchVideoUrl: VALID_MATCH_URL,
-          phase: "setting",
-          currentSetter: P2_UID,
-          currentTurn: P2_UID,
-          turnNumber: 2,
-          turnDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
-          turnHistory: arrayUnion(makeTurnRecord(1, { landed: true, letterTo: null })),
-          updatedAt: serverTimestamp(),
-        }),
-      );
-    });
-
-    it("attack: landed path CANNOT bypass the +1 cap", async () => {
+    it("denied: a landed claim cannot skip pendingReview and append a TurnRecord", async () => {
       await seedGame({
         currentTurn: P2_UID,
         currentSetter: P1_UID,
@@ -288,12 +265,80 @@ describe("games.turnHistory — growth caps", () => {
           currentTurn: P2_UID,
           turnNumber: 2,
           turnDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
-          turnHistory: arrayUnion(
-            makeTurnRecord(1, { landed: true, letterTo: null }),
-            makeTurnRecord(2, { landed: true, letterTo: null }),
-          ),
+          turnHistory: arrayUnion(makeTurnRecord(1, { landed: true, letterTo: null })),
           updatedAt: serverTimestamp(),
         }),
+      );
+    });
+
+    it("denied: a miss cannot append a landed TurnRecord", async () => {
+      const forgedLand = arrayUnion(makeTurnRecord(1, { landed: true, letterTo: null }));
+      await seedMatching([]);
+      await assertFails(
+        updateDoc(gameRef(asP2()), {
+          turnHistory: forgedLand,
+          p2Letters: 1,
+          phase: "setting",
+          currentTurn: P1_UID,
+          turnNumber: 2,
+          currentTrickName: null,
+          currentTrickVideoUrl: null,
+          matchVideoUrl: VALID_MATCH_URL,
+          turnDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
+          updatedAt: serverTimestamp(),
+        }),
+      );
+    });
+
+    function seedFrozenClaim(): Promise<void> {
+      return seedGame({
+        phase: "pendingReview",
+        currentTurn: P2_UID,
+        currentSetter: P1_UID,
+        reviewFor: P2_UID,
+        reviewDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
+        matchVideoUrl: VALID_MATCH_URL,
+        currentTrickName: "kickflip",
+        currentTrickVideoUrl: VALID_TRICK_URL,
+        turnHistory: [],
+        turnNumber: 1,
+      });
+    }
+
+    function acceptUpdate(turnHistory: unknown): Record<string, unknown> {
+      return {
+        phase: "setting",
+        currentSetter: P2_UID,
+        currentTurn: P2_UID,
+        turnNumber: 2,
+        reviewFor: null,
+        reviewDeadline: null,
+        matchVideoUrl: VALID_MATCH_URL,
+        turnDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
+        turnHistory,
+        updatedAt: serverTimestamp(),
+      };
+    }
+
+    it("legitimate: the setter's accept appends exactly one TurnRecord", async () => {
+      await seedFrozenClaim();
+      await assertSucceeds(
+        updateDoc(gameRef(asP1()), acceptUpdate(arrayUnion(makeTurnRecord(1, { landed: true, letterTo: null })))),
+      );
+    });
+
+    it("attack: the setter's accept CANNOT bypass the +1 cap", async () => {
+      await seedFrozenClaim();
+      await assertFails(
+        updateDoc(
+          gameRef(asP1()),
+          acceptUpdate(
+            arrayUnion(
+              makeTurnRecord(1, { landed: true, letterTo: null }),
+              makeTurnRecord(2, { landed: true, letterTo: null }),
+            ),
+          ),
+        ),
       );
     });
   });
@@ -336,12 +381,44 @@ describe("games.turnHistory — growth caps", () => {
       seedMatching(existingHistory, { turnDeadline: new Date(Date.now() - 60_000) });
 
     it("legitimate: forfeit with exactly +1 turnHistory entry succeeds", async () => {
+      // The player on the clock writes this in the app, which is the request
+      // that also has to walk the matching rule before the forfeit branch.
       await seedExpiredMatching([]);
       await assertSucceeds(
-        updateDoc(gameRef(asP1()), {
+        updateDoc(gameRef(asP2()), {
           status: "forfeit",
           winner: P1_UID,
           turnHistory: arrayUnion(makeTurnRecord(1, { letterTo: P2_UID })),
+          updatedAt: serverTimestamp(),
+        }),
+      );
+    });
+
+    it("legitimate: an expired setting turn forfeits for the opponent", async () => {
+      await seedGame({
+        turnDeadline: new Date(Date.now() - 60_000),
+        phase: "setting",
+        currentSetter: P1_UID,
+        currentTurn: P1_UID,
+        turnHistory: [],
+      });
+      await assertSucceeds(
+        updateDoc(gameRef(asP1()), {
+          winner: P2_UID,
+          status: "forfeit",
+          updatedAt: serverTimestamp(),
+          turnHistory: arrayUnion(makeTurnRecord(1, { letterTo: P1_UID })),
+        }),
+      );
+    });
+
+    it("attack: a forfeit cannot append a landed entry", async () => {
+      await seedExpiredMatching([]);
+      await assertFails(
+        updateDoc(gameRef(asP2()), {
+          status: "forfeit",
+          winner: P1_UID,
+          turnHistory: arrayUnion(makeTurnRecord(1, { landed: true, letterTo: null })),
           updatedAt: serverTimestamp(),
         }),
       );

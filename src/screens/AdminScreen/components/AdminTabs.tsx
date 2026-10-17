@@ -1,13 +1,16 @@
-export type AdminTab = "verify" | "awards" | "reports";
+export type AdminTab = "verify" | "awards" | "reports" | "clips" | "pro" | "more";
 
 const TABS: ReadonlyArray<{ id: AdminTab; label: string }> = [
-  { id: "verify", label: "Verify Pro" },
+  { id: "verify", label: "Seed Pro" },
   { id: "awards", label: "Awards" },
   { id: "reports", label: "Reports" },
+  { id: "clips", label: "Clips" },
+  { id: "pro", label: "Pro" },
+  { id: "more", label: "More" },
 ];
 
 /**
- * Segmented control for the three admin surfaces. Same `aria-pressed` toggle
+ * Segmented control for the admin surfaces. Same `aria-pressed` toggle
  * treatment as the clips feed's Top/New control so the selected affordance
  * reads identically across the app.
  */
@@ -26,7 +29,7 @@ export function AdminTabs({
     <div
       role="group"
       aria-label="Admin sections"
-      className={`mb-6 grid ${tabs.length === 3 ? "grid-cols-3" : "grid-cols-2"} gap-1 rounded-xl border border-border bg-surface/40 p-0.5`}
+      className={`mb-6 grid grid-cols-3 gap-1 rounded-xl border border-border bg-surface/40 p-0.5`}
     >
       {tabs.map(({ id, label }) => {
         const pressed = tab === id;

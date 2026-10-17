@@ -182,6 +182,21 @@ describe("notifications collection listener", () => {
     );
   });
 
+  it("forwards an appeal path to the bell", () => {
+    render(<GameNotificationWatcher />);
+    const cb = vi.mocked(subscribeToNotifications).mock.calls[0]?.[1];
+    cb!({
+      firestoreId: "fs1",
+      type: "clip_moderation",
+      title: "Clip removed",
+      body: "Removed",
+      gameId: "",
+      createdAtMs: 1_000,
+      appealPath: "/appeal/clip_c1",
+    });
+    expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ appealPath: "/appeal/clip_c1" }));
+  });
+
   it.each(["game_won", "game_lost"])(
     "suppresses %s — game completion is canonical via the games-snapshot watcher",
     (type) => {

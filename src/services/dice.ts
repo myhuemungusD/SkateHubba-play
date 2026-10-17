@@ -270,6 +270,7 @@ function isCallResult(value: unknown): value is DiceCallResult {
 async function callDice(action: string, extra: Record<string, string>): Promise<DiceCallResult> {
   addBreadcrumb({ category: "dice", message: action });
   try {
+    await firebase.ensureAppCheck();
     const [{ getFunctions, httpsCallable, connectFunctionsEmulator }, app] = await Promise.all([
       import("firebase/functions"),
       Promise.resolve(firebase.default),

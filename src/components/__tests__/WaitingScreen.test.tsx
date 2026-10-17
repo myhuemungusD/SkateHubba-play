@@ -497,6 +497,7 @@ describe("WaitingScreen", () => {
 
     const submit = await screen.findByRole("button", { name: /Submit Report/i });
     await userEvent.click(submit);
+    await userEvent.click(await screen.findByRole("button", { name: "Done" }));
 
     await waitFor(() => expect(screen.getByText("Reported")).toBeInTheDocument());
     expect(screen.getByText("Reported")).toBeDisabled();

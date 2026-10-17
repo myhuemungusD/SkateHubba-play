@@ -9,13 +9,15 @@
 > processes (D&B issuance, Apple org conversion) with 30-day and 2–4 week lead
 > times that cannot be compressed.
 >
-> **The code half is equally unmet.** Reporting and bans exist
-> (`src/services/reports.ts`, `admin.bans.ts`, `firestore.rules:2518`), but a
-> repo-wide grep for `appeal` and `transparency` across `src/` returns nothing:
-> no Art. 16 illegal-content notice path, no Art. 17 statement of reasons, no
-> Art. 20 appeal mechanism. Tracked as **P0-4** and **P1-5** in
-> [`docs/GAPS.md`](./GAPS.md), which is the register of record for the code side;
-> this file tracks the account/trader side. Neither is done.
+> **The code half now has a signed-in notice-and-action path.** Reporting and
+> bans were already there (`src/services/reports.ts`, `admin.bans.ts`). Added:
+> an `illegal_content` reason that requires an explanation, a receipt with a
+> reference id in `ReportModal`, a Settings “Reports & actions” view of the
+> reporter’s own filings, a `moderationStatements` doc the subject can read
+> when a report is resolved, and an `appeals` collection (one appeal per
+> statement or ban). A person who is not signed in still has no notice route.
+> Account and trader rows below are unchanged and still 🔴. Tracked as **P0-4**
+> and **P1-5** in [`docs/GAPS.md`](./GAPS.md).
 
 Status board for EU Digital Services Act (DSA) obligations that gate SkateHubba's
 continued distribution on the Apple App Store and Google Play in the EU. Under the

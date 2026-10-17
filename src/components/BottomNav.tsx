@@ -8,6 +8,11 @@ import { isExtrasEnabled } from "../lib/featureFlags";
 /** Screens where the persistent bottom nav is rendered. */
 const NAV_VISIBLE_ON: ReadonlySet<Screen> = new Set(["lobby", "feed", "challenge", "map", "me"]);
 
+/** True on the screens that render the fixed tab bar. */
+export function isBottomNavScreen(screen: Screen): boolean {
+  return NAV_VISIBLE_ON.has(screen);
+}
+
 interface NavItem {
   screen: Screen;
   label: string;
@@ -98,7 +103,7 @@ export function BottomNav() {
                         ? // Raised filled disc: Challenge is the only creation
                           // action in the app, so it carries the visual weight
                           // of a FAB while staying a plain tab <Link>.
-                          "relative inline-flex items-center justify-center -mt-5 w-11 h-11 rounded-full bg-brand-orange text-white shadow-glow-sm ring-4 ring-background/80"
+                          "relative inline-flex items-center justify-center -mt-5 w-11 h-11 rounded-full bg-brand-orange text-[#1a1a1a] shadow-glow-sm ring-4 ring-background/80"
                         : "relative inline-flex"
                     }
                   >
@@ -109,7 +114,7 @@ export function BottomNav() {
                     {badgeCount > 0 && (
                       <span
                         aria-hidden="true"
-                        className="absolute -top-1 -right-2 min-w-[15px] h-[15px] px-1 flex items-center justify-center rounded-full bg-brand-orange font-display text-[9px] text-white leading-none tabular-nums"
+                        className="absolute -top-1 -right-2 min-w-[15px] h-[15px] px-1 flex items-center justify-center rounded-full bg-brand-orange font-display text-[9px] text-[#1a1a1a] leading-none tabular-nums"
                       >
                         {badgeCount > 9 ? "9+" : badgeCount}
                       </span>

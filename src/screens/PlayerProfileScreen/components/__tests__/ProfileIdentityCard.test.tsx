@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ProfileIdentityCard } from "../ProfileIdentityCard";
@@ -61,7 +61,11 @@ describe("ProfileIdentityCard", () => {
     expect(screen.getByText("regular")).toBeInTheDocument();
   });
 
-  it("renders no level indicator", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("renders no level indicator while the XP flag is off", () => {
     // The chip was dead three ways: LevelChip hard-codes L1 and ignores its
     // prop, this card was never passed a level, and UserProfile has no level
     // field. Every account rendered an identical, meaningless "L1". It stays
@@ -69,6 +73,14 @@ describe("ProfileIdentityCard", () => {
     render(<ProfileIdentityCard username="rider" isVerifiedPro={false} stance="regular" />);
     expect(screen.queryByLabelText(/^Level /)).not.toBeInTheDocument();
     expect(screen.queryByText(/^L\d+$/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("xp-progress")).not.toBeInTheDocument();
+  });
+
+  it("shows the level chip and the progress line when the XP flag is on", () => {
+    vi.stubEnv("VITE_FEATURE_XP_ENABLED", "true");
+    render(<ProfileIdentityCard username="rider" isVerifiedPro={false} stance="regular" xp={140} />);
+    expect(screen.getByRole("img", { name: "Level 3" })).toBeInTheDocument();
+    expect(screen.getByText("140 / 216 XP")).toBeInTheDocument();
   });
 
   it("renders the first-letter initial when no profileImageUrl is provided", () => {
@@ -78,7 +90,12 @@ describe("ProfileIdentityCard", () => {
 
   it("renders the custom avatar img when profileImageUrl is set", () => {
     renderWithAvatarUrl("https://example.com/me.webp");
-    expect(document.querySelector('img[src="https://example.com/me.webp"]')).toBeInTheDocument();
+    const img = document.querySelector('img[src="https://example.com/me.webp"]');
+    expect(img).toHaveAttribute("width", "80");
+    expect(img).toHaveAttribute("height", "80");
+    expect(img).toHaveAttribute("sizes", "80px");
+    expect(img).toHaveAttribute("srcset", "https://example.com/me.webp 400w");
+    expect(img).toHaveAttribute("decoding", "async");
   });
 
   it("falls back to the SVG asset when username is empty", () => {

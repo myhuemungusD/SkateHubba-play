@@ -193,7 +193,7 @@ describe("Smoke: Auth", () => {
     await userEvent.type(passwordInputs[1], "12345");
 
     await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
-    expect(screen.getByText("Password must be 6+ characters")).toBeInTheDocument();
+    expect(screen.getByText("Password must be at least 6 characters")).toBeInTheDocument();
   });
 
   it("shows firebase auth error for duplicate email", async () => {
@@ -330,13 +330,13 @@ describe("Smoke: Auth", () => {
     const passwordInputs = screen.getAllByPlaceholderText(/•/);
 
     await userEvent.type(emailInput, "new@test.com");
-    await userEvent.type(passwordInputs[0], "securepass");
-    await userEvent.type(passwordInputs[1], "securepass");
+    await userEvent.type(passwordInputs[0], "securepass1");
+    await userEvent.type(passwordInputs[1], "securepass1");
 
     await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
 
     await waitFor(() => {
-      expect(authSvc.refs.signUp).toHaveBeenCalledWith("new@test.com", "securepass");
+      expect(authSvc.refs.signUp).toHaveBeenCalledWith("new@test.com", "securepass1");
     });
   });
 
@@ -380,7 +380,7 @@ describe("Smoke: Auth", () => {
     await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Password too weak (6+ chars)")).toBeInTheDocument();
+      expect(screen.getByText("Password must include a number and be at most 20 characters.")).toBeInTheDocument();
     });
   });
 

@@ -2,7 +2,7 @@
 /**
  * check-file-length.mjs
  *
- * Soft budget (warning-only by default) for source-file length.
+ * Source-file length budget. CI runs this with --strict (pr-gate.yml).
  *
  * Budgets:
  *   src/services/**     400 LOC

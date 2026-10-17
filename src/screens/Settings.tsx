@@ -1,314 +1,25 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { Link } from "react-router";
 import type { UserProfile } from "../services/users";
-import { getUserProfile } from "../services/users";
 import { unblockUser } from "../services/blocking";
 import { useBlockedUsers } from "../hooks/useBlockedUsers";
 import { isHapticsEnabled, setHapticsEnabled, playHaptic } from "../services/haptics";
 import { useNotifications } from "../context/NotificationContext";
-import { requestPushPermission as requestWebPushPermission } from "../services/fcm";
-import {
-  getNativePushPermission,
-  isPushSupported,
-  registerPushToken,
-  requestPushPermission as requestNativePushPermission,
-  type NativePushPermission,
-} from "../services/pushNotifications";
 import { usePushPreference } from "../hooks/usePushPreference";
 import { useInstallPrompt } from "../hooks/useInstallPrompt";
-import { logger } from "../services/logger";
 import { Btn } from "../components/ui/Btn";
-import { ProUsername } from "../components/ProUsername";
 import { ChevronLeftIcon } from "../components/icons";
 import { useOnboardingContext } from "../context/OnboardingContext";
 import { AvatarPicker } from "../components/AvatarPicker";
 import { InstallAppCard } from "../components/InstallAppCard";
 import { AccountActions } from "../components/AccountActions";
+import { TwoFactorSection } from "../components/TwoFactorSection";
 import { SOCIAL_LINKS } from "../constants/socialLinks";
 import { TrainingConsentToggle } from "../components/TrainingConsentToggle";
-
-type PushState = "unsupported" | "default" | "granted" | "denied";
-
-/** Permission values the Notifications API spec defines. Anything outside
- *  this set (a future expansion, a non-standard browser, a misconfigured
- *  polyfill) degrades to "unsupported" rather than flowing a bogus string
- *  through the UI branches below. */
-const KNOWN_PUSH_STATES: ReadonlySet<string> = new Set<PushState>(["default", "granted", "denied"]);
-
-/** Map the native plugin's tri-state onto the UI's four-state union. */
-function fromNativePermission(permission: NativePushPermission): PushState {
-  return permission === "prompt" ? "default" : permission;
-}
-
-/**
- * OS-level push permission for this runtime.
- *
- * On a Capacitor shell `Notification.permission` describes the WebView, not the
- * OS grant, so it's meaningless here — and the real grant can only be read
- * asynchronously (`getNativePushPermission`). Native therefore starts at
- * "default" (prompt-able, the harmless default) and the mount effect below
- * corrects it. It must never start at "unsupported": that card tells a native
- * user to switch browsers.
- */
-function readPushState(): PushState {
-  if (isPushSupported()) return "default";
-  if (typeof window === "undefined" || typeof Notification === "undefined") return "unsupported";
-  const perm: unknown = Notification.permission;
-  if (typeof perm !== "string" || !KNOWN_PUSH_STATES.has(perm)) return "unsupported";
-  return perm as PushState;
-}
-
-/* ── Preference row primitive ───────────────────────────── */
-
-interface PrefRowProps {
-  title: string;
-  description: string;
-  checked: boolean;
-  onChange: (next: boolean) => void;
-  disabled?: boolean;
-  trailing?: React.ReactNode;
-}
-
-function PrefRow({ title, description, checked, onChange, disabled, trailing }: PrefRowProps) {
-  return (
-    <div className="flex items-center justify-between gap-4 p-4 rounded-2xl glass-card">
-      <div className="min-w-0">
-        <p className="font-display text-sm text-white tracking-wide">{title}</p>
-        <p className="font-body text-xs text-faint mt-1 leading-snug">{description}</p>
-        {trailing && <div className="mt-2">{trailing}</div>}
-      </div>
-      {/* Outer button is the 44pt tap target (iOS HIG / Material Design
-          minimum); the visually compact pill lives in an inner span so the
-          design stays tight while the accessible hit area extends past it.
-          Switch semantics (role, aria-checked, label) stay on the button so
-          assistive tech still identifies this as a toggle. */}
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={title}
-        onClick={() => onChange(!checked)}
-        disabled={disabled}
-        className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        <span
-          aria-hidden="true"
-          className={`relative inline-flex h-7 w-12 items-center rounded-full border transition-all duration-300 ${
-            checked
-              ? "bg-brand-orange/25 border-brand-orange/60 shadow-[0_0_8px_rgba(255,107,0,0.2)]"
-              : "bg-surface-alt border-border"
-          }`}
-        >
-          <span
-            className={`inline-block h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-300 ${
-              checked ? "translate-x-6" : "translate-x-1"
-            }`}
-          />
-        </span>
-      </button>
-    </div>
-  );
-}
-
-/* ── Section header ─────────────────────────────────────── */
-
-function SectionHeader({ title, count }: { title: string; count?: number }) {
-  return (
-    <div className="flex items-center gap-2 mb-3 mt-8 first:mt-0">
-      <h2 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">{title}</h2>
-      {typeof count === "number" && (
-        <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[10px] text-brand-orange leading-none tabular-nums">
-          {count}
-        </span>
-      )}
-    </div>
-  );
-}
-
-/* ── Blocked players list ───────────────────────────────── */
-
-function BlockedPlayersList({
-  currentUserUid,
-  blockedUids,
-  onUnblock,
-}: {
-  currentUserUid: string;
-  blockedUids: Set<string>;
-  onUnblock: (uid: string) => Promise<void>;
-}) {
-  // Hydrate blocked profiles so the list shows @usernames rather than raw uids.
-  // Cache stores `UserProfile` for resolved users and `null` for UIDs the
-  // server confirmed no longer exist (deleted accounts) — that distinction
-  // is what lets the render path show "Deleted account" instead of a
-  // forever-"Loading…" row. Absent keys (`uid in profiles === false`) mean
-  // the fetch is still pending.
-  const [profiles, setProfiles] = useState<Record<string, UserProfile | null>>({});
-  // Latest-value mirror of `profiles` so the hydration effect doesn't list
-  // `profiles` in its dep array — the effect *writes* to `profiles`, so a
-  // straightforward dependency would loop. The mirror ref is updated in a
-  // layout effect (which runs before the passive hydration effect below) and
-  // read inside the effect body to skip already-hydrated UIDs.
-  const profilesRef = useRef(profiles);
-  useLayoutEffect(() => {
-    profilesRef.current = profiles;
-  }, [profiles]);
-  // In-flight UIDs. Dedupes overlapping fetches when blockedUids changes mid-
-  // hydration (e.g. an unblock happens while the initial batch is resolving).
-  const pendingRef = useRef<Set<string>>(new Set());
-  const [unblockingUid, setUnblockingUid] = useState<string | null>(null);
-  const [unblockError, setUnblockError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    // Chunk the directory reads so a user who's blocked hundreds of people
-    // doesn't fire hundreds of parallel Firestore reads on mount. Chunks of
-    // 20 resolve fast enough that the UI still hydrates progressively, but
-    // cheap enough that we won't hammer the quota or spike latency for
-    // everyone else sharing the pool.
-    const BATCH = 20;
-
-    async function hydrate() {
-      const current = profilesRef.current;
-      const missing = Array.from(blockedUids).filter((uid) => !(uid in current) && !pendingRef.current.has(uid));
-      for (let i = 0; i < missing.length && !cancelled; i += BATCH) {
-        const chunk = missing.slice(i, i + BATCH);
-        for (const uid of chunk) pendingRef.current.add(uid);
-        const results = await Promise.all(
-          chunk.map((uid) =>
-            getUserProfile(uid)
-              .then((p) => [uid, p] as const)
-              // Treat a read failure the same as "not found" so the row
-              // renders its deleted-account fallback instead of getting
-              // stuck pending forever. The actual network error is logged
-              // by getUserProfile itself.
-              .catch(() => [uid, null] as const),
-          ),
-        );
-        if (cancelled) return;
-        setProfiles((prev) => {
-          const next = { ...prev };
-          for (const [uid, p] of results) {
-            next[uid] = p;
-            pendingRef.current.delete(uid);
-          }
-          return next;
-        });
-      }
-    }
-
-    void hydrate();
-    return () => {
-      cancelled = true;
-      // Don't clear pendingRef on cleanup — a later re-run should still
-      // dedupe against any fetches whose state updates already committed.
-    };
-  }, [blockedUids]);
-
-  // Drop cached profiles the user has since unblocked — keeps the cache from
-  // growing across the session. The state prune happens during render when
-  // `blockedUids` changes (React's "adjust state when a prop changes"
-  // pattern); the pendingRef prune stays in an effect so an unblock cancels
-  // the in-flight dedupe for that UID.
-  const [prunedFor, setPrunedFor] = useState(blockedUids);
-  if (prunedFor !== blockedUids) {
-    setPrunedFor(blockedUids);
-    setProfiles((prev) => {
-      let changed = false;
-      const next: Record<string, UserProfile | null> = {};
-      for (const [uid, p] of Object.entries(prev)) {
-        if (blockedUids.has(uid)) next[uid] = p;
-        else changed = true;
-      }
-      return changed ? next : prev;
-    });
-  }
-  useEffect(() => {
-    for (const uid of Array.from(pendingRef.current)) {
-      if (!blockedUids.has(uid)) pendingRef.current.delete(uid);
-    }
-  }, [blockedUids]);
-
-  const handleUnblock = useCallback(
-    async (uid: string) => {
-      setUnblockingUid(uid);
-      setUnblockError(null);
-      try {
-        await onUnblock(uid);
-      } catch (err) {
-        setUnblockError(err instanceof Error ? err.message : "Failed to unblock");
-      } finally {
-        setUnblockingUid(null);
-      }
-    },
-    [onUnblock],
-  );
-
-  if (blockedUids.size === 0) {
-    return (
-      <div className="flex flex-col items-center py-8 border border-dashed border-white/[0.06] rounded-2xl bg-surface/30 backdrop-blur-sm text-center">
-        <p className="font-body text-xs text-faint">No blocked players</p>
-        <p className="font-body text-[11px] text-subtle mt-1 max-w-[18rem]">
-          Blocks hide a user&apos;s clips and prevent them from challenging you. Unblock them from here.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      {unblockError && (
-        <p role="alert" className="font-body text-xs text-brand-red px-1">
-          {unblockError}
-        </p>
-      )}
-      {Array.from(blockedUids).map((uid) => {
-        // Self-unblock guard should never trigger (UIDs are distinct by
-        // definition); keep the check so a badly-seeded Set can't brick the row.
-        if (uid === currentUserUid) return null;
-        // Three render states: key absent = still fetching; value null =
-        // server confirmed the account is gone (deleted, purged for policy
-        // violation, etc.); UserProfile = normal display.
-        const resolved = uid in profiles;
-        const profile = resolved ? profiles[uid] : undefined;
-        const isUnblocking = unblockingUid === uid;
-        return (
-          <div key={uid} className="flex items-center justify-between p-4 rounded-2xl glass-card">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-8 h-8 rounded-full bg-surface-alt border border-border flex items-center justify-center shrink-0">
-                <span className="font-display text-[11px] text-brand-orange leading-none">
-                  {profile ? profile.username[0].toUpperCase() : resolved ? "?" : "•"}
-                </span>
-              </div>
-              <div className="min-w-0">
-                {profile ? (
-                  <ProUsername
-                    username={profile.username}
-                    isVerifiedPro={profile.isVerifiedPro}
-                    className="font-display text-base text-white block leading-none truncate"
-                  />
-                ) : resolved ? (
-                  <span className="font-display text-sm text-subtle block leading-none">Deleted account</span>
-                ) : (
-                  <span className="font-body text-sm text-subtle">Loading…</span>
-                )}
-                <span className="font-body text-[11px] text-faint block mt-1">Blocked</span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleUnblock(uid)}
-              disabled={isUnblocking}
-              className="min-h-[44px] inline-flex items-center justify-center font-display text-xs text-muted border border-border hover:text-white hover:border-border-hover hover:bg-white/[0.02] transition-all px-3 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:opacity-50"
-            >
-              {isUnblocking ? "..." : "Unblock"}
-            </button>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+import { SafetyReportsSection } from "../components/SafetyReportsSection";
+import { usePushPermission } from "./settings/usePushPermission";
+import { PrefRow, SectionHeader } from "./settings/SettingsPrimitives";
+import { BlockedPlayersList } from "./settings/BlockedPlayersList";
 
 /* ── Main Settings screen ───────────────────────────────── */
 
@@ -354,65 +65,7 @@ export function Settings({
   // Push permission is a tri-state that only transitions via browser/OS
   // prompts — we read once on mount and refresh after a user-initiated
   // enable. `unsupported` fires on desktop Safari + older browsers.
-  const [pushState, setPushState] = useState<PushState>(readPushState);
-  const [requestingPush, setRequestingPush] = useState(false);
-  const [pushError, setPushError] = useState<string | null>(null);
-  // Native shells must go through the Capacitor plugin: the web pair in
-  // services/fcm.ts bails out without window.Notification / serviceWorker, so
-  // a native user could never reach the OS prompt through it.
-  const nativePush = isPushSupported();
-
-  // Resolve the real OS grant on native. `checkPermissions()` never raises the
-  // system dialog, so this is safe to fire on mount — without it an
-  // already-granted user sits on a phantom "Turn on notifications" card. The
-  // read fails soft to "prompt", which lands back on the harmless opt-in card.
-  useEffect(() => {
-    if (!nativePush) return;
-    let cancelled = false;
-    void getNativePushPermission().then((permission) => {
-      if (cancelled) return;
-      setPushState(fromNativePermission(permission));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [nativePush]);
-
-  const handleEnablePush = useCallback(async () => {
-    setRequestingPush(true);
-    setPushError(null);
-    try {
-      if (nativePush) {
-        const permission = await requestNativePushPermission();
-        setPushState(fromNativePermission(permission));
-        if (permission === "granted") {
-          // Explicit user gesture — bypass the pref re-read so an optimistic
-          // toggle whose write hasn't landed can't silently drop the token.
-          await registerPushToken(profile.uid, { assumeEnabled: true });
-        } else if (permission === "denied") {
-          setPushError("Notifications were blocked. Enable them in your device settings and try again.");
-        } else {
-          setPushError("Couldn't enable notifications. Please try again.");
-        }
-        return;
-      }
-      const token = await requestWebPushPermission(profile.uid);
-      const next = readPushState();
-      setPushState(next);
-      if (!token && next === "denied") {
-        setPushError("Notifications were blocked. Enable them in system settings and try again.");
-      } else if (!token) {
-        setPushError("Couldn't enable notifications. Please try again.");
-      }
-    } catch (err) {
-      logger.warn("settings_push_request_failed", {
-        error: err instanceof Error ? err.message : String(err),
-      });
-      setPushError("Something went wrong. Please try again.");
-    } finally {
-      setRequestingPush(false);
-    }
-  }, [profile.uid, nativePush]);
+  const { pushState, requestingPush, pushError, nativePush, handleEnablePush } = usePushPermission(profile.uid);
 
   // Push preference — the only place in the app where push can be switched
   // off. Independent of the OS permission above: turning it back on never
@@ -474,7 +127,7 @@ export function Settings({
       <div className="px-5 pt-7 max-w-[430px] mx-auto">
         <h1 className="font-display text-fluid-4xl text-white mb-2 tracking-wide">Settings</h1>
         <p className="font-body text-sm text-muted mb-6">
-          Notifications, sound, haptics, install, and blocked players.
+          Security, notifications, sound, haptics, install, and blocked players.
         </p>
 
         {/* Profile picture */}
@@ -491,6 +144,9 @@ export function Settings({
             </p>
           </button>
         </div>
+
+        <SectionHeader title="SECURITY" />
+        <TwoFactorSection />
 
         {/* Notifications */}
         <SectionHeader title="NOTIFICATIONS" />
@@ -687,6 +343,9 @@ export function Settings({
             <p className="font-body text-xs text-faint mt-1">Run Hubz&apos;s welcome tour again from the top.</p>
           </button>
         </div>
+
+        <SectionHeader title="REPORTS & ACTIONS" />
+        <SafetyReportsSection uid={profile.uid} />
 
         {/* Legal */}
         <SectionHeader title="LEGAL" />

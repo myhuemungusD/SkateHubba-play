@@ -9,7 +9,10 @@ const mockGetUserProfile = vi.fn();
 
 vi.mock("../../../../services/admin", () => ({
   grantVerifiedPro: (...args: unknown[]) => mockGrantVerifiedPro(...args),
-  revokeVerifiedPro: (...args: unknown[]) => mockRevokeVerifiedPro(...args),
+}));
+
+vi.mock("../../../../services/proBlessing", () => ({
+  revokePro: (...args: unknown[]) => mockRevokeVerifiedPro(...args),
 }));
 
 vi.mock("../../../../services/users", () => ({
@@ -145,7 +148,7 @@ describe("VerifyProPanel", () => {
     expect(screen.getByText("Revoke Verified Pro from @nyjah?")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "REVOKE" }));
 
-    await waitFor(() => expect(mockRevokeVerifiedPro).toHaveBeenCalledWith(ADMIN_UID, "u1"));
+    await waitFor(() => expect(mockRevokeVerifiedPro).toHaveBeenCalledWith("u1"));
     expect(await screen.findByText("Verified Pro revoked")).toBeInTheDocument();
     expect(mockGrantVerifiedPro).not.toHaveBeenCalled();
   });

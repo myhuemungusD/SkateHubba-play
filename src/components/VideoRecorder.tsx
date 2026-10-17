@@ -1,112 +1,17 @@
 import { useEffect, useState } from "react";
 import { ActionDock } from "./ActionDock";
 import { Btn } from "./ui/Btn";
-import { FilmIcon, CameraIcon, RecordIcon, StopIcon, FisheyeIcon, FlipCameraIcon } from "./icons";
+import { FilmIcon, FisheyeIcon, FlipCameraIcon } from "./icons";
+import { RecorderControls } from "./RecorderControls";
+import { hasGrantedCameraAndMic } from "./mediaPermissions";
 import { FisheyeRenderer } from "./FisheyeRenderer";
 import { useMediaRecorder, isIOSSafari } from "../hooks/useMediaRecorder";
 import { MAX_VIDEO_DURATION_SECONDS } from "../constants/video";
-
-/**
- * Seconds of lead-in for the "Auto-stop in Ns" warning. The old 60s cap warned
- * 10s out; at the shared 20s cap that same absolute lead-in would nag for half
- * the take, so it scales down with the cap.
- */
-const AUTO_STOP_WARNING_SECONDS = 5;
+import { CLIP_POSTER } from "../lib/clipPoster";
 
 /** Shared classes for the viewfinder chrome toggles — 44px touch target. */
 const CHROME_BTN =
   "w-11 h-11 inline-flex items-center justify-center rounded-full transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
-
-/**
- * Permissions the recorder needs. Neither is in the DOM lib's `PermissionName`
- * union (it only covers the names every engine implements), hence the cast at
- * the query site.
- */
-type MediaPermissionName = "camera" | "microphone";
-
-/**
- * Current grant state, or "unknown" when we cannot tell. Safari and Firefox
- * throw for names they don't support and older engines have no
- * `navigator.permissions` at all; every failure resolves to "unknown" so we
- * never assume access we don't have.
- */
-async function queryMediaPermission(name: MediaPermissionName): Promise<PermissionState | "unknown"> {
-  try {
-    const status = await navigator.permissions.query({ name: name as PermissionName });
-    return status.state;
-  } catch {
-    return "unknown";
-  }
-}
-
-function RecorderControls({
-  state,
-  cameraError,
-  isNative,
-  label,
-  doneLabel,
-  seconds,
-  secondsLeft,
-  maxDurationSeconds,
-  onOpen,
-  onStart,
-  onStop,
-  onRetry,
-}: {
-  state: string;
-  cameraError: string | null;
-  isNative: boolean;
-  label: string;
-  doneLabel?: string;
-  seconds: number;
-  secondsLeft: number;
-  maxDurationSeconds: number;
-  onOpen: () => void;
-  onStart: () => void;
-  onStop: () => void;
-  onRetry: () => void;
-}) {
-  return (
-    <>
-      {cameraError && doneLabel === undefined && (
-        <Btn onClick={onRetry} variant="secondary">
-          Retry Camera
-        </Btn>
-      )}
-      {state === "idle" && !cameraError && (
-        <Btn onClick={onOpen} variant="secondary">
-          <CameraIcon size={16} className="inline -mt-0.5" /> {isNative ? "Record Video" : "Open Camera"}
-        </Btn>
-      )}
-      {state === "preview" && (
-        <Btn onClick={onStart} variant="danger" className="text-2xl py-5">
-          <RecordIcon size={16} className="inline -mt-0.5" /> Record — {label}
-        </Btn>
-      )}
-      {state === "recording" && (
-        <>
-          <Btn onClick={onStop} variant="danger" className="text-2xl py-5 animate-rec-ring">
-            <StopIcon size={16} className="inline -mt-0.5" /> Stop Recording
-          </Btn>
-          {seconds >= maxDurationSeconds - AUTO_STOP_WARNING_SECONDS && secondsLeft > 0 && (
-            <span className="font-body text-xs text-brand-red animate-pulse">Auto-stop in {secondsLeft}s</span>
-          )}
-        </>
-      )}
-      {state === "done" && doneLabel && (
-        <div className="flex items-center gap-2 px-5 py-3 rounded-xl bg-[rgba(0,230,118,0.08)] border border-brand-green">
-          <span className="text-brand-green font-display text-lg tracking-wider">✓ {doneLabel}</span>
-        </div>
-      )}
-    </>
-  );
-}
-
-/** True only when camera AND mic are already granted, i.e. no prompt will show. */
-async function hasGrantedCameraAndMic(): Promise<boolean> {
-  const [camera, microphone] = await Promise.all([queryMediaPermission("camera"), queryMediaPermission("microphone")]);
-  return camera === "granted" && microphone === "granted";
-}
 
 export function VideoRecorder({
   onRecorded,
@@ -215,6 +120,8 @@ export function VideoRecorder({
             className="w-full h-full object-cover"
             controls
             playsInline
+            poster={CLIP_POSTER}
+            preload="metadata"
             aria-label="Your recorded trick video"
           />
         ) : (
@@ -224,6 +131,7 @@ export function VideoRecorder({
               className={`w-full h-full object-cover ${showFisheyeOverlay ? "invisible" : ""}`}
               muted
               playsInline
+              preload="none"
               aria-label="Camera preview"
             />
             {showFisheyeOverlay && (

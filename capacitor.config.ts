@@ -55,6 +55,13 @@ const config: CapacitorConfig = {
     contentInset: "never",
   },
   plugins: {
+    FirebaseAuthentication: {
+      // The native plugin only fetches a credential; src/services/auth.ts
+      // signs into the web Firebase SDK with signInWithCredential, so the
+      // native Firebase Auth SDK must not sign in on its own.
+      skipNativeAuth: true,
+      providers: ["google.com", "apple.com"],
+    },
     Keyboard: {
       resize: "native", // keeps fixed bottom sheets above the iOS keyboard
     },

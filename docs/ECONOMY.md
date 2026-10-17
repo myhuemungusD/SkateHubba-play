@@ -43,6 +43,8 @@ A human-approved badge for genuinely professional skateboarders. Approval is man
 
 **Already partly built.** `users/{uid}` carries `isVerifiedPro`, `verifiedBy`, and `verifiedAt` as admin-only fields that clients cannot set or modify, and `src/components/ProUsername.tsx` renders the badge. What remains is the grant/revoke workflow and the verifier roster — not the data model.
 
+**Blessing (Oct 2026).** A pro badge is never earned or won. The verifiers are the pros themselves: an existing verified pro blesses a skater, the skater accepts, and the lineage is public. Admin grants are for founder seeding only. See [PRO_BLESSING.md](PRO_BLESSING.md).
+
 ### Achievement Badges
 
 Earned automatically from real activity. The launch set is deliberately small so each one means something — more can be added later, but scarcity of badge types is part of their value.

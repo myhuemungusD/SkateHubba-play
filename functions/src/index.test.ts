@@ -28,7 +28,7 @@ const captured: {
   options: Record<string, unknown> | null;
 } = { handler: null, options: null };
 
-const applyGameStatsMock = vi.fn<(db: unknown, gameId: string) => Promise<string>>();
+const applyGameStatsMock = vi.fn<(...args: unknown[]) => Promise<string>>();
 const initializeAppMock = vi.fn();
 const getFirestoreMock = vi.fn((dbId: string): { __db: string } => ({ __db: dbId }));
 
@@ -40,21 +40,31 @@ vi.mock("firebase-admin/firestore", () => ({
   getFirestore: (dbId: string) => getFirestoreMock(dbId),
 }));
 
-vi.mock("firebase-functions/v2/firestore", () => ({
-  onDocumentUpdated: (options: Record<string, unknown>, handler: Handler) => {
-    captured.options = options;
-    captured.handler = handler;
-    // The real return value is a CloudFunction; the trigger registration is
-    // a side effect — the exported symbol just has to exist.
-    return { __registered: true };
-  },
-}));
+vi.mock("firebase-functions/v2/firestore", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("firebase-functions/v2/firestore")>();
+  return {
+    ...actual,
+    onDocumentUpdated: (options: Record<string, unknown>, handler: Handler) => {
+      captured.options = options;
+      captured.handler = handler;
+      return actual.onDocumentUpdated(
+        options as Parameters<typeof actual.onDocumentUpdated>[0],
+        handler as Parameters<typeof actual.onDocumentUpdated>[1],
+      );
+    },
+  };
+});
 
 vi.mock("./applyGameStats.js", () => ({
-  applyGameStats: (db: unknown, gameId: string) => applyGameStatsMock(db, gameId),
+  applyGameStats: (...args: unknown[]) => applyGameStatsMock(...args),
 }));
 
 const GAME_ID = "game-1";
+const RUNTIME_SERVICE_ACCOUNT = "sk8hub-d7806@appspot.gserviceaccount.com";
+
+type FunctionsModule = typeof import("./index.js");
+
+let loaded: FunctionsModule | null = null;
 
 function event(
   after: Record<string, unknown> | undefined,
@@ -80,17 +90,54 @@ function event(
 
 beforeEach(async () => {
   vi.resetModules();
+  loaded = null;
   captured.handler = null;
   captured.options = null;
   applyGameStatsMock.mockReset().mockResolvedValue("applied");
   initializeAppMock.mockReset();
   getFirestoreMock.mockClear();
   // Fresh import wires the trigger, populating `captured`.
-  await import("./index.js");
+  loaded = await import("./index.js");
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe("v2 runtime identity", () => {
+  it("runs every function as the App Engine default service account", () => {
+    const names = [
+      "onGameCompleted",
+      "diceAction",
+      "diceSweep",
+      "moderateNewClip",
+      "moderateClipReport",
+      "decideClipModeration",
+      "proBlessing",
+    ] as const satisfies ReadonlyArray<keyof FunctionsModule>;
+
+    expect(loaded).not.toBeNull();
+    const endpoints = Object.fromEntries(names.map((name) => [name, loaded?.[name].__endpoint.serviceAccountEmail]));
+    expect(endpoints).toEqual({
+      onGameCompleted: RUNTIME_SERVICE_ACCOUNT,
+      diceAction: RUNTIME_SERVICE_ACCOUNT,
+      diceSweep: RUNTIME_SERVICE_ACCOUNT,
+      moderateNewClip: RUNTIME_SERVICE_ACCOUNT,
+      moderateClipReport: RUNTIME_SERVICE_ACCOUNT,
+      decideClipModeration: RUNTIME_SERVICE_ACCOUNT,
+      proBlessing: RUNTIME_SERVICE_ACCOUNT,
+    });
+
+    // Per-function options still win over the shared defaults.
+    expect(loaded?.onGameCompleted.__endpoint.region).toEqual(["us-central1"]);
+    expect(loaded?.onGameCompleted.__endpoint.eventTrigger?.retry).toBe(true);
+    expect(loaded?.diceSweep.__endpoint.region).toEqual(["us-central1"]);
+    expect(loaded?.diceSweep.__endpoint.scheduleTrigger?.schedule).toBe("every 15 minutes");
+    expect(loaded?.moderateNewClip.__endpoint.timeoutSeconds).toBe(300);
+    expect(loaded?.moderateNewClip.__endpoint.availableMemoryMb).toBe(512);
+    expect(loaded?.moderateClipReport.__endpoint.timeoutSeconds).toBe(60);
+    expect(captured.options).not.toHaveProperty("serviceAccount");
+  });
 });
 
 describe("onGameCompleted trigger", () => {
@@ -99,6 +146,7 @@ describe("onGameCompleted trigger", () => {
       document: "games/{gameId}",
       database: "skatehubba",
       region: "us-central1",
+      retry: true,
     });
     expect(initializeAppMock).toHaveBeenCalledTimes(1);
   });
@@ -139,12 +187,23 @@ describe("onGameCompleted trigger", () => {
     await captured.handler?.(event({ status: "complete", winner: "uid-1" }));
     expect(getFirestoreMock).toHaveBeenCalledWith("skatehubba");
     expect(applyGameStatsMock).toHaveBeenCalledTimes(1);
-    expect(applyGameStatsMock).toHaveBeenCalledWith({ __db: "skatehubba" }, GAME_ID);
+    expect(applyGameStatsMock).toHaveBeenCalledWith({ __db: "skatehubba" }, GAME_ID, {
+      enabled: false,
+      testers: "",
+    });
   });
 
   it("dispatches to applyGameStats on a forfeit with a valid winner", async () => {
     await captured.handler?.(event({ status: "forfeit", winner: "uid-2" }));
     expect(applyGameStatsMock).toHaveBeenCalledTimes(1);
-    expect(applyGameStatsMock).toHaveBeenCalledWith({ __db: "skatehubba" }, GAME_ID);
+    expect(applyGameStatsMock).toHaveBeenCalledWith({ __db: "skatehubba" }, GAME_ID, {
+      enabled: false,
+      testers: "",
+    });
+  });
+
+  it("rethrows a close-out failure so the trigger retry can run again", async () => {
+    applyGameStatsMock.mockRejectedValueOnce(new Error("unavailable"));
+    await expect(captured.handler?.(event({ status: "complete", winner: "uid-1" }))).rejects.toThrow("unavailable");
   });
 });

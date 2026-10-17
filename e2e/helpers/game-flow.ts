@@ -143,6 +143,20 @@ export async function openSetterSession(
 }
 
 /**
+ * Both players are looking at a frozen landed claim: the matcher waits, and
+ * the setter has the accept/dispute group. Shared by the accept spec and the
+ * dispute spec so the two waits are not copy-pasted.
+ */
+export async function waitForPendingReview(setter: Page, matcher: Page, setterHandle: string): Promise<void> {
+  await expect(matcher.getByText(new RegExp(`Waiting for @${setterHandle} to accept or dispute`, "i"))).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(setter.getByRole("group", { name: "Accept the landed claim or dispute it" })).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
+/**
  * Open a second device for `matcher`: fresh context with the media mock
  * installed, signed in, and sitting inside the active game they share with
  * `opponentHandle`.

@@ -10,6 +10,7 @@ import { documentId, getDocs, limit as limitFn, orderBy, query, where } from "fi
 import { withRetry } from "../utils/retry";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
+import { isPubliclyApproved } from "./clipVisibility";
 import { disputesRef, toDisputeDoc, type Dispute } from "./disputes.mappers";
 
 /** Upper bound on a single page, mirroring `runFeedQuery` in clips.feed.ts. */
@@ -20,7 +21,9 @@ const MAX_PAGE_SIZE = 50;
  *
  * Filters `status == 'open'` AND `moderationStatus == 'active'` server-side:
  * closed disputes are history, and hidden ones are moderation removals (App
- * Store Guideline 1.2). The doc-id tiebreaker exists for the same reason as
+ * Store Guideline 1.2). A dispute that also carries a non-approved
+ * `moderation` workflow value is dropped, same as the clips feed. The
+ * doc-id tiebreaker exists for the same reason as
  * the clips feed — disputes raised back-to-back can share a server timestamp,
  * and without it a future cursor would skip or duplicate rows. Paired with
  * the composite index in firestore.indexes.json:
@@ -51,6 +54,8 @@ export async function fetchOpenDisputes(pageSize = 20): Promise<Dispute[]> {
   const disputes: Dispute[] = [];
   for (const d of snap.docs) {
     try {
+      const raw = d.data() as { moderationStatus?: unknown; moderation?: unknown } | undefined;
+      if (raw && !isPubliclyApproved(raw)) continue;
       disputes.push(toDisputeDoc(d));
     } catch (err) {
       logger.warn("disputes_feed_doc_malformed", { docId: d.id, error: parseFirebaseError(err) });

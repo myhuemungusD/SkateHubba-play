@@ -7,73 +7,17 @@ import { useFocusTrap } from "../../hooks/useFocusTrap";
 import { logger } from "../../services/logger";
 import { captureException } from "../../lib/sentry";
 import { hashUid } from "../../utils/pii";
-import { GnarRating } from "./GnarRating";
-import { BustRisk } from "./BustRisk";
+import { isValidLatLng, isValidPhotoUrl, parseCoord } from "./addSpotHelpers";
+import { AddSpotDetailsStep } from "./AddSpotDetailsStep";
+import { AddSpotPhotosStep } from "./AddSpotPhotosStep";
 
-/** Only allow https URLs for photo submissions */
-function isValidPhotoUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Sink-side guard for the photo preview `<img src>`. `addPhotoUrl` already
- * rejects non-https input, but the preview renders straight from component
- * state, so the sink re-checks rather than trusting every future writer of
- * `photoUrls`. The URL is parsed and only an https URL passes; the `src` is
- * then rebuilt behind a fixed `https://` prefix, so no other scheme
- * (javascript:, data:, blob:, …) can ever reach the attribute. Anything
- * unparseable or non-https yields `undefined`, so the `<img>` renders with
- * no `src` and never loads it.
- */
-export function safePhotoPreviewSrc(url: string): string | undefined {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return undefined;
-  }
-  if (parsed.protocol !== "https:") return undefined;
-  return `https://${parsed.host}${parsed.pathname}${parsed.search}${parsed.hash}`;
-}
-
-/**
- * Parse a coordinate input string into a number, or NaN when the parse
- * fails (empty, "-", etc.). NaN is intentional — callers keep it in
- * state so the submit guard's Number.isFinite check rejects empty input
- * rather than silently zeroing the pin into the Atlantic.
- */
-function parseCoord(raw: string): number {
-  const next = Number.parseFloat(raw);
-  return Number.isFinite(next) ? next : NaN;
-}
+export { safePhotoPreviewSrc } from "./addSpotHelpers";
 
 interface AddSpotSheetProps {
   userLocation: { lat: number; lng: number } | null;
   onClose: () => void;
   onSuccess: (spot: Spot) => void;
 }
-
-const ALL_OBSTACLES: ObstacleType[] = [
-  "ledge",
-  "rail",
-  "stairs",
-  "gap",
-  "bank",
-  "bowl",
-  "manual_pad",
-  "quarter_pipe",
-  "euro_gap",
-  "slappy_curb",
-  "hip",
-  "hubba",
-  "flatground",
-  "other",
-];
 
 type Step = 1 | 2 | 3;
 
@@ -131,14 +75,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
     // gate, but rejecting locally avoids a needless write + error round trip
     // when the user has typed a coordinate outside Earth's lat/lng range
     // (or left an input partially edited like "-").
-    if (
-      !Number.isFinite(pinLat) ||
-      !Number.isFinite(pinLng) ||
-      pinLat < -90 ||
-      pinLat > 90 ||
-      pinLng < -180 ||
-      pinLng > 180
-    ) {
+    if (!isValidLatLng(pinLat, pinLng)) {
       // Bounce back to step 1 so the user lands on the offending input
       // instead of seeing a generic banner two steps away from it.
       setStep(1);
@@ -323,157 +260,36 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
 
           {/* Step 2: Spot details */}
           {step === 2 && (
-            <div className="space-y-4">
-              {/* Name */}
-              <div>
-                <label className="block text-xs text-muted mb-1">
-                  Name <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  maxLength={80}
-                  value={name}
-                  onChange={(e) => {
-                    setName(e.target.value);
-                    setNameError(e.target.value.trim().length === 0 ? "Name is required" : null);
-                  }}
-                  placeholder="e.g. Hollywood High 16"
-                  className="w-full bg-background border border-[#444] rounded-lg px-3 py-2 text-white text-base
-                             placeholder:text-subtle focus:outline-none focus:border-[#F97316]"
-                />
-                {nameError && <p className="text-red-400 text-xs mt-1">{nameError}</p>}
-                <p className="text-subtle text-xs mt-1">{name.length}/80</p>
-              </div>
-
-              {/* Description */}
-              <div>
-                <label className="block text-xs text-muted mb-1">Description</label>
-                <textarea
-                  maxLength={500}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="What makes this spot special?"
-                  rows={3}
-                  className="w-full bg-background border border-[#444] rounded-lg px-3 py-2 text-white text-base
-                             placeholder:text-subtle focus:outline-none focus:border-[#F97316] resize-none"
-                />
-                <p className="text-subtle text-xs mt-1">{description.length}/500</p>
-              </div>
-
-              {/* Obstacles */}
-              <div>
-                <label className="block text-xs text-muted mb-2">Obstacles</label>
-                <div className="flex flex-wrap gap-2">
-                  {ALL_OBSTACLES.map((o) => (
-                    <button
-                      key={o}
-                      type="button"
-                      onClick={() => toggleObstacle(o)}
-                      className={`touch-target inline-flex items-center justify-center px-3 py-1 text-xs rounded-full border transition-colors ${
-                        obstacles.includes(o)
-                          ? "bg-[#F97316] border-[#F97316] text-white"
-                          : "bg-transparent border-[#444] text-muted hover:border-[#666]"
-                      }`}
-                    >
-                      {o.replace("_", " ")}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Gnar Rating */}
-              <div>
-                <label className="block text-xs text-muted mb-1">
-                  Gnar Rating <span className="text-red-400">*</span>
-                </label>
-                <GnarRating value={gnarRating} readonly={false} onChange={setGnarRating} />
-              </div>
-
-              {/* Bust Risk */}
-              <div>
-                <label className="block text-xs text-muted mb-1">
-                  Bust Risk <span className="text-red-400">*</span>
-                </label>
-                <BustRisk value={bustRisk} readonly={false} onChange={setBustRisk} />
-              </div>
-
-              <button
-                type="button"
-                disabled={!canProceedStep2}
-                onClick={() => setStep(3)}
-                className="w-full py-2.5 rounded-xl bg-[#F97316] text-white font-semibold text-sm
-                           hover:bg-[#EA580C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Next
-              </button>
-            </div>
+            <AddSpotDetailsStep
+              name={name}
+              setName={setName}
+              nameError={nameError}
+              setNameError={setNameError}
+              description={description}
+              setDescription={setDescription}
+              obstacles={obstacles}
+              toggleObstacle={toggleObstacle}
+              gnarRating={gnarRating}
+              setGnarRating={setGnarRating}
+              bustRisk={bustRisk}
+              setBustRisk={setBustRisk}
+              canProceedStep2={canProceedStep2}
+              onNext={() => setStep(3)}
+            />
           )}
 
           {/* Step 3: Photos */}
           {step === 3 && (
-            <div className="space-y-4">
-              <p className="text-sm text-muted">Add up to 5 photo URLs (optional)</p>
-
-              {/* Photo previews */}
-              {photoUrls.length > 0 && (
-                <div className="flex gap-2 overflow-x-auto pb-2">
-                  {photoUrls.map((url, i) => (
-                    <div key={i} className="relative flex-shrink-0">
-                      <img
-                        src={safePhotoPreviewSrc(url)}
-                        alt={`Spot photo ${i + 1}`}
-                        className="w-20 h-20 object-cover rounded-lg"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removePhoto(i)}
-                        className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full
-                                   flex items-center justify-center text-white text-xs"
-                        aria-label={`Remove photo ${i + 1}`}
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Add photo URL input */}
-              {photoUrls.length < 5 && (
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    value={photoInput}
-                    onChange={(e) => setPhotoInput(e.target.value)}
-                    placeholder="https://..."
-                    className="flex-1 bg-background border border-[#444] rounded-lg px-3 py-2 text-white text-base
-                               placeholder:text-subtle focus:outline-none focus:border-[#F97316]"
-                  />
-                  <button
-                    type="button"
-                    onClick={addPhotoUrl}
-                    disabled={!photoInput.trim()}
-                    className="px-4 py-2 bg-[#333] text-white text-sm rounded-lg
-                               hover:bg-[#444] disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    Add
-                  </button>
-                </div>
-              )}
-
-              {/* Photo URL validation error */}
-              {photoError && <p className="text-red-400 text-xs">{photoError}</p>}
-
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={submitting}
-                className="w-full py-2.5 rounded-xl bg-[#F97316] text-white font-semibold text-sm
-                           hover:bg-[#EA580C] transition-colors disabled:opacity-60"
-              >
-                {submitting ? "Submitting\u2026" : "Submit Spot"}
-              </button>
-            </div>
+            <AddSpotPhotosStep
+              photoUrls={photoUrls}
+              photoInput={photoInput}
+              setPhotoInput={setPhotoInput}
+              addPhotoUrl={addPhotoUrl}
+              removePhoto={removePhoto}
+              photoError={photoError}
+              submitting={submitting}
+              onSubmit={handleSubmit}
+            />
           )}
         </div>
       </div>

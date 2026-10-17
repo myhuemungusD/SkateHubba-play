@@ -5,7 +5,7 @@ import { getUserProfile, getUserProfileOnAuth, type UserProfile } from "../servi
 import { logger } from "../services/logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { captureMessage, setUser as setSentryUser } from "../lib/sentry";
-import { FIRESTORE_DB_NAME, isAppCheckInitialized } from "../firebase";
+import { FIRESTORE_DB_NAME, ensureAppCheck, isAppCheckInitialized } from "../firebase";
 import { env } from "../lib/env";
 import { hashUid } from "../utils/pii";
 
@@ -68,6 +68,10 @@ export function useAuth(): AuthState {
     logger.debug("use_auth_subscribe");
     const unsub = onAuthChange(async (u) => {
       logger.debug("use_auth_change", { uid: u?.uid ?? null });
+      // Install App Check before any signed-in listener (profile, games,
+      // notifications) can open Firestore. Signed-out resolution does not
+      // touch those APIs and must not wait on reCAPTCHA.
+      if (u) await ensureAppCheck();
       setUser(u);
       userRef.current = u;
       // Hash the uid before it leaves the app so Sentry never receives the raw

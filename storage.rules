@@ -133,7 +133,15 @@ service firebase.storage {
     // object is unreachable from the feed, and orphans are swept
     // server-side.
     match /userClips/{uid}/{fileName} {
-      allow read: if request.auth != null;
+      // Owner and admins only. Approved playback is approvedClips/ below,
+      // which any signed-in user can read. A private object stays unreadable
+      // to everyone else even if they already know the download URL.
+      //
+      // Not firestore.get(): Storage rules only reach the (default) database,
+      // and clips live in the named database "skatehubba". A get() on every
+      // ranged video read would also bill a document read per request.
+      allow read: if request.auth != null
+        && (request.auth.uid == uid || request.auth.token.admin == true);
 
       allow create: if request.auth != null
         && request.auth.uid == uid
@@ -150,6 +158,30 @@ service firebase.storage {
           || (fileName.matches('[A-Za-z0-9_-]+\\.mp4') && request.resource.contentType == 'video/mp4')
         )
         // Mirrors the game-video block so delete-by-metadata stays uniform.
+        && request.resource.metadata.uploaderUid == request.auth.uid;
+
+      allow update: if false;
+
+      allow delete: if request.auth != null
+        && request.auth.uid == uid;
+    }
+
+    // Approved user-clip videos. Any signed-in user can read. Clients may
+    // create only under their own uid (moderation-off posts land here
+    // directly). The moderation function copies a private object here on
+    // approval and deletes it when the clip is hidden. update stays closed
+    // so bytes cannot be swapped behind a moderated URL.
+    match /approvedClips/{uid}/{fileName} {
+      allow read: if request.auth != null;
+
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.size > 1024
+        && request.resource.size < 50 * 1024 * 1024
+        && (
+          (fileName.matches('[A-Za-z0-9_-]+\\.webm') && request.resource.contentType == 'video/webm')
+          || (fileName.matches('[A-Za-z0-9_-]+\\.mp4') && request.resource.contentType == 'video/mp4')
+        )
         && request.resource.metadata.uploaderUid == request.auth.uid;
 
       allow update: if false;

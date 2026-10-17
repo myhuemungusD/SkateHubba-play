@@ -10,21 +10,15 @@ interface Props {
 }
 
 /**
- * Standalone Clips tab — the only place clips are shown since the lobby
- * redesign dropped its feed. A thin wrapper: all feed behaviour lives in
- * `<ClipsFeed>`, and this screen only owns the page chrome (safe-area header,
- * 430px column, bottom-nav clearance).
+ * Standalone Clips tab. The feed fills the viewport; the fixed bottom nav
+ * overlays the bottom edge and each slide keeps its controls above that bar
+ * and the top safe area.
  */
 export function FeedScreen({ profile, onViewPlayer, onChallengeUser }: Props) {
   return (
-    <div className="relative min-h-dvh bg-background/40 pb-24">
-      <div className="px-5 pt-safe pb-4 border-b border-white/[0.04] glass max-w-[430px] mx-auto">
-        <h1 className="font-display text-fluid-2xl leading-none text-white tracking-wide">Clips</h1>
-      </div>
-
-      <div className="px-5 pt-7 max-w-[430px] mx-auto">
-        <ClipsFeed profile={profile} onViewPlayer={onViewPlayer} onChallengeUser={onChallengeUser} />
-      </div>
+    <div className="relative h-dvh bg-black">
+      <h1 className="sr-only">Clips</h1>
+      <ClipsFeed profile={profile} onViewPlayer={onViewPlayer} onChallengeUser={onChallengeUser} />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
   __resetLandingBootForTest,
   hasBootAppleSignIn,
   hasBootGoogleSignIn,
+  peekBootAuthDraft,
   peekBootAuthMode,
   setLandingBridge,
 } from "../landingBoot";
@@ -35,9 +36,29 @@ afterEach(() => {
 });
 
 describe("BootLanding", () => {
-  it("shows the spinner anywhere but the landing", () => {
-    renderAt("/auth");
+  it("shows the spinner off the fast path", () => {
+    renderAt("/lobby");
     expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
+  });
+
+  it("paints the auth shell copy before Firebase loads", () => {
+    renderAt("/auth");
+    expect(
+      screen.getByText("Join the crew. It's free. We collect your DOB to comply with COPPA & CCPA."),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps typed auth-shell values for the handoff", async () => {
+    renderAt("/auth");
+    await userEvent.type(screen.getByLabelText("Email"), "skater@example.com");
+    expect(peekBootAuthDraft().email).toBe("skater@example.com");
+  });
+
+  it("paints a feed poster so LCP is not the video", () => {
+    renderAt("/feed");
+    const poster = screen.getByRole("status", { name: "Loading clips" }).querySelector("img");
+    expect(poster).toHaveAttribute("src", "/sh-video-poster.webp");
+    expect(screen.getByRole("heading", { name: "Clips" })).toBeInTheDocument();
   });
 
   it("Create account records signup mode and routes to /auth", async () => {

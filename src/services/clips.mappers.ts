@@ -7,13 +7,22 @@
 
 import { collection, Timestamp, type DocumentSnapshot } from "firebase/firestore";
 import { requireDb } from "../firebase";
-import type { Clip, ClipModerationStatus, ClipRole, ClipSource } from "../types/clip";
+import type { Clip, ClipModeration, ClipModerationStatus, ClipRole, ClipSource } from "../types/clip";
 
 /* ────────────────────────────────────────────
  * Types
  * ──────────────────────────────────────────── */
 
-export type { Clip, ClipComment, ClipModerationStatus, ClipRole, ClipSource, GameClip, UserClip } from "../types/clip";
+export type {
+  Clip,
+  ClipComment,
+  ClipModeration,
+  ClipModerationStatus,
+  ClipRole,
+  ClipSource,
+  GameClip,
+  UserClip,
+} from "../types/clip";
 
 /** Persisted clip document — alias retained for callers that already import this name. */
 export type ClipDoc = Clip;
@@ -91,6 +100,19 @@ export function clipVoteId(uid: string, clipId: string): string {
  * Doc mapping
  * ──────────────────────────────────────────── */
 
+function toModeration(value: unknown): ClipModeration | null {
+  if (
+    value === "pending" ||
+    value === "approved" ||
+    value === "review" ||
+    value === "rejected" ||
+    value === "removed"
+  ) {
+    return value;
+  }
+  return null;
+}
+
 /**
  * Non-negative integer read with a 0 default.
  *
@@ -142,9 +164,11 @@ export function toClipDoc(snap: DocumentSnapshot): ClipDoc {
         : null;
 
   // Older docs (pre-moderation-hardening) lack the field. Treat missing as
-  // `active` so existing clips remain visible; any hidden-by-moderation clip
-  // is already excluded upstream by the feed query's where() filter.
-  const moderationStatus: ClipModerationStatus = raw.moderationStatus === "hidden" ? "hidden" : "active";
+  // `active` so existing clips remain visible. `pending` is a public upload
+  // the screener has not finished; it must not be coerced back to active.
+  const moderationStatus: ClipModerationStatus =
+    raw.moderationStatus === "hidden" || raw.moderationStatus === "pending" ? raw.moderationStatus : "active";
+  const moderation = toModeration(raw.moderation);
 
   // Pre-aggregate clips lack these fields; default to 0 until the backfill
   // (scripts/backfill-clip-upvote-count.mjs) runs. `downvoteCount` has no
@@ -159,6 +183,7 @@ export function toClipDoc(snap: DocumentSnapshot): ClipDoc {
     spotId: typeof raw.spotId === "string" ? raw.spotId : null,
     createdAt,
     moderationStatus,
+    moderation,
     upvoteCount: toCountOrZero(raw.upvoteCount),
     downvoteCount: toCountOrZero(raw.downvoteCount),
   };

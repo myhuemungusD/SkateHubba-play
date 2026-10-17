@@ -50,6 +50,7 @@ vi.mock("firebase/messaging", () => ({
   getMessaging: vi.fn(() => ({})),
   getToken: vi.fn(() => Promise.resolve(null)),
   onMessage: vi.fn(() => vi.fn()),
+  isSupported: vi.fn(() => Promise.resolve(true)),
 }));
 
 // Mock navigator.mediaDevices with a fake stream so VideoRecorder enters

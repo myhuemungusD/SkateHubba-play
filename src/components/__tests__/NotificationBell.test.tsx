@@ -569,4 +569,32 @@ describe("NotificationBell", () => {
     expect(onOpenGame).toHaveBeenCalledWith(game);
     expect(getNotificationGameMock).not.toHaveBeenCalled();
   });
+
+  it("opens an appeal path instead of looking up a game", async () => {
+    const onOpenAppeal = vi.fn();
+    mockNotifications.mockReturnValue({
+      ...baseCtx,
+      notifications: [
+        {
+          id: "appeal-row",
+          type: "info",
+          title: "Clip removed",
+          message: "Removed",
+          timestamp: Date.now(),
+          read: true,
+          appealPath: "/appeal/clip_c1",
+          gameId: "",
+        },
+      ],
+    });
+
+    const onOpenGame = vi.fn();
+    render(<NotificationBell onOpenAppeal={onOpenAppeal} onOpenGame={onOpenGame} />);
+    await userEvent.click(screen.getByLabelText("Notifications"));
+    await userEvent.click(screen.getByText("Clip removed"));
+
+    expect(onOpenAppeal).toHaveBeenCalledWith("/appeal/clip_c1");
+    expect(onOpenGame).not.toHaveBeenCalled();
+    expect(getNotificationGameMock).not.toHaveBeenCalled();
+  });
 });

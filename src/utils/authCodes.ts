@@ -18,6 +18,7 @@ const BENIGN_AUTH_CODES: ReadonlySet<string> = new Set([
   "auth/invalid-email",
   "auth/email-already-in-use",
   "auth/weak-password",
+  "auth/password-does-not-meet-requirements",
   "auth/missing-password",
   "auth/missing-email",
   "auth/account-exists-with-different-credential",
@@ -63,7 +64,8 @@ export function getAuthErrorMessage(code: string): string | null {
     case "auth/wrong-password":
       return "Invalid email or password";
     case "auth/weak-password":
-      return "Password too weak (6+ chars)";
+    case "auth/password-does-not-meet-requirements":
+      return "Password must include a number and be at most 20 characters.";
     case "auth/user-disabled":
       return "This account has been disabled. Please contact support if you think this is a mistake.";
     case "auth/user-token-expired":

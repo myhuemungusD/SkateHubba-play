@@ -437,8 +437,16 @@ describe("App — boot landing handoff", () => {
   it("still shows the spinner on other paths while auth resolves", () => {
     setLandingBooted(true);
     mockUseAuth.mockReturnValue(signedOut(true));
-    renderApp("/auth");
+    renderApp("/lobby");
     expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
+  });
+
+  it("renders the auth form while Firebase auth is still resolving", async () => {
+    setLandingBooted(true);
+    mockUseAuth.mockReturnValue(signedOut(true));
+    renderApp("/auth");
+    await waitFor(() => expect(screen.getByText(/Join the crew/)).toBeInTheDocument());
+    expect(isBootShellActive()).toBe(false);
   });
 
   it("records the auth hint once auth resolves", async () => {

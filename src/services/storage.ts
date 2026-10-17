@@ -1,6 +1,6 @@
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject, listAll } from "firebase/storage";
 import { Capacitor } from "@capacitor/core";
-import { requireAuth, requireStorage } from "../firebase";
+import { ensureStorage, requireAuth, requireStorage } from "../firebase";
 import { analytics } from "./analytics";
 import { logger, metrics } from "./logger";
 import { isRetryable } from "../utils/retry";
@@ -176,6 +176,7 @@ async function runResumableUpload(req: ResumableUploadRequest): Promise<string> 
     throw new DOMException("Upload cancelled", "AbortError");
   }
 
+  await ensureStorage();
   const storageRef = ref(requireStorage(), path);
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -338,11 +339,13 @@ export async function uploadVideo(
 /**
  * Upload a user-posted clip (source: "user") and return its download URL.
  *
- * Path: `userClips/{uid}/{clipId}.webm` (web) or `.mp4` (native). The uid
- * segment is what makes the storage rule ownable — a user may only write
- * under their own prefix — and `clipId` is minted by the caller BEFORE the
- * upload so the Firestore doc written afterwards points at a path that is
- * already known and already occupied. See `createUserClip` for that ordering.
+ * Path: `userClips/{uid}/{clipId}.webm` (web) or `.mp4` (native) while the
+ * clip is pending. A public post uses `approvedClips/{uid}/` so any signed-in
+ * user can play it. The uid segment is what makes the storage rule ownable —
+ * a user may only write under their own prefix — and `clipId` is minted by
+ * the caller BEFORE the upload so the Firestore doc written afterwards points
+ * at a path that is already known and already occupied. See `createUserClip`
+ * for that ordering.
  *
  * Shares the whole retry/abort/progress core with {@link uploadVideo}; the
  * only differences are the path, the metadata, and the absence of
@@ -355,6 +358,8 @@ export async function uploadUserClip(
   onProgress?: (progress: UploadProgress) => void,
   maxRetries = 2,
   signal?: AbortSignal,
+  /** Public posts are readable by any signed-in user. Pending clips stay private. */
+  placement: "private" | "public" = "private",
 ): Promise<string> {
   // A uid or clip id containing "/" would escape the caller's own prefix
   // and target somebody else's folder. The rule would reject it, but a
@@ -370,8 +375,9 @@ export async function uploadUserClip(
   }
   const startTime = Date.now();
 
+  const prefix = placement === "public" ? "approvedClips" : "userClips";
   const url = await runResumableUpload({
-    path: `userClips/${uid}/${clipId}.${ext}`,
+    path: `${prefix}/${uid}/${clipId}.${ext}`,
     contentType,
     blob: uploadBlob,
     customMetadata: {
@@ -393,8 +399,9 @@ export async function uploadUserClip(
  * Delete every stored object for a user-posted clip.
  *
  * The extension isn't knowable from the clip doc (web writes `.webm`,
- * native `.mp4`), so both candidates are attempted and a `storage/object-
- * not-found` on the one that was never written is expected, not an error.
+ * native `.mp4`), and the object may sit under `userClips/` or
+ * `approvedClips/`, so all four candidates are attempted. A
+ * `storage/object-not-found` on a path that was never written is expected.
  * Returns the number of objects actually removed.
  *
  * Best-effort by design: this backs the clip-deletion cascade, where a
@@ -404,18 +411,23 @@ export async function uploadUserClip(
 export async function deleteUserClipVideo(uid: string, clipId: string): Promise<number> {
   if (!uid || uid.includes("/") || !clipId || clipId.includes("/")) return 0;
 
+  await ensureStorage();
   const storage = requireStorage();
   let deleted = 0;
 
+  const paths = (["webm", "mp4"] as const).flatMap((ext) => [
+    `userClips/${uid}/${clipId}.${ext}`,
+    `approvedClips/${uid}/${clipId}.${ext}`,
+  ]);
   await Promise.all(
-    (["webm", "mp4"] as const).map(async (ext) => {
+    paths.map(async (path) => {
       try {
-        await deleteObject(ref(storage, `userClips/${uid}/${clipId}.${ext}`));
+        await deleteObject(ref(storage, path));
         deleted++;
       } catch (err) {
         const code = (err as { code?: string }).code;
-        // The sibling extension never existed — the expected outcome for
-        // exactly one of the two attempts on every clip.
+        // The other prefix or extension never existed. That is the expected
+        // outcome for the paths this clip was not written to.
         if (code === "storage/object-not-found") return;
         logger.warn("user_clip_video_delete_failed", {
           clipId,
@@ -434,6 +446,7 @@ export async function deleteUserClipVideo(uid: string, clipId: string): Promise<
  * Best-effort: logs failures but does not throw (caller handles cleanup).
  */
 export async function deleteGameVideos(gameId: string): Promise<number> {
+  await ensureStorage();
   const storage = requireStorage();
   const gameRef = ref(storage, `games/${gameId}`);
   let deleted = 0;

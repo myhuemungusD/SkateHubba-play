@@ -9,14 +9,13 @@ import { NotificationProvider, useNotifications } from "./context/NotificationCo
 import { OnboardingProvider } from "./context/OnboardingContext";
 import { VerifyEmailBanner } from "./components/VerifyEmailBanner";
 import { useEmailVerifiedToast } from "./hooks/useEmailVerifiedToast";
-import { TutorialOverlay } from "./components/onboarding/TutorialOverlay";
 import { getUidByUsername } from "./services/users";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Spinner } from "./components/ui/Spinner";
 import { ToastContainer } from "./components/ToastContainer";
 import { GameNotificationWatcher, OPEN_GAME_EVENT } from "./components/GameNotificationWatcher";
 import { OfflineBanner } from "./components/OfflineBanner";
-import { BottomNav } from "./components/BottomNav";
+import { BottomNav, isBottomNavScreen } from "./components/BottomNav";
 import { useBlockedUsers } from "./hooks/useBlockedUsers";
 import { useIsAdmin } from "./hooks/useIsAdmin";
 import { firebaseReady } from "./firebase";
@@ -25,7 +24,9 @@ import { KeyboardInset } from "./components/KeyboardInset";
 import { ScrollToTop } from "./components/ScrollToTop";
 import { DeleteAccountRetryBanner } from "./components/DeleteAccountRetryBanner";
 import { useAnalyticsConsent } from "./hooks/useAnalyticsConsent";
-import { isDiceEnabled, isExtrasEnabled } from "./lib/featureFlags";
+import { isDiceEnabled, isExtrasEnabled, isProBlessingEnabled } from "./lib/featureFlags";
+import { prefetchLikelyRoutes } from "./lib/routePrefetch";
+import { registerCacheWorker } from "./lib/registerCacheSw";
 import {
   hasBootAppleSignIn,
   hasBootGoogleSignIn,
@@ -40,6 +41,7 @@ import {
   takeBootGoogleSignIn,
   type LandingBridge,
 } from "./boot/landingBoot";
+import { BootFeed } from "./boot/BootFeed";
 // Eager: first-paint / onboarding path (Landing, AuthScreen, ProfileSetup)
 // plus Lobby since it's the primary destination for returning authed users.
 // DOB + parental consent are collected inline on AuthScreen (COPPA/CCPA), and
@@ -66,6 +68,9 @@ const TermsOfService = lazy(() => import("./screens/TermsOfService").then((m) =>
 const DataDeletion = lazy(() => import("./screens/DataDeletion").then((m) => ({ default: m.DataDeletion })));
 const NotFound = lazy(() => import("./screens/NotFound").then((m) => ({ default: m.NotFound })));
 const MapPage = lazy(() => import("./screens/MapPage").then((m) => ({ default: m.MapPage })));
+// Pro blessing "turned pro" moment. Lazy so nothing loads with the flag off.
+const TurnedProGate = lazy(() => import("./components/pro/TurnedProGate").then((m) => ({ default: m.TurnedProGate })));
+const ProToolsRoute = lazy(() => import("./screens/ProToolsScreen").then((m) => ({ default: m.ProToolsRoute })));
 const FeedScreen = lazy(() => import("./screens/FeedScreen").then((m) => ({ default: m.FeedScreen })));
 const SpotDetailPage = lazy(() => import("./screens/SpotDetailPage").then((m) => ({ default: m.SpotDetailPage })));
 const Settings = lazy(() => import("./screens/Settings").then((m) => ({ default: m.Settings })));
@@ -74,6 +79,11 @@ const AdminScreen = lazy(() => import("./screens/AdminScreen").then((m) => ({ de
 const DiceHub = lazy(() => import("./screens/Dice/DiceHub").then((m) => ({ default: m.DiceHub })));
 const DiceNew = lazy(() => import("./screens/Dice/DiceNew").then((m) => ({ default: m.DiceNew })));
 const DiceTable = lazy(() => import("./screens/Dice/DiceTable").then((m) => ({ default: m.DiceTable })));
+// Spotlight/onboarding is not on the first-paint path. Keeping it out of the
+// App graph drops that chunk from /auth and /feed.
+const TutorialOverlay = lazy(() =>
+  import("./components/onboarding/TutorialOverlay").then((m) => ({ default: m.TutorialOverlay })),
+);
 
 function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
   return (
@@ -86,7 +96,7 @@ function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
       <button
         type="button"
         onClick={onBack}
-        className="px-6 py-3 rounded-xl bg-brand-orange text-white font-display tracking-wider focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+        className="px-6 py-3 rounded-xl bg-brand-orange text-[#1a1a1a] font-display tracking-wider focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
       >
         Back to Lobby
       </button>
@@ -130,6 +140,13 @@ function AppScreens() {
   const { pathname } = useLocation();
   useEmailVerifiedToast(auth.user?.emailVerified);
 
+  // Warm the next route and the asset cache once the page is quiet.
+  // Both no-op under Vitest so render tests don't pull lazy screens.
+  useEffect(() => {
+    registerCacheWorker();
+    prefetchLikelyRoutes(pathname);
+  }, [pathname]);
+
   // Replay a Google tap made on the boot landing before App had loaded.
   const { loading, user, handleGoogleSignIn, handleAppleSignIn } = auth;
   useEffect(() => {
@@ -139,18 +156,29 @@ function AppScreens() {
     if (!loading && !user && takeBootAppleSignIn()) void handleAppleSignIn();
   }, [loading, user, handleAppleSignIn]);
 
+  const shellActive = useSyncExternalStore(subscribeBootShell, isBootShellActive);
+
   // When the landing was painted ahead of App (signed-out visitor, see
   // boot/landingBoot.ts), keep showing it while Firebase Auth resolves rather
   // than swapping it for the full-screen spinner.
   const landingWhileLoading = auth.loading && pathname === "/" && isLandingBooted();
 
-  // The boot landing hands over to App's own screens as soon as App renders
-  // anything but `/`.
+  // `/` keeps the landing bridge. `/feed` keeps the poster until auth
+  // resolves so that image stays the LCP candidate through the signed-out
+  // redirect home. `/auth` releases immediately so AuthScreen can take the
+  // typed draft — the shell already painted the same paragraph.
   useEffect(() => {
-    if (pathname !== "/") releaseBootShell();
-  }, [pathname]);
+    if (!isBootShellActive()) return;
+    if (pathname === "/") return;
+    if (pathname === "/feed" && auth.loading) return;
+    releaseBootShell();
+  }, [pathname, auth.loading]);
 
-  if (auth.loading && !landingWhileLoading) return <Spinner />;
+  if (auth.loading && pathname === "/feed") {
+    return shellActive ? null : <BootFeed />;
+  }
+  if (auth.loading && pathname === "/auth" && shellActive) return null;
+  if (auth.loading && !landingWhileLoading && pathname !== "/auth") return <Spinner />;
 
   return (
     <>
@@ -162,7 +190,9 @@ function AppScreens() {
       <AppEmailVerifyBanner />
       <AppRoutes />
       <ToastContainer />
-      <TutorialOverlay />
+      <Suspense fallback={null}>
+        <TutorialOverlay />
+      </Suspense>
     </>
   );
 }
@@ -399,9 +429,14 @@ function AppRoutes() {
 
   return (
     <>
+      {isProBlessingEnabled() && auth.user && auth.activeProfile && auth.activeProfile.isVerifiedPro !== true && (
+        <Suspense fallback={null}>
+          <TurnedProGate uid={auth.user.uid} onTurnedPro={() => void auth.refreshProfile()} />
+        </Suspense>
+      )}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:rounded-xl focus:bg-brand-orange focus:text-white focus:font-display focus:tracking-wider focus:outline-none"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:rounded-xl focus:bg-brand-orange focus:text-[#1a1a1a] focus:font-display focus:tracking-wider focus:outline-none"
       >
         Skip to main content
       </a>
@@ -442,9 +477,9 @@ function AppRoutes() {
                     nav.setAuthMode(nav.authMode === "signin" ? "signup" : "signin");
                   }}
                   onGoogle={auth.handleGoogleSignIn}
-                  googleLoading={auth.googleLoading}
+                  googleLoading={auth.googleLoading || hasBootGoogleSignIn()}
                   onApple={auth.handleAppleSignIn}
-                  appleLoading={auth.appleLoading}
+                  appleLoading={auth.appleLoading || hasBootAppleSignIn()}
                   googleError={auth.googleError}
                   onGoogleErrorDismiss={() => auth.setGoogleError("")}
                   mfaChallenge={auth.mfaChallenge}
@@ -503,6 +538,7 @@ function AppRoutes() {
                     gamesLoading={game.gamesLoading}
                     onViewPlayer={nav.navigateToPlayer}
                     onOpenDice={(id) => navigate(`/dice/${id}`)}
+                    onOpenAppeal={(path) => navigate(path)}
                   />
                 ) : (
                   <Navigate to="/" replace />
@@ -609,6 +645,7 @@ function AppRoutes() {
                         nav.setScreen("lobby");
                       }}
                       onViewPlayer={nav.navigateToPlayer}
+                      onProfileRefresh={auth.refreshProfile}
                     />
                   </ErrorBoundary>
                 ) : (
@@ -633,6 +670,7 @@ function AppRoutes() {
                     onRefreshProfile={auth.refreshProfile}
                     onEditProfile={() => navigate("/settings")}
                     onViewMyStats={() => navigate("/my-stats")}
+                    onOpenProTools={() => navigate("/pro")}
                   />
                 ) : (
                   <Navigate to="/" replace />
@@ -770,7 +808,9 @@ function AppRoutes() {
 
                 {/* Clips is its own tab again. Same auth guard as /lobby — the feed
                 reads clips as a signed-in viewer (upvotes, disputes, comments),
-                so a signed-out render has nothing to show. */}
+                so a signed-out render has nothing to show. That replace sends
+                signed-out /feed to /, so Lighthouse CI's /feed URL scores the
+                landing page rather than the clips feed. */}
                 <Route
                   path="/feed"
                   element={
@@ -797,6 +837,17 @@ function AppRoutes() {
             )}
 
             <Route
+              path="/pro"
+              element={
+                <ProToolsRoute
+                  uid={auth.user?.uid ?? null}
+                  isVerifiedPro={auth.activeProfile?.isVerifiedPro === true}
+                  onBack={() => nav.setScreen(auth.user ? "me" : "landing")}
+                />
+              }
+            />
+
+            <Route
               path="/admin"
               element={
                 <AdminRoute
@@ -818,7 +869,10 @@ function AppRoutes() {
           reachable signed-out, so without this check a visitor would get a
           tab bar whose destinations all bounce them straight back. */}
       {auth.activeProfile && <BottomNav />}
-      <ConsentBanner onNav={nav.setScreen} />
+      <ConsentBanner
+        onNav={nav.setScreen}
+        liftAboveNav={Boolean(auth.activeProfile) && isBottomNavScreen(nav.screen)}
+      />
       {analyticsAllowed && (
         <>
           <Analytics />

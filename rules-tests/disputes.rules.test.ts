@@ -189,9 +189,25 @@ async function readTally(field: "landVotes" | "bailVotes"): Promise<unknown> {
  * ──────────────────────────────────────────── */
 
 describe("disputes — read", () => {
-  it("any signed-in user CAN read an open dispute (feed is app-wide)", async () => {
+  it("any signed-in user CAN read an open active dispute (feed is app-wide)", async () => {
     await seedDispute();
     await assertSucceeds(getDoc(disputeRef(as(VIEWER_UID))));
+    const feed = query(
+      collection(as(VIEWER_UID).firestore(), "disputes"),
+      where("status", "==", "open"),
+      where("moderationStatus", "==", "active"),
+    );
+    const snap = await assertSucceeds(getDocs(feed));
+    expect(snap.docs.map((row) => row.id)).toContain(DISPUTE_ID);
+  });
+
+  it("a stranger CANNOT read a hidden dispute; the players and an admin can", async () => {
+    await seedDispute({ moderationStatus: "hidden" });
+    await assertFails(getDoc(disputeRef(as(VIEWER_UID))));
+    await assertSucceeds(getDoc(disputeRef(as(P1_UID))));
+    await assertSucceeds(getDoc(disputeRef(as(P2_UID))));
+    const admin = getEnv().authenticatedContext("admin-uid", { admin: true, email_verified: true });
+    await assertSucceeds(getDoc(disputeRef(admin)));
   });
 
   it("only game participants can read a closed dispute", async () => {
@@ -568,9 +584,13 @@ describe("disputes — tally increment (paired vote-doc create only)", () => {
     await assertFails(updateDoc(disputeRef(as(P1_UID)), { matchVideoUrl: PINNED_SET_URL }));
   });
 
-  it("nobody can flip moderationStatus (takedown path is Admin SDK only)", async () => {
+  it("a player cannot hide a dispute; an admin can, and only that field", async () => {
     await seedDispute();
     await assertFails(updateDoc(disputeRef(as(P1_UID)), { moderationStatus: "hidden" }));
+    const admin = getEnv().authenticatedContext("admin-1", { email_verified: true, admin: true });
+    await assertFails(updateDoc(disputeRef(admin), { moderationStatus: "hidden", trickName: "rewritten" }));
+    await assertSucceeds(updateDoc(disputeRef(admin), { moderationStatus: "hidden" }));
+    await assertFails(updateDoc(disputeRef(admin), { moderationStatus: "active" }));
   });
 });
 
@@ -682,6 +702,22 @@ describe("disputes — delete is CLOSED to all clients (Gap B)", () => {
  * ──────────────────────────────────────────── */
 
 describe("disputeVotes", () => {
+  it("attack: a bare verdict create is denied, so a later delete cannot drain the tally", async () => {
+    await seedDispute({ landVotes: 3, bailVotes: 1 });
+    await assertFails(setDoc(voteRef(as(VIEWER_UID), VIEWER_UID), makeValidVote(VIEWER_UID)));
+    await assertFails(retractVote(as(VIEWER_UID), VIEWER_UID, { landVotes: 2 }));
+    expect(await readTally("landVotes")).toBe(3);
+    expect(await readTally("bailVotes")).toBe(1);
+  });
+
+  it("a real land vote still increments, and retracting it restores the tally", async () => {
+    await seedDispute({ landVotes: 3, bailVotes: 1 });
+    await assertSucceeds(voteAndTally(as(VIEWER_UID), VIEWER_UID, makeValidVote(VIEWER_UID), { landVotes: 4 }));
+    expect(await readTally("landVotes")).toBe(4);
+    await assertSucceeds(retractVote(as(VIEWER_UID), VIEWER_UID, { landVotes: 3 }));
+    expect(await readTally("landVotes")).toBe(3);
+    expect(await readTally("bailVotes")).toBe(1);
+  });
   it("any signed-in user CAN read a verdict doc", async () => {
     await seedDispute();
     await seedExistingVote(VIEWER_UID);

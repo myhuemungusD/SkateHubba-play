@@ -15,6 +15,7 @@ import { parseFirebaseError } from "../../utils/helpers";
 import { useBlockedUsers } from "../../hooks/useBlockedUsers";
 import { NO_VOTE, applyVote, nextVoteFor, sameVoteState, type VoteValue } from "./clipVoteMath";
 import { copyForError, errorCodeFor } from "./utils";
+import { useLatestRef } from "./useLatestRef";
 
 const PAGE_SIZE = 12;
 
@@ -41,14 +42,8 @@ export function useClipsFeedController(viewerUid: string) {
   const [votingIds, setVotingIds] = useState<ReadonlySet<string>>(new Set());
 
   const blockedUids = useBlockedUsers(viewerUid);
-  const blockedUidsRef = useRef<ReadonlySet<string>>(blockedUids);
-  useEffect(() => {
-    blockedUidsRef.current = blockedUids;
-  }, [blockedUids]);
-  const dismissedRef = useRef<ReadonlySet<string>>(dismissedClipIds);
-  useEffect(() => {
-    dismissedRef.current = dismissedClipIds;
-  }, [dismissedClipIds]);
+  const blockedUidsRef = useLatestRef<ReadonlySet<string>>(blockedUids);
+  const dismissedRef = useLatestRef<ReadonlySet<string>>(dismissedClipIds);
 
   // Guard against setState-after-unmount during fetch races.
   const mountedRef = useRef(true);
@@ -65,20 +60,11 @@ export function useClipsFeedController(viewerUid: string) {
   // actually skip renders — a callback identity that flips on every map
   // mutation would defeat the memo and cascade into the video subtree on
   // every vote tap.
-  const votingIdsRef = useRef<ReadonlySet<string>>(votingIds);
-  useEffect(() => {
-    votingIdsRef.current = votingIds;
-  }, [votingIds]);
-  const voteStateRef = useRef<ReadonlyMap<string, ClipVoteState>>(voteState);
-  useEffect(() => {
-    voteStateRef.current = voteState;
-  }, [voteState]);
+  const votingIdsRef = useLatestRef<ReadonlySet<string>>(votingIds);
+  const voteStateRef = useLatestRef<ReadonlyMap<string, ClipVoteState>>(voteState);
   // sortRef lets the vote handlers tag analytics with the active sort
   // without rebuilding the callbacks when the user toggles Top/New.
-  const sortRef = useRef<ClipsFeedSort>(sort);
-  useEffect(() => {
-    sortRef.current = sort;
-  }, [sort]);
+  const sortRef = useLatestRef<ClipsFeedSort>(sort);
 
   const beginVote = useCallback((clipId: string) => {
     setVotingIds((prev) => {
@@ -127,7 +113,7 @@ export function useClipsFeedController(viewerUid: string) {
         logger.warn("clips_feed_vote_hydrate_failed", { error: parseFirebaseError(err) });
       }
     },
-    [viewerUid],
+    [viewerUid, votingIdsRef],
   );
 
   // Changing the sort (or the viewer, which `hydrateVotes` keys on) re-enters
@@ -203,20 +189,14 @@ export function useClipsFeedController(viewerUid: string) {
 
   // Mirror `cursor` / `loadingMore` in refs so loadMore keeps a stable
   // identity (same reasoning as votingIdsRef above).
-  const cursorRef = useRef<ClipsFeedCursor | null>(cursor);
-  useEffect(() => {
-    cursorRef.current = cursor;
-  }, [cursor]);
+  const cursorRef = useLatestRef<ClipsFeedCursor | null>(cursor);
   const loadingMoreRef = useRef(false);
 
   /**
-   * Fetch the next page and append it to the pool, then jump the spotlight to
-   * the first newly-added clip. Clips already in the pool are dropped so a
-   * page boundary can't repeat a row; a page that adds nothing ends the feed.
-   *
-   * Unlike `loadPool` this keeps the current card mounted — the viewer tapped
-   * NEXT TRICK on the end-of-clip overlay, and swapping in a skeleton there
-   * reads as the feed resetting.
+   * Fetch the next page and append it to the pool. The feed calls this when
+   * the viewer swipes past the last loaded clip. Clips already in the pool
+   * are dropped so a page boundary can't repeat a row; a page that adds
+   * nothing ends the feed. The current page stays mounted.
    */
   const loadMore = useCallback(async () => {
     const next = cursorRef.current;
@@ -256,21 +236,7 @@ export function useClipsFeedController(viewerUid: string) {
       loadingMoreRef.current = false;
       if (mountedRef.current) setLoadingMore(false);
     }
-  }, []);
-
-  const handleNext = useCallback(() => {
-    if (safeIndex + 1 >= visibleClips.length) {
-      // Page exhausted — pull the next page, or start over from the top of
-      // the feed once there is nothing left to page through.
-      if (hasMore) {
-        void loadMore();
-      } else {
-        void loadPool();
-      }
-      return;
-    }
-    setCurrentIndex(safeIndex + 1);
-  }, [safeIndex, visibleClips.length, hasMore, loadMore, loadPool]);
+  }, [blockedUidsRef, cursorRef, dismissedRef, sortRef]);
 
   const dismissClip = useCallback((clipId: string) => {
     setDismissedClipIds((prev) => {
@@ -286,9 +252,8 @@ export function useClipsFeedController(viewerUid: string) {
    * Both thumbs are toggles over the same single vote doc, so they share one
    * handler: tapping the thumb you already gave withdraws it, tapping the
    * other flips it. A downvote is a real, persisted negative tally now — it
-   * does NOT hide the clip. Passing on a clip is what NEXT TRICK is for, and
-   * conflating the two meant a viewer who wanted to register "that was not a
-   * make" also lost the clip they were about to comment on.
+   * does NOT hide the clip. Moving on is a swipe or an arrow key, and a
+   * rating must not take the clip the viewer was about to comment on.
    *
    * Self-votes are rejected here as well as in the UI: `isOwnClip` disables
    * the controls, but the handler is the guard that survives a stale prop.
@@ -322,7 +287,7 @@ export function useClipsFeedController(viewerUid: string) {
         endVote(clip.id);
       }
     },
-    [viewerUid, beginVote, endVote],
+    [viewerUid, beginVote, endVote, sortRef, voteStateRef, votingIdsRef],
   );
 
   const handleUpvote = useCallback((clip: ClipDoc) => castVote(clip, 1), [castVote]);
@@ -358,7 +323,6 @@ export function useClipsFeedController(viewerUid: string) {
     voteFor: (clipId: string) => voteState.get(clipId) ?? NO_VOTE,
     isVoting: (clipId: string) => votingIds.has(clipId),
     loadPool,
-    handleNext,
     handleUpvote,
     handleDownvote,
     handleSortChange,

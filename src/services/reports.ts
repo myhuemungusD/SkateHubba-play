@@ -5,22 +5,29 @@ import { parseFirebaseError } from "../utils/helpers";
 
 export type ReportReason =
   | "inappropriate_video"
+  | "inappropriate"
   | "abusive_behavior"
   | "cheating"
   | "spam"
   | "non_skate_content"
+  | "not_skating"
+  | "illegal_content"
   | "other";
+
+/** DSA Art. 16 notices have to explain what is illegal. Shorter text is rejected. */
+export const ILLEGAL_CONTENT_MIN_EXPLANATION = 20;
 
 export const REPORT_REASON_LABELS: Record<ReportReason, string> = {
   inappropriate_video: "Inappropriate video content",
+  inappropriate: "Inappropriate",
   abusive_behavior: "Abusive or threatening behavior",
   cheating: "Cheating or exploiting",
   spam: "Spam or bot activity",
   // Distinct from "inappropriate": the clip is fine, it just isn't
-  // skateboarding. Feed-only in practice, and the most common reason a
-  // user-posted clip needs to come down, so it gets its own bucket instead
-  // of being buried under "other" where moderators can't triage it.
+  // skateboarding. Kept so older reports still label correctly.
   non_skate_content: "Not skateboarding",
+  not_skating: "Not skating",
+  illegal_content: "Illegal content",
   other: "Other",
 };
 
@@ -45,6 +52,20 @@ export interface SubmitReportParams {
    * (`${gameId}_${turnNumber}_${role}`).
    */
   clipId?: string;
+  /**
+   * Community dispute this report is about. The admin queue uses it to hide
+   * the dispute. It never auto-hides a video: dispute and game videos stay
+   * up until a person takes them down.
+   */
+  disputeId?: string;
+}
+
+function optionalDisputeId(value: string | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  if (trimmed.includes("/")) throw new Error("That report target is not valid.");
+  return trimmed.slice(0, 128);
 }
 
 /**
@@ -58,7 +79,7 @@ export interface SubmitReportParams {
  * was more than 1 hour ago. No client-query bypass possible.
  */
 export async function submitReport(params: SubmitReportParams): Promise<string> {
-  const { reporterUid, reportedUid, reportedUsername, gameId, reason, description, clipId } = params;
+  const { reporterUid, reportedUid, reportedUsername, gameId, reason, description, clipId, disputeId } = params;
 
   if (!reason) throw new Error("Please select a reason for your report.");
   if (reporterUid === reportedUid) throw new Error("You cannot report yourself.");
@@ -66,8 +87,13 @@ export async function submitReport(params: SubmitReportParams): Promise<string> 
   // nothing to look at.
   const targetGameId = typeof gameId === "string" && gameId.length > 0 ? gameId : null;
   const targetClipId = typeof clipId === "string" && clipId.length > 0 ? clipId.slice(0, 128) : null;
+  const targetDisputeId = optionalDisputeId(disputeId);
   if (targetGameId === null && targetClipId === null) {
     throw new Error("Nothing to report — no game or clip was identified.");
+  }
+  const trimmedDescription = description.trim().slice(0, 500);
+  if (reason === "illegal_content" && trimmedDescription.length < ILLEGAL_CONTENT_MIN_EXPLANATION) {
+    throw new Error("Illegal-content reports need an explanation of at least 20 characters.");
   }
 
   try {
@@ -81,12 +107,15 @@ export async function submitReport(params: SubmitReportParams): Promise<string> 
       reportedUsername,
       gameId: targetGameId,
       reason,
-      description: description.trim().slice(0, 500),
+      description: trimmedDescription,
       status: "pending",
       createdAt: serverTimestamp(),
     };
     if (targetClipId !== null) {
       payload.clipId = targetClipId;
+    }
+    if (targetDisputeId !== null) {
+      payload.disputeId = targetDisputeId;
     }
 
     // Atomic batch: report + companion cooldown anchor. The rule requires

@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 
 const mockFetchReports = vi.fn();
+const mockFetchClipsInReview = vi.fn();
 
 vi.mock("../../services/admin", () => ({
   fetchReports: (...args: unknown[]) => mockFetchReports(...args),
@@ -19,6 +20,11 @@ vi.mock("../../services/admin", () => ({
 vi.mock("../../services/users", () => ({
   getUidByUsername: vi.fn(),
   getUserProfile: vi.fn(),
+}));
+
+vi.mock("../../services/clipModeration", () => ({
+  fetchClipsInReview: (...args: unknown[]) => mockFetchClipsInReview(...args),
+  decideClipModeration: vi.fn(),
 }));
 
 vi.mock("../../services/achievements", () => ({ fetchAchievements: vi.fn().mockResolvedValue([]) }));
@@ -38,6 +44,7 @@ function Wrapper({ children }: { children: ReactNode }) {
 beforeEach(() => {
   vi.clearAllMocks();
   mockFetchReports.mockResolvedValue([]);
+  mockFetchClipsInReview.mockResolvedValue({ clips: [], cursor: null });
 });
 
 describe("AdminScreen", () => {
@@ -47,24 +54,29 @@ describe("AdminScreen", () => {
   it("opens on the Verify Pro tab", () => {
     render(<AdminScreen adminUid="admin1" onBack={vi.fn()} />, { wrapper: Wrapper });
 
-    expect(screen.getByRole("region", { name: "Verify Pro" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "VERIFY PRO" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("region", { name: "Seed Pro" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "SEED PRO" })).toHaveAttribute("aria-pressed", "true");
     // No queue read until the operator asks for it.
     expect(mockFetchReports).not.toHaveBeenCalled();
   });
 
-  it("switches between the three sections", async () => {
+  it("switches between the admin sections", async () => {
     const user = userEvent.setup();
     render(<AdminScreen adminUid="admin1" onBack={vi.fn()} />, { wrapper: Wrapper });
 
     await user.click(screen.getByRole("button", { name: "AWARDS" }));
     expect(screen.getByRole("region", { name: "Awards" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Verify Pro" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Seed Pro" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "REPORTS" }));
     expect(screen.getByRole("region", { name: "Reports" })).toBeInTheDocument();
     await waitFor(() => expect(mockFetchReports).toHaveBeenCalledWith("pending"));
     expect(await screen.findByTestId("reports-empty")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "CLIPS" }));
+    expect(screen.getByRole("region", { name: "Clips in review" })).toBeInTheDocument();
+    await waitFor(() => expect(mockFetchClipsInReview).toHaveBeenCalled());
+    expect(await screen.findByTestId("clip-review-empty")).toBeInTheDocument();
   });
 
   it("calls onBack from the header control", async () => {
@@ -82,10 +94,26 @@ describe("AdminScreen — feature freeze (VITE_FEATURE_EXTRAS_ENABLED unset, the
   it("hides the Verify Pro tab and panel and opens on Awards", () => {
     render(<AdminScreen adminUid="admin1" onBack={vi.fn()} />, { wrapper: Wrapper });
 
-    expect(screen.queryByRole("button", { name: "VERIFY PRO" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Verify Pro" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "SEED PRO" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Seed Pro" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "AWARDS" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("region", { name: "Awards" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "REPORTS" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "CLIPS" })).toBeInTheDocument();
+  });
+});
+
+describe("AdminScreen pro + roadmap tabs", () => {
+  it("shows pro tool placeholders and planned admin sections", async () => {
+    const user = userEvent.setup();
+    render(<AdminScreen adminUid="admin1" onBack={vi.fn()} />, { wrapper: Wrapper });
+
+    await user.click(screen.getByRole("button", { name: "PRO" }));
+    expect(screen.getByTestId("pro-tools-panel")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Pro review queue (coming soon)" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "MORE" }));
+    expect(screen.getByTestId("admin-roadmap-panel")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Audit log (coming soon)" })).toBeInTheDocument();
   });
 });

@@ -1,8 +1,9 @@
 # Apple + Google Play identifiers.
 # Values can be overridden per-lane via env vars; Appfile supplies defaults.
+# Apple auth is the App Store Connect API key (ASC_KEY_ID, ASC_ISSUER_ID,
+# ASC_KEY_P8). There is no account password.
 
 app_identifier "com.skatehubba.app"
-apple_id ENV["APPLE_ID"]
 team_id ENV["APPLE_TEAM_ID"]
 
 # Google Play — service-account auth preferred over JSON key path so CI

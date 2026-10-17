@@ -1,34 +1,28 @@
 /**
- * Reusable level badge displayed near the avatar / username.
+ * Level badge displayed beside a username.
  *
- * Currently a placeholder — main has no `level` field on UserProfile yet,
- * so this always renders L1 regardless of the prop value passed by
- * callers. A future PR that lands the XP/level counter system will
- * activate real per-user levels; the prop signature is preserved so the
- * call sites do not need to change when that happens.
- *
- * Accessibility (plan §7.4): `aria-label` carries the verbose form so
- * screen readers announce "Level 1" rather than "L1".
+ * The number is `levelForXp(xp)`, clamped to 1..50. Absent XP is level 1.
+ * `aria-label` carries "Level N" so a screen reader does not announce "L1".
  */
 interface Props {
-  /**
-   * Currently ignored — see file docstring. Will become 1..30 (clamped at
-   * the call site) once the level counter ships. Kept on the prop
-   * signature so existing call sites compile unchanged.
-   */
+  /** 1..50. Values outside that range are clamped. */
   level?: number;
 }
 
-export function LevelChip(_props: Props) {
-  // Hard-coded L1 until the level counter ships. See file docstring.
-  const level = 1;
+function clampLevel(level: number | undefined): number {
+  if (typeof level !== "number" || !Number.isFinite(level)) return 1;
+  return Math.min(50, Math.max(1, Math.floor(level)));
+}
+
+export function LevelChip({ level }: Props) {
+  const shown = clampLevel(level);
   return (
     <span
       role="img"
-      aria-label={`Level ${level}`}
+      aria-label={`Level ${shown}`}
       className="inline-flex items-center justify-center px-2 py-0.5 rounded-md bg-brand-orange/[0.12] border border-brand-orange/30 font-display text-xs tracking-wider text-brand-orange leading-none tabular-nums"
     >
-      L{level}
+      L{shown}
     </span>
   );
 }

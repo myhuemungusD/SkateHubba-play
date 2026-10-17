@@ -39,6 +39,9 @@ vi.mock("firebase-admin/firestore", () => ({
   Timestamp: {
     fromMillis: (ms: number) => ({ __ts: ms, toMillis: () => ms }),
   },
+  FieldPath: {
+    documentId: () => "__name__",
+  },
 }));
 
 import handler from "../../../api/cron/resolve-expired-disputes";
@@ -51,12 +54,16 @@ beforeEach(() => {
   delete process.env.CRON_SECRET;
   delete process.env.DRY_RUN;
   delete process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  delete process.env.XP_ENABLED;
+  delete process.env.XP_TESTER_UIDS;
 });
 
 afterEach(() => {
   delete process.env.CRON_SECRET;
   delete process.env.DRY_RUN;
   delete process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  delete process.env.XP_ENABLED;
+  delete process.env.XP_TESTER_UIDS;
 });
 
 /** Timestamp-like stub whose only read is toMillis. Typed as the non-null
@@ -79,6 +86,8 @@ interface DbOpts {
   dispute?: Record<string, unknown> | null;
   pushTokens?: string[];
   failDispatch?: boolean;
+  votes?: { uid: string }[];
+  users?: Record<string, Record<string, unknown>>;
 }
 
 /**
@@ -90,9 +99,10 @@ interface DbOpts {
  * notifications / dispute writes.
  */
 function makeDb(opts: DbOpts) {
-  const { game = null, dispute = null, pushTokens = [], failDispatch = false } = opts;
+  const { game = null, dispute = null, pushTokens = [], failDispatch = false, votes = [], users = {} } = opts;
   const txUpdate = vi.fn();
   const txSet = vi.fn();
+  let votePage = 0;
 
   const gameRef = { __kind: "game" };
   const disputeRef = { __kind: "dispute" };
@@ -103,7 +113,24 @@ function makeDb(opts: DbOpts) {
     ? { exists: true, id: "g1_3", data: () => dispute }
     : { exists: false, id: "g1_3", data: () => undefined };
 
-  const txGet = vi.fn(async (ref: { __kind: string }) => (ref.__kind === "dispute" ? disputeSnap : gameSnap));
+  const txGet = vi.fn(async (ref: { __kind?: string; uid?: string; page?: number }) => {
+    if (ref.__kind === "voteQuery") {
+      const start = (ref.page ?? 0) * 100;
+      const slice = votes.slice(start, start + 100);
+      return {
+        docs: slice.map((vote, index) => ({
+          id: `v${start + index}`,
+          data: () => ({ uid: vote.uid, disputeId: "g1_3" }),
+        })),
+      };
+    }
+    if (ref.__kind === "user") {
+      const data = users[ref.uid ?? ""];
+      return { exists: data !== undefined, data: () => data };
+    }
+    if (ref.__kind === "ach") return { exists: false, data: () => undefined };
+    return ref.__kind === "dispute" ? disputeSnap : gameSnap;
+  });
 
   const dispatchAdd = vi.fn((_doc: unknown) =>
     failDispatch ? Promise.reject(new Error("dispatch boom")) : Promise.resolve(undefined),
@@ -131,7 +158,43 @@ function makeDb(opts: DbOpts) {
   const collection = vi.fn((name: string) => {
     if (name === "games") return gamesCollection();
     if (name === "disputes") return { doc: vi.fn(() => disputeRef) };
-    if (name === "users") return { doc: vi.fn((uid: string) => ({ __kind: "user", uid })) };
+    if (name === "users") {
+      return {
+        doc: vi.fn((uid: string) => ({
+          __kind: "user",
+          uid,
+          collection: (sub: string) => ({
+            doc: (id: string) => ({ __kind: sub === "achievements" ? "ach" : "nested", uid, id }),
+          }),
+        })),
+      };
+    }
+    if (name === "disputeVotes") {
+      const chain = {
+        where() {
+          return chain;
+        },
+        orderBy() {
+          return chain;
+        },
+        startAfter() {
+          return chain;
+        },
+        limit() {
+          const current = votePage;
+          votePage += 1;
+          const query = {
+            __kind: "voteQuery" as const,
+            page: current,
+            startAfter() {
+              return query;
+            },
+          };
+          return query;
+        },
+      };
+      return chain;
+    }
     if (name === "clips") return { doc: vi.fn(() => ({ __kind: "clip" })) };
     if (name === "notifications") return { doc: vi.fn(() => ({ __kind: "notif" })) };
     if (name === "pushTargets") return { doc: vi.fn(() => ({ get: pushTargetsGet })) };
@@ -332,6 +395,67 @@ describe("resolve handler — communityReview verdicts (binding + stats + close-
     // 'closed' is the DisputeStatus the client mapper understands; anything
     // else read back as 'open'.
     expect(d).toMatchObject({ status: "closed", verdict: "land", resolutionApplied: true });
+  });
+
+  it("pays 10 XP and disputeVotesCast when XP_ENABLED is true and a vote is still there", async () => {
+    process.env.XP_ENABLED = "true";
+    const { db, txSet } = makeDb({
+      game: rawGame({ phase: "communityReview" }),
+      dispute: { status: "open", landVotes: 2, bailVotes: 1 },
+      votes: [{ uid: "fan" }],
+      users: { fan: { xp: 20, xpDay: "2000-01-01", xpToday: 0, disputeVotesCast: 0 } },
+    });
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(authedGet(), res);
+
+    expect(out.body).toMatchObject({ resolved: 1 });
+    const voter = setsOfKind(txSet, "user").find((u) => u.ref.uid === "fan");
+    expect(voter?.data.xp).toBe(30);
+    expect(voter?.data.level).toBe(2);
+    expect(voter?.data.disputeVotesCast).toEqual({ __inc: 1 });
+    expect(setsOfKind(txSet, "ach").map((row) => (row.ref as { id?: string }).id)).toContain("votes_1");
+  });
+
+  it("pays the voter past the first page of a hundred", async () => {
+    process.env.XP_ENABLED = "true";
+    const votes = Array.from({ length: 101 }, (_, index) => ({ uid: `fan${index}` }));
+    const users: Record<string, Record<string, unknown>> = {};
+    for (const vote of votes) users[vote.uid] = { xp: 0, disputeVotesCast: 0 };
+    const { db, txSet } = makeDb({
+      game: rawGame({ phase: "communityReview" }),
+      dispute: { status: "open", landVotes: 2, bailVotes: 1 },
+      votes,
+      users,
+    });
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(authedGet(), res);
+
+    expect(out.body).toMatchObject({ resolved: 1 });
+    const paid = setsOfKind(txSet, "user")
+      .map((row) => row.ref.uid)
+      .filter((uid) => uid?.startsWith("fan"));
+    expect(paid).toHaveLength(101);
+    expect(paid).toContain("fan100");
+  });
+
+  it("does not query votes when the XP switch is off", async () => {
+    const { db, txSet } = makeDb({
+      game: rawGame({ phase: "communityReview" }),
+      dispute: { status: "open", landVotes: 2, bailVotes: 1 },
+      votes: [{ uid: "fan" }],
+      users: { fan: { xp: 0 } },
+    });
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res } = makeRes();
+    await handler(authedGet(), res);
+
+    expect(setsOfKind(txSet, "user").some((u) => u.ref.uid === "fan")).toBe(false);
+    expect(db.collection).not.toHaveBeenCalledWith("disputeVotes");
   });
 
   it("zero-vote 'none' → same honor swap, raw counts increment, no right/wrong, verdict none", async () => {

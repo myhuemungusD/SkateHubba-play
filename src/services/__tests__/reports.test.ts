@@ -139,6 +139,21 @@ describe("submitReport", () => {
     await submitReport({ ...validParams, clipId: "" });
     expect(reportSetCall()).not.toHaveProperty("clipId");
   });
+
+  it("rejects an illegal-content report whose explanation is under 20 characters", async () => {
+    await expect(submitReport({ ...validParams, reason: "illegal_content", description: "too short" })).rejects.toThrow(
+      /at least 20 characters/,
+    );
+    expect(batchCommit).not.toHaveBeenCalled();
+  });
+
+  it("writes an illegal-content report once the explanation is long enough", async () => {
+    const description = "This clip shows illegal content in detail.";
+    await submitReport({ ...validParams, reason: "illegal_content", description: `  ${description}  ` });
+    const data = reportSetCall();
+    expect(data.reason).toBe("illegal_content");
+    expect(data.description).toBe(description);
+  });
 });
 
 /* ── clip-only reports (no backing game) ────────────────────── */
@@ -180,6 +195,24 @@ describe("submitReport (user-clip targets)", () => {
     expect(batchSet).not.toHaveBeenCalled();
   });
 
+  it("records a dispute id without turning the report into a clip report", async () => {
+    await submitReport({ ...base, gameId: "g1", disputeId: "  g1_3  " });
+    const data = reportSetCall();
+    expect(data.disputeId).toBe("g1_3");
+    expect(data.clipId).toBeUndefined();
+    expect(data.gameId).toBe("g1");
+  });
+
+  it("rejects a dispute id that contains a path separator", async () => {
+    await expect(submitReport({ ...base, gameId: "g1", disputeId: "games/g1" })).rejects.toThrow(/not valid/);
+    expect(batchSet).not.toHaveBeenCalled();
+  });
+
+  it("drops a blank dispute id", async () => {
+    await submitReport({ ...base, gameId: "g1", disputeId: "   " });
+    expect(reportSetCall().disputeId).toBeUndefined();
+  });
+
   it("still carries the gameId when one is supplied", async () => {
     await submitReport({ ...base, gameId: "g1" });
 
@@ -194,8 +227,14 @@ describe("submitReport (user-clip targets)", () => {
 });
 
 describe("REPORT_REASON_LABELS", () => {
+  it("labels illegal content as its own reason", () => {
+    expect(REPORT_REASON_LABELS.illegal_content).toBe("Illegal content");
+  });
+
   it("labels the non-skate reason distinctly from 'inappropriate'", () => {
     expect(REPORT_REASON_LABELS.non_skate_content).toBe("Not skateboarding");
+    expect(REPORT_REASON_LABELS.not_skating).toBe("Not skating");
+    expect(REPORT_REASON_LABELS.inappropriate).toBe("Inappropriate");
     expect(REPORT_REASON_LABELS.non_skate_content).not.toBe(REPORT_REASON_LABELS.inappropriate_video);
   });
 });

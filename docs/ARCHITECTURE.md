@@ -134,9 +134,9 @@ The table above is a map of the main domains, not an exhaustive list — `src/se
 
 Game state transitions (`setTrick`, `submitMatchAttempt`, `forfeitExpiredTurn`) use `runTransaction`. This ensures that the read-then-write sequence is atomic — if another client modifies the document between the read and the write, Firestore will retry the transaction. Without transactions, two simultaneous actions (e.g., one player submits a trick while the opponent's client triggers a forfeit) could produce inconsistent state.
 
-### `subscribeToMyGames` — triple query merge
+### `subscribeToMyGames` — six-listener query merge
 
-Firestore does not support OR queries across different fields in a single query. To find all games a user is involved in — as `player1Uid`, `player2Uid`, or `judgeId` — **three** parallel `onSnapshot` queries run (`games.subscriptions.ts:172-174`). Each is capped at `limitCount` (default **20**, `games.subscriptions.ts:82`; grown by 20 per "load more" from `GameContext.tsx:41`), so the listener set holds at most 3 × limit documents. Results are merged in memory, deduplicated by document ID, and sorted (active games first, then by `turnNumber` descending). All three share a single unsubscribe function, and each slice has isolated error handling so one failing query does not blank the lobby.
+Firestore does not support OR queries across different fields in a single query. To find all games a user is involved in — as `player1Uid`, `player2Uid`, or `judgeId` — **six** parallel `onSnapshot` queries run, two per role (since #664). One listens to active games (`status == "active"`, newest 50 by `updatedAt`); the other listens to finished games (`complete`/`forfeit`, newest `limitCount` by `updatedAt`, default **20**, grown by "load more" from `GameContext.tsx`). Splitting active from finished keeps a live game from falling off the lobby behind a long history. Results are merged in memory, deduplicated by document ID, and sorted (active games first, then by `turnNumber` descending). All six share a single unsubscribe function, and each slice has isolated error handling so one failing query does not blank the lobby.
 
 ---
 

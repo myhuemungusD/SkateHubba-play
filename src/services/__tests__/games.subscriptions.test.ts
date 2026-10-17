@@ -115,16 +115,18 @@ describe("games service", () => {
   });
 
   describe("subscribeToMyGames", () => {
-    it("sets up three snapshot listeners (p1, p2, and judge queries)", () => {
+    it("sets up history and active listeners for each seat", () => {
       mockOnSnapshot.mockReturnValue(vi.fn());
 
       subscribeToMyGames("u1", vi.fn());
 
-      // Three queries: player1Uid == u1, player2Uid == u1, judgeId == u1
-      expect(mockOnSnapshot).toHaveBeenCalledTimes(3);
+      // Six queries: finished + active for player1, player2, and judge.
+      expect(mockOnSnapshot).toHaveBeenCalledTimes(6);
       expect(mockWhere).toHaveBeenCalledWith("player1Uid", "==", "u1");
       expect(mockWhere).toHaveBeenCalledWith("player2Uid", "==", "u1");
       expect(mockWhere).toHaveBeenCalledWith("judgeId", "==", "u1");
+      expect(mockWhere).toHaveBeenCalledWith("status", "==", "active");
+      expect(mockWhere).toHaveBeenCalledWith("status", "in", ["complete", "forfeit"]);
     });
 
     it("accepts a custom limit count", () => {
@@ -136,17 +138,13 @@ describe("games service", () => {
     });
 
     it("unsubscribes all listeners on cleanup", () => {
-      const unsub1 = vi.fn();
-      const unsub2 = vi.fn();
-      const unsub3 = vi.fn();
-      mockOnSnapshot.mockReturnValueOnce(unsub1).mockReturnValueOnce(unsub2).mockReturnValueOnce(unsub3);
+      const unsubs = [vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn()];
+      for (const unsub of unsubs) mockOnSnapshot.mockReturnValueOnce(unsub);
 
       const unsub = subscribeToMyGames("u1", vi.fn());
       unsub();
 
-      expect(unsub1).toHaveBeenCalled();
-      expect(unsub2).toHaveBeenCalled();
-      expect(unsub3).toHaveBeenCalled();
+      for (const fn of unsubs) expect(fn).toHaveBeenCalled();
     });
 
     it("merges and deduplicates games from both queries", () => {
@@ -252,7 +250,7 @@ describe("games service", () => {
 
     /* ── H-G6 regression: gated first-load merge ────── */
 
-    it("waits for all three listeners to seed before firing the first onUpdate", () => {
+    it("waits for every listener to seed before firing the first onUpdate", () => {
       const onUpdate = vi.fn();
       // Capture each listener's onNext so we can fire them in a staggered
       // order — simulating real-world snapshot races.
@@ -263,25 +261,26 @@ describe("games service", () => {
       });
 
       subscribeToMyGames("u1", onUpdate);
-      expect(listeners.length).toBe(3);
+      expect(listeners.length).toBe(6);
 
-      // First listener (p1) emits — must NOT fire onUpdate yet (2 slices
-      // still unseeded → partial merge would flash to the UI).
+      // First listener (p1 history) emits — must NOT fire onUpdate yet.
       listeners[0]({
         docs: [{ id: "g1", data: () => ({ ...baseGame, status: "active", turnNumber: 1 }) }],
       });
       expect(onUpdate).not.toHaveBeenCalled();
 
-      // Second listener (p2) emits — still short one slice, no emit.
       listeners[1]({
         docs: [{ id: "g2", data: () => ({ ...baseGame, status: "active", turnNumber: 2 }) }],
       });
       expect(onUpdate).not.toHaveBeenCalled();
 
-      // Third listener (judge) emits — now emit the full merged view once.
       listeners[2]({
         docs: [{ id: "g3", data: () => ({ ...baseGame, status: "active", turnNumber: 3 }) }],
       });
+      expect(onUpdate).not.toHaveBeenCalled();
+      listeners[3]({ docs: [] });
+      listeners[4]({ docs: [] });
+      listeners[5]({ docs: [] });
       expect(onUpdate).toHaveBeenCalledTimes(1);
       const games = onUpdate.mock.calls[0][0];
       expect(games.map((g: { id: string }) => g.id).sort()).toEqual(["g1", "g2", "g3"]);
@@ -297,10 +296,8 @@ describe("games service", () => {
 
       subscribeToMyGames("u1", onUpdate);
 
-      // Seed all three with empty snapshots — first emit fires with 0 games.
-      listeners[0]({ docs: [] });
-      listeners[1]({ docs: [] });
-      listeners[2]({ docs: [] });
+      // Seed every slice empty — first emit fires with 0 games.
+      for (const listener of listeners) listener({ docs: [] });
       expect(onUpdate).toHaveBeenCalledTimes(1);
       expect(onUpdate.mock.calls[0][0]).toEqual([]);
 
@@ -326,7 +323,7 @@ describe("games service", () => {
 
       subscribeToMyGames("u1", onUpdate);
 
-      // Seed p1 and p2 normally, then fail the judge listener.
+      // Seed two slices, then fail the rest so the gate can open.
       nextFns[0]({
         docs: [{ id: "g1", data: () => ({ ...baseGame, status: "active", turnNumber: 1 }) }],
       });
@@ -334,6 +331,10 @@ describe("games service", () => {
       expect(onUpdate).not.toHaveBeenCalled();
 
       errFns[2](new Error("permission-denied"));
+      expect(onUpdate).not.toHaveBeenCalled();
+      errFns[3](new Error("permission-denied"));
+      errFns[4](new Error("permission-denied"));
+      errFns[5](new Error("permission-denied"));
       // The error path should clear the judge slice AND mark it seeded so the
       // healthy slices can emit. We see the game from p1 only — no stale or
       // partial data polluting the merge.
@@ -395,10 +396,13 @@ describe("games service", () => {
 
       subscribeToMyGames("u1", onUpdate);
 
-      // Seed all three with data — first emit.
+      // Seed every slice — first emit. The extra seats are empty.
       nextFns[0]({ docs: [{ id: "g1", data: () => ({ ...baseGame, turnNumber: 1 }) }] });
       nextFns[1]({ docs: [{ id: "g2", data: () => ({ ...baseGame, turnNumber: 2 }) }] });
       nextFns[2]({ docs: [{ id: "g3", data: () => ({ ...baseGame, turnNumber: 3 }) }] });
+      nextFns[3]({ docs: [] });
+      nextFns[4]({ docs: [] });
+      nextFns[5]({ docs: [] });
       expect(onUpdate).toHaveBeenCalledTimes(1);
       expect(onUpdate.mock.calls[0][0]).toHaveLength(3);
 

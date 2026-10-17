@@ -102,30 +102,23 @@ describe("isFirebaseStorageUrl", () => {
 describe("pwStrength", () => {
   it("returns 1 for short passwords", () => {
     expect(pwStrength("abc")).toBe(1);
-    expect(pwStrength("1234567")).toBe(1);
+    expect(pwStrength("12345")).toBe(1);
   });
 
-  it("returns 1 for 8+ char lowercase-only passwords", () => {
+  it("returns 1 when a number is missing or the password is over 20 characters", () => {
     expect(pwStrength("abcdefgh")).toBe(1);
+    expect(pwStrength("Abcdefgh")).toBe(1);
+    expect(pwStrength("abcdefg!")).toBe(1);
+    expect(pwStrength("Abcdefghijk!")).toBe(1);
+    expect(pwStrength("Abcdefghij1234567890!")).toBe(1);
   });
 
-  it("returns 2 for 8+ chars with uppercase", () => {
-    expect(pwStrength("Abcdefgh")).toBe(2);
-  });
-
-  it("returns 2 for 8+ chars with digit", () => {
+  it("returns 2 once the password meets the policy", () => {
+    expect(pwStrength("1234567")).toBe(2);
     expect(pwStrength("abcdefg1")).toBe(2);
   });
 
-  it("returns 2 for 8+ chars with symbol", () => {
-    expect(pwStrength("abcdefg!")).toBe(2);
-  });
-
-  it("returns 3 for 12+ chars with upper/digit and symbol", () => {
-    expect(pwStrength("Abcdefghijk!")).toBe(3);
-  });
-
-  it("returns 3 for 12+ chars with digit and symbol", () => {
+  it("returns 3 for 12+ chars with a number and a symbol", () => {
     expect(pwStrength("abcdefghijk1!")).toBe(3);
   });
 });

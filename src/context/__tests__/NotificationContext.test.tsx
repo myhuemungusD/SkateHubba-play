@@ -573,6 +573,22 @@ describe("hydrate", () => {
     expect(result.current.unreadCount).toBe(1);
   });
 
+  it("keeps an appeal path on a hydrated notification and a local notify", () => {
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+
+    act(() => {
+      result.current.hydrate([evt({ appealPath: "/appeal/clip_c1" })]);
+      result.current.notify({
+        type: "game_event",
+        title: "Clip removed",
+        message: "Removed",
+        appealPath: "/appeal/clip_c1",
+      });
+    });
+
+    expect(result.current.notifications.some((n) => n.appealPath === "/appeal/clip_c1")).toBe(true);
+  });
+
   it("is silent — no chime, no haptic, no toast, no notifyKey bump", () => {
     const { result } = renderHook(() => useNotifications(), { wrapper });
     const keyBefore = result.current.notifyKey;

@@ -4,9 +4,11 @@ name: Deploy Firebase Rules
 # indexes, and Cloud Storage rules whenever those files land on `main`.
 #
 # Only the rules/indexes surface is deployed — Cloud Functions, Hosting, and
-# app code are explicitly excluded. Functions are deployed out-of-band by the
-# maintainer; pr-gate.yml allowlists exactly the four approved stats close-out
-# files under functions/src/ (see .github/BRANCH_PROTECTION.md and CLAUDE.md).
+# app code are explicitly excluded. Functions are deployed by the separate
+# manual workflow `.github/workflows/firebase-functions-deploy.yml`
+# (`workflow_dispatch` only; see docs/DEPLOY_FUNCTIONS.md). pr-gate.yml still
+# allowlists the approved source files under functions/src/ and rejects
+# anything else (see .github/BRANCH_PROTECTION.md and CLAUDE.md).
 #
 # Project resolution:
 #   The deploy job reads the target project ID from the `FIREBASE_PROJECT_ID`
@@ -85,7 +87,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - name: Check firestore.rules size (Firebase 256 KiB limit)
+        run: node scripts/check-rules-size.mjs firestore.rules
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -124,7 +129,7 @@ jobs:
           # commit, which a depth-1 clone does not contain.
           fetch-depth: 0
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm

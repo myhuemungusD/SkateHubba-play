@@ -47,6 +47,8 @@ vi.mock("../../firebase", () => ({
   // therefore expose a signed-in auth stub.
   requireAuth: () => ({ currentUser: { uid: "test-uid" } }),
   requireStorage: () => ({}),
+  ensureStorage: async () => ({}),
+  ensureAppCheck: async () => undefined,
 }));
 
 vi.mock("../analytics", () => ({
@@ -338,7 +340,9 @@ describe("storage service", () => {
       const blob = validBlob();
       const promise = uploadVideo("game1", 1, "set", blob, undefined, 0, controller.signal);
 
-      // Abort after the task has been created.
+      // Storage init is async now. Yield once so the resumable task exists,
+      // then abort the in-flight upload.
+      await Promise.resolve();
       controller.abort();
 
       await expect(promise).rejects.toMatchObject({ name: "AbortError" });
@@ -549,6 +553,11 @@ describe("uploadUserClip", () => {
     expect(url).toBe("https://cdn.example.com/video.webm");
   });
 
+  it("uploads a public clip under approvedClips", async () => {
+    await uploadUserClip("test-uid", "uc1", validBlob(), undefined, 2, undefined, "public");
+    expect(mockRef).toHaveBeenCalledWith(expect.anything(), "approvedClips/test-uid/uc1.webm");
+  });
+
   it("uses the mp4 extension and content-type for a native blob", async () => {
     await uploadUserClip("test-uid", "uc1", validBlob("video/mp4"));
 
@@ -622,12 +631,16 @@ describe("deleteUserClipVideo", () => {
 
     expect(mockRef).toHaveBeenCalledWith(expect.anything(), "userClips/u1/uc1.webm");
     expect(mockRef).toHaveBeenCalledWith(expect.anything(), "userClips/u1/uc1.mp4");
-    expect(deleted).toBe(2);
+    expect(mockRef).toHaveBeenCalledWith(expect.anything(), "approvedClips/u1/uc1.webm");
+    expect(mockRef).toHaveBeenCalledWith(expect.anything(), "approvedClips/u1/uc1.mp4");
+    expect(deleted).toBe(4);
   });
 
   it("does not count the extension that was never written", async () => {
     mockDeleteObject
       .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(Object.assign(new Error("nope"), { code: "storage/object-not-found" }))
+      .mockRejectedValueOnce(Object.assign(new Error("nope"), { code: "storage/object-not-found" }))
       .mockRejectedValueOnce(Object.assign(new Error("nope"), { code: "storage/object-not-found" }));
 
     await expect(deleteUserClipVideo("u1", "uc1")).resolves.toBe(1);

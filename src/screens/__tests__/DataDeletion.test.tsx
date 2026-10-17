@@ -10,6 +10,14 @@ describe("DataDeletion", () => {
     expect(document.querySelector('img[src="/logonew.webp"]')).toBeInTheDocument();
   });
 
+  it("points export and deletion at Settings", () => {
+    render(<DataDeletion onBack={vi.fn()} />);
+    const text = document.body.textContent ?? "";
+    expect(text).toContain('open Settings and tap "Download my data"');
+    expect(text).toContain('open Settings and tap "Delete account"');
+    expect(text.toLowerCase()).not.toContain("lobby");
+  });
+
   it("calls onBack when back button is clicked", async () => {
     const onBack = vi.fn();
     render(<DataDeletion onBack={onBack} />);

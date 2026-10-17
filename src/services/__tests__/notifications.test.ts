@@ -781,6 +781,23 @@ describe("subscribeToNotifications", () => {
       gameId: "g1",
       createdAtMs: 1_000,
     });
+
+    const later = (id: string, createdAtMs: number, appealPath: unknown) => ({
+      docs: [{ id }],
+      docChanges: () => [
+        {
+          type: "added",
+          doc: {
+            id,
+            data: () => ({ type: "t", title: "T", body: "B", gameId: "", createdAt: ts(createdAtMs), appealPath }),
+          },
+        },
+      ],
+    });
+    snapshotHandler(later("n-bad", 2_000, "https://evil.example/appeal"));
+    expect(onNotification).toHaveBeenLastCalledWith(expect.not.objectContaining({ appealPath: expect.anything() }));
+    snapshotHandler(later("n-ok", 3_000, "/appeal/clip_c1"));
+    expect(onNotification).toHaveBeenLastCalledWith(expect.objectContaining({ appealPath: "/appeal/clip_c1" }));
   });
 
   it("delivers a second snapshot that arrives in the same microtask as the seed", () => {

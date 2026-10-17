@@ -1,3 +1,4 @@
+import { containsObjectionableText, OBJECTIONABLE_COMMENT_MESSAGE } from "../utils/objectionable";
 /**
  * Comments on clips — `clips/{clipId}/comments/{commentId}`.
  *
@@ -140,6 +141,7 @@ export async function createClipComment(
   if (trimmed.length > CLIP_COMMENT_MAX_LENGTH) {
     throw new Error(`Comments are limited to ${CLIP_COMMENT_MAX_LENGTH} characters.`);
   }
+  if (containsObjectionableText(trimmed)) throw new Error(OBJECTIONABLE_COMMENT_MESSAGE);
   const author = typeof username === "string" ? username : "";
 
   try {

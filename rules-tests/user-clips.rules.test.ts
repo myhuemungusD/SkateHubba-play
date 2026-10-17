@@ -11,7 +11,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { assertSucceeds, assertFails, type RulesTestContext } from "@firebase/rules-unit-testing";
-import { deleteDoc, doc, getDoc, setDoc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { deleteDoc, doc, getDoc, setDoc, updateDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { seedUsernameReservation, setupRulesTestEnv } from "./_fixtures";
 
 const UID = "u-alice";
@@ -99,6 +99,35 @@ describe("clips — user-source create (positive)", () => {
   it("accepts an optional spotId within the 64-char budget", async () => {
     await assertSucceeds(createUserClip(authed(UID), UID, { spotId: "x".repeat(64) }));
   });
+
+  it("accepts a pending clip when moderation is pending", async () => {
+    await assertSucceeds(createUserClip(authed(UID), UID, { moderationStatus: "pending", moderation: "pending" }));
+  });
+
+  it("accepts an active clip whose video is on the approved path", async () => {
+    const publicUrl = videoUrl(UID).replace("userClips%2F", "approvedClips%2F");
+    await assertSucceeds(createUserClip(authed(UID), UID, { videoUrl: publicUrl }));
+  });
+});
+
+describe("clips — user-source read", () => {
+  it("a stranger can read an active clip and cannot read a pending one", async () => {
+    await assertSucceeds(createUserClip(authed(UID), UID));
+    await assertSucceeds(getDoc(doc(authed(OTHER_UID).firestore(), "clips", CLIP_ID)));
+
+    await getEnv().withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "clips", "pending-clip"), {
+        ...makeUserClip(UID),
+        moderationStatus: "pending",
+        moderation: "pending",
+        moderationScores: { explicitLikelihood: "VERY_LIKELY" },
+      });
+    });
+    await assertFails(getDoc(doc(authed(OTHER_UID).firestore(), "clips", "pending-clip")));
+    await assertSucceeds(getDoc(doc(authed(UID).firestore(), "clips", "pending-clip")));
+    const admin = getEnv().authenticatedContext("admin-uid", { email_verified: true, admin: true });
+    await assertSucceeds(getDoc(doc(admin.firestore(), "clips", "pending-clip")));
+  });
 });
 
 describe("clips — user-source create (red team)", () => {
@@ -108,6 +137,13 @@ describe("clips — user-source create (red team)", () => {
 
   it("attack: CANNOT publish a clip pointing at ANOTHER user's storage prefix", async () => {
     await assertFails(createUserClip(authed(UID), UID, { videoUrl: videoUrl(OTHER_UID) }));
+  });
+
+  it("attack: a pending clip CANNOT point at the approved path", async () => {
+    const publicUrl = videoUrl(UID).replace("userClips%2F", "approvedClips%2F");
+    await assertFails(
+      createUserClip(authed(UID), UID, { videoUrl: publicUrl, moderationStatus: "pending", moderation: "pending" }),
+    );
   });
 
   it("attack: CANNOT publish a clip pointing at an attacker-hosted URL", async () => {
@@ -145,6 +181,24 @@ describe("clips — user-source create (red team)", () => {
 
   it("attack: CANNOT start a clip in 'hidden' moderation state", async () => {
     await assertFails(createUserClip(authed(UID), UID, { moderationStatus: "hidden" }));
+  });
+
+  it("attack: CANNOT mark a new clip approved or attach scores", async () => {
+    await assertFails(createUserClip(authed(UID), UID, { moderationStatus: "active", moderation: "approved" }));
+    await assertFails(
+      createUserClip(authed(UID), UID, {
+        moderationStatus: "pending",
+        moderation: "pending",
+        moderationScores: { explicitLikelihood: "UNLIKELY" },
+      }),
+    );
+    await assertFails(
+      createUserClip(authed(UID), UID, {
+        moderationStatus: "pending",
+        moderation: "pending",
+        moderationNotice: { statement: "x" },
+      }),
+    );
   });
 
   it("attack: CANNOT back-date createdAt", async () => {
@@ -203,6 +257,66 @@ describe("clips — user-source create (red team)", () => {
   });
 });
 
+describe("clipsPosted +1 is bound to a new user clip", () => {
+  it("allows exactly +1 in the same batch as the clip and rejects +5", async () => {
+    const ctx = authed(UID);
+    const ok = writeBatch(ctx.firestore());
+    ok.set(doc(ctx.firestore(), "clips", "clip-xp"), makeUserClip(UID));
+    ok.update(doc(ctx.firestore(), "users", UID), {
+      lastClipCreatedAt: serverTimestamp(),
+      clipsPosted: 1,
+      clipsPostedClipId: "clip-xp",
+    });
+    await assertSucceeds(ok.commit());
+
+    // Move the cooldown anchor into the past so the next denial is the +5,
+    // not the 30-second clip rate limit.
+    await getEnv().withSecurityRulesDisabled(async (admin) => {
+      await setDoc(
+        doc(admin.firestore(), "users", UID),
+        { clipsPosted: 1, lastClipCreatedAt: new Date(Date.now() - 60_000) },
+        { merge: true },
+      );
+    });
+    const bumped = writeBatch(ctx.firestore());
+    bumped.set(doc(ctx.firestore(), "clips", "clip-xp-2"), makeUserClip(UID, { videoUrl: videoUrl(UID, "clip2") }));
+    bumped.update(doc(ctx.firestore(), "users", UID), {
+      lastClipCreatedAt: serverTimestamp(),
+      clipsPosted: 6,
+      clipsPostedClipId: "clip-xp-2",
+    });
+    await assertFails(bumped.commit());
+  });
+
+  it("rejects a clipsPosted bump for a clip that is still pending", async () => {
+    const ctx = authed(UID);
+    const pending = writeBatch(ctx.firestore());
+    pending.set(
+      doc(ctx.firestore(), "clips", "clip-pending"),
+      makeUserClip(UID, { moderationStatus: "pending", moderation: "pending" }),
+    );
+    pending.update(doc(ctx.firestore(), "users", UID), {
+      lastClipCreatedAt: serverTimestamp(),
+      clipsPosted: 1,
+      clipsPostedClipId: "clip-pending",
+    });
+    await assertFails(pending.commit());
+  });
+
+  it("rejects a client stamping badgeCounted on a new clip", async () => {
+    await assertFails(createUserClip(authed(UID), UID, { badgeCounted: true }));
+  });
+
+  it("rejects a clipsPosted bump that does not create a clip", async () => {
+    await assertFails(
+      updateDoc(doc(authed(UID).firestore(), "users", UID), {
+        clipsPosted: 1,
+        clipsPostedClipId: "missing-clip",
+      }),
+    );
+  });
+});
+
 describe("clips — user-source delete", () => {
   it("the author CAN delete their own user clip; a stranger CANNOT", async () => {
     await getEnv().withSecurityRulesDisabled(async (ctx) => {
@@ -225,12 +339,19 @@ describe("users — lastClipCreatedAt anchor is not client-forgeable", () => {
       setDoc(doc(ctx.firestore(), "users", "u-new"), {
         uid: "u-new",
         username: "newbie",
+        createdAt: serverTimestamp(),
         lastClipCreatedAt: new Date(0),
       }),
     );
     // Positive control: the same create without the anchor is fine.
     await seedUsernameReservation(getEnv(), "u-new", "newbie");
-    await assertSucceeds(setDoc(doc(ctx.firestore(), "users", "u-new"), { uid: "u-new", username: "newbie" }));
+    await assertSucceeds(
+      setDoc(doc(ctx.firestore(), "users", "u-new"), {
+        uid: "u-new",
+        username: "newbie",
+        createdAt: serverTimestamp(),
+      }),
+    );
   });
 });
 
@@ -320,5 +441,60 @@ describe("clips/{id}/comments", () => {
     await seedComment(OTHER_UID);
     const snap = await assertSucceeds(getDoc(commentRef(authed(UID))));
     expect(snap).toBeDefined();
+  });
+});
+
+describe("clip appeals", () => {
+  const STATEMENT_ID = "clip_random-clip-id";
+
+  async function seedStatement(subjectUid: string): Promise<void> {
+    await getEnv().withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "moderationStatements", STATEMENT_ID), {
+        subjectUid,
+        reportId: STATEMENT_ID,
+        action: "content_restricted",
+        reason: "explicit content",
+        explanation: "Removed.",
+        contentRef: CLIP_ID,
+        createdBy: "moderation",
+        createdAt: new Date(),
+      });
+    });
+  }
+
+  function appeal(uid: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      appellantUid: uid,
+      targetKind: "statement",
+      targetId: STATEMENT_ID,
+      explanation: "This is a skate clip.",
+      status: "pending",
+      createdAt: serverTimestamp(),
+      ...overrides,
+    };
+  }
+
+  it("the subject can file one appeal against their statement", async () => {
+    await seedStatement(UID);
+    await assertSucceeds(setDoc(doc(authed(UID).firestore(), "appeals", `statement_${STATEMENT_ID}`), appeal(UID)));
+  });
+
+  it("attack: someone else cannot appeal, and a client cannot write the statement", async () => {
+    await seedStatement(UID);
+    await assertFails(
+      setDoc(doc(authed(OTHER_UID).firestore(), "appeals", `statement_${STATEMENT_ID}`), appeal(OTHER_UID)),
+    );
+    await assertFails(
+      setDoc(doc(authed(UID).firestore(), "moderationStatements", "clip_other"), {
+        subjectUid: UID,
+        reportId: "clip_other",
+        action: "content_restricted",
+        reason: "x",
+        explanation: "x",
+        contentRef: "other",
+        createdBy: UID,
+        createdAt: serverTimestamp(),
+      }),
+    );
   });
 });

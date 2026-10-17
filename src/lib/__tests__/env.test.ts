@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { z } from "zod";
 import { safeParseEnv, type Env } from "../env";
 
 /* ── Fixture ────────────────────────────────────────────────────────────
@@ -13,6 +14,12 @@ const validEnv = {
   VITE_FIREBASE_MESSAGING_SENDER_ID: "1234567890",
   VITE_FIREBASE_APP_ID: "1:1234567890:web:abc123",
 };
+
+describe("zod jitless", () => {
+  it("is on before env parsing so the CSP eval probe does not run", () => {
+    expect(z.config().jitless).toBe(true);
+  });
+});
 
 describe("safeParseEnv", () => {
   it("returns a typed env object when every required var is present (happy path)", () => {
@@ -116,6 +123,15 @@ describe("safeParseEnv", () => {
       const result = safeParseEnv({ ...validEnv, VITE_FEATURE_REFEREE_ENABLED: raw });
       expect(result).not.toBeNull();
       expect(result?.VITE_FEATURE_REFEREE_ENABLED).toBe(expected);
+    },
+  );
+
+  it.each(flagCases)(
+    "parses VITE_FEATURE_CLIP_MODERATION_ENABLED=%j as %s (clip moderation, default off)",
+    (raw, expected) => {
+      const result = safeParseEnv({ ...validEnv, VITE_FEATURE_CLIP_MODERATION_ENABLED: raw });
+      expect(result).not.toBeNull();
+      expect(result?.VITE_FEATURE_CLIP_MODERATION_ENABLED).toBe(expected);
     },
   );
 

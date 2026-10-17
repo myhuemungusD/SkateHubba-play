@@ -15,6 +15,11 @@ interface Navigator {
   contacts?: ContactsManager;
 }
 
+interface Window {
+  /** Set by public/lcp-shell.js when a pre-JS shell is on screen. */
+  __skatehubbaLcpShell?: "home" | "auth" | "feed";
+}
+
 interface ImportMetaEnv {
   readonly VITE_FIREBASE_API_KEY: string;
   readonly VITE_FIREBASE_AUTH_DOMAIN: string;
@@ -35,6 +40,12 @@ interface ImportMetaEnv {
   /** Roll Dice switch: "true" shows /dice. Unset (default) hides it.
    *  Read via isDiceEnabled() — not the extras flag. */
   readonly VITE_FEATURE_DICE_ENABLED?: string;
+  readonly VITE_FEATURE_PRO_PROFILES?: string;
+  /** Pro blessing switch. Read via isProBlessingEnabled(). */
+  readonly VITE_FEATURE_PRO_BLESSING?: string;
+  /** XP and levels switch: "true" shows the chip, bar, level-up, and ribbon.
+   *  Unset (default) hides them. Read via isXpEnabled() — not the extras flag. */
+  readonly VITE_FEATURE_XP_ENABLED?: string;
   /** Sign in with Apple switch: "true" shows the button. Unset (default)
    *  hides it. Read via isAppleSignInEnabled(). */
   readonly VITE_FEATURE_APPLE_SIGNIN_ENABLED?: string;
@@ -45,6 +56,9 @@ interface ImportMetaEnv {
    *  createGame stamp a judge. Unset (default) forces the honor system.
    *  Read via isRefereeEnabled(). Does not affect games that already have one. */
   readonly VITE_FEATURE_REFEREE_ENABLED?: string;
+  /** Public-clip moderation. "true" starts user uploads as pending.
+   *  Unset (default) leaves uploads visible immediately. */
+  readonly VITE_FEATURE_CLIP_MODERATION_ENABLED?: string;
   readonly VITE_MAPBOX_TOKEN?: string;
   /** Optional Mapbox Studio style URL. Falls back to mapbox://styles/mapbox/dark-v11. */
   readonly VITE_MAPBOX_STYLE_URL?: string;

@@ -1,6 +1,9 @@
-import { useEffect, useState, useSyncExternalStore, type ComponentType } from "react";
+import { useEffect, useLayoutEffect, useState, useSyncExternalStore, type ComponentType } from "react";
+import { useLocation } from "react-router";
 import { Spinner } from "../components/ui/Spinner";
+import { applyCanonical } from "../lib/canonical";
 import { BootLanding } from "./BootLanding";
+import { dismissLcpShell } from "./dismissLcpShell";
 import { afterLandingPainted, isBootShellActive, subscribeBootShell } from "./landingBoot";
 
 export type AppLoader = () => Promise<{ default: ComponentType }>;
@@ -8,9 +11,9 @@ export type AppLoader = () => Promise<{ default: ComponentType }>;
 /**
  * Top-level shell. Loads the full App chunk and renders it once available.
  *
- * - boot=true (signed-out visitor on `/`): paint <BootLanding> first and only
- *   start fetching App once the landing has fully painted, so App's JS
- *   (Firebase et al.) never competes with it.
+ * - boot=true (signed-out visitor on `/`, `/auth`, or `/feed`): paint
+ *   <BootLanding> first and only start fetching App once that shell has
+ *   painted, so App's JS (Firebase et al.) never competes with LCP.
  *   Once App is mounted the boot landing stays on screen (App drives it via
  *   the shell bridge) until App releases it, so the visitor's in-page state
  *   survives the handoff.
@@ -21,6 +24,18 @@ export function Root({ boot, loadApp }: { boot: boolean; loadApp: AppLoader }) {
   const [App, setApp] = useState<ComponentType | null>(null);
   const [failed, setFailed] = useState(false);
   const shellActive = useSyncExternalStore(subscribeBootShell, isBootShellActive);
+  const { pathname } = useLocation();
+
+  // Same commit as the first real paint: the shells have already been the
+  // LCP text, and taking them out before the browser paints this frame
+  // keeps them from covering the UI. Fixed positioning, so nothing shifts.
+  useLayoutEffect(() => {
+    dismissLcpShell();
+  }, []);
+
+  useEffect(() => {
+    applyCanonical(pathname);
+  }, [pathname]);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,7 +71,7 @@ export function Root({ boot, loadApp }: { boot: boolean; loadApp: AppLoader }) {
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="px-6 py-3 rounded-xl bg-brand-orange text-white font-display tracking-wider"
+          className="px-6 py-3 rounded-xl bg-brand-orange text-[#1a1a1a] font-display tracking-wider"
         >
           Reload
         </button>

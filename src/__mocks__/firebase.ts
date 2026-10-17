@@ -41,6 +41,8 @@ export const requireDb = vi.fn((): Firestore => db);
 export const requireStorage = vi.fn((): FirebaseStorage => storage);
 
 export const isAppCheckInitialized = vi.fn((): boolean => false);
+export const ensureAppCheck = vi.fn((): Promise<void> => Promise.resolve());
+export const ensureStorage = vi.fn((): Promise<FirebaseStorage> => Promise.resolve(storage));
 
 /**
  * Reset every spy and shared mutable export to its post-import default.
@@ -53,6 +55,10 @@ export function resetFirebaseMock(): void {
   requireStorage.mockClear();
   isAppCheckInitialized.mockClear();
   isAppCheckInitialized.mockImplementation(() => false);
+  ensureAppCheck.mockClear();
+  ensureAppCheck.mockImplementation(() => Promise.resolve());
+  ensureStorage.mockClear();
+  ensureStorage.mockImplementation(() => Promise.resolve(storage));
   (auth as unknown as { currentUser: unknown }).currentUser = null;
   isEmulatorMode = false;
 }

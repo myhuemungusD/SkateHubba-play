@@ -14,6 +14,9 @@ import { ProUsername } from "../components/ProUsername";
 import { DisputeResultCard } from "../components/DisputeResultCard";
 import { fetchResolvedDispute, type Dispute } from "../services/disputes";
 import { TrainingConsentPrompt } from "../components/TrainingConsentPrompt";
+import { LevelChip } from "../components/LevelChip";
+import { isXpEnabled } from "../lib/featureFlags";
+import { useLevelUpMoment } from "../hooks/useLevelUpMoment";
 
 export function GameOverScreen({
   game,
@@ -22,6 +25,7 @@ export function GameOverScreen({
   rematchDisabledReason,
   onBack,
   onViewPlayer,
+  onProfileRefresh,
 }: {
   game: GameDoc;
   profile: UserProfile;
@@ -36,6 +40,8 @@ export function GameOverScreen({
   rematchDisabledReason?: string;
   onBack: () => void;
   onViewPlayer?: (uid: string) => void;
+  /** Writes the refetched profile back into auth state. Optional so a missed callback just skips the refresh. */
+  onProfileRefresh?: () => Promise<void>;
 }) {
   const [rematching, setRematching] = useState(false);
   const [rematchError, setRematchError] = useState<string | null>(null);
@@ -69,6 +75,7 @@ export function GameOverScreen({
 
   const opponentUid = game.player1Uid === profile.uid ? game.player2Uid : game.player1Uid;
 
+  const levelUp = useLevelUpMoment(profile, isXpEnabled(), onProfileRefresh);
   const [shareLabel, setShareLabel] = useState("Share Game Recap");
   const [showReport, setShowReport] = useState(false);
   const [reported, setReported] = useState(false);
@@ -195,6 +202,21 @@ export function GameOverScreen({
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/[0.06] px-3 py-1 text-[11px] text-amber-400">
             <span className="font-display tracking-wider">REFEREED</span>
             <span className="font-body">by @{game.judgeUsername}</span>
+          </div>
+        )}
+
+        {levelUp.level !== null && (
+          <div
+            data-testid="level-up"
+            className={`mb-6 flex flex-col items-center gap-2 ${levelUp.reduceMotion ? "" : "animate-scale-in"}`}
+          >
+            <LevelChip level={levelUp.level} />
+            <p className="font-display text-lg text-brand-orange">Level {levelUp.level}</p>
+            {levelUp.names.map((name) => (
+              <p key={name} className="font-body text-sm text-white">
+                {name} unlocked
+              </p>
+            ))}
           </div>
         )}
 

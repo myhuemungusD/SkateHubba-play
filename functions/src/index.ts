@@ -1,13 +1,44 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-import { onDocumentUpdated } from "firebase-functions/v2/firestore";
+import { setGlobalOptions, type GlobalOptions } from "firebase-functions/v2";
+import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onCall } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { defineBoolean, defineString } from "firebase-functions/params";
+import { defineBoolean, defineInt, defineString } from "firebase-functions/params";
 import { applyGameStats } from "./applyGameStats.js";
 import { handleDiceCall } from "./dice/callable.js";
 import { sweepExpiredDiceGames } from "./dice/handlers.js";
 import { adminDiceDb } from "./dice/store.js";
+import { handleBlessingCall } from "./pro/callable.js";
+import { handleClipCreated, handleClipReport, handleDecideClip } from "./moderation/handlers.js";
+import { adminClipStore } from "./moderation/publish.js";
+
+/**
+ * Shared defaults for every v2 function in this file.
+ *
+ * `setGlobalOptions` replaces the defaults bag, so the runtime account is
+ * spread onto the options already shared by every export (region) instead of
+ * passed alone. Per-function options override a single field. None of the
+ * exports set `serviceAccount`, so the callables (`diceAction`,
+ * `decideClipModeration`), the schedule (`diceSweep`), and the Firestore
+ * triggers (`onGameCompleted`, `moderateNewClip`, `moderateClipReport`) all
+ * inherit this account.
+ *
+ * The default Compute Engine service account
+ * (`665573979824-compute@developer.gserviceaccount.com`) was deleted on
+ * sk8hub-d7806. A deploy that leaves the runtime identity unset fails with
+ * "Service account ... was not found". Live functions already run as the
+ * App Engine default account, and the deployer has
+ * `roles/iam.serviceAccountUser` on it.
+ */
+const globalOptions: GlobalOptions = {
+  region: "us-central1",
+};
+
+setGlobalOptions({
+  ...globalOptions,
+  serviceAccount: "sk8hub-d7806@appspot.gserviceaccount.com",
+});
 
 /**
  * The app uses the named Firestore database "skatehubba", NOT the (default)
@@ -20,6 +51,14 @@ const DATABASE_ID = "skatehubba";
 initializeApp();
 
 /**
+ * XP kill switch. Default off. While off, only uids in XP_TESTER_UIDS
+ * (comma-separated) earn XP on their own side of a close-out. Set both at
+ * deploy time; they are not read from the client. See docs/XP_LEVELS.md.
+ */
+const xpEnabled = defineBoolean("XP_ENABLED", { default: false });
+const xpTesterUids = defineString("XP_TESTER_UIDS", { default: "" });
+
+/**
  * Reconcile win/loss counters when a game reaches a terminal state.
  *
  * Fires on every games/{gameId} update but fast-returns unless the doc is a
@@ -28,7 +67,14 @@ initializeApp();
  * this pre-check only avoids opening a transaction for unrelated updates.
  */
 export const onGameCompleted = onDocumentUpdated(
-  { document: "games/{gameId}", database: DATABASE_ID, region: "us-central1" },
+  {
+    document: "games/{gameId}",
+    database: DATABASE_ID,
+    region: "us-central1",
+    // A thrown close-out is retried. applyGameStats re-checks statsApplied
+    // inside the transaction, so a second run does not award twice.
+    retry: true,
+  },
   async (event): Promise<void> => {
     const after = event.data?.after.data();
     if (!after) return;
@@ -40,7 +86,10 @@ export const onGameCompleted = onDocumentUpdated(
 
     if (!isTerminal || !hasWinner || after.statsApplied === true) return;
 
-    await applyGameStats(getFirestore(DATABASE_ID), event.params.gameId);
+    await applyGameStats(getFirestore(DATABASE_ID), event.params.gameId, {
+      enabled: xpEnabled.value(),
+      testers: xpTesterUids.value(),
+    });
   },
 );
 
@@ -69,3 +118,85 @@ export const diceAction = onCall({ region: "us-central1", enforceAppCheck: false
 export const diceSweep = onSchedule({ schedule: "every 15 minutes", region: "us-central1" }, async () => {
   await sweepExpiredDiceGames(adminDiceDb(getFirestore(DATABASE_ID)), Date.now());
 });
+
+/**
+ * Pro blessing kill switch. Default off. While off, only uids in
+ * PRO_BLESSING_TESTER_UIDS can bless or answer a blessing; admin revoke
+ * always works. A pro badge cannot be earned: this callable is the only
+ * non-admin path that sets isVerifiedPro. See docs/PRO_BLESSING.md.
+ */
+const proBlessingEnabled = defineBoolean("PRO_BLESSING_ENABLED", { default: false });
+const proBlessingTesterUids = defineString("PRO_BLESSING_TESTER_UIDS", { default: "" });
+const proBlessingLimit = defineInt("PRO_BLESSING_LIMIT", { default: 2 });
+const proBlessingWindowDays = defineInt("PRO_BLESSING_WINDOW_DAYS", { default: 30 });
+const proBlessingMinAccountDays = defineInt("PRO_BLESSING_MIN_ACCOUNT_DAYS", { default: 30 });
+
+export const proBlessing = onCall({ region: "us-central1", enforceAppCheck: false }, (request) =>
+  handleBlessingCall(request, {
+    enabled: proBlessingEnabled.value(),
+    testers: proBlessingTesterUids.value(),
+    nowMs: Date.now(),
+    db: adminDiceDb(getFirestore(DATABASE_ID)),
+    config: {
+      limit: proBlessingLimit.value(),
+      windowDays: proBlessingWindowDays.value(),
+      minAccountAgeDays: proBlessingMinAccountDays.value(),
+      offerTtlDays: 14,
+    },
+  }),
+);
+
+/**
+ * Public-clip screener. Default off. While off, pending clips are left
+ * alone (the client flag stays off too, so new clips are not pending).
+ * Video Intelligence can run for a few minutes on a short clip.
+ */
+const moderationEnabled = defineBoolean("MODERATION_ENABLED", { default: false });
+const moderationSentryDsn = defineString("SENTRY_DSN", { default: "" });
+
+export const moderateNewClip = onDocumentCreated(
+  {
+    document: "clips/{clipId}",
+    database: DATABASE_ID,
+    region: "us-central1",
+    timeoutSeconds: 300,
+    memory: "512MiB",
+  },
+  async (event): Promise<void> => {
+    await handleClipCreated(
+      {
+        db: getFirestore(DATABASE_ID),
+        enabled: moderationEnabled.value(),
+        sentryDsn: moderationSentryDsn.value(),
+        media: adminClipStore(),
+      },
+      event.params.clipId,
+      event.data?.data(),
+    );
+  },
+);
+
+/** Count distinct reporters and auto-hide a public clip once the threshold is met. */
+export const moderateClipReport = onDocumentCreated(
+  { document: "reports/{reportId}", database: DATABASE_ID, region: "us-central1", timeoutSeconds: 60 },
+  async (event): Promise<void> => {
+    await handleClipReport(
+      {
+        db: getFirestore(DATABASE_ID),
+        enabled: moderationEnabled.value(),
+        sentryDsn: moderationSentryDsn.value(),
+        media: adminClipStore(),
+      },
+      event.data?.data(),
+      Date.now(),
+    );
+  },
+);
+
+/**
+ * Admin keep / remove. Not gated by MODERATION_ENABLED so a clip already in
+ * review can still be cleared after the screener is switched off.
+ */
+export const decideClipModeration = onCall({ region: "us-central1", enforceAppCheck: false }, (request) =>
+  handleDecideClip(request, getFirestore(DATABASE_ID), adminClipStore()),
+);

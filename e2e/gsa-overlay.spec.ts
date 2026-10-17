@@ -42,6 +42,33 @@ async function overlayPad(page: Page): Promise<number> {
   return page.evaluate(() => parseFloat(getComputedStyle(document.body).paddingTop) || 0);
 }
 
+/**
+ * The boot landing paints the hero before the display font swaps in and
+ * before the entrance slide finishes. Those two moves shift the Sign in
+ * button by about 40px, so each browser has to be measured at rest.
+ */
+async function settleLandingChrome(page: Page): Promise<void> {
+  await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+  });
+  await page.waitForFunction(() => {
+    if (document.fonts.status !== "loaded") return false;
+    const signIn = Array.from(document.querySelectorAll("button")).find((el) => el.textContent?.trim() === "Sign in");
+    if (!signIn) return false;
+    let node: Element | null = signIn;
+    while (node) {
+      const pending = node.getAnimations().some((animation) => {
+        const iterations = animation.effect?.getTiming().iterations;
+        return iterations !== Infinity && animation.playState !== "finished";
+      });
+      if (pending) return false;
+      node = node.parentElement;
+    }
+    return true;
+  });
+}
+
 /** Safari and Chrome iOS keep a 0 inset. The Google app is the only one that pads. */
 function expectGsaOnlyPad(pad: Map<string, number>, phoneWidth: number): number {
   const safariPad = pad.get(`safari:${phoneWidth}`) ?? -1;
@@ -67,6 +94,7 @@ test("landing chrome stays put in Safari and Chrome iOS and clears the bar in th
       const page = await openPhone(browser, agent.ua, phone);
       await page.goto("/");
       await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible();
+      await settleLandingChrome(page);
       const nav = await page.getByRole("navigation", { name: "Primary" }).boundingBox();
       const signIn = await page.getByRole("button", { name: "Sign in", exact: true }).boundingBox();
       expect(nav).not.toBeNull();

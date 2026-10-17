@@ -40,6 +40,15 @@ export function isDiceEnabled(): boolean {
 }
 
 /**
+ * XP, levels, and the achievements ribbon. Separate from the extras switch:
+ * extras are already on in production, and turning them on must not surface
+ * levels. Literal "true" only. The server switch is XP_ENABLED.
+ */
+export function isXpEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_XP_ENABLED);
+}
+
+/**
  * Sign in with Apple. Off until the Firebase Apple provider is enabled.
  * Literal "true" only — the website and Android stay on Google + email
  * until then. The iOS store build sets this so App Review sees the button.
@@ -65,4 +74,32 @@ export function isRefereeEnabled(): boolean {
  */
 export function isTrickPickerEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_TRICK_PICKER_ENABLED);
+}
+
+/**
+ * Public-clip moderation. Off until the Video Intelligence function is
+ * deployed. Anything except the literal string "true" keeps uploads
+ * visible immediately, which is today's behavior.
+ */
+export function isClipModerationEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_CLIP_MODERATION_ENABLED);
+}
+
+/**
+ * Pro profile showcase (hero, bio, sponsors, signature tricks, "Play a pro")
+ * and the admin Pro tools tab. Off in production; while off, admins still see
+ * it so the content can be reviewed before it goes public. Literal "true" only.
+ */
+export function isProProfilesEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_PRO_PROFILES);
+}
+
+/**
+ * Pro blessing: a verified pro turns another skater pro (the only non-admin
+ * way to get the badge). Off by default; the proBlessing callable has its own
+ * server switch (PRO_BLESSING_ENABLED / PRO_BLESSING_TESTER_UIDS), which is
+ * the real gate. Literal "true" only.
+ */
+export function isProBlessingEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_PRO_BLESSING);
 }

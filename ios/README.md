@@ -91,14 +91,11 @@ npm run cap:run:ios          # wraps `cap run ios`
 
 ### Releasing to TestFlight
 
-```bash
-npm run build && npx cap sync ios
-bundle exec fastlane ios beta
-```
-
-The `beta` lane expects `APP_STORE_CONNECT_API_KEY_PATH` to be exported and
-fastlane match credentials to be configured via CI secrets. See
-`fastlane/Fastfile` for the full lane definitions.
+You do not need a Mac. Follow [`docs/IOS_RELEASE.md`](../docs/IOS_RELEASE.md):
+run **iOS signing bootstrap** once, then **iOS TestFlight**. The TestFlight
+workflow builds the web bundle, syncs Capacitor, signs with the stored
+certificate, and uploads. The build number is the latest TestFlight build
+for that version, plus one.
 
 ## When to re-run `npx cap sync ios`
 
@@ -143,9 +140,9 @@ native SDK inherits them via the sibling-SDK init pattern
 `x-release-please-version` marker and are listed as `extra-files` in
 `release-please-config.json`, so release-please bumps them with `package.json`
 when a release PR merges. `CFBundleVersion`
-is the build number; CI bumps it per TestFlight upload (Phase A4 automation
-will wire this up). If you release locally, bump both by hand and commit
-the change alongside the `package.json` bump.
+is the build number. The TestFlight workflow sets it to one higher than
+the newest TestFlight upload for that version. It does not commit the
+change.
 
 ## Troubleshooting
 

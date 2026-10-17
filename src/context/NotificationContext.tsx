@@ -51,9 +51,11 @@ export interface AppNotification {
    * (judge_invite collapses to "general").
    */
   sourceType?: string;
+  /** In-app path opened from the bell, such as a clip appeal. */
+  appealPath?: string;
 }
 
-interface NotifyOpts {
+export interface NotifyOpts {
   type: NotificationType;
   title: string;
   message: string;
@@ -61,6 +63,7 @@ interface NotifyOpts {
   gameId?: string;
   firestoreId?: string;
   sourceType?: string;
+  appealPath?: string;
 }
 
 interface NotificationContextValue {
@@ -166,6 +169,7 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
       gameId: opts.gameId,
       firestoreId: opts.firestoreId,
       sourceType: opts.sourceType,
+      ...(opts.appealPath ? { appealPath: opts.appealPath } : {}),
     };
 
     // Add to persistent notifications
@@ -236,6 +240,7 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
           gameId: evt.gameId,
           firestoreId: evt.firestoreId,
           sourceType: evt.type,
+          ...(evt.appealPath ? { appealPath: evt.appealPath } : {}),
         });
       }
       if (additions.length === 0) return prev;

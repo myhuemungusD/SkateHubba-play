@@ -61,6 +61,8 @@ updates:
   # NOTE: these PRs edit `uses:` pins inside .github/workflows/**, so each one
   # trips the `verify-workflow-changes` warning in pr-gate.yml by design —
   # that warning is the intended maintainer-review signal, not a failure.
+  # A workflow file that is not on that job's allowlist fails the check.
+  # Pin bumps only edit files already on the list.
   # `directories` (not `directory`) so the pins inside the local composite
   # action (.github/actions/*/action.yml) are kept current too; a plain
   # `directory: "/"` only scans .github/workflows.

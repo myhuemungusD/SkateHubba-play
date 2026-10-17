@@ -2,32 +2,21 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Shared document-lookup helpers (pure aliases for get/getAfter/exists/existsAfter).
+    function fsGet(c, id) { return get(/databases/$(database)/documents/$(c)/$(id)); }
+    function fsGetAfter(c, id) { return getAfter(/databases/$(database)/documents/$(c)/$(id)); }
+    function fsExists(c, id) { return exists(/databases/$(database)/documents/$(c)/$(id)); }
+    function fsExistsAfter(c, id) { return existsAfter(/databases/$(database)/documents/$(c)/$(id)); }
+
 
     // ── Project bucket name (audit S5+S12, PR-B) ──
-    // Hardcoded production bucket, REGEX-ESCAPED. Used exclusively
-    // inside `.matches(...)` predicates (avatar URL, video URL pins).
-    // The literal bucket is `sk8hub-d7806.firebasestorage.app`; the
-    // `.` characters are escaped to `\.` so that a similarly-named
-    // attacker bucket (e.g. `sk8hub-d7806xfirebasestoragexapp`) cannot
-    // satisfy the wildcard a raw dot would create. If the project is
-    // ever migrated to a new bucket, update this constant in lockstep
-    // with .firebaserc and VITE_FIREBASE_STORAGE_BUCKET — and remember
-    // to escape every `.` in the new value.
+    // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r1
     function FIREBASE_BUCKET() {
       return 'sk8hub-d7806\\.firebasestorage\\.app';
     }
 
     // Fully-assembled regex literals. The match-resolution `allow update`
-    // rule sits right under Firestore's per-evaluation 1000-expression
-    // ceiling once main's turn-order seize guard and this PR's video-URL
-    // pins are stacked; assembling the pattern via runtime '+'
-    // concatenation of FIREBASE_BUCKET() multiplied the expression count
-    // at every call site and tipped it over. Returning the finished
-    // literal (still REGEX-ESCAPED, still derived from the same bucket
-    // value — update both in lockstep with FIREBASE_BUCKET above) keeps
-    // each `.matches(...)` to a single string expression.
-    //   • download-URL form only (getDownloadURL output) — used by
-    //     matchVideoUrl / avatar pins.
+    // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r2
     function BUCKET_DL_URL_RE() {
       return '^https://firebasestorage\\.googleapis\\.com/v0/b/sk8hub-d7806\\.firebasestorage\\.app/.+';
     }
@@ -61,32 +50,9 @@ service cloud.firestore {
     }
 
     // ── Ban gate (moderation) ──
-    // Enforcement keys off a TOMBSTONE doc at `bans/{uid}` — never off a
-    // field on the user's own profile. That distinction is load-bearing:
-    // `users/{uid}` is owner-DELETABLE (account-deletion flow), so a
-    // `users/{uid}.banned` flag was trivially bypassable by deleting the
-    // profile (which alone re-opens comments + votes, since a missing
-    // profile cannot be evidence of a ban) and then re-creating it clean —
-    // the create rule forbids seeding `banned`, so the account came back
-    // unbanned and clip uploads resumed. `bans/{uid}` is outside the
-    // owner's reach entirely: admin-only create/delete, owner denied
-    // everything, so the ban survives profile deletion and re-signup on
-    // the same UID.
-    //
-    // A banned account keeps READ access but loses every UGC-producing
-    // write: user-source clips, clipVotes (cast + flip) and clip comments.
-    //
-    // DELIBERATELY NOT APPLIED TO GAME WRITES: /games rules already sit
-    // near the 10-document-access / 1000-expression ceiling (see the note
-    // above BUCKET_DL_URL_RE), and adding a lookup to every turn action
-    // would tip them over. Accepted gap: a banned user can finish an
-    // in-flight game. Moderation revokes their feed presence, which is the
-    // public surface that matters.
-    //
-    // Single `exists()` by design — one document access, no `get()`, which
-    // keeps the user-clip create path (its heaviest caller) inside budget.
+    // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r3
     function notBanned() {
-      return !exists(/databases/$(database)/documents/bans/$(request.auth.uid));
+      return !fsExists('bans', request.auth.uid);
     }
 
     function isPlayer(game) {
@@ -138,25 +104,25 @@ service cloud.firestore {
     }
 
     // ── User-uploaded clip video pin ──
-    // A user clip is filmed outside a game, so its bytes live under
-    // `userClips/{uid}/` in this project's bucket (see storage.rules).
-    // Pinning the URL to the CALLER's own prefix stops a user from
-    // publishing a feed entry that renders another user's (or another
-    // project's) object. Download-URL form only — `getDownloadURL()` is
-    // the only way the client obtains this value; the bucket-as-host CDN
-    // form is deliberately not accepted here (game clips need it because
-    // they copy the games doc value verbatim; user clips do not).
-    //
-    // FIREBASE_BUCKET() is already REGEX-ESCAPED at its definition (every
-    // `.` is `\\.`), so interpolating it here is safe — the same pattern
-    // the profileImageUrl pins use. Keep it escaped if that constant is
-    // ever changed, or a look-alike bucket satisfies the wildcard.
+    // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r4
     function userClipVideoUrlOk(url, uid) {
       return url is string
         && url.size() <= 2048
         && url.matches(
           '^https://firebasestorage\\.googleapis\\.com/v0/b/' + FIREBASE_BUCKET() +
           '/o/userClips%2F' + uid + '%2F[A-Za-z0-9_-]+\\.(webm|mp4)(\\?.*)?$'
+        );
+    }
+
+    // Approved playback lives under approvedClips/{uid}/ so a signed-in
+    // reader can fetch it without a per-request Firestore lookup. Pending
+    // clips must not point here.
+    function userClipPublicUrlOk(url, uid) {
+      return url is string
+        && url.size() <= 2048
+        && url.matches(
+          '^https://firebasestorage\\.googleapis\\.com/v0/b/' + FIREBASE_BUCKET() +
+          '/o/approvedClips%2F' + uid + '%2F[A-Za-z0-9_-]+\\.(webm|mp4)(\\?.*)?$'
         );
     }
 
@@ -171,10 +137,19 @@ service cloud.firestore {
     // update rule, so it cannot be back-dated.
     function clipRateLimitOk() {
       return (
-        !('lastClipCreatedAt' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
-        || request.time > get(/databases/$(database)/documents/users/$(request.auth.uid)).data.lastClipCreatedAt + duration.value(30, 's')
+        !('lastClipCreatedAt' in fsGet('users', request.auth.uid).data)
+        || request.time > fsGet('users', request.auth.uid).data.lastClipCreatedAt + duration.value(30, 's')
       )
-      && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.lastClipCreatedAt == request.time;
+      && fsGetAfter('users', request.auth.uid).data.lastClipCreatedAt == request.time;
+    }
+
+    // ── Spot creation rate limit (30s) ── mirrors clipRateLimitOk().
+    function spotRateLimitOk() {
+      return (
+        !('lastSpotCreatedAt' in fsGet('users', request.auth.uid).data)
+        || request.time > fsGet('users', request.auth.uid).data.lastSpotCreatedAt + duration.value(30, 's')
+      )
+      && fsGetAfter('users', request.auth.uid).data.lastSpotCreatedAt == request.time;
     }
 
     // ── Clip vote aggregates ──
@@ -232,35 +207,45 @@ service cloud.firestore {
           ))
       );
     }
+    // A clipVotes create must move the matching counter +1 in the same
+    // write. Without this, a bare create followed by a paired delete
+    // drains the tally: the delete still requires -1.
+    function clipVoteCreateTallyOk() {
+      return (
+        (request.resource.data.value == 1
+          && fsGetAfter('clips', request.resource.data.clipId).data.get('upvoteCount', 0)
+             == fsGet('clips', request.resource.data.clipId).data.get('upvoteCount', 0) + 1
+          && fsGetAfter('clips', request.resource.data.clipId).data.get('downvoteCount', 0)
+             == fsGet('clips', request.resource.data.clipId).data.get('downvoteCount', 0))
+        || (request.resource.data.value == -1
+          && fsGetAfter('clips', request.resource.data.clipId).data.get('downvoteCount', 0)
+             == fsGet('clips', request.resource.data.clipId).data.get('downvoteCount', 0) + 1
+          && fsGetAfter('clips', request.resource.data.clipId).data.get('upvoteCount', 0)
+             == fsGet('clips', request.resource.data.clipId).data.get('upvoteCount', 0))
+      );
+    }
+    // Same shape for a dispute verdict: the matching tally goes +1 and the
+    // other tally stays put. getAfter sees the dispute write in this commit.
+    function disputeVoteCreateTallyOk() {
+      return (
+        (request.resource.data.verdict == 'land'
+          && fsGetAfter('disputes', request.resource.data.disputeId).data.landVotes
+             == fsGet('disputes', request.resource.data.disputeId).data.get('landVotes', 0) + 1
+          && fsGetAfter('disputes', request.resource.data.disputeId).data.get('bailVotes', 0)
+             == fsGet('disputes', request.resource.data.disputeId).data.get('bailVotes', 0))
+        || (request.resource.data.verdict == 'bail'
+          && fsGetAfter('disputes', request.resource.data.disputeId).data.bailVotes
+             == fsGet('disputes', request.resource.data.disputeId).data.get('bailVotes', 0) + 1
+          && fsGetAfter('disputes', request.resource.data.disputeId).data.get('landVotes', 0)
+             == fsGet('disputes', request.resource.data.disputeId).data.get('landVotes', 0))
+      );
+    }
 
     // ── Stats are server-only (client fan-out lockdown) ──
-    // wins/losses/lastStatsGameId used to be closed out by client writes
-    // (the catch-up loop in the former src/context/GameContext.tsx, gated
-    // here by canPeerCloseStats / ownerCanCloseWins / ownerCanCloseLosses).
-    // That fan-out corrupted production counters, so it has been removed.
-    // Stats are now written EXCLUSIVELY server-side: the applyGameStats
-    // Cloud Function (admin SDK, bypasses these rules) increments
-    // users/{uid}.wins/.losses exactly once per terminal game, and a
-    // one-time admin backfill recomputes counters + deletes the dead
-    // lastStatsGameId field. The client stat helpers are therefore gone;
-    // clients may never modify these fields (owner-update backstop below)
-    // and may never forge the game-side statsApplied flag (games rules).
+    // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r5
 
     // ── turnHistory growth bounds ──
-    // Every write path that legitimately appends to `games.turnHistory`
-    // (match resolution, dispute resolution, Call BS resolution, expired
-    // dispute auto-accept, expired setReview auto-clear) must satisfy BOTH:
-    //
-    //   (1) size grows by at most ONE entry per write — otherwise a player
-    //       could `arrayUnion` a giant batch of fabricated TurnRecords.
-    //   (2) absolute size stays ≤ 200 — a SKATE game tops out at roughly
-    //       5 letters × 2 players × ~10 attempts per letter, so 200 is a
-    //       generous ceiling that still protects against the 1 MB
-    //       Firestore doc limit when an attacker inflates TurnRecord blobs.
-    //
-    // Accepts the same "absent on both sides" and "unchanged" shapes that
-    // the non-growth branches use, so write paths that DON'T append
-    // (e.g. a judge ruling that doesn't add a turn) still pass cleanly.
+    // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r6
     function turnHistoryGrowthOk() {
       return (
         (!('turnHistory' in resource.data) && !('turnHistory' in request.resource.data))
@@ -294,29 +279,61 @@ service cloud.firestore {
       );
     }
 
+    // Same length, or both absent. A same-length rewrite is still denied by
+    // turnHistoryGrowthOk, which compares the lists only after the sizes
+    // match and skips that compare on an append. This helper must not walk
+    // the list: a full compare on every game-update branch crosses
+    // Firestore's 1000-expression cap (the forfeit write is the one that
+    // pays for the branches ahead of it).
+    function turnHistoryUnchanged() {
+      return (!('turnHistory' in resource.data) && !('turnHistory' in request.resource.data))
+        || ('turnHistory' in resource.data
+            && 'turnHistory' in request.resource.data
+            && resource.data.turnHistory is list
+            && request.resource.data.turnHistory is list
+            && request.resource.data.turnHistory.size() == resource.data.turnHistory.size());
+    }
+
+    // Unchanged history, including content, with the 200-entry ceiling.
+    // One size-gated compare. Used where an append is not a legal outcome,
+    // so the growth helper's +1 arm would be evaluated and then rejected.
+    function turnHistoryFrozenOk() {
+      return (!('turnHistory' in resource.data) && !('turnHistory' in request.resource.data))
+        || ('turnHistory' in resource.data
+            && 'turnHistory' in request.resource.data
+            && resource.data.turnHistory is list
+            && request.resource.data.turnHistory is list
+            && request.resource.data.turnHistory.size() <= 200
+            && request.resource.data.turnHistory.size() == resource.data.turnHistory.size()
+            && request.resource.data.turnHistory == resource.data.turnHistory);
+    }
+
+    // The three fields stats close-out trusts, read off the one new entry.
+    function appendedEntryAgrees(entry, landed, letterTo, matcherUid) {
+      return entry.landed == landed
+        && entry.letterTo == letterTo
+        && entry.matcherUid == matcherUid;
+    }
+
+    function lastTurnAgrees(landed, letterTo, matcherUid) {
+      return 'turnHistory' in request.resource.data
+        && request.resource.data.turnHistory is list
+        && request.resource.data.turnHistory.size() > 0
+        && (
+          !('turnHistory' in resource.data)
+          || (resource.data.turnHistory is list
+              && request.resource.data.turnHistory.size() == resource.data.turnHistory.size() + 1)
+        )
+        && appendedEntryAgrees(
+          request.resource.data.turnHistory[request.resource.data.turnHistory.size() - 1],
+          landed,
+          letterTo,
+          matcherUid
+        );
+    }
+
     // ── Users ──
-    // The `users/{uid}` document holds ONLY fields that are safe to expose
-    // cross-user (username, stance, wins/losses, isVerifiedPro, …). Any
-    // sensitive field — email, emailVerified, dob, parentalConsent, and
-    // the `fcmTokens` push-registration list — lives in the private
-    // subcollection `users/{uid}/private/*` and is readable only by the
-    // owning user. Firestore rules cannot filter fields on reads, so the
-    // split at the document boundary is the enforcement mechanism.
-    //
-    // Historical note: between the April 2026 public/private split rollout
-    // and the May 2026 backfill completion, the update rule ran in a
-    // transitional form that accepted each sensitive field IFF its value
-    // was unchanged from `resource.data` — necessary because legacy docs
-    // still carried those fields inline and `request.resource.data` is the
-    // merged post-write state. `scripts/migrate-users-private.mjs`
-    // completed in production in May 2026, removing every legacy inline
-    // occurrence, so the strict `!('X' in request.resource.data)` form has
-    // been restored on `update` (matching the long-standing `create` form).
-    //
-    // Username constraints MUST match `USERNAME_MIN`, `USERNAME_MAX`, and
-    // `USERNAME_RE` in src/services/users.ts. Rules are the source of truth
-    // at the security boundary; the TS constants exist so the UI can reject
-    // invalid input before a round-trip. Update BOTH when changing limits.
+    // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r7
     match /users/{uid} {
       // Split read into get/list deliberately. `get` is public so a shared
       // `/player/{uid}` link resolves for a signed-OUT visitor — the link
@@ -330,27 +347,20 @@ service cloud.firestore {
       allow list: if isSignedIn();
       allow create: if isOwner(uid)
         // One profile per UID — prevent a race condition from overwriting an existing profile
-        && !exists(/databases/$(database)/documents/users/$(uid))
+        && !fsExists('users', uid)
         && request.resource.data.uid == uid
+        // Absence is a deny, not an evaluation error. A present clock must
+        // be request.time — a client cannot backdate the profile.
+        && 'createdAt' in request.resource.data
+        && request.resource.data.createdAt == request.time
         && request.resource.data.username is string
         && request.resource.data.username.size() >= 3  // USERNAME_MIN
         && request.resource.data.username.size() <= 20 // USERNAME_MAX
         // Enforce lowercase alphanumeric + underscore only (matches client-side normalisation)
         && request.resource.data.username.matches('[a-z0-9_]+') // USERNAME_RE body
         // ── Username reservation binding (uniqueness bypass guard) ──
-        // Shape validation above only constrains the STRING; it never
-        // required a companion usernames/{username} reservation to exist.
-        // The legitimate client (src/services/users.ts) always writes both
-        // docs in the same runTransaction, but nothing server-side enforced
-        // that pairing — a direct write could mint users/{uid} with a
-        // username someone else already holds, since the reservation
-        // collection was never consulted. Require the SAME atomic write to
-        // also own (create-or-already-own) usernames/{username}; if that
-        // doc already belongs to a different uid, its `allow update: if
-        // false` rule blocks the write outright, so this getAfter can only
-        // resolve to `uid`. Mirrors the getAfter idiom already used by
-        // clipRateLimitOk() below.
-        && getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.username)).data.uid == uid
+        // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r8
+        && fsGetAfter('usernames', request.resource.data.username).data.uid == uid
         // wins/losses must start at zero if present (prevents leaderboard inflation
         // by injecting arbitrary stats at profile creation time)
         && (!('wins' in request.resource.data) || request.resource.data.wins == 0)
@@ -388,6 +398,19 @@ service cloud.firestore {
         && (!('gamesWithDuration' in request.resource.data) || request.resource.data.gamesWithDuration == 0)
         && (!('gamesJudged' in request.resource.data) || request.resource.data.gamesJudged == 0)
         && (!('turnsJudged' in request.resource.data) || request.resource.data.turnsJudged == 0)
+        // XP counters are server-written. A signup that omits them is fine;
+        // a signup that seeds a non-zero value is not. `level` may only start
+        // at 1. `xpDay` and the clip-binding id stay absent.
+        && (!('xp' in request.resource.data) || request.resource.data.xp == 0)
+        && (!('level' in request.resource.data) || request.resource.data.level == 1)
+        && !('xpDay' in request.resource.data)
+        && (!('xpToday' in request.resource.data) || request.resource.data.xpToday == 0)
+        && (!('uniqueOpponents' in request.resource.data) || request.resource.data.uniqueOpponents == 0)
+        && (!('spotsPlayed' in request.resource.data) || request.resource.data.spotsPlayed == 0)
+        && (!('gamesAtMySpots' in request.resource.data) || request.resource.data.gamesAtMySpots == 0)
+        && (!('disputeVotesCast' in request.resource.data) || request.resource.data.disputeVotesCast == 0)
+        && (!('clipsPosted' in request.resource.data) || request.resource.data.clipsPosted == 0)
+        && !('clipsPostedClipId' in request.resource.data)
         // recentResults is a rolling "W"/"L" list (max 10), not a counter — the
         // zero-seed equivalent is an empty list.
         && (!('recentResults' in request.resource.data) || request.resource.data.recentResults == [])
@@ -396,6 +419,9 @@ service cloud.firestore {
         && !('isVerifiedPro' in request.resource.data)
         && !('verifiedBy' in request.resource.data)
         && !('verifiedAt' in request.resource.data)
+        // Pro-authored profile fields: never at creation (no one is a pro yet)
+        && !('proBio' in request.resource.data)
+        && !('proSignatureTricks' in request.resource.data)
         // Sensitive fields MUST live in users/{uid}/private/* instead of
         // the public profile doc. Strict on CREATE — no new doc may
         // introduce them. (Legacy docs are handled by the update rule below.)
@@ -434,38 +460,7 @@ service cloud.firestore {
         );
       allow update: if isOwner(uid)
         // ── Privileged-field self-modify guard (F2 — defense in depth) ──
-        // `affectedKeys()` is the set of fields whose VALUE actually
-        // changed between resource.data and request.resource.data. By
-        // gating on `.hasAny([...])` (not `.hasOnly`) we deny any owner
-        // update that mutates one of the immutable / admin-only fields
-        // below, regardless of which other fields the same write touches.
-        //
-        // Critically, this works alongside the transitional legacy-field
-        // relaxation a few lines down: a legacy doc carrying e.g. `email`
-        // inline contributes that field to request.resource.data on every
-        // partial update, but it is NOT in affectedKeys() so this guard
-        // ignores it. The per-field guards below remain the canonical
-        // value-equality check; this clause is the comprehensive backstop
-        // that closes self-modify attempts on fields the owner must never
-        // touch (createdAt rewrite, isVerifiedPro grant, wins/losses
-        // inflation, etc.).
-        //
-        // Field rationale:
-        //   uid, username, createdAt — identity, immutable post-create.
-        //   isVerifiedPro, verifiedBy, verifiedAt — admin/console only.
-        //   email, emailVerified, dob, parentalConsent, fcmTokens —
-        //     legacy sensitive fields; once moved to /private they must
-        //     never reappear or be re-written on the public doc.
-        //   wins, losses, lastStatsGameId, gamesPlayed, currentWinStreak,
-        //     bestWinStreak, lettersGiven, lettersTaken,
-        //     tricksDisputed, disputesRaised, disputesRight,
-        //     disputesWrong — stats are written exclusively server-side
-        //     (applyGameStats Cloud Function + the one-time admin backfill for
-        //     win/streak counters; the dispute referee for the four dispute
-        //     counters); clients may never modify them. affectedKeys() only contains
-        //     fields whose VALUE changes, so legacy docs still carrying
-        //     lastStatsGameId keep working for benign profile edits
-        //     (stance/avatar) that don't touch it.
+        // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r9
         && !(request.resource.data.diff(resource.data).affectedKeys()
             .hasAny(['uid', 'username', 'createdAt',
                      'banned',
@@ -478,7 +473,60 @@ service cloud.firestore {
                      'tricksDisputed', 'disputesRaised', 'disputesRight', 'disputesWrong',
                      'cleanWins', 'tricksLanded', 'tricksFailed', 'forfeitLosses',
                      'comebackWins', 'totalGameDurationMs', 'gamesWithDuration',
-                     'recentResults', 'gamesJudged', 'turnsJudged']))
+                     'recentResults', 'gamesJudged', 'turnsJudged',
+                     'xp', 'level', 'xpDay', 'xpToday',
+                     'uniqueOpponents', 'spotsPlayed', 'gamesAtMySpots',
+                     'disputeVotesCast']))
+        // clipsPosted is the one client-writable exception: exactly +1, and
+        // only in the same write as a brand-new user-source clip whose
+        // playerUid is the caller. clipsPostedClipId names that clip so the
+        // rule can see it. Any other change to either field is denied.
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['clipsPosted', 'clipsPostedClipId'])
+          || (
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasAll(['clipsPosted', 'clipsPostedClipId'])
+            && request.resource.data.clipsPosted is int
+            && request.resource.data.clipsPosted == resource.data.get('clipsPosted', 0) + 1
+            && request.resource.data.clipsPostedClipId is string
+            && request.resource.data.clipsPostedClipId.size() > 0
+            && request.resource.data.clipsPostedClipId.size() <= 128
+            && !fsExists('clips', request.resource.data.clipsPostedClipId)
+            && fsGetAfter('clips', request.resource.data.clipsPostedClipId).data.source == 'user'
+            && fsGetAfter('clips', request.resource.data.clipsPostedClipId).data.playerUid == request.auth.uid
+            // A pending, rejected, or removed clip does not count. The
+            // moderation function adds one when it approves, and takes one
+            // back when that approval is undone.
+            && fsGetAfter('clips', request.resource.data.clipsPostedClipId).data.moderationStatus == 'active'
+            && !('moderation' in fsGetAfter('clips', request.resource.data.clipsPostedClipId).data)
+          )
+        )
+        // Pro-authored fields: only an already-verified pro may write their
+        // own bio (string <= 280) and signature tricks (list of <= 3 short
+        // strings). Every other pro power stays server/admin-only.
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['proBio', 'proSignatureTricks'])
+          || (
+            resource.data.get('isVerifiedPro', false) == true
+            && (!('proBio' in request.resource.data)
+                || (request.resource.data.proBio is string
+                    && request.resource.data.proBio.size() <= 280))
+            && (!('proSignatureTricks' in request.resource.data)
+                || (request.resource.data.proSignatureTricks is list
+                    && request.resource.data.proSignatureTricks.size() <= 3
+                    && (request.resource.data.proSignatureTricks.size() < 1
+                        || (request.resource.data.proSignatureTricks[0] is string
+                            && request.resource.data.proSignatureTricks[0].size() <= 40))
+                    && (request.resource.data.proSignatureTricks.size() < 2
+                        || (request.resource.data.proSignatureTricks[1] is string
+                            && request.resource.data.proSignatureTricks[1].size() <= 40))
+                    && (request.resource.data.proSignatureTricks.size() < 3
+                        || (request.resource.data.proSignatureTricks[2] is string
+                            && request.resource.data.proSignatureTricks[2].size() <= 40))))
+          )
+        )
         // Cannot change username or uid after creation
         && request.resource.data.username == resource.data.username
         && request.resource.data.uid == resource.data.uid
@@ -495,23 +543,7 @@ service cloud.firestore {
         && !('parentalConsent' in request.resource.data)
         && !('fcmTokens' in request.resource.data)
         // wins / losses / lastStatsGameId are NOT validated here — they are
-        // covered by the affectedKeys().hasAny([...]) immutable backstop
-        // above, which denies ANY owner write that changes their value.
-        // Stats are server-only now (applyGameStats Cloud Function + admin
-        // backfill); there is no client close-out path to gate.
-        // lastGameCreatedAt is the server-side 30s game-creation cooldown
-        // anchor (see /games create rule). Without this guard, a client
-        // could write a stale Timestamp (e.g. epoch 0) to instantly satisfy
-        // the `request.time > lastGameCreatedAt + 30s` check and spam games.
-        // `request.resource.data` reflects the merged post-write state, so
-        // a partial update that doesn't touch the field still carries the
-        // stored value through — the three accepted branches are:
-        //   (A) neither stored nor post-write have it (no cooldown state yet)
-        //   (B) both have it and the value is unchanged (untouched update)
-        //   (C) the new value equals request.time (client wrote
-        //       serverTimestamp()), which is what the game-create flow does
-        //       in the same batch as the game create (the /games create rule
-        //       requires it there via getAfter()).
+        // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r10
         && (
           (!('lastGameCreatedAt' in request.resource.data)
             && !('lastGameCreatedAt' in resource.data))
@@ -524,8 +556,9 @@ service cloud.firestore {
         // creation (see /spots create rule). Exact same attack surface and
         // exact same three-branch guard — kept in lockstep with
         // lastGameCreatedAt above. The spot-create flow writes this via
-        // `setDoc(…, { lastSpotCreatedAt: serverTimestamp() }, { merge: true })`
-        // in src/services/spots.ts after addDoc().
+        // `batch.set(…, { lastSpotCreatedAt: serverTimestamp() }, { merge: true })`
+        // in the same batch as the spot (src/services/spots.ts createSpot);
+        // the /spots create rule requires it via getAfter().
         && (
           (!('lastSpotCreatedAt' in request.resource.data)
             && !('lastSpotCreatedAt' in resource.data))
@@ -549,21 +582,7 @@ service cloud.firestore {
           || request.resource.data.lastClipCreatedAt == request.time
         )
         // ── profileImageUrl bucket + UID pinning (PR-B, audit S5+S12) ──
-        // The avatar download URL stored on the profile MUST point at this
-        // project's bucket (FIREBASE_BUCKET above) AND at the calling
-        // user's own UID — otherwise user A could phish opponents by
-        // pointing their public profile at a doppelgänger image hosted on
-        // another user's storage path or another project entirely.
-        //
-        // Three accepted shapes (gated on 'in keys()' so writes that don't
-        // touch the field pay nothing here):
-        //   (A) field absent on the post-write state → unchanged
-        //   (B) field explicitly null → fallback initial-circle / SVG path
-        //   (C) field is a string that matches the bucket+uid+ext regex
-        //
-        // The `(\\?.*)?$` tail accepts the standard `?alt=media&token=…`
-        // query the Firebase Storage CDN appends; without it, valid URLs
-        // would be rejected the moment the SDK fetched a download URL.
+        // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r11
         && (
           !('profileImageUrl' in request.resource.data.keys())
           || request.resource.data.profileImageUrl == null
@@ -576,25 +595,7 @@ service cloud.firestore {
           )
         );
       // ── Verified-Pro grant / revoke (admin custom claim) ──
-      // Deliberately a SEPARATE `allow update` clause: Firestore ORs allow
-      // rules, so the owner clause above is untouched — its
-      // affectedKeys().hasAny([...]) backstop still denies every client
-      // self-grant, and a non-admin's accepted set is byte-for-byte what it
-      // was before this clause existed. This is the ONLY client path that may
-      // change the three pro fields, and it may change NOTHING else:
-      // `hasOnly` pins the affected key set so an admin cannot ride a
-      // username rewrite or a wins inflation along in the same write.
-      // verifiedBy/verifiedAt are the audit trail — pinned to the acting
-      // admin and to server time so a grant can never be forged onto another
-      // moderator or back-dated.
-      //
-      // SELF-GRANT IS FORBIDDEN (`uid != request.auth.uid`): a single
-      // compromised admin token must not be able to mint its own Verified-Pro
-      // badge, and the four-eyes shape means every client-side grant is
-      // attributable to a DIFFERENT operator than its subject. Founder / first
-      // -admin self-verification is still possible out-of-band via
-      // scripts/grant-pro.ts, which runs on the Admin SDK and bypasses these
-      // rules entirely — that path is deliberately not client-reachable.
+      // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r12
       allow update: if isAdmin()
         && uid != request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys()
@@ -603,20 +604,7 @@ service cloud.firestore {
         && request.resource.data.verifiedBy == request.auth.uid
         && request.resource.data.verifiedAt == request.time;
       // ── Ban flag mirror (admin custom claim) ──
-      // NOT the enforcement point — `bans/{uid}` is (see notBanned()).
-      // This field is a DISPLAY mirror for the moderation console and
-      // profile badges, kept admin-writable so it can be maintained in the
-      // same operator flow. Because users/{uid} is owner-deletable, a ban
-      // recorded ONLY here would be shed by deleting and re-creating the
-      // profile; never gate a write on it.
-      //
-      // Mirrors the Verified-Pro clause above field-for-field, and for the
-      // same reasons: a separate `allow update` so the owner clause is
-      // untouched (its affectedKeys().hasAny([...]) backstop now lists
-      // 'banned', so an owner can neither ban anyone nor self-unban),
-      // `hasOnly(['banned'])` so a ban cannot ride along with a username
-      // rewrite, and `uid != request.auth.uid` so a single compromised
-      // admin token cannot quietly unban itself.
+      // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r13
       allow update: if isAdmin()
         && uid != request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['banned'])
@@ -631,17 +619,7 @@ service cloud.firestore {
       allow delete: if isOwner(uid);
 
       // ── Private profile (subcollection) ──
-      // Owner-only read/write surface for sensitive fields that must
-      // never leak cross-user: email, emailVerified, dob, parentalConsent,
-      // and the fcmTokens push-registration list. The canonical doc is
-      // `users/{uid}/private/profile`; {docId} is open in the matcher so
-      // a future split (e.g. `users/{uid}/private/fcm`) doesn't require
-      // a rules change, but every doc stays owner-only.
-      //
-      // The fcmTokens cap (≤10 entries, must be a list) moves with the
-      // field — prevents a compromised client from stuffing an unbounded
-      // blob into the push-token list, the same attack the previous
-      // guard on the public user doc closed.
+      // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r14
       match /private/{docId} {
         allow read: if isOwner(uid);
 
@@ -657,26 +635,7 @@ service cloud.firestore {
         }
 
         // ── Onboarding field shape validation ──
-        // The onboarding service (src/services/onboarding.ts) writes three
-        // fields here via setDoc(..., { merge: true }):
-        //   - onboardingTutorialVersion: int >= 0  (TUTORIAL_VERSION bump
-        //                                            is monotonic; null is
-        //                                            valid only via the
-        //                                            explicit reset path)
-        //   - onboardingCompletedAt:    serverTimestamp() | null | timestamp ≤ now+5s
-        //   - onboardingSkippedAt:      serverTimestamp() | null | timestamp ≤ now+5s
-        //
-        // Without these checks a malicious client can stuff arbitrary
-        // shapes ("attack", { nested: true }, etc.) into the private doc
-        // and wedge readers in src/services/onboarding.ts that do
-        // `typeof === "number"` / Timestamp duck-typing. Each predicate is
-        // gated on `field in request.resource.data` so unrelated writes
-        // (fcmTokens, emailVerified, etc.) pay zero validation cost.
-        //
-        // The serverTimestamp() sentinel is detected via the same idiom
-        // already in use elsewhere in this file (see lastGameCreatedAt /
-        // lastSpotCreatedAt above): when the client uses the sentinel,
-        // `request.resource.data.field == request.time`.
+        // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r15
         function onboardingTutorialVersionOk() {
           return !('onboardingTutorialVersion' in request.resource.data)
             || request.resource.data.onboardingTutorialVersion == null
@@ -818,6 +777,15 @@ service cloud.firestore {
         allow delete: if isOwner(uid) || isAdmin();
       }
 
+      // ── XP markers (opponent and spot first-seen flags) ──
+      // Server-written. The owner can list and delete them so account erasure
+      // still works. Clients cannot create or edit.
+      match /xpMarkers/{markerId} {
+        allow read: if isOwner(uid);
+        allow create, update: if false;
+        allow delete: if isOwner(uid);
+      }
+
       // ── Locker (subcollection) ──
       // Owned economy items (gear/cosmetics). Same posture as /achievements:
       // minted by the Admin SDK award pipeline or by an `admin: true` console
@@ -860,15 +828,7 @@ service cloud.firestore {
     }
 
     // ── Bans (moderation tombstones) ──
-    // The AUTHORITATIVE ban record, keyed by UID. Deliberately a top-level
-    // collection rather than a field on users/{uid}: the profile doc is
-    // owner-deletable and owner-recreatable, so any flag stored on it can
-    // be shed by deleting the account and signing up again on the same
-    // UID. This doc is unreachable by its subject in every verb, so a ban
-    // survives profile deletion, re-signup, and username changes.
-    //
-    // `notBanned()` reads this with a single exists() — the doc's mere
-    // presence is the ban. Fields are the moderation audit trail only.
+    // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r16
     match /bans/{uid} {
       // The subject may read their OWN ban so the client can explain why
       // a write was rejected. `list` is admin-only: a public listing would
@@ -923,67 +883,19 @@ service cloud.firestore {
     }
 
     // ── Match-resolution turn-order seize guard (P0) ──
-    // Extracted from the matching-phase `allow update` rule (PR
-    // claude/video-url-security) and flattened so the matching→* resolution
-    // write stays under Firestore's per-evaluation node ceiling once main's
-    // #373 seize guard and this PR's matchVideoUrl `.matches()` pin both apply.
-    // Cheap phase/status discriminators are checked first in each branch so the
-    // OR short-circuits before the costlier judgeActive()/opponentUid() calls.
-    //
-    // The accepted set is IDENTICAL to main's inline four-branch form — the
-    // shared `status == 'active' && winner == null` invariant of every
-    // non-completion outcome is hoisted once; completion (status == 'complete')
-    // is the lone remaining alternative. No new states are admitted. `cur` is
-    // resource.data, `nxt` is request.resource.data. Per-outcome pins:
-    //   • missed-continues (games.match.ts 315-321):
-    //       currentSetter UNCHANGED, turnNumber +1, currentTurn == currentSetter
-    //   • completion (312-314): currentSetter + turnNumber UNCHANGED,
-    //       winner = opponent of the player who hit 5 letters
-    //   • honor+landed (222-233): currentSetter ROTATES to the matcher
-    //       (opponentUid(currentSetter)), currentTurn follows, turnNumber +1
-    //   • judge landed→disputable (169-176) / Call BS→setReview
-    //       (games.judge.ts 45-51): currentSetter + turnNumber UNCHANGED,
-    //       currentTurn routes to the judge
+    // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r17
     function matchResolutionPinsOk(cur, nxt) {
       return (
         nxt.status == 'active' && nxt.winner == null && (
           // Missed — setter keeps the role, turnNumber +1, currentTurn pinned
-          // to the (unchanged) currentSetter.
+          // to the (unchanged) currentSetter. Letters change on this arm, so a
+          // landed claim (letters unchanged, roles swapped) cannot use it.
           (nxt.phase == 'setting'
            && nxt.currentSetter == cur.currentSetter
            && nxt.turnNumber == cur.turnNumber + 1
            && nxt.currentTurn == cur.currentSetter)
-          // Honor system + landed — roles swap; currentSetter ROTATES to the
-          // matcher, currentTurn follows, turnNumber +1, letters unchanged,
-          // judge must NOT be active.
-          //
-          // ── BACKWARD-COMPAT: today's client still uses this instant-swap arm.
-          // The binding-dispute rollout (Phase 2) ADDS the pendingReview freeze
-          // arm below alongside it; this instant-swap arm is intentionally LEFT
-          // UNCHANGED so the current production client (which resolves a landed
-          // claim by swapping roles immediately) keeps working through the
-          // rules auto-deploy. FUTURE follow-up — once the new freeze-first
-          // client has fully rolled out — remove THIS arm to make the freeze
-          // mandatory. Do NOT remove it now.
-          || (nxt.phase == 'setting'
-              && nxt.p1Letters == cur.p1Letters
-              && nxt.p2Letters == cur.p2Letters
-              && nxt.currentSetter == opponentUid(cur, cur.currentSetter)
-              && nxt.currentTurn == nxt.currentSetter
-              && nxt.turnNumber == cur.turnNumber + 1
-              && !judgeActive(cur))
-          // Honor system + landed, BINDING-DISPUTE FREEZE (Phase 2) — NEW arm.
-          // Instead of the instant swap above, the matcher's landed submission
-          // FREEZES the game in pendingReview so the setter gets a 24h
-          // accept/dispute window (resolved by the pendingReview allow-update
-          // branch below). NOTHING resolves on this write: currentSetter,
-          // currentTurn, turnNumber, letters and turnHistory are ALL pinned
-          // unchanged (no TurnRecord appended — the turn is not over).
-          // reviewFor names the matcher (opponent of the current setter, which
-          // in matching phase is cur.currentTurn); reviewDeadline is a fresh
-          // future timestamp (the 24h accept window). Honor-only: judge must
-          // NOT be active. matchVideoUrl is bucket-pinned by matchVideoUrlOk in
-          // the enclosing rule; statsApplied by statsAppliedUnchanged().
+          // Honor system + landed — BINDING-DISPUTE FREEZE.
+          // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r18
           || (nxt.phase == 'pendingReview'
               && nxt.reviewFor == opponentUid(cur, cur.currentSetter)
               && nxt.currentSetter == cur.currentSetter
@@ -992,8 +904,7 @@ service cloud.firestore {
               && nxt.p1Letters == cur.p1Letters
               && nxt.p2Letters == cur.p2Letters
               && nxt.turnHistory == cur.turnHistory
-              && nxt.reviewDeadline is timestamp
-              && nxt.reviewDeadline > request.time
+              && aboutOneDayAhead(nxt.reviewDeadline)
               && !judgeActive(cur))
           // Judge-active landed→disputable OR Call BS→setReview — letters
           // unchanged, currentSetter + turnNumber UNCHANGED, currentTurn → judge.
@@ -1033,48 +944,23 @@ service cloud.firestore {
     }
 
     // ── statsApplied is server-only (stats fan-out lockdown) ──
-    // `statsApplied` on a game doc is written EXCLUSIVELY by the
-    // applyGameStats Cloud Function (admin SDK, bypasses these rules): it
-    // flips to true inside the same transaction that credits wins/losses
-    // for a terminal game, exactly once. A client must never introduce or
-    // change it — pre-setting statsApplied:true would make the Cloud
-    // Function treat the game as already-credited and skip the loser's loss
-    // forever. Every /games update branch pins it to its stored value via
-    // this helper, and the create rule forbids it outright.
-    //
-    // Presence-pair form (NOT request.resource.data.get('statsApplied',
-    // false)) on purpose: the .get()-with-default idiom trips the "Null
-    // value error" engine quirk documented on the spotId immutability pin
-    // in the games match below. This helper reads no documents — plain
-    // field comparison — so it adds negligible node cost to each branch
-    // (and net expression budget improves now that the three get()-heavy
-    // stat helpers are gone).
+    // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r19
     function statsAppliedUnchanged() {
       return (!('statsApplied' in resource.data) && !('statsApplied' in request.resource.data))
         || ('statsApplied' in resource.data && 'statsApplied' in request.resource.data
             && request.resource.data.statsApplied == resource.data.statsApplied);
     }
 
+    // createdAt is request.time at create. Later writes leave it alone so a
+    // client cannot backdate a profile, a game, or a report.
+    function createdAtUnchanged() {
+      return ('createdAt' in resource.data && 'createdAt' in request.resource.data
+              && request.resource.data.createdAt == resource.data.createdAt)
+        || (!('createdAt' in resource.data) && !('createdAt' in request.resource.data));
+    }
+
     // ── Cron notification tombstones are server-only ──
-    // `challengeNotifiedAt` and `turnReminderSentFor` are written EXCLUSIVELY
-    // by api/cron/sweep-expired-turns.ts (Admin SDK, bypasses these rules) and
-    // read back by it as "already handled, skip this game" marks. They sit on
-    // the GAME doc rather than the notification doc because the recipient can
-    // delete a notification, which would otherwise resurrect the buzz every
-    // tick. That makes them a suppression lever pointed at the OPPONENT:
-    //   • challengeNotifiedAt non-null → the challenge backstop skips the game,
-    //     so a challenger who seeds it and never sends the client notification
-    //     leaves the opponent unaware while the 24h forfeit clock runs.
-    //   • turnReminderSentFor == turnNumber → the "2 hours left" reminder is
-    //     skipped. setting→matching is the write that hands the turn over AND
-    //     leaves turnNumber unchanged, so one smuggled field on the hot path
-    //     silences that turn's warning.
-    // Both end in a free forfeit win, so every /games update branch pins them
-    // and the create rule forbids them outright. Unlike the rest of this file
-    // the /games block has no keys().hasOnly() allowlist — an unrecognised
-    // field is accepted by default — so this explicit pin IS the enforcement.
-    // Presence-pair form (not .get(field, default)) for the same "Null value
-    // error" engine quirk noted on statsAppliedUnchanged(); reads no documents.
+    // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r20
     function cronNotifyTombstonesUnchanged() {
       return (
         (!('challengeNotifiedAt' in resource.data) && !('challengeNotifiedAt' in request.resource.data))
@@ -1103,15 +989,7 @@ service cloud.firestore {
     }
 
     // ── player{1,2}IsVerifiedPro are bound at create, immutable on every update ──
-    // The create rule binds each field to the authoritative
-    // users/{uid}.isVerifiedPro (badge-forgery guard, mirrors the username
-    // impersonation guard). Pro status can change mid-game (admin grants it
-    // elsewhere), but that must not retroactively relabel an in-progress
-    // game — no update path legitimately rewrites either field, so every
-    // /games update branch pins them to their stored value here.
-    // Presence-tolerant (mirrors judgeUsernameUnchanged) so non-Pro players
-    // (field omitted entirely — see games.create.ts) and any legacy doc that
-    // predates the field both pass.
+    // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r21
     function verifiedProBadgesUnchanged() {
       return (
         (!('player1IsVerifiedPro' in resource.data) && !('player1IsVerifiedPro' in request.resource.data))
@@ -1169,6 +1047,27 @@ service cloud.firestore {
             && request.resource.data.trainingLabelPending == resource.data.trainingLabelPending);
     }
 
+    // One call for the pins every /games update shares. Inlined at each
+    // branch they were re-evaluated once per allow-rule, and the late
+    // auto-accept / setReview rules crossed the 1000-expression cap.
+    function gameAuditTailOk() {
+      return judgeUsernameUnchanged()
+        && statsAppliedUnchanged()
+        && createdAtUnchanged()
+        && cronNotifyTombstonesUnchanged()
+        && verifiedProBadgesUnchanged()
+        && trainingLabelPendingOk();
+    }
+
+    // Product window is 24h (TURN_DURATION_MS). ±1h absorbs client clock skew.
+    // A shorter clock is an instant forfeit or an instant auto-accept; a longer
+    // one locks the opponent out of the forfeit path.
+    function aboutOneDayAhead(ts) {
+      return ts is timestamp
+        && ts > request.time + duration.value(23, 'h')
+        && ts < request.time + duration.value(25, 'h');
+    }
+
     // ── Games ──
     match /games/{gameId} {
       // Players AND the nominated judge can read the game document.
@@ -1192,18 +1091,11 @@ service cloud.firestore {
         && request.resource.data.currentTurn == request.auth.uid
         && request.resource.data.phase == 'setting'
         && request.resource.data.currentSetter == request.auth.uid
-        // turnDeadline must be a future timestamp (prevents instant-forfeit attack:
-        // without this, a malicious client could set turnDeadline in the past,
-        // currentTurn to the opponent, and immediately forfeit them).
-        // Upper bound prevents the inverse attack: without a cap, a client
-        // could set turnDeadline to Timestamp.fromMillis(Number.MAX_SAFE_INTEGER)
-        // and permanently block the opponent's forfeit path (forfeit needs
-        // request.time > resource.data.turnDeadline). 48h is 2× the production
-        // TURN_DURATION_MS (24h) — tight enough to prevent abuse, loose enough
-        // to tolerate clock skew and retry windows.
-        && request.resource.data.turnDeadline is timestamp
-        && request.resource.data.turnDeadline > request.time
-        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
+        // Play clock is request.time + 24h (±1h). A one-second deadline lets
+        // either player forfeit the opponent immediately; a year-9999 deadline
+        // never expires. Forfeit still requires request.time past the stored clock.
+        && aboutOneDayAhead(request.resource.data.turnDeadline)
+        && request.resource.data.createdAt == request.time
         // Trick/video fields must start empty
         && request.resource.data.currentTrickName == null
         && request.resource.data.currentTrickVideoUrl == null
@@ -1261,52 +1153,35 @@ service cloud.firestore {
         // (+0 reads); player2 is one read; the judge one more when present —
         // well under the 10-document access ceiling for this rule.
         && request.resource.data.player1Username ==
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username
+             fsGet('users', request.auth.uid).data.username
         && request.resource.data.player2Username ==
-             get(/databases/$(database)/documents/users/$(request.resource.data.player2Uid)).data.username
+             fsGet('users', request.resource.data.player2Uid).data.username
         // judgeUsername binds only when a judge is nominated; honor-system
         // games carry judgeId == null and store judgeUsername null (no get).
         && (
           !('judgeId' in request.resource.data)
           || request.resource.data.judgeId == null
           || request.resource.data.judgeUsername ==
-               get(/databases/$(database)/documents/users/$(request.resource.data.judgeId)).data.username
+               fsGet('users', request.resource.data.judgeId).data.username
         )
         // ── Verified Pro badge forgery guard ──
-        // player{1,2}IsVerifiedPro are denormalized for the lobby/scoreboard
-        // UI (WaitingHeader, useLobbyController, LetterScoreboard) so those
-        // screens don't need an extra profile read. The legitimate client
-        // only ever echoes back its own already-fetched
-        // users/{uid}.isVerifiedPro (see GameContext.tsx) and omits the
-        // field entirely when false (games.create.ts), but nothing bound
-        // that server-side — same impersonation shape as the username guard
-        // above, and it reuses the same two get()s (+0 reads). Presence-
-        // optional: a field, if present, must match the authoritative
-        // source; absence always passes (covers the false/legacy case).
+        // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r22
         && (
           !('player1IsVerifiedPro' in request.resource.data)
           || request.resource.data.player1IsVerifiedPro ==
-               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isVerifiedPro', false)
+               fsGet('users', request.auth.uid).data.get('isVerifiedPro', false)
         )
         && (
           !('player2IsVerifiedPro' in request.resource.data)
           || request.resource.data.player2IsVerifiedPro ==
-               get(/databases/$(database)/documents/users/$(request.resource.data.player2Uid)).data.get('isVerifiedPro', false)
+               fsGet('users', request.resource.data.player2Uid).data.get('isVerifiedPro', false)
         )
         // Rate limit: at most one game creation per 30 seconds per user.
-        // The PRE-write lastGameCreatedAt (get) must be absent (first game
-        // ever) or older than 30s, AND the same batch must stamp the anchor
-        // to request.time (getAfter). Before the getAfter() binding the
-        // anchor was a separate best-effort write, so a client that simply
-        // never sent it skipped the cooldown entirely. The users/{uid}
-        // update rule already pins a written lastGameCreatedAt to
-        // request.time, so the anchor can only move forward. Both docs are
-        // already fetched above (users/{auth.uid}), so this adds at most the
-        // one post-write read.
-        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('lastGameCreatedAt', null) == request.time
+        // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r23
+        && fsGetAfter('users', request.auth.uid).data.get('lastGameCreatedAt', null) == request.time
         && (
-          !('lastGameCreatedAt' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
-          || request.time > get(/databases/$(database)/documents/users/$(request.auth.uid)).data.lastGameCreatedAt + duration.value(30, 's')
+          !('lastGameCreatedAt' in fsGet('users', request.auth.uid).data)
+          || request.time > fsGet('users', request.auth.uid).data.lastGameCreatedAt + duration.value(30, 's')
         )
         // Block check: neither player may have blocked the other.
         // Uses exists() against both directions of the blocked_users subcollection.
@@ -1321,20 +1196,126 @@ service cloud.firestore {
         && !('challengeNotifiedAt' in request.resource.data)
         && !('turnReminderSentFor' in request.resource.data);
 
-      // Current-turn player can make normal game updates
-      allow update: if isSignedIn()
-        && isPlayer(resource.data)
+      // Expired-window rules are first in this OR-chain. Their success
+      // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r24
+      allow update: if resource.data.phase == 'disputable'
         && resource.data.status == 'active'
-        // Early phase gate (PR claude/video-url-security): every branch of this
-        // rule already requires resource.data.phase == 'setting'. Hoisting it
-        // to the top fails matching-phase writes BEFORE they reach the
-        // expensive currentTrickVideoUrl `.matches()` below — without this, a
-        // matcher's resolution write burns this rule's regex node cost on its
-        // way to the match-resolution rule, and the two `.matches()` calls
-        // together blow Firestore's cumulative 1000-expression evaluation
-        // budget for the request (silent PERMISSION_DENIED). Pure
-        // optimization: the accepted set is unchanged.
-        && resource.data.phase == 'setting'
+        && request.time > resource.data.turnDeadline
+        && request.resource.data.phase == 'setting'
+        && request.resource.data.status == 'active'
+        && request.resource.data.winner == null
+        && isSignedIn()
+        && isParticipant(resource.data)
+        // Letters must not change (auto-accept = landed)
+        && request.resource.data.p1Letters == resource.data.p1Letters
+        && request.resource.data.p2Letters == resource.data.p2Letters
+        // Cannot change player UIDs or usernames
+        && request.resource.data.player1Uid == resource.data.player1Uid
+        && request.resource.data.player2Uid == resource.data.player2Uid
+        && request.resource.data.player1Username == resource.data.player1Username
+        && request.resource.data.player2Username == resource.data.player2Username
+        // spotId + judge immutable
+        && (
+          (!('spotId' in resource.data) && !('spotId' in request.resource.data))
+          || ('spotId' in resource.data && 'spotId' in request.resource.data
+              && request.resource.data.spotId == resource.data.spotId)
+        )
+        // trickCategory immutable (mirrors spotId)
+        && (
+          (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
+          || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
+              && request.resource.data.trickCategory == resource.data.trickCategory)
+        )
+        // customRules pairs with trickCategory: set at creation, immutable
+        // thereafter (a mid-game rewrite of the agreed rules is not allowed).
+        && (
+          (!('customRules' in resource.data) && !('customRules' in request.resource.data))
+          || ('customRules' in resource.data && 'customRules' in request.resource.data
+              && request.resource.data.customRules == resource.data.customRules)
+        )
+        && request.resource.data.judgeId == resource.data.judgeId
+        && request.resource.data.judgeStatus == resource.data.judgeStatus
+        // Turn-order pins (audit HIGH: turn seize) — see autoAcceptRolePinsOk.
+        // Without these either participant could seize the setter role out of
+        // rotation in this same write.
+        && autoAcceptRolePinsOk(resource.data, request.resource.data)
+        // The next turn's clock is a fresh 24h, not whatever the client picks.
+        && aboutOneDayAhead(request.resource.data.turnDeadline)
+        // ── matchVideoUrl bucket pin (audit P2) ──
+        // Auto-accept finalises the matcher's "landed" call without judge
+        // intervention. The matcher's stored matchVideoUrl is now the canonical
+        // record of the trick — without a bucket pin a participant could
+        // overwrite it on this transition with an attacker-hosted payload
+        // that the clip feed and dispute UI would render verbatim. Same
+        // shape as the match-resolution + dispute branches above.
+        && matchVideoUrlOk(request.resource.data.matchVideoUrl, resource.data.matchVideoUrl)
+        // turnHistory growth bound — auto-accept writes a TurnRecord for
+        // the expired dispute. Same 1-per-write + ≤200 ceiling.
+        && turnHistoryGrowthOk()
+        // Auto-accept stands the landed claim: no letter, matcher is the
+        // setter's opponent. A miss entry here would invent a letter.
+        && (
+          turnHistoryUnchanged()
+          || lastTurnAgrees(true, null, opponentUid(resource.data, resource.data.currentSetter))
+        )
+        && gameAuditTailOk();
+
+      // ── Expired setReview auto-clear ──
+      // When the judge doesn't rule on a "Call BS" within 24h, the set
+      // stands (benefit of the doubt) and matcher is prompted to attempt.
+      // Same early-out as auto-accept: phase, expiry, then the post-write
+      // phase. A Call BS ruling that is not an expired clear fails here,
+      // before the history compare.
+      allow update: if resource.data.phase == 'setReview'
+        && resource.data.status == 'active'
+        && request.time > resource.data.turnDeadline
+        && request.resource.data.phase == 'matching'
+        && request.resource.data.status == 'active'
+        && request.resource.data.winner == null
+        && isSignedIn()
+        && isParticipant(resource.data)
+        && request.resource.data.p1Letters == resource.data.p1Letters
+        && request.resource.data.p2Letters == resource.data.p2Letters
+        && request.resource.data.player1Uid == resource.data.player1Uid
+        && request.resource.data.player2Uid == resource.data.player2Uid
+        && request.resource.data.player1Username == resource.data.player1Username
+        && request.resource.data.player2Username == resource.data.player2Username
+        && (
+          (!('spotId' in resource.data) && !('spotId' in request.resource.data))
+          || ('spotId' in resource.data && 'spotId' in request.resource.data
+              && request.resource.data.spotId == resource.data.spotId)
+        )
+        && (
+          (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
+          || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
+              && request.resource.data.trickCategory == resource.data.trickCategory)
+        )
+        // customRules pairs with trickCategory: set at creation, immutable
+        // thereafter (a mid-game rewrite of the agreed rules is not allowed).
+        && (
+          (!('customRules' in resource.data) && !('customRules' in request.resource.data))
+          || ('customRules' in resource.data && 'customRules' in request.resource.data
+              && request.resource.data.customRules == resource.data.customRules)
+        )
+        && request.resource.data.judgeId == resource.data.judgeId
+        && request.resource.data.judgeStatus == resource.data.judgeStatus
+        && request.resource.data.currentSetter == resource.data.currentSetter
+        && request.resource.data.currentTurn == opponentUid(resource.data, resource.data.currentSetter)
+        && aboutOneDayAhead(request.resource.data.turnDeadline)
+        // No append and no content rewrite. This path does not finish a turn.
+        && turnHistoryFrozenOk()
+        && gameAuditTailOk();
+
+      // Current-turn player can make normal game updates.
+      // Phase and the post-write status fail every other games update in
+      // two compares, before isPlayer() and the field pins. A forfeit, an
+      // auto-accept, and a match resolution used to walk this body on the
+      // way to their own rule and cross the 1000-expression cap.
+      allow update: if resource.data.phase == 'setting'
+        && resource.data.status == 'active'
+        && request.resource.data.status == 'active'
+        && isSignedIn()
+        && isPlayer(resource.data)
         && request.auth.uid == resource.data.currentTurn
         // Rate limit: at most one turn action per 2 seconds (prevents write flooding).
         // The cooldown below compares against the STORED updatedAt; without
@@ -1392,18 +1373,14 @@ service cloud.firestore {
           request.resource.data.currentTurn == resource.data.player1Uid ||
           request.resource.data.currentTurn == resource.data.player2Uid
         )
-        // turnDeadline must be a timestamp bounded to a sane future window.
-        // See the create rule above for the rationale on the 48h upper bound
-        // (blocks opponent-lockout via Timestamp.fromMillis(MAX_SAFE_INTEGER)).
-        && request.resource.data.turnDeadline is timestamp
-        && request.resource.data.turnDeadline > request.time
-        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
+        // New play clock on every setting-phase transition (set trick or fail-set).
+        && aboutOneDayAhead(request.resource.data.turnDeadline)
         // Scores must not change during setting-phase updates.
         // Letters are only awarded via the match resolution rule below.
         && request.resource.data.p1Letters == resource.data.p1Letters
         && request.resource.data.p2Letters == resource.data.p2Letters
-        // Game stays active, no winner (completion only via match resolution or forfeit)
-        && request.resource.data.status == 'active'
+        // No winner on a setting update (completion is match resolution or forfeit).
+        // status stays 'active' — already required above.
         && request.resource.data.winner == null
         // matchVideoUrl is only written by the matching-phase rule — setting
         // phase updates must not touch it. Without this pin, a setter whose
@@ -1463,24 +1440,18 @@ service cloud.firestore {
           (!('turnHistory' in resource.data) && !('turnHistory' in request.resource.data))
           || request.resource.data.turnHistory == resource.data.turnHistory
         )
-        && judgeUsernameUnchanged()
-        && statsAppliedUnchanged()
-        && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged()
-        && trainingLabelPendingOk();
-      // Honor system (no active judge):
-      //   • missed  → matcher +1 letter, phase=setting (or complete)
-      //   • landed  → matcher's call stands; roles swap, phase=setting
-      // With active judge:
-      //   • missed  → matcher +1 letter (matcher admitting doesn't dispute)
-      //   • landed  → phase=disputable, currentTurn routes to judge
-      //
-      // Call BS (judge only): matcher transitions matching → setReview with
-      // currentTurn = judgeId. Split out as its own branch for clarity.
-      allow update: if isSignedIn()
-        && isPlayer(resource.data)
+        && gameAuditTailOk();
+
+      // ── Match resolution (matcher submits an attempt) ──
+      // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r25
+      allow update: if resource.data.phase == 'matching'
         && resource.data.status == 'active'
-        && resource.data.phase == 'matching'
+        // Forfeit is not a match resolution. Fail it before the field pins
+        // and the video-url check; the forfeit rule is later in this OR-chain
+        // and the cumulative cost otherwise hits the 1000-expression cap.
+        && (request.resource.data.status == 'active' || request.resource.data.status == 'complete')
+        && isSignedIn()
+        && isPlayer(resource.data)
         && request.auth.uid == resource.data.currentTurn
         // Rate limit. New updatedAt must equal request.time — prevents the
         // stored-value spoof where a client writes epoch 0 to keep the 2s
@@ -1527,11 +1498,14 @@ service cloud.firestore {
           || ('judgeStatus' in resource.data && 'judgeStatus' in request.resource.data
               && request.resource.data.judgeStatus == resource.data.judgeStatus)
         )
-        // turnDeadline must be a timestamp bounded to a sane future window
-        // (see create rule for rationale on the 48h cap).
-        && request.resource.data.turnDeadline is timestamp
-        && request.resource.data.turnDeadline > request.time
-        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
+        // A continuing turn (miss, judge review) writes a fresh 24h clock.
+        // Game over and nothing else may leave the stored clock alone — there
+        // is no next turn to time. A one-second clock is denied on both arms.
+        && (
+          aboutOneDayAhead(request.resource.data.turnDeadline)
+          || (request.resource.data.status == 'complete'
+              && request.resource.data.turnDeadline == resource.data.turnDeadline)
+        )
         // Letters: at most one player gains exactly one letter (missed) or none change (landed)
         && (
           // No letter change (landed path, both honor + judge)
@@ -1565,46 +1539,35 @@ service cloud.firestore {
         // plentiful (the O(n) full-list compare is gated behind a size check
         // and skipped on the append path — see turnHistoryGrowthOk).
         && turnHistoryGrowthOk()
+        // A new entry on this branch is a miss: the matcher (currentTurn)
+        // failed, so landed is false and the letter names that same uid.
+        // No-letter writes (freeze, judge routing) may not append.
+        && (
+          turnHistoryUnchanged()
+          || (
+            (
+              (resource.data.currentTurn == resource.data.player1Uid
+               && request.resource.data.p1Letters == resource.data.p1Letters + 1)
+              || (resource.data.currentTurn == resource.data.player2Uid
+                  && request.resource.data.p2Letters == resource.data.p2Letters + 1)
+            )
+            && lastTurnAgrees(false, resource.data.currentTurn, resource.data.currentTurn)
+          )
+        )
         // ── Turn-order seize guard (P0) ──
         // Extracted to matchResolutionPinsOk() so this rule stays under
         // Firestore's per-evaluation node ceiling once main's #373 guard and
         // this PR's matchVideoUrl `.matches()` pin are both present. Accepted
         // set is unchanged — see the helper for the per-outcome rationale.
         && matchResolutionPinsOk(resource.data, request.resource.data)
-        && judgeUsernameUnchanged()
-        && statsAppliedUnchanged()
-        && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged()
-        && trainingLabelPendingOk();
+        && gameAuditTailOk();
 
       // ── Pending-review resolution (honor-system binding dispute, Phase 2) ──
-      // A matcher's landed claim now freezes the game in `pendingReview` (see
-      // the pendingReview arm of matchResolutionPinsOk above) instead of
-      // instantly swapping roles. From the frozen state ONLY the SETTER — the
-      // player whose trick was matched, i.e. resource.data.currentSetter — has
-      // two legal moves, and this branch is the ONLY client write out of
-      // pendingReview:
-      //   (a) ACCEPT  → setting        : the deferred honor swap. Roles rotate
-      //       to the matcher, currentTurn follows, turnNumber +1, ONE landed
-      //       TurnRecord appended, review fields cleared. Identical net effect
-      //       to today's instant honor-landed resolution, just deferred.
-      //   (b) DISPUTE → communityReview: hand the call to the crowd. Roles,
-      //       turnNumber, letters and turnHistory ALL stay frozen; reviewFor
-      //       keeps naming the matcher; reviewDeadline is reset to a fresh vote
-      //       window. The dispute doc (disputes/{gameId}_{turnNumber}) is
-      //       created in the SAME transaction — its create rule binds to this
-      //       still-pendingReview game state (Gap A closure, see /disputes).
-      // The matcher is the CLAIMANT and can never self-resolve their own claim.
-      //
-      // FREEZE NOTE: `communityReview` has NO allow-update branch anywhere in
-      // this file, so once a game reaches it NO client can move letters, turn,
-      // roles, phase, winner or status — the game is frozen until the admin
-      // referee (Admin SDK, bypasses these rules) resolves it. That absence IS
-      // the enforcement; do not add a client communityReview branch.
-      allow update: if isSignedIn()
-        && isPlayer(resource.data)
+      // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r26
+      allow update: if resource.data.phase == 'pendingReview'
         && resource.data.status == 'active'
-        && resource.data.phase == 'pendingReview'
+        && isSignedIn()
+        && isPlayer(resource.data)
         // Only the setter of the frozen turn may accept or dispute.
         && request.auth.uid == resource.data.currentSetter
         // Rate limit — new updatedAt pinned to request.time so a stale value
@@ -1670,9 +1633,7 @@ service cloud.firestore {
             && request.resource.data.turnNumber == resource.data.turnNumber + 1
             && (!('reviewFor' in request.resource.data) || request.resource.data.reviewFor == null)
             && (!('reviewDeadline' in request.resource.data) || request.resource.data.reviewDeadline == null)
-            && request.resource.data.turnDeadline is timestamp
-            && request.resource.data.turnDeadline > request.time
-            && request.resource.data.turnDeadline < request.time + duration.value(48, 'h'))
+            && aboutOneDayAhead(request.resource.data.turnDeadline))
           ||
           // (b) DISPUTE → communityReview: the game STAYS frozen. Roles,
           // turnNumber, letters and turnHistory are all pinned unchanged;
@@ -1689,26 +1650,28 @@ service cloud.firestore {
             && request.resource.data.reviewFor == resource.data.reviewFor
             && request.resource.data.turnHistory == resource.data.turnHistory
             && request.resource.data.turnDeadline == resource.data.turnDeadline
-            && request.resource.data.reviewDeadline is timestamp
-            && request.resource.data.reviewDeadline > request.time)
+            && aboutOneDayAhead(request.resource.data.reviewDeadline))
         )
         // turnHistory growth bound — accept appends exactly one landed record;
         // dispute leaves it unchanged (pinned above). Same +1 / ≤200 ceiling.
         && turnHistoryGrowthOk()
-        && judgeUsernameUnchanged()
-        && statsAppliedUnchanged()
-        && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged()
-        && trainingLabelPendingOk();
+        // Accept may append one landed record for the matcher. A dispute
+        // leaves history unchanged. A miss record on accept would forge a letter.
+        && (
+          turnHistoryUnchanged()
+          || (request.resource.data.phase == 'setting'
+              && lastTurnAgrees(true, null, opponentUid(resource.data, resource.data.currentSetter)))
+        )
+        && gameAuditTailOk();
 
       // ── Dispute resolution (judge rules on the matcher's "landed" claim) ──
       // Judge-only. The setter never self-judges — disputes only exist in
       // games with an active judge. Judge accepts (no letters, roles swap)
       // or overrules (matcher +1 letter, setter keeps setting).
-      allow update: if isSignedIn()
-        && isJudge(resource.data)
+      allow update: if resource.data.phase == 'disputable'
         && resource.data.status == 'active'
-        && resource.data.phase == 'disputable'
+        && isSignedIn()
+        && isJudge(resource.data)
         && request.auth.uid == resource.data.currentTurn
         && judgeActive(resource.data)
         // Rate limit. Pinning updatedAt to request.time closes the
@@ -1752,11 +1715,13 @@ service cloud.firestore {
           request.resource.data.currentTurn == resource.data.player1Uid ||
           request.resource.data.currentTurn == resource.data.player2Uid
         )
-        // turnDeadline must be a timestamp bounded to a sane future window
-        // (see create rule for rationale on the 48h cap).
-        && request.resource.data.turnDeadline is timestamp
-        && request.resource.data.turnDeadline > request.time
-        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
+        // Continuing play gets a fresh 24h clock. A ruling that ends the game
+        // may leave the stored clock unchanged.
+        && (
+          aboutOneDayAhead(request.resource.data.turnDeadline)
+          || (request.resource.data.status == 'complete'
+              && request.resource.data.turnDeadline == resource.data.turnDeadline)
+        )
         // Letters: accept (no change) or overrule (the disputed turn's MATCHER
         // takes exactly one letter). The matcher is always the setter's
         // opponent — pin the +1 to opponentUid(currentSetter) so a colluding
@@ -1800,20 +1765,35 @@ service cloud.firestore {
         // TurnRecord with judgedBy set. Same 1-per-write + ≤200 ceiling
         // the match-resolution branch enforces.
         && turnHistoryGrowthOk()
-        && judgeUsernameUnchanged()
-        && statsAppliedUnchanged()
-        && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged()
-        && trainingLabelPendingOk();
+        // Accept (no letter) appends a land. Overrule appends a miss naming
+        // the matcher, and only when that matcher actually took the letter.
+        && (
+          turnHistoryUnchanged()
+          || (
+            request.resource.data.p1Letters == resource.data.p1Letters
+            && request.resource.data.p2Letters == resource.data.p2Letters
+            && lastTurnAgrees(true, null, opponentUid(resource.data, resource.data.currentSetter))
+          )
+          || (
+            lastTurnAgrees(false, opponentUid(resource.data, resource.data.currentSetter), opponentUid(resource.data, resource.data.currentSetter))
+            && (
+              (opponentUid(resource.data, resource.data.currentSetter) == resource.data.player1Uid
+               && request.resource.data.p1Letters == resource.data.p1Letters + 1)
+              || (opponentUid(resource.data, resource.data.currentSetter) == resource.data.player2Uid
+                  && request.resource.data.p2Letters == resource.data.p2Letters + 1)
+            )
+          )
+        )
+        && gameAuditTailOk();
 
       // ── Call BS resolution (judge rules on set trick in setReview phase) ──
       // Judge-only. Clean → back to matching (matcher must attempt).
       // Sketchy → back to setting (same setter re-sets, trick fields cleared).
       // No letter changes, no game completion.
-      allow update: if isSignedIn()
-        && isJudge(resource.data)
+      allow update: if resource.data.phase == 'setReview'
         && resource.data.status == 'active'
-        && resource.data.phase == 'setReview'
+        && isSignedIn()
+        && isJudge(resource.data)
         && request.auth.uid == resource.data.currentTurn
         && judgeActive(resource.data)
         // Rate limit. New updatedAt must equal request.time so the 2s
@@ -1850,11 +1830,7 @@ service cloud.firestore {
         && request.resource.data.judgeStatus == resource.data.judgeStatus
         && request.resource.data.status == 'active'
         && request.resource.data.winner == null
-        // turnDeadline must be a timestamp bounded to a sane future window
-        // (see create rule for rationale on the 48h cap).
-        && request.resource.data.turnDeadline is timestamp
-        && request.resource.data.turnDeadline > request.time
-        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
+        && aboutOneDayAhead(request.resource.data.turnDeadline)
         && request.resource.data.p1Letters == resource.data.p1Letters
         && request.resource.data.p2Letters == resource.data.p2Letters
         && request.resource.data.currentSetter == resource.data.currentSetter
@@ -1869,24 +1845,19 @@ service cloud.firestore {
               && request.resource.data.currentTrickVideoUrl == null
               && trickFieldsCleared())
         )
-        // turnHistory growth bound — Call BS rulings that go "sketchy"
-        // append a TurnRecord noting the invalidated set. Same cap as the
-        // other resolution branches.
-        && turnHistoryGrowthOk()
-        && judgeUsernameUnchanged()
-        && statsAppliedUnchanged()
-        && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged()
-        && trainingLabelPendingOk();
+        // No append and no content rewrite. Call BS does not finish a turn,
+        // so the growth helper's +1 arm is not a legal outcome here.
+        && turnHistoryFrozenOk()
+        && gameAuditTailOk();
 
       // ── Judge invite accept / decline ──
       // Only the nominated judge can flip their status from pending. No
       // other field may change on the same write.
-      allow update: if isSignedIn()
-        && isJudge(resource.data)
-        && resource.data.status == 'active'
-        && 'judgeStatus' in resource.data
+      allow update: if 'judgeStatus' in resource.data
         && resource.data.judgeStatus == 'pending'
+        && resource.data.status == 'active'
+        && isSignedIn()
+        && isJudge(resource.data)
         && request.resource.data.judgeId == resource.data.judgeId
         // Re-verify judge isn't either player — defence-in-depth in case the
         // create-time check was bypassed (e.g. older docs written before the
@@ -1909,6 +1880,7 @@ service cloud.firestore {
         && request.resource.data.p2Letters == resource.data.p2Letters
         && request.resource.data.winner == resource.data.winner
         && request.resource.data.turnNumber == resource.data.turnNumber
+        && request.resource.data.turnDeadline == resource.data.turnDeadline
         && (
           (!('turnHistory' in resource.data) && !('turnHistory' in request.resource.data))
           || request.resource.data.turnHistory == resource.data.turnHistory
@@ -1927,23 +1899,22 @@ service cloud.firestore {
           || ('customRules' in resource.data && 'customRules' in request.resource.data
               && request.resource.data.customRules == resource.data.customRules)
         )
-        && judgeUsernameUnchanged()
-        && statsAppliedUnchanged()
-        && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged()
-        && trainingLabelPendingOk();
+        && gameAuditTailOk();
 
       // Either player can forfeit the current-turn player's expired turn
       // Winner must be the opponent of the player whose turn it is
-      allow update: if isSignedIn()
-        && isPlayer(resource.data)
+      allow update: if request.resource.data.status == 'forfeit'
         && resource.data.status == 'active'
-        && request.resource.data.status == 'forfeit'
         // Only forfeit from setting or matching (disputable auto-accepts,
         // setReview auto-clears to matching — neither is a forfeit path).
         && (resource.data.phase == 'setting' || resource.data.phase == 'matching')
-        // Turn deadline must have actually expired (prevents premature forfeits)
+        && isSignedIn()
+        && isPlayer(resource.data)
+        // The stored clock must have actually expired. Writes pin that clock to
+        // ~24h, so this cannot fire a second after a phase change. The forfeit
+        // itself must not rewrite the clock it is claiming has expired.
         && request.time > resource.data.turnDeadline
+        && request.resource.data.turnDeadline == resource.data.turnDeadline
         // Cannot change player UIDs, usernames, or letters
         && request.resource.data.player1Uid == resource.data.player1Uid
         && request.resource.data.player2Uid == resource.data.player2Uid
@@ -1978,139 +1949,21 @@ service cloud.firestore {
         // helper also accepts the "unchanged" shape for callers that don't
         // append (forward-compat).
         && turnHistoryGrowthOk()
-        && judgeUsernameUnchanged()
-        && statsAppliedUnchanged()
-        && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged()
-        && trainingLabelPendingOk();
+        // The closing entry records the timed-out player taking the letter.
+        // matcherUid stays the setter's opponent, matching the forfeit writer.
+        && (
+          turnHistoryUnchanged()
+          || lastTurnAgrees(false, resource.data.currentTurn, opponentUid(resource.data, resource.data.currentSetter))
+        )
+        && gameAuditTailOk();
 
-      // ── Expired dispute auto-accept ──
-      // When the judge's review window expires (24 h), any participant
-      // (player or judge) can trigger auto-accept: matcher's "landed" call
-      // stands, roles swap, no letters change, game continues.
-      allow update: if isSignedIn()
-        && isParticipant(resource.data)
-        && resource.data.status == 'active'
-        && resource.data.phase == 'disputable'
-        && request.time > resource.data.turnDeadline
-        // Letters must not change (auto-accept = landed)
-        && request.resource.data.p1Letters == resource.data.p1Letters
-        && request.resource.data.p2Letters == resource.data.p2Letters
-        // Cannot change player UIDs or usernames
-        && request.resource.data.player1Uid == resource.data.player1Uid
-        && request.resource.data.player2Uid == resource.data.player2Uid
-        && request.resource.data.player1Username == resource.data.player1Username
-        && request.resource.data.player2Username == resource.data.player2Username
-        // spotId + judge immutable
-        && (
-          (!('spotId' in resource.data) && !('spotId' in request.resource.data))
-          || ('spotId' in resource.data && 'spotId' in request.resource.data
-              && request.resource.data.spotId == resource.data.spotId)
-        )
-        // trickCategory immutable (mirrors spotId)
-        && (
-          (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
-          || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
-              && request.resource.data.trickCategory == resource.data.trickCategory)
-        )
-        // customRules pairs with trickCategory: set at creation, immutable
-        // thereafter (a mid-game rewrite of the agreed rules is not allowed).
-        && (
-          (!('customRules' in resource.data) && !('customRules' in request.resource.data))
-          || ('customRules' in resource.data && 'customRules' in request.resource.data
-              && request.resource.data.customRules == resource.data.customRules)
-        )
-        && request.resource.data.judgeId == resource.data.judgeId
-        && request.resource.data.judgeStatus == resource.data.judgeStatus
-        // Must transition back to setting (active, no winner)
-        && request.resource.data.status == 'active'
-        && request.resource.data.phase == 'setting'
-        && request.resource.data.winner == null
-        // Turn-order pins (audit HIGH: turn seize) — see autoAcceptRolePinsOk.
-        // Without these either participant could seize the setter role out of
-        // rotation in this same write.
-        && autoAcceptRolePinsOk(resource.data, request.resource.data)
-        // turnDeadline must be a fresh, bounded future timestamp. This path
-        // fires only after the OLD deadline expired, but the NEW deadline
-        // written here is what governs the next turn — so it needs the same
-        // 48h cap every other write path enforces.
-        && request.resource.data.turnDeadline is timestamp
-        && request.resource.data.turnDeadline > request.time
-        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
-        // ── matchVideoUrl bucket pin (audit P2) ──
-        // Auto-accept finalises the matcher's "landed" call without judge
-        // intervention. The matcher's stored matchVideoUrl is now the canonical
-        // record of the trick — without a bucket pin a participant could
-        // overwrite it on this transition with an attacker-hosted payload
-        // that the clip feed and dispute UI would render verbatim. Same
-        // shape as the match-resolution + dispute branches above.
-        && matchVideoUrlOk(request.resource.data.matchVideoUrl, resource.data.matchVideoUrl)
-        // turnHistory growth bound — auto-accept writes a TurnRecord for
-        // the expired dispute. Same 1-per-write + ≤200 ceiling.
-        && turnHistoryGrowthOk()
-        && judgeUsernameUnchanged()
-        && statsAppliedUnchanged()
-        && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged()
-        && trainingLabelPendingOk();
 
-      // ── Expired setReview auto-clear ──
-      // When the judge doesn't rule on a "Call BS" within 24h, the set
-      // stands (benefit of the doubt) and matcher is prompted to attempt.
-      allow update: if isSignedIn()
-        && isParticipant(resource.data)
-        && resource.data.status == 'active'
-        && resource.data.phase == 'setReview'
-        && request.time > resource.data.turnDeadline
-        && request.resource.data.p1Letters == resource.data.p1Letters
-        && request.resource.data.p2Letters == resource.data.p2Letters
-        && request.resource.data.player1Uid == resource.data.player1Uid
-        && request.resource.data.player2Uid == resource.data.player2Uid
-        && request.resource.data.player1Username == resource.data.player1Username
-        && request.resource.data.player2Username == resource.data.player2Username
-        && (
-          (!('spotId' in resource.data) && !('spotId' in request.resource.data))
-          || ('spotId' in resource.data && 'spotId' in request.resource.data
-              && request.resource.data.spotId == resource.data.spotId)
-        )
-        && (
-          (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
-          || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
-              && request.resource.data.trickCategory == resource.data.trickCategory)
-        )
-        // customRules pairs with trickCategory: set at creation, immutable
-        // thereafter (a mid-game rewrite of the agreed rules is not allowed).
-        && (
-          (!('customRules' in resource.data) && !('customRules' in request.resource.data))
-          || ('customRules' in resource.data && 'customRules' in request.resource.data
-              && request.resource.data.customRules == resource.data.customRules)
-        )
-        && request.resource.data.judgeId == resource.data.judgeId
-        && request.resource.data.judgeStatus == resource.data.judgeStatus
-        && request.resource.data.status == 'active'
-        && request.resource.data.phase == 'matching'
-        && request.resource.data.winner == null
-        && request.resource.data.currentSetter == resource.data.currentSetter
-        && request.resource.data.currentTurn == opponentUid(resource.data, resource.data.currentSetter)
-        // turnDeadline must be a fresh, bounded future timestamp. Same
-        // rationale as the expired-dispute auto-accept above.
-        && request.resource.data.turnDeadline is timestamp
-        && request.resource.data.turnDeadline > request.time
-        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
-        // turnHistory growth bound — this path typically leaves the
-        // history unchanged (no new turn was completed), but we still run
-        // the helper to enforce the absolute 200-entry ceiling and block
-        // any sneaky append.
-        && turnHistoryGrowthOk()
-        && judgeUsernameUnchanged()
-        && statsAppliedUnchanged()
-        && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged()
-        && trainingLabelPendingOk();
-
-      // Players may delete their own non-active games (account deletion flow)
+      // A finished game stays until close-out has set statsApplied. Deleting
+      // it first drops the loss. Account deletion uses the Admin SDK, which
+      // bypasses this rule.
       allow delete: if isSignedIn() && isPlayer(resource.data)
-        && resource.data.status != "active";
+        && resource.data.status != "active"
+        && resource.data.statsApplied == true;
     }
 
     // ── Spots ──
@@ -2122,18 +1975,7 @@ service cloud.firestore {
     // (coordinates, createdBy, isVerified, isActive) after creation.
     match /spots/{spotId} {
       // Active spots are readable only by signed-in users. Requiring auth
-      // closes the anonymous-scraping attack surface: without it, any drive-
-      // by attacker could enumerate every spot + join with clips + users to
-      // build a user-location graph (privacy incident + App-Store location-
-      // data disclosure exposure). Inactive (soft-deleted or moderation-
-      // hidden) spots remain unreadable by anyone through this rule. All
-      // write paths below remain auth-gated (unchanged).
-      //
-      // NOTE: the SpotMap / SpotDetailPage screens are accessed from within
-      // the app after auth — there are no public unauth reads in the client
-      // (verified by grep over src/services/spots.ts + screens/SpotDetailPage).
-      // Deep-links to /spots/:id land on the sign-in gate first when called
-      // by a signed-out user.
+      // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r27
       allow read: if isSignedIn() && resource.data.isActive == true;
 
       // Create: signed-in + email-verified, owner-stamped, with full
@@ -2179,11 +2021,10 @@ service cloud.firestore {
         && request.resource.data.isVerified == false
         && request.resource.data.isActive == true
         // Rate limit: at most one spot creation per 30 seconds per user.
-        && (
-          !exists(/databases/$(database)/documents/users/$(request.auth.uid))
-          || !('lastSpotCreatedAt' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
-          || request.time > get(/databases/$(database)/documents/users/$(request.auth.uid)).data.lastSpotCreatedAt + duration.value(30, 's')
-        );
+        // Same idiom as clipRateLimitOk(): the batch MUST advance
+        // users/{uid}.lastSpotCreatedAt to request.time (getAfter), so a
+        // client that omits the anchor write can no longer skip the cooldown.
+        && spotRateLimitOk();
 
       // Update: owner-only, and coordinates + ownership + verification +
       // active flag are immutable after creation (soft-delete goes through
@@ -2251,14 +2092,14 @@ service cloud.firestore {
         && request.resource.data.senderUsername is string
         // Sender must be a player in the game, recipient must be the other player
         && (
-          (request.auth.uid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player1Uid
-           && request.resource.data.recipientUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player2Uid)
+          (request.auth.uid == fsGet('games', request.resource.data.gameId).data.player1Uid
+           && request.resource.data.recipientUid == fsGet('games', request.resource.data.gameId).data.player2Uid)
           ||
-          (request.auth.uid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player2Uid
-           && request.resource.data.recipientUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player1Uid)
+          (request.auth.uid == fsGet('games', request.resource.data.gameId).data.player2Uid
+           && request.resource.data.recipientUid == fsGet('games', request.resource.data.gameId).data.player1Uid)
         )
         // Only nudge active games
-        && get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.status == 'active'
+        && fsGet('games', request.resource.data.gameId).data.status == 'active'
         // Companion-write requirement (May 2026 H1 hardening): in the same
         // batch the sender MUST also write nudge_limits/{senderUid_gameId}
         // with lastNudgedAt pinned to request.time. Without this, the client
@@ -2266,7 +2107,7 @@ service cloud.firestore {
         // 1-hour cooldown server-side. getAfter() reflects the post-batch
         // state, so a missing limit write means the doc isn't there and
         // the rule rejects. Mirrors the /reports pattern (H-R2).
-        && getAfter(/databases/$(database)/documents/nudge_limits/$(request.auth.uid + '_' + request.resource.data.gameId)).data.lastNudgedAt == request.time;
+        && fsGetAfter('nudge_limits', request.auth.uid + '_' + request.resource.data.gameId).data.lastNudgedAt == request.time;
 
       // Immutable. (The old `delivered` flag was vestigial — it was to be
       // flipped by an onNudgeCreated Cloud Function that no longer exists.
@@ -2327,48 +2168,29 @@ service cloud.firestore {
         && request.resource.data.read == false
         && request.resource.data.createdAt == request.time
         // Sender must be a participant (player OR judge) of the referenced game.
-        && isParticipant(get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data)
+        && isParticipant(fsGet('games', request.resource.data.gameId).data)
         // Recipient must be a participant (player OR judge) of the same game.
         // Allows: player→player (existing), player→judge (judge_invite),
         // judge→player (your_turn after ruling).
         && (
-          request.resource.data.recipientUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player1Uid
-          || request.resource.data.recipientUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player2Uid
+          request.resource.data.recipientUid == fsGet('games', request.resource.data.gameId).data.player1Uid
+          || request.resource.data.recipientUid == fsGet('games', request.resource.data.gameId).data.player2Uid
           || (
-            'judgeId' in get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data
-            && get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.judgeId != null
-            && request.resource.data.recipientUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.judgeId
+            'judgeId' in fsGet('games', request.resource.data.gameId).data
+            && fsGet('games', request.resource.data.gameId).data.judgeId != null
+            && request.resource.data.recipientUid == fsGet('games', request.resource.data.gameId).data.judgeId
           )
         )
         // Rate limit: at most 1 notification per game per action type per 5 seconds
         && (
-          !exists(/databases/$(database)/documents/notification_limits/$(request.auth.uid + '_' + request.resource.data.gameId + '_' + request.resource.data.type))
-          || request.time > get(/databases/$(database)/documents/notification_limits/$(request.auth.uid + '_' + request.resource.data.gameId + '_' + request.resource.data.type)).data.lastSentAt + duration.value(5, 's')
+          !fsExists('notification_limits', request.auth.uid + '_' + request.resource.data.gameId + '_' + request.resource.data.type)
+          || request.time > fsGet('notification_limits', request.auth.uid + '_' + request.resource.data.gameId + '_' + request.resource.data.type).data.lastSentAt + duration.value(5, 's')
         )
         // Companion-write requirement (May 2026 H2 hardening): a /notifications
-        // create must commit ATOMICALLY with one of two anchors so a malicious
-        // client can't write /notifications and skip the cooldown bookkeeping
-        // (or, worse, omit it entirely and spam an opponent's feed).
-        //
-        //   Path A — standalone (writeNotification): the same batch must write
-        //   notification_limits/{senderUid_gameId_type} with lastSentAt pinned
-        //   to request.time. Mirrors the /reports + /nudges companion-write
-        //   pattern, and refreshes the 5s cooldown anchor in lockstep with
-        //   the notification.
-        //
-        //   Path B — in-tx (writeNotificationInTx): the notification is part
-        //   of a runTransaction that also updates /games/{gameId} with
-        //   updatedAt = serverTimestamp() (i.e. request.time). Every game
-        //   action that emits an in-tx notification already does this, and
-        //   game writes are themselves rate-limited (turn-action 2s
-        //   server cooldown + turn-order rules), so we don't need a second
-        //   limits doc on the in-tx hot path.
-        //
-        // getAfter() reflects the post-commit state; if neither anchor lands
-        // in the same batch the rule rejects.
+        // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r28
         && (
-          getAfter(/databases/$(database)/documents/notification_limits/$(request.auth.uid + '_' + request.resource.data.gameId + '_' + request.resource.data.type)).data.lastSentAt == request.time
-          || getAfter(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.updatedAt == request.time
+          fsGetAfter('notification_limits', request.auth.uid + '_' + request.resource.data.gameId + '_' + request.resource.data.type).data.lastSentAt == request.time
+          || fsGetAfter('games', request.resource.data.gameId).data.updatedAt == request.time
         );
 
       // Only the recipient can mark a notification as read
@@ -2433,24 +2255,7 @@ service cloud.firestore {
     }
 
     // ── Push targets (cross-readable token mirror) ──
-    // The canonical FCM token list lives at users/{uid}/private/profile
-    // .fcmTokens (owner-only). This mirror exposes the same tokens to any
-    // signed-in user so a SENDER (game opponent / nominated judge) can
-    // embed them into a /push_dispatch doc — the Firebase Extension that
-    // dispatches background push reads `tokens` from each dispatch doc.
-    //
-    // Why cross-readable is bounded risk: FCM tokens alone cannot be turned
-    // into a push attack — the FCM HTTP API requires OAuth2 with the
-    // project's service account, which only the Extension (running as
-    // Admin SDK) has. A leaked token can be paired with a uid (privacy
-    // leak surface) but cannot be abused for push spam by another
-    // authenticated user. The /push_dispatch create rule below additionally
-    // requires the sender to be a game participant AND requires
-    // `tokens.hasOnly(<mirror>)` so a sender cannot inject bogus tokens to
-    // misroute pushes.
-    //
-    // Cap mirrors the canonical fcmTokens cap (≤10) — keeps fan-out bounded
-    // even when a user is signed in on every device they own.
+    // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r29
     match /pushTargets/{uid} {
       allow read: if isSignedIn();
 
@@ -2483,32 +2288,7 @@ service cloud.firestore {
     }
 
     // ── Push dispatch (Firebase Extension trigger collection) ──
-    // The `firebase/firestore-send-fcm` Extension watches this collection
-    // (configured in extensions/firestore-send-fcm.env) and forwards each
-    // created doc to the FCM HTTP API. The extension runs as Admin SDK so
-    // it bypasses these rules — they only gate CLIENT writes to keep
-    // attackers from spamming the FCM API via injected dispatch docs.
-    //
-    // Why this collection exists: client-side dispatch is the only way to
-    // wake offline recipients without a Cloud Function (which the
-    // verify-no-cloud-functions CI gate blocks). The Extension is a managed
-    // deployment outside functions/src/, so it slips past the gate cleanly.
-    //
-    // Anti-abuse posture:
-    //  1. Sender must be a signed-in game participant
-    //  2. Recipient must be a participant of the same game (player or judge)
-    //  3. tokens.hasOnly(<recipient's mirror>) — no token injection
-    //  4. Title/body caps mirror /notifications (≤80 / ≤200) to bound payload
-    //  5. Rate anchor: a fresh /notification_limits or /games update by the
-    //     SAME sender for the SAME (game, type) must exist within 10s.
-    //     Transfers /notifications' 5s rate limit to /push_dispatch by
-    //     reference — a client cannot dispatch faster than they can
-    //     legitimately notify.
-    //
-    // The 10s window (vs the notification's 5s) absorbs the network gap
-    // between /notifications commit and /push_dispatch commit. Both anchors
-    // are committed BEFORE this rule evaluates, so get() (not getAfter)
-    // is the right primitive.
+    // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r30
     match /push_dispatch/{dispatchId} {
       // Read: only sender and recipient. The Extension reads via Admin SDK
       // so it ignores these rules. Recipient access lets a debug UI show
@@ -2524,23 +2304,7 @@ service cloud.firestore {
         && request.resource.data.recipientUid != request.auth.uid
         && request.resource.data.gameId is string
         // 'nudge' is push-only — it has NO /notifications feed entry (nudges
-        // live in /nudges with their own 1-hour cooldown) but it is the one
-        // event that is useless without waking an offline device. Adding it
-        // here opens no new amplification surface: a nudge dispatch still needs
-        // the sender to be a participant, still needs tokens.hasOnly(<mirror>),
-        // still needs the companion push_dispatch_limits write, and the
-        // originating /nudges write is bounded by /nudge_limits at 1 per hour
-        // per (sender, game) — an order of magnitude tighter than the 5s
-        // dispatch cooldown. Deliberately NOT added to /notifications or
-        // /notification_limits: the in-app feed schema stays as it is.
-        //
-        // Note this rule does not require games.status == 'active' the way the
-        // /nudges create rule does. That asymmetry is intentional and safe: the
-        // dispatch doc can only exist if the sender already wrote a /nudges doc
-        // that passed the active-game check, and the other push types
-        // (game_won / game_lost) are by definition emitted for a game that is
-        // no longer active. Adding an active-game requirement here would break
-        // game-over pushes.
+        // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r31
         && request.resource.data.type in ['your_turn', 'new_challenge', 'game_won', 'game_lost', 'judge_invite', 'nudge']
         // ── Dispatch payload shape ──
         && request.resource.data.notification is map
@@ -2557,17 +2321,17 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time
         // ── Participation ──
         // Sender must be a participant (player OR judge) of the referenced game.
-        && isParticipant(get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data)
+        && isParticipant(fsGet('games', request.resource.data.gameId).data)
         // Recipient must be a participant of the same game. Mirrors the
         // /notifications create rule — player→player (your_turn / game_*),
         // player→judge (judge_invite, ruling needed), judge→player (rulings).
         && (
-          request.resource.data.recipientUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player1Uid
-          || request.resource.data.recipientUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player2Uid
+          request.resource.data.recipientUid == fsGet('games', request.resource.data.gameId).data.player1Uid
+          || request.resource.data.recipientUid == fsGet('games', request.resource.data.gameId).data.player2Uid
           || (
-            'judgeId' in get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data
-            && get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.judgeId != null
-            && request.resource.data.recipientUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.judgeId
+            'judgeId' in fsGet('games', request.resource.data.gameId).data
+            && fsGet('games', request.resource.data.gameId).data.judgeId != null
+            && request.resource.data.recipientUid == fsGet('games', request.resource.data.gameId).data.judgeId
           )
         )
         // ── Token integrity ──
@@ -2578,30 +2342,11 @@ service cloud.firestore {
         // hasOnly is the inverse of hasAll: it checks subset, which is
         // what we want — sender's tokens ⊆ recipient's mirror.
         && request.resource.data.tokens.hasOnly(
-          get(/databases/$(database)/documents/pushTargets/$(request.resource.data.recipientUid)).data.tokens
+          fsGet('pushTargets', request.resource.data.recipientUid).data.tokens
         )
         // ── Companion-write rate limit (Codex P1 hardening) ──
-        // Each /push_dispatch create MUST commit atomically with a fresh
-        // /push_dispatch_limits/{senderUid_recipientUid_gameId_type} doc
-        // pinned to request.time. The limits-doc rules enforce a 5s
-        // cooldown on update (matches /notifications), so the sender
-        // cannot fire more than 1 dispatch per 5s per
-        // (recipient, game, type) tuple.
-        //
-        // Why this replaces the previous recency-window anchor: a sliding
-        // "notification_limits OR games.updatedAt within 10s" gate let one
-        // legitimate game action authorize an unbounded burst of
-        // /push_dispatch docs in the same window — each triggering an FCM
-        // API call. Binding to a unique companion-write closes that
-        // amplification surface (see notification_limits / reports_limits
-        // / nudge_limits — same pattern).
-        //
-        // getAfter() resolves to the post-batch state, so the rule checks
-        // that the limits doc the sender included in this batch has its
-        // lastSentAt server-pinned to request.time. The limits-collection
-        // create rule enforces the same pin, so a backdated value can't
-        // satisfy both gates.
-        && getAfter(/databases/$(database)/documents/push_dispatch_limits/$(request.auth.uid + '_' + request.resource.data.recipientUid + '_' + request.resource.data.gameId + '_' + request.resource.data.type)).data.lastSentAt == request.time;
+        // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r32
+        && fsGetAfter('push_dispatch_limits', request.auth.uid + '_' + request.resource.data.recipientUid + '_' + request.resource.data.gameId + '_' + request.resource.data.type).data.lastSentAt == request.time;
 
       // Dispatch docs are immutable once created — the Extension writes its
       // delivery results to a sibling collection (configured by the
@@ -2665,18 +2410,7 @@ service cloud.firestore {
     }
 
     // ── Reports (content/player flagging for Google Play UGC policy) ──
-    // Users can report opponents in games they participate in. The previous
-    // rule leaned on a client-side "query + check" comment to enforce
-    // uniqueness; that's harassment-vector and moderator-queue-DoS bait.
-    // Server-side rate limit: one report per (reporter, reported) pair per
-    // 1 hour, enforced by requiring a companion write to
-    // `reports_limits/{reporterUid}_{reportedUid}` in the SAME batch.
-    // (That caps the worst case at 24 reports/day against a single target
-    // per reporter — fine for moderation triage; no per-day counter needed.)
-    //
-    // Report CONTENT is immutable once created; only the moderation
-    // close-out fields may change, and only via the Admin SDK or an
-    // `admin: true` console operator (see the update rule below).
+    // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r33
     match /reports/{reportId} {
       // The reporter reads their own reports (duplicate check in the UI); an
       // admin reads every report — that IS the moderation queue. The reported
@@ -2708,10 +2442,17 @@ service cloud.firestore {
               && request.resource.data.clipId.size() > 0)
         )
         && request.resource.data.reason is string
-        && request.resource.data.reason in ['inappropriate_video', 'abusive_behavior', 'cheating', 'spam', 'non_skate_content', 'other']
+        && request.resource.data.reason in ['inappropriate_video', 'inappropriate', 'abusive_behavior', 'cheating', 'spam', 'non_skate_content', 'not_skating', 'illegal_content', 'other']
         && request.resource.data.description is string
         && request.resource.data.description.size() <= 500
+        // DSA Art. 16: an illegal-content notice has to say what is illegal.
+        // Other reasons may leave the explanation blank.
+        && (
+          request.resource.data.reason != 'illegal_content'
+          || request.resource.data.description.size() >= 20
+        )
         && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time
         // Optional clipId: when a report targets a clip from the feed rather
         // than an in-game video, it carries the clip's deterministic id
         // (`${gameId}_${turnNumber}_${role}`). Shape-only check here —
@@ -2722,13 +2463,21 @@ service cloud.firestore {
               && request.resource.data.clipId.size() > 0
               && request.resource.data.clipId.size() <= 128)
         )
+        // Optional disputeId. A community-call report names the dispute so
+        // an admin can hide it. Shape only — auto-hide does not run for it.
+        && (
+          !('disputeId' in request.resource.data)
+          || (request.resource.data.disputeId is string
+              && request.resource.data.disputeId.size() > 0
+              && request.resource.data.disputeId.size() <= 128)
+        )
         // Rate-limit gate: EITHER the reporter has never reported this
         // target before (no limits doc exists) OR the previous report was
         // more than 1 hour ago. Checked against the PRE-batch state via
         // get(); getAfter() below covers the companion-write freshness.
         && (
-          !exists(/databases/$(database)/documents/reports_limits/$(request.auth.uid + '_' + request.resource.data.reportedUid))
-          || request.time > get(/databases/$(database)/documents/reports_limits/$(request.auth.uid + '_' + request.resource.data.reportedUid)).data.lastSentAt + duration.value(1, 'h')
+          !fsExists('reports_limits', request.auth.uid + '_' + request.resource.data.reportedUid)
+          || request.time > fsGet('reports_limits', request.auth.uid + '_' + request.resource.data.reportedUid).data.lastSentAt + duration.value(1, 'h')
         )
         // Companion-write requirement: in the same batch, the reporter MUST
         // also write the matching reports_limits/{reporter_reported} doc
@@ -2736,28 +2485,31 @@ service cloud.firestore {
         // cooldown would never advance. getAfter() reflects the batch's
         // post-commit state — if the client didn't include the limit
         // write, the doc won't exist there and the rule rejects.
-        && getAfter(/databases/$(database)/documents/reports_limits/$(request.auth.uid + '_' + request.resource.data.reportedUid)).data.lastSentAt == request.time;
+        && fsGetAfter('reports_limits', request.auth.uid + '_' + request.resource.data.reportedUid).data.lastSentAt == request.time;
 
       // ── Moderation close-out (admin custom claim) ──
-      // Reports stay immutable to everyone else — a reporter can never
-      // rewrite their own filing. An admin may only move a report to a
-      // TERMINAL state with an audit trail: `pending` is not an accepted
-      // target, so a report cannot be silently reopened/recycled, and
-      // `hasOnly` keeps reason/description/gameId/clipId (the evidence) and
-      // reporterUid/reportedUid (the parties) frozen in the same write.
-      //
-      // The close-out is ONE-WAY: only a still-`pending` report may be
-      // actioned. Without this, a second admin (or a replayed token) could
-      // overwrite an existing verdict — flipping resolved→dismissed and
-      // rewriting resolvedBy/resolvedAt — which destroys the audit trail of
-      // who actually adjudicated the report.
+      // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r34
       allow update: if isAdmin()
         && resource.data.status == 'pending'
         && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['status', 'resolvedBy', 'resolvedAt'])
         && request.resource.data.status in ['resolved', 'dismissed']
         && request.resource.data.resolvedBy == request.auth.uid
-        && request.resource.data.resolvedAt == request.time;
+        && request.resource.data.resolvedAt == request.time
+        // Dismissing takes no action, so there is nothing to explain.
+        // Resolving restricts content: the same batch must leave a
+        // statement of reasons the subject can read (they cannot read
+        // this report). getAfter sees that companion write.
+        && (
+          request.resource.data.status == 'dismissed'
+          || (
+            fsExistsAfter('moderationStatements', reportId)
+            && fsGetAfter('moderationStatements', reportId).data.subjectUid == resource.data.reportedUid
+            && fsGetAfter('moderationStatements', reportId).data.createdBy == request.auth.uid
+            && fsGetAfter('moderationStatements', reportId).data.createdAt == request.time
+            && fsGetAfter('moderationStatements', reportId).data.action == 'content_restricted'
+          )
+        );
       // Reports are the moderation audit trail — nobody deletes them.
       allow delete: if false;
     }
@@ -2806,6 +2558,103 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ── Statements of reasons (DSA Art. 17) ──
+    // The reported user must never read /reports (the reporter's identity
+    // is in there). When an admin resolves a report they write one of
+    // these in the same batch. The subject reads this doc; strangers do
+    // not. Doc id is the report id, so a report has one statement.
+    // Clip rejection and removal write the same shape through the Admin
+    // SDK (doc id clip_{clipId}), which bypasses this client create rule.
+    match /moderationStatements/{statementId} {
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.subjectUid == request.auth.uid);
+
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly([
+          'subjectUid', 'reportId', 'action', 'reason', 'explanation',
+          'contentRef', 'createdBy', 'createdAt'
+        ])
+        && request.resource.data.subjectUid is string
+        && request.resource.data.subjectUid.size() > 0
+        && request.resource.data.subjectUid != request.auth.uid
+        && statementId == request.resource.data.reportId
+        && request.resource.data.reportId is string
+        && request.resource.data.reportId.size() > 0
+        && request.resource.data.reportId.size() <= 128
+        && request.resource.data.action == 'content_restricted'
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() > 0
+        && request.resource.data.reason.size() <= 64
+        && request.resource.data.explanation is string
+        && request.resource.data.explanation.size() > 0
+        && request.resource.data.explanation.size() <= 1000
+        && request.resource.data.contentRef is string
+        && request.resource.data.contentRef.size() > 0
+        && request.resource.data.contentRef.size() <= 128
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && fsGetAfter('reports', statementId).data.status == 'resolved'
+        && fsGetAfter('reports', statementId).data.resolvedBy == request.auth.uid
+        && fsGetAfter('reports', statementId).data.resolvedAt == request.time
+        && fsGetAfter('reports', statementId).data.reportedUid == request.resource.data.subjectUid;
+
+      // The statement is the notice. Editing it would rewrite the reason
+      // the subject was given. A new action is a new report close-out.
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ── Appeals (DSA Art. 20) ──
+    // One appeal per target. Doc id is `${targetKind}_${targetId}`:
+    // `statement_{reportId}` or `ban_{uid}`. Email verification is NOT
+    // required, and notBanned() does not apply — a restricted user has
+    // to be able to ask for a review. The reported user still cannot
+    // read the original report.
+    match /appeals/{appealId} {
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.appellantUid == request.auth.uid);
+
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasOnly([
+          'appellantUid', 'targetKind', 'targetId', 'explanation', 'status', 'createdAt'
+        ])
+        && request.resource.data.appellantUid == request.auth.uid
+        && request.resource.data.targetKind in ['statement', 'ban']
+        && request.resource.data.targetId is string
+        && request.resource.data.targetId.size() > 0
+        && request.resource.data.targetId.size() <= 128
+        && appealId == request.resource.data.targetKind + '_' + request.resource.data.targetId
+        && request.resource.data.explanation is string
+        && request.resource.data.explanation.size() > 0
+        && request.resource.data.explanation.size() <= 1000
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time
+        && (
+          (
+            request.resource.data.targetKind == 'statement'
+            && fsExists('moderationStatements', request.resource.data.targetId)
+            && fsGet('moderationStatements', request.resource.data.targetId).data.subjectUid == request.auth.uid
+          )
+          || (
+            request.resource.data.targetKind == 'ban'
+            && request.resource.data.targetId == request.auth.uid
+            && fsExists('bans', request.auth.uid)
+          )
+        );
+
+      // The appellant cannot edit a filed appeal. An admin moves it
+      // once, from pending to a terminal outcome, with an audit stamp.
+      allow update: if isAdmin()
+        && resource.data.status == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'reviewedBy', 'reviewedAt'])
+        && request.resource.data.status in ['upheld', 'rejected']
+        && request.resource.data.reviewedBy == request.auth.uid
+        && request.resource.data.reviewedAt == request.time;
+
+      allow delete: if false;
+    }
+
     // ── Nudge rate limits ──
     // One doc per sender+game pair, enforces 1-hour cooldown server-side.
     match /nudge_limits/{limitId} {
@@ -2837,29 +2686,14 @@ service cloud.firestore {
     }
 
     // ── Clips (landed-trick feed) ──
-    // Denormalized from games.turnHistory, written atomically inside the same
-    // runTransaction that appends the TurnRecord (see src/services/clips.ts
-    // writeLandedClipsInTransaction). Each landed turn can produce up to two
-    // clips: `set` (setter's landed set) and `match` (matcher's landed match,
-    // only when they actually landed it).
-    //
-    // Integrity rests on four constraints:
-    //   1. Deterministic doc id `${gameId}_${turnNumber}_${role}` — idempotent
-    //      under transaction retry and prevents duplicates.
-    //   2. Writer must be a participant of the referenced game (verified via
-    //      get() against the game doc), matching the write privileges that
-    //      already govern turnHistory growth.
-    //   3. Create sets moderationStatus == 'active' and cannot be updated by
-    //      clients — transitions to 'hidden' happen via Admin SDK in response
-    //      to a user report (App Store Guideline 1.2 moderation requirement).
-    //   4. Owner (playerUid) can delete their own clip — closes the GDPR /
-    //      CCPA right-to-erasure loop from the account-deletion flow.
-    //
-    // Reads are open to any signed-in user: blocklist filtering is applied
-    // client-side (see useBlockedUsers), matching how the rest of the app
-    // handles cross-user content.
+    // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r35
     match /clips/{clipId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn()
+        && (
+          isAdmin()
+          || resource.data.playerUid == request.auth.uid
+          || resource.data.moderationStatus == 'active'
+        );
 
       // ── Game-sourced clips ──
       // Legacy clips written before the `source` field existed stay
@@ -2888,16 +2722,7 @@ service cloud.firestore {
         && request.resource.data.videoUrl.size() > 0
         && request.resource.data.videoUrl.size() <= 2048
         // ── videoUrl bucket pin (audit P2) ──
-        // The clip feed is app-wide readable and renders this URL directly.
-        // Without a host pin, any signed-in participant could stamp an
-        // attacker-hosted URL ("https://attacker.com/payload.html") into
-        // the public feed — same referrer/exfil/content-spoof surface as
-        // matchVideoUrl above. Pin to this project's Firebase Storage
-        // bucket only; mirrors the currentTrickVideoUrl pin on the games
-        // collection — BOTH accepted forms must be allowed here because
-        // `writeLandedClipsInTransaction` copies the (already-pinned)
-        // games video URL into clips.videoUrl verbatim, and the games
-        // rule accepts the bucket-as-host CDN form too.
+        // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r36
         && videoUrlBucketPinned(request.resource.data.videoUrl)
         && (request.resource.data.spotId == null
             || (request.resource.data.spotId is string
@@ -2907,6 +2732,7 @@ service cloud.firestore {
         // are server-side only (Admin SDK), keeping the App Store takedown
         // path out of client reach.
         && request.resource.data.moderationStatus == 'active'
+        && !('moderation' in request.resource.data)
         // upvoteCount aggregate must seed at 0; client-side ranking reads
         // this field directly so it has to start at the empty state.
         && request.resource.data.upvoteCount == 0
@@ -2914,12 +2740,12 @@ service cloud.firestore {
         // optional here — but if present it must seed empty too.
         && request.resource.data.get('downvoteCount', 0) == 0
         // Writer must be a game participant (player OR nominated judge).
-        && isParticipant(get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data)
+        && isParticipant(fsGet('games', request.resource.data.gameId).data)
         // playerUid must be one of the game's two players — never the judge,
         // never an arbitrary UID.
         && (
-          request.resource.data.playerUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player1Uid
-          || request.resource.data.playerUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player2Uid
+          request.resource.data.playerUid == fsGet('games', request.resource.data.gameId).data.player1Uid
+          || request.resource.data.playerUid == fsGet('games', request.resource.data.gameId).data.player2Uid
         );
 
       // ── User-uploaded clips (no backing game) ──
@@ -2943,26 +2769,28 @@ service cloud.firestore {
         && request.resource.data.trickName is string
         && request.resource.data.trickName.size() >= 1
         && request.resource.data.trickName.size() <= 80
-        && userClipVideoUrlOk(request.resource.data.videoUrl, request.auth.uid)
         && (request.resource.data.spotId == null
             || (request.resource.data.spotId is string
                 && request.resource.data.spotId.size() <= 64))
-        && request.resource.data.moderationStatus == 'active'
+        && (
+          (request.resource.data.moderationStatus == 'active'
+            && !('moderation' in request.resource.data)
+            && (userClipVideoUrlOk(request.resource.data.videoUrl, request.auth.uid)
+                || userClipPublicUrlOk(request.resource.data.videoUrl, request.auth.uid)))
+          || (request.resource.data.moderationStatus == 'pending'
+            && request.resource.data.moderation == 'pending'
+            && userClipVideoUrlOk(request.resource.data.videoUrl, request.auth.uid))
+        )
+        && !('moderationScores' in request.resource.data)
+        && !('moderationNotice' in request.resource.data)
+        && !('badgeCounted' in request.resource.data)
         && request.resource.data.upvoteCount == 0
         && request.resource.data.downvoteCount == 0
         && request.resource.data.createdAt == request.time
         && clipRateLimitOk();
 
       // Clips are otherwise immutable once written — content edits and
-      // moderation flips both go through Admin SDK to keep the audit trail
-      // clean. The narrow exception is the two vote aggregates, which a
-      // signed-in user can adjust ONLY when paired with the corresponding
-      // clipVotes/{uid}_{clipId} create, delete, or delete+create flip in
-      // the same atomic write (see src/services/clips.ts). The
-      // exists/existsAfter/getAfter checks in clipVoteDeltaOk bind BOTH
-      // deltas to the pre- and post-transaction state of the vote doc AND
-      // to its `value`, so a client cannot move a counter without moving
-      // its own vote in the matching direction.
+      // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r37
       allow update: if isSignedIn()
         && request.auth.token.email_verified == true
         // Only the two aggregates may change — every other field stays put.
@@ -3014,22 +2842,7 @@ service cloud.firestore {
     }
 
     // ── Clip upvotes ──
-    //
-    // One vote per (uid, clipId) enforced by the deterministic document id
-    // (`${uid}_${clipId}`). The id is verified at create time so a client
-    // cannot impersonate another user's vote. Votes are immutable:
-    //
-    //   - update allowed ONLY as a direction flip (up ⇄ down); a vote can
-    //     never be silently rewritten into a different shape or retargeted.
-    //   - delete owner-only AND self-correcting: it must carry the matching
-    //     counter decrement (or prove there is none to carry), which closes
-    //     the cast → delete → cast stuffing cycle. See the delete rule.
-    //
-    // Reads are open to signed-in users because the clips feed aggregates
-    // votes via `getCountFromServer` and checks whether the current user
-    // already upvoted via a direct get — both in `fetchClipUpvoteState`
-    // (see src/services/clips.ts), and both require read permission on
-    // the collection / doc.
+    // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r38
     match /clipVotes/{voteId} {
       allow read: if isSignedIn();
 
@@ -3051,29 +2864,17 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time
         // Vote target must exist — prevents orphaned votes on clips that
         // were deleted between client-side discovery and the write.
-        && exists(/databases/$(database)/documents/clips/$(request.resource.data.clipId))
+        && fsExists('clips', request.resource.data.clipId)
         // Server-enforced no self-vote (audit MEDIUM): a clip's owner cannot
         // create a vote doc for their own clip. The check is independent of
         // `value`, so it blocks BOTH directions — no ranking self-inflation
         // via upvote, and no self-downvote to fake humility/engagement. The
         // service-layer SelfUpvoteError is UX only.
-        && get(/databases/$(database)/documents/clips/$(request.resource.data.clipId)).data.playerUid != request.auth.uid;
+        && fsGet('clips', request.resource.data.clipId).data.playerUid != request.auth.uid
+        && clipVoteCreateTallyOk();
 
       // ── Vote flip (up ⇄ down) ──
-      // A flip is issued as delete + set of the SAME voteId inside ONE
-      // transaction. Firestore COALESCES multiple writes to one document
-      // into a single mutation, so the rules engine sees that pair as an
-      // UPDATE — verified against the emulator: a blanket
-      // `allow update: if false` rejects every flip outright. This clause
-      // is therefore the narrowest opening that makes a flip possible:
-      //   • identity fields (uid, clipId) frozen, so a vote can never be
-      //     retargeted at another clip or another user;
-      //   • `value` must actually INVERT — re-writing the same direction
-      //     stays denied, which is what keeps the double-vote guard alive;
-      //   • createdAt re-stamped to server time, so the flip is auditable
-      //     and cannot be back-dated.
-      // Nothing else about a vote is mutable, and the paired counter move
-      // on /clips is validated independently by clipVoteDeltaOk.
+      // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r39
       allow update: if isSignedIn()
         && request.auth.token.email_verified == true
         && notBanned()
@@ -3086,17 +2887,7 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time;
 
       // Owner-only delete, and — crucially — the delete must CARRY ITS OWN
-      // COUNTER CORRECTION. A bare delete would reset the create rule's
-      // implicit one-vote-per-(uid, clipId) guard (the deterministic doc id
-      // is free again) while leaving the earlier +1 on the clip, so a single
-      // account could cycle cast → delete → cast → … and add +1 to the same
-      // clip every lap. Forcing the paired -1 makes that cycle net zero:
-      // stuffing is blocked by arithmetic, not by forbidding the delete,
-      // which is what keeps the withdraw path (clips.votes.ts#removeClipVote)
-      // and the account-deletion cascade (clips.cascade.ts) working.
-      // A FLIP is delete + set of the same voteId in one transaction, which
-      // Firestore coalesces into an UPDATE — it lands on the flip clause
-      // above, never here.
+      // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r40
       allow delete: if isSignedIn()
         && request.auth.uid == resource.data.uid
         && (
@@ -3105,7 +2896,7 @@ service cloud.firestore {
           // bare — see deleteUserClipVotes).
           !('clipId' in resource.data)
           // Orphan: the clip is already gone, and its aggregates with it.
-          || !exists(/databases/$(database)/documents/clips/$(resource.data.clipId))
+          || !fsExists('clips', resource.data.clipId)
           // Nothing to subtract: the counter this vote fed is already at its
           // floor (drifted aggregate, Admin-SDK edit, or a legacy clip that
           // pre-dates the aggregates). Blocking the delete here would strand
@@ -3114,64 +2905,34 @@ service cloud.firestore {
           // Direction default matches voteValueBefore: legacy votes pre-date
           // `value` and were all upvotes → 1.
           || (resource.data.get('value', 1) == 1
-              && get(/databases/$(database)/documents/clips/$(resource.data.clipId)).data.get('upvoteCount', 0) <= 0)
+              && fsGet('clips', resource.data.clipId).data.get('upvoteCount', 0) <= 0)
           || (resource.data.get('value', 1) == -1
-              && get(/databases/$(database)/documents/clips/$(resource.data.clipId)).data.get('downvoteCount', 0) <= 0)
+              && fsGet('clips', resource.data.clipId).data.get('downvoteCount', 0) <= 0)
           // The normal path: the SAME atomic write must decrement the counter
           // this vote incremented. A downvote can only ever pull downvoteCount
           // down — never upvoteCount.
           || (resource.data.get('value', 1) == 1
-              && getAfter(/databases/$(database)/documents/clips/$(resource.data.clipId)).data.get('upvoteCount', 0)
-                 == get(/databases/$(database)/documents/clips/$(resource.data.clipId)).data.get('upvoteCount', 0) - 1)
+              && fsGetAfter('clips', resource.data.clipId).data.get('upvoteCount', 0)
+                 == fsGet('clips', resource.data.clipId).data.get('upvoteCount', 0) - 1)
           || (resource.data.get('value', 1) == -1
-              && getAfter(/databases/$(database)/documents/clips/$(resource.data.clipId)).data.get('downvoteCount', 0)
-                 == get(/databases/$(database)/documents/clips/$(resource.data.clipId)).data.get('downvoteCount', 0) - 1)
+              && fsGetAfter('clips', resource.data.clipId).data.get('downvoteCount', 0)
+                 == fsGet('clips', resource.data.clipId).data.get('downvoteCount', 0) - 1)
         );
     }
 
     // ── Disputes (community-judged trick calls) ──
-    // When a matcher claims "I landed it", the SETTER can send the call to
-    // the community instead of accepting it on the honor system. The clip
-    // enters the feed and any OTHER signed-in user rules LAND or BAIL.
-    //
-    // Shape mirrors the clips collection deliberately — same integrity
-    // constraints, same proven pattern:
-    //   1. Deterministic doc id `${gameId}_${turnNumber}` — idempotent under
-    //      transaction retry, and a turn can only be disputed once.
-    //   2. Writer must be a participant of the referenced game (get() against
-    //      the game doc) AND specifically the SETTER of that turn. Only the
-    //      player whose trick was matched gets to question the claim.
-    //   3. Create seeds status 'open' / moderationStatus 'active' / tallies
-    //      at 0; clients can never forge a pre-loaded verdict, and takedowns
-    //      stay Admin-SDK-only (App Store Guideline 1.2).
-    //   4. matchVideoUrl is bucket-pinned — it renders in a public feed, the
-    //      same exfil / content-spoof surface clips.videoUrl guards against.
-    //
-    // Open disputes form the signed-in judging feed. Closed results are game
-    // history: readable by the two players named on the dispute, and by any
-    // voter who ruled on it (their vote doc is the proof — the "see how you
-    // ruled" contract fetchDisputeViewerState documents, and what lets
-    // deleteUserDisputeVotes pair its erasure delete with the -1 tally move
-    // on a closed dispute). The uid pins are trustworthy because the create
-    // rule below binds setterUid/matcherUid to the backing game's real
-    // players, so no cross-doc get() is needed — which also keeps
-    // deleteUserDisputes' setterUid erasure QUERY provable (a get()-based arm
-    // cannot be evaluated for list requests and would deny the whole query).
-    //
-    // `resource == null` keeps reads of MISSING docs open to any signed-in
-    // user: raiseDispute's transactional exists-check and the game-over
-    // screen's legacy fallback probe both get() deterministic ids that may
-    // not exist, and a rule that dereferences resource.data denies those
-    // reads outright. This arm leaks only existence — strictly less than the
-    // app-wide read it replaces.
+    // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r41
     match /disputes/{disputeId} {
+      // Hidden disputes are a takedown. Participants and anyone who already
+      // voted can still read them; everyone else only sees open + active.
       allow read: if isSignedIn()
         && (
           resource == null
-          || resource.data.status == 'open'
+          || isAdmin()
           || request.auth.uid == resource.data.setterUid
           || request.auth.uid == resource.data.matcherUid
-          || exists(/databases/$(database)/documents/disputeVotes/$(request.auth.uid + '_' + disputeId))
+          || fsExists('disputeVotes', request.auth.uid + '_' + disputeId)
+          || (resource.data.status == 'open' && resource.data.moderationStatus == 'active')
         );
 
       allow create: if isSignedIn()
@@ -3183,25 +2944,11 @@ service cloud.firestore {
         && request.resource.data.turnNumber is int
         && request.resource.data.turnNumber > 0
         // Only the setter of the disputed turn may raise it — never the
-        // matcher (they'd be disputing their own claim), never the judge.
-        //
-        // ── Gap A (role self-assertion) — CLOSED (binding-dispute Phase 2) ──
-        // Previously the rule could only assert `setterUid == request.auth.uid`
-        // (the WRITER is who they claim) but had nothing server-side to prove
-        // that uid actually set the trick on `turnNumber` — so the matcher
-        // could invert the roles and dispute their OWN claim. That was
-        // survivable only while the verdict was non-binding. Now the verdict is
-        // binding, so the gap is CLOSED by the freeze: a landed claim parks the
-        // game in `pendingReview` with `currentSetter`/`turnNumber` still naming
-        // the disputed turn, so the rule binds the disputer to the real frozen
-        // setter of the real frozen turn. All three reads below hit the SAME
-        // game doc already fetched by isParticipant()/the player pins — Firestore
-        // dedupes identical document accesses, so this adds ZERO to the
-        // document-access budget (one /games get total for the whole rule).
+        // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r42
         && request.resource.data.setterUid == request.auth.uid
-        && get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.phase == 'pendingReview'
-        && request.resource.data.setterUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.currentSetter
-        && request.resource.data.turnNumber == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.turnNumber
+        && fsGet('games', request.resource.data.gameId).data.phase == 'pendingReview'
+        && request.resource.data.setterUid == fsGet('games', request.resource.data.gameId).data.currentSetter
+        && request.resource.data.turnNumber == fsGet('games', request.resource.data.gameId).data.turnNumber
         && request.resource.data.matcherUid is string
         && request.resource.data.matcherUid != request.resource.data.setterUid
         && request.resource.data.setterUsername is string
@@ -3239,41 +2986,33 @@ service cloud.firestore {
         && request.resource.data.landVotes == 0
         && request.resource.data.bailVotes == 0
         // Writer must be a participant of the referenced game.
-        && isParticipant(get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data)
+        && isParticipant(fsGet('games', request.resource.data.gameId).data)
         // Both named uids must be the game's actual players — never the
         // judge, never an arbitrary UID stamped in to fake a matchup.
         && (
-          request.resource.data.setterUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player1Uid
-          || request.resource.data.setterUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player2Uid
+          request.resource.data.setterUid == fsGet('games', request.resource.data.gameId).data.player1Uid
+          || request.resource.data.setterUid == fsGet('games', request.resource.data.gameId).data.player2Uid
         )
         && (
-          request.resource.data.matcherUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player1Uid
-          || request.resource.data.matcherUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player2Uid
+          request.resource.data.matcherUid == fsGet('games', request.resource.data.gameId).data.player1Uid
+          || request.resource.data.matcherUid == fsGet('games', request.resource.data.gameId).data.player2Uid
         );
 
       // The ONLY client-writable change is a vote tally delta, bound to the
       // paired disputeVotes create/delete in the same atomic write — the same
-      // shape as the clips.upvoteCount ±1 branches. Everything else (status
-      // close-out, moderation flips, content) is Admin SDK only.
+      // shape as the clips.upvoteCount ±1 branches. Status close-out and
+      // content stay Admin SDK only.
       //
-      // ── Why a symmetric -1 branch exists, despite "a verdict is final" ──
-      // "No un-vote" is a PRODUCT rule, enforced where product rules belong:
-      // the UI ships no retract affordance. It is deliberately NOT a
-      // rules-level invariant, because making it one is strictly worse on two
-      // counts. (1) Integrity: with delete allowed but no decrement, one
-      // account cycles vote → delete vote doc → the !exists() guard resets →
-      // vote again, and every +1 sticks. Unbounded ballot stuffing. Pairing
-      // the delete with a mandatory -1 makes that cycle net ZERO — stuffing
-      // becomes arithmetically impossible rather than merely forbidden.
-      // (2) Erasure: the account-deletion cascade
-      // (services/disputes.cascade.ts → deleteUserDisputeVotes) must be able
-      // to reap a user's verdicts from OPEN disputes. Gating deletes on
-      // status would strand a deleted user's recorded verdict on every live
-      // dispute — a real GDPR/CCPA gap in a repo that maintains explicit
-      // cascade functions for exactly this.
-      //
-      // Do NOT "restore" the asymmetry by dropping the -1 branch: that
-      // re-opens both holes. Integrity lives here; affordances live in the UI.
+      // An admin may hide the dispute from the reports queue. That write
+      // changes moderationStatus from active to hidden and nothing else, so
+      // it cannot move a tally or rewrite the video.
+      allow update: if isAdmin()
+        && resource.data.moderationStatus == 'active'
+        && request.resource.data.moderationStatus == 'hidden'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['moderationStatus']);
+
+      // Vote tallies.
+      // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r43
       allow update: if isSignedIn()
         && request.auth.token.email_verified == true
         && (
@@ -3283,8 +3022,8 @@ service cloud.firestore {
           // without existsAfter() they could inflate the meter without
           // recording any verdict at all.
           (
-            !exists(/databases/$(database)/documents/disputeVotes/$(request.auth.uid + '_' + disputeId))
-            && existsAfter(/databases/$(database)/documents/disputeVotes/$(request.auth.uid + '_' + disputeId))
+            !fsExists('disputeVotes', request.auth.uid + '_' + disputeId)
+            && fsExistsAfter('disputeVotes', request.auth.uid + '_' + disputeId)
             // New verdicts are only accepted while the dispute is open. (The
             // -1 branch is deliberately NOT status-gated — erasure has to
             // work on closed disputes too.)
@@ -3297,13 +3036,13 @@ service cloud.firestore {
                 && request.resource.data.landVotes == resource.data.get('landVotes', 0) + 1
                 // The paired verdict must actually say 'land' — otherwise a
                 // voter files a BAIL verdict while inflating the LAND meter.
-                && getAfter(/databases/$(database)/documents/disputeVotes/$(request.auth.uid + '_' + disputeId)).data.verdict == 'land')
+                && fsGetAfter('disputeVotes', request.auth.uid + '_' + disputeId).data.verdict == 'land')
               ||
               // BAIL: mirror image.
               (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['bailVotes'])
                 && request.resource.data.bailVotes is int
                 && request.resource.data.bailVotes == resource.data.get('bailVotes', 0) + 1
-                && getAfter(/databases/$(database)/documents/disputeVotes/$(request.auth.uid + '_' + disputeId)).data.verdict == 'bail')
+                && fsGetAfter('disputeVotes', request.auth.uid + '_' + disputeId).data.verdict == 'bail')
             )
           )
           ||
@@ -3312,46 +3051,26 @@ service cloud.firestore {
           // PRE-state (get, not getAfter — the doc is gone afterwards), so a
           // deleted BAIL vote can only ever decrement bailVotes.
           (
-            exists(/databases/$(database)/documents/disputeVotes/$(request.auth.uid + '_' + disputeId))
-            && !existsAfter(/databases/$(database)/documents/disputeVotes/$(request.auth.uid + '_' + disputeId))
+            fsExists('disputeVotes', request.auth.uid + '_' + disputeId)
+            && !fsExistsAfter('disputeVotes', request.auth.uid + '_' + disputeId)
             && (
               (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['landVotes'])
                 && request.resource.data.landVotes is int
                 && request.resource.data.landVotes >= 0
                 && request.resource.data.landVotes == resource.data.get('landVotes', 0) - 1
-                && get(/databases/$(database)/documents/disputeVotes/$(request.auth.uid + '_' + disputeId)).data.verdict == 'land')
+                && fsGet('disputeVotes', request.auth.uid + '_' + disputeId).data.verdict == 'land')
               ||
               (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['bailVotes'])
                 && request.resource.data.bailVotes is int
                 && request.resource.data.bailVotes >= 0
                 && request.resource.data.bailVotes == resource.data.get('bailVotes', 0) - 1
-                && get(/databases/$(database)/documents/disputeVotes/$(request.auth.uid + '_' + disputeId)).data.verdict == 'bail')
+                && fsGet('disputeVotes', request.auth.uid + '_' + disputeId).data.verdict == 'bail')
             )
           )
         );
 
       // ── Gap B (delete + re-raise wipes an unfavourable tally) — CLOSED ──
-      // (binding-dispute Phase 2). Previously the setter could delete their own
-      // dispute and re-raise from a zeroed tally to wipe an unfavourable vote.
-      // Survivable only while the verdict was non-binding; now that a verdict
-      // writes real letters/turn order, that reset is a forgery vector, so the
-      // client delete is REMOVED entirely. The dispute lifecycle is now
-      // Admin-SDK-only: the server referee's `open → closed` close-out (not a
-      // client delete) ends a dispute, and the deterministic id already caps it
-      // at one dispute per turn.
-      //
-      // Erasure is unaffected on the VOTE side: the account-deletion cascade
-      // reaps a user's verdicts through the /disputeVotes owner-delete rule
-      // (services/disputes.cascade.ts → deleteUserDisputeVotes), which still
-      // carries its paired tally decrement and is NOT touched here.
-      //
-      // COORDINATION (firebase-engineer): services/disputes.cascade.ts →
-      // deleteUserDisputes (client deleteDoc of dispute docs raised by the
-      // departing user) now fails closed. It is best-effort / non-blocking
-      // (Promise.allSettled, warn-and-swallow) so account deletion still
-      // succeeds, but raised-dispute docs must instead be reaped server-side by
-      // the referee. Rework that function out of the client cascade when the
-      // referee lands (Phase 4).
+      // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r44
       allow delete: if false;
     }
 
@@ -3378,51 +3097,42 @@ service cloud.firestore {
         && request.resource.data.verdict in ['land', 'bail']
         && request.resource.data.createdAt == request.time
         // Target must exist — no orphaned verdicts on deleted disputes.
-        && exists(/databases/$(database)/documents/disputes/$(request.resource.data.disputeId))
-        && get(/databases/$(database)/documents/disputes/$(request.resource.data.disputeId)).data.status == 'open'
+        && fsExists('disputes', request.resource.data.disputeId)
+        && fsGet('disputes', request.resource.data.disputeId).data.status == 'open'
         // You never judge your own trick. This is the AUTHORITATIVE check —
         // the client's canVote flag is a UI affordance, not authorization.
-        && get(/databases/$(database)/documents/disputes/$(request.resource.data.disputeId)).data.setterUid != request.auth.uid
-        && get(/databases/$(database)/documents/disputes/$(request.resource.data.disputeId)).data.matcherUid != request.auth.uid;
+        && fsGet('disputes', request.resource.data.disputeId).data.setterUid != request.auth.uid
+        && fsGet('disputes', request.resource.data.disputeId).data.matcherUid != request.auth.uid
+        && disputeVoteCreateTallyOk();
 
       allow update: if false;
 
       // Owner-only delete, and — crucially — the delete must CARRY ITS OWN
-      // TALLY CORRECTION. A bare delete would reset the +1 branch's !exists()
-      // guard while leaving the earlier increment on the board, so one
-      // account could cycle vote → delete → vote → … and add +1 every lap.
-      // Forcing the paired -1 makes that cycle net zero: stuffing is blocked
-      // by arithmetic, not by forbidding the delete, which is what keeps the
-      // account-deletion cascade working on OPEN disputes (see the update
-      // rule above for the full rationale).
-      //
-      // Note this is NOT status-gated: erasure must succeed on closed
-      // disputes too. A closed dispute's tally is "final" as a product
-      // statement; it must still shed the verdicts of a deleted account.
+      // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r45
       allow delete: if isSignedIn()
         && request.auth.uid == resource.data.uid
         && (
           // Orphan: the dispute is already gone, so there is no tally left to
           // keep consistent — just drop the vote.
-          !exists(/databases/$(database)/documents/disputes/$(resource.data.disputeId))
+          !fsExists('disputes', resource.data.disputeId)
           // Nothing to subtract: the counter this verdict fed is already at
           // zero (Admin-SDK close-out, or a dispute that was deleted and
           // re-raised from a zeroed tally). Blocking the delete here would
           // strand the vote doc forever. Not a stuffing vector — re-voting
           // from a zeroed base still only ever contributes a single +1.
           || (resource.data.verdict == 'land'
-              && get(/databases/$(database)/documents/disputes/$(resource.data.disputeId)).data.get('landVotes', 0) <= 0)
+              && fsGet('disputes', resource.data.disputeId).data.get('landVotes', 0) <= 0)
           || (resource.data.verdict == 'bail'
-              && get(/databases/$(database)/documents/disputes/$(resource.data.disputeId)).data.get('bailVotes', 0) <= 0)
+              && fsGet('disputes', resource.data.disputeId).data.get('bailVotes', 0) <= 0)
           // The normal path: the SAME write must decrement the counter this
           // verdict incremented. A 'bail' vote can only ever pull bailVotes
           // down — never landVotes.
           || (resource.data.verdict == 'land'
-              && getAfter(/databases/$(database)/documents/disputes/$(resource.data.disputeId)).data.landVotes
-                 == get(/databases/$(database)/documents/disputes/$(resource.data.disputeId)).data.get('landVotes', 0) - 1)
+              && fsGetAfter('disputes', resource.data.disputeId).data.landVotes
+                 == fsGet('disputes', resource.data.disputeId).data.get('landVotes', 0) - 1)
           || (resource.data.verdict == 'bail'
-              && getAfter(/databases/$(database)/documents/disputes/$(resource.data.disputeId)).data.bailVotes
-                 == get(/databases/$(database)/documents/disputes/$(resource.data.disputeId)).data.get('bailVotes', 0) - 1)
+              && fsGetAfter('disputes', resource.data.disputeId).data.bailVotes
+                 == fsGet('disputes', resource.data.disputeId).data.get('bailVotes', 0) - 1)
         );
     }
 
@@ -3464,6 +3174,19 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['revokedAt'])
         && request.resource.data.revokedAt == request.time;
       allow delete: if false;
+    }
+
+    // Pro blessing lineage. Written only by the proBlessing callable (Admin
+    // SDK). A pro badge cannot be earned: no client can create, edit or
+    // delete a blessing. Accepted and revoked records are public lineage;
+    // pending and declined offers are visible only to the two skaters and
+    // admins. Rationale: docs/PRO_BLESSING.md.
+    match /proBlessings/{blessingId} {
+      allow get, list: if resource.data.status in ['accepted', 'revoked']
+        || (isSignedIn() && (request.auth.uid == resource.data.blesserUid
+          || request.auth.uid == resource.data.targetUid
+          || isAdmin()));
+      allow create, update, delete: if false;
     }
   }
 }

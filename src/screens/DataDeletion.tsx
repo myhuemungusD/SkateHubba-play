@@ -6,9 +6,13 @@ export function DataDeletion({ onBack }: { onBack: () => void }) {
   return (
     <div className="min-h-dvh bg-background/90 text-white">
       <div className="px-5 pt-safe pb-4 border-b border-[#222] flex items-center gap-4">
-        <Btn onClick={onBack} variant="ghost" className="shrink-0">
-          ← Back
-        </Btn>
+        {/* Btn is w-full. In this row that width is the whole header, which
+            pushes the logo past the viewport. w-fit sizes the control to its label. */}
+        <div className="w-fit shrink-0">
+          <Btn onClick={onBack} variant="ghost">
+            ← Back
+          </Btn>
+        </div>
         <img src="/logonew.webp" alt="" draggable={false} className="h-6 w-auto select-none" aria-hidden="true" />
       </div>
 
@@ -21,8 +25,8 @@ export function DataDeletion({ onBack }: { onBack: () => void }) {
         <Section title="Download a Copy of Your Data">
           <p>
             Under the GDPR&apos;s right to data portability (Article 20) and CCPA, you can download a machine-readable
-            copy of everything we store about you. When signed in, scroll to the bottom of the lobby and tap{" "}
-            <strong className="text-white">&quot;Download My Data&quot;</strong>. We package your profile, game history,
+            copy of everything we store about you. When signed in, open Settings and tap{" "}
+            <strong className="text-white">&quot;Download my data&quot;</strong>. We package your profile, game history,
             landed clips, reports you filed, and the list of users you blocked into a single JSON file that downloads to
             your device.
           </p>
@@ -30,8 +34,8 @@ export function DataDeletion({ onBack }: { onBack: () => void }) {
 
         <Section title="Delete Your Account (In-App)">
           <p>
-            The fastest way to delete all your data is directly in the app. When signed in, scroll to the bottom of the
-            lobby and tap <strong className="text-white">&quot;Delete Account&quot;</strong>. This permanently removes:
+            The fastest way to delete all your data is directly in the app. When signed in, open Settings and tap{" "}
+            <strong className="text-white">&quot;Delete account&quot;</strong>. This permanently removes:
           </p>
           <ul>
             <li>Your user profile and username</li>

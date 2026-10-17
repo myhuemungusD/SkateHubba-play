@@ -1,3 +1,4 @@
+import "./zodJitless";
 import { z } from "zod";
 
 /**
@@ -60,6 +61,27 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Pro profile showcase + pro tools review UI. DEFAULTS TO OFF. Admins see
+  // it regardless (review mode). Read via isProProfilesEnabled().
+  VITE_FEATURE_PRO_PROFILES: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
+  // Pro blessing (pros turn other skaters pro). DEFAULTS TO OFF. Read via
+  // isProBlessingEnabled(); the proBlessing callable has its own server gate.
+  VITE_FEATURE_PRO_BLESSING: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
+  // XP, levels, and the achievements ribbon. DEFAULTS TO OFF, and it is not
+  // part of the extras switch. Read via isXpEnabled() in featureFlags.ts.
+  VITE_FEATURE_XP_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // Sign in with Apple button. DEFAULTS TO OFF until the Firebase Apple
   // provider is enabled. Read via isAppleSignInEnabled() in featureFlags.ts.
   VITE_FEATURE_APPLE_SIGNIN_ENABLED: z
@@ -76,6 +98,13 @@ const envSchema = z.object({
   // Referee nomination on new games. DEFAULTS TO OFF so a missing env var
   // cannot put a judge on a new game. Read via isRefereeEnabled().
   VITE_FEATURE_REFEREE_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
+  // Public-clip moderation. DEFAULTS TO OFF until the server function is
+  // deployed. Read via isClipModerationEnabled() in featureFlags.ts.
+  VITE_FEATURE_CLIP_MODERATION_ENABLED: z
     .string()
     .optional()
     .transform((v) => v === "true"),

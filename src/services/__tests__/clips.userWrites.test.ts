@@ -108,7 +108,25 @@ describe("createUserClip", () => {
     // optimisation, it is the rate limit.
     expect(tx.update).toHaveBeenCalledWith(expect.objectContaining({ __path: "users/me" }), {
       lastClipCreatedAt: "SERVER_TS",
+      clipsPosted: 1,
+      clipsPostedClipId: "uc1",
     });
+  });
+
+  it("adds one to a positive clipsPosted and treats a non-positive count as zero", async () => {
+    const counted = wireTx({ username: "alice", clipsPosted: 4 });
+    await expect(createUserClip(params())).resolves.toBe("uc1");
+    expect(counted.observed().update).toHaveBeenCalledWith(
+      expect.objectContaining({ __path: "users/me" }),
+      expect.objectContaining({ clipsPosted: 5, clipsPostedClipId: "uc1" }),
+    );
+
+    const zeroed = wireTx({ username: "alice", clipsPosted: 0 });
+    await expect(createUserClip(params({ clipId: "uc2" }))).resolves.toBe("uc2");
+    expect(zeroed.observed().update).toHaveBeenCalledWith(
+      expect.objectContaining({ __path: "users/me" }),
+      expect.objectContaining({ clipsPosted: 1, clipsPostedClipId: "uc2" }),
+    );
   });
 
   it("posts when the previous clip is older than the cooldown", async () => {
@@ -266,6 +284,44 @@ describe("createUserClip", () => {
 
     expect(warn).toHaveBeenCalledWith("user_clip_create_failed", expect.objectContaining({ clipId: "uc1" }));
     warn.mockRestore();
+  });
+
+  it("accepts an approvedClips url when the clip is public", async () => {
+    const cap = wireTx({});
+    const publicUrl = VIDEO_URL.replace("userClips%2F", "approvedClips%2F");
+    await expect(createUserClip(params({ videoUrl: publicUrl }))).resolves.toBe("uc1");
+    expect(cap.observed().set).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ videoUrl: publicUrl, moderationStatus: "active" }),
+    );
+  });
+
+  it("rejects an approvedClips url while the clip is still pending", async () => {
+    vi.stubEnv("VITE_FEATURE_CLIP_MODERATION_ENABLED", "true");
+    try {
+      const publicUrl = VIDEO_URL.replace("userClips%2F", "approvedClips%2F");
+      await expect(createUserClip(params({ videoUrl: publicUrl }))).rejects.toThrow(/could not be attached/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("starts the clip as pending when clip moderation is on", async () => {
+    vi.stubEnv("VITE_FEATURE_CLIP_MODERATION_ENABLED", "true");
+    try {
+      const cap = wireTx({});
+      await createUserClip(params());
+      expect(cap.observed().set).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ moderationStatus: "pending", moderation: "pending" }),
+      );
+      expect(cap.observed().update).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.not.objectContaining({ clipsPosted: expect.anything() }),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("does not mask a typed refusal as a generic failure", async () => {

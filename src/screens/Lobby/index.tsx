@@ -27,6 +27,7 @@ interface Props {
   onLoadMore?: () => void;
   gamesLoading?: boolean;
   onViewPlayer?: (uid: string) => void;
+  onOpenAppeal?: (path: string) => void;
 }
 
 export function Lobby({
@@ -43,6 +44,7 @@ export function Lobby({
   onLoadMore,
   gamesLoading = false,
   onViewPlayer,
+  onOpenAppeal,
 }: Props) {
   const c = useLobbyController({ profile, games });
   const emailVerified = user?.emailVerified ?? false;
@@ -55,6 +57,7 @@ export function Lobby({
         onViewRecord={onViewRecord}
         onOpenGame={onOpenGame}
         onOpenDice={onOpenDice}
+        onOpenAppeal={onOpenAppeal}
         onOpenSettings={onOpenSettings}
         onSignOut={onSignOut}
       />
@@ -85,7 +88,11 @@ export function Lobby({
 
         {hasMoreGames && games.length > 0 && <LoadMoreButton loading={gamesLoading} onClick={() => onLoadMore?.()} />}
 
-        {games.length === 0 && <EmptyLobbyState emailVerified={emailVerified} onChallenge={onChallenge} />}
+        {/* No game in progress: always offer a clear way to start one. A
+            skater with only finished games used to see a near-empty Home. */}
+        {c.myTurn.length === 0 && c.theirTurn.length === 0 && (
+          <EmptyLobbyState emailVerified={emailVerified} onChallenge={onChallenge} returning={games.length > 0} />
+        )}
       </div>
     </div>
   );

@@ -23,6 +23,7 @@ If you're setting up for the first time, here's the full sequence:
 2. **Add authorized domains** to Firebase Auth:
    Firebase Console → Authentication → Settings → Authorized domains
    Add: your production domain, `localhost` (for local dev), and any Vercel preview URLs you plan to use.
+   The verification email's continue URL (`VITE_APP_URL`, or the page origin) has to be one of those domains. Sender, template, and Identity Toolkit App Check are console-only — see [EMAIL_VERIFICATION.md](EMAIL_VERIFICATION.md).
 
 3. **Deploy security rules:**
 
@@ -184,7 +185,15 @@ The stats close-out function under `functions/` is the one application-authored
 Cloud Functions codebase — maintainer-approved (2026-07) to move win/loss stat
 writes server-side after a client-side stats-replay path corrupted production
 counters (see `docs/CHARTER.md §4.14`). Like rules, it is **not** part of the
-Vercel pipeline and must be deployed deliberately.
+Vercel pipeline. Merging to `main` does not upload it.
+
+Deploy from GitHub Actions → **Deploy Firebase Functions**. Type `deploy` in
+`confirm`. Leave `functions` empty for every export, or name the ones you want
+(`diceAction,diceSweep`). The run builds and tests `functions/` first, and it
+only accepts the `main` branch. One-time IAM and the parameter secret are in
+[DEPLOY_FUNCTIONS.md](DEPLOY_FUNCTIONS.md).
+
+A laptop that is already logged in can still upload:
 
 ```bash
 firebase use sk8hub-d7806
@@ -416,15 +425,16 @@ reads them **server-side** when rendering social cards.
 
 ### Workflows that need their own secrets
 
-| Workflow                    | Secrets it needs                                                                                                                           |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `main.yml`                  | none (CI only)                                                                                                                             |
-| `pr-gate.yml`               | none                                                                                                                                       |
-| `firebase-rules-deploy.yml` | `FIREBASE_PROJECT_ID`, plus either `FIREBASE_WIF_PROVIDER` + `FIREBASE_WIF_SERVICE_ACCOUNT` (preferred) or the deprecated `FIREBASE_TOKEN` |
-| `release.yml`               | `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` — without these, production stack traces stay minified                                 |
-| `android-aab.yml`           | the full `VITE_*` set (Firebase, Mapbox, Sentry, PostHog, App Check) plus the Android signing keystore                                     |
-| `ios-build.yml`             | the same `VITE_*` set plus the Apple signing credentials                                                                                   |
-| the three cron workflows    | `CRON_SECRET` (must match the Vercel project env value exactly, or every run 401s)                                                         |
+| Workflow                        | Secrets it needs                                                                                                                                     |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `main.yml`                      | none (CI only)                                                                                                                                       |
+| `pr-gate.yml`                   | none                                                                                                                                                 |
+| `firebase-rules-deploy.yml`     | `FIREBASE_PROJECT_ID`, plus either `FIREBASE_WIF_PROVIDER` + `FIREBASE_WIF_SERVICE_ACCOUNT` (preferred) or the deprecated `FIREBASE_TOKEN`           |
+| `firebase-functions-deploy.yml` | The same Firebase secrets as the rules workflow, plus `FUNCTIONS_DOTENV` (the functions parameter file). Manual only. See `docs/DEPLOY_FUNCTIONS.md` |
+| `release.yml`                   | `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` — without these, production stack traces stay minified                                           |
+| `android-aab.yml`               | the full `VITE_*` set (Firebase, Mapbox, Sentry, PostHog, App Check) plus the Android signing keystore                                               |
+| `ios-build.yml`                 | the same `VITE_*` set plus the Apple signing credentials                                                                                             |
+| the three cron workflows        | `CRON_SECRET` (must match the Vercel project env value exactly, or every run 401s)                                                                   |
 
 Also in the repo but not covered above: `release-please.yml` (release PR
 automation), `release-recovery.yml`, and `firebase-infra-setup.yml` (manual

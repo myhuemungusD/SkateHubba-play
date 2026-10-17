@@ -63,12 +63,16 @@ jobs:
           #   • the stats close-out (approved 2026-07)
           #   • Roll Dice — diceAction + diceSweep (approved 2026-10). The
           #     server rolls every die; clients never write diceGames.
+          #   • Public clip moderation (approved 2026-10-10). Video
+          #     Intelligence plus the report auto-hide and admin decision.
+          #   • Pro blessing — proBlessing (requested by Jason 2026-10-16).
+          #     The only non-admin writer of isVerifiedPro.
           # Any other changed file under functions/src/ hard-fails.
           VIOLATIONS=""
           while IFS= read -r file; do
             [ -z "$file" ] && continue
             case "$file" in
-              functions/src/index.ts|functions/src/index.test.ts|functions/src/applyGameStats.ts|functions/src/applyGameStats.test.ts|functions/src/dice/*.ts) ;;
+              functions/src/index.ts|functions/src/index.test.ts|functions/src/applyGameStats.ts|functions/src/applyGameStats.test.ts|functions/src/dice/*.ts|functions/src/moderation/*.ts|functions/src/pro/*.ts) ;;
               *) VIOLATIONS="${VIOLATIONS}${file}"$'\n' ;;
             esac
           done < <(git diff origin/main...HEAD --name-only | grep -E '^functions/src/' || true)
@@ -82,6 +86,8 @@ jobs:
             echo "  functions/src/applyGameStats.ts"
             echo "  functions/src/applyGameStats.test.ts"
             echo "  functions/src/dice/*.ts  (Roll Dice, approved 2026-10)"
+            echo "  functions/src/moderation/*.ts  (public clip moderation, approved 2026-10-10)"
+            echo "  functions/src/pro/*.ts  (pro blessing, 2026-10-16)"
             echo "Any other functions/src/ code requires explicit maintainer approval."
             echo "See .github/BRANCH_PROTECTION.md for details."
             exit 1
@@ -115,14 +121,53 @@ jobs:
 
       - name: Flag workflow file modifications
         run: |
+          # Known workflow files warn and pass. A path under .github/workflows/
+          # that is not on this list fails the job. Adding a workflow means
+          # adding it here in the same PR. Dependabot pin bumps only edit
+          # files already on the list, so they still warn and pass.
+          set -euo pipefail
+          ALLOWED=$(cat <<'EOF'
+          .github/workflows/android-aab.yml
+          .github/workflows/codeql.yml
+          .github/workflows/drain-push-dispatch.yml
+          .github/workflows/firebase-functions-deploy.yml
+          .github/workflows/firebase-infra-setup.yml
+          .github/workflows/firebase-rules-deploy.yml
+          .github/workflows/ios-build.yml
+          .github/workflows/ios-release.yml
+          .github/workflows/ios-signing-bootstrap.yml
+          .github/workflows/main.yml
+          .github/workflows/pr-gate.yml
+          .github/workflows/release-please.yml
+          .github/workflows/release-recovery.yml
+          .github/workflows/release.yml
+          .github/workflows/resolve-expired-disputes.yml
+          .github/workflows/sweep-expired-turns.yml
+          EOF
+          )
+          # Drop leftover indent so each path matches the diff exactly.
+          ALLOWED=$(printf '%s\n' "$ALLOWED" | sed 's/^[[:space:]]*//')
           CHANGED=$(git diff origin/main...HEAD --name-only -- '.github/workflows/' || true)
-          if [ -n "$CHANGED" ]; then
-            echo "::warning::CI workflow files modified in this PR:"
-            echo "$CHANGED"
-            echo ""
-            echo "Workflow changes require maintainer review (CODEOWNERS enforced)."
-          else
+          if [ -z "$CHANGED" ]; then
             echo "No workflow changes detected."
+            exit 0
+          fi
+          echo "::warning::CI workflow files modified in this PR:"
+          echo "$CHANGED"
+          echo ""
+          echo "Workflow changes require maintainer review (CODEOWNERS enforced)."
+          UNKNOWN=""
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            if ! printf '%s\n' "$ALLOWED" | grep -Fxq "$file"; then
+              UNKNOWN="${UNKNOWN}${file}"$'\n'
+            fi
+          done <<< "$CHANGED"
+          if [ -n "$UNKNOWN" ]; then
+            echo "::error::Workflow file is not on the allowlist:"
+            printf '%s' "$UNKNOWN"
+            echo "Add it to verify-workflow-changes in pr-gate.yml in this PR."
+            exit 1
           fi
 
   check-test-duplication:
@@ -130,7 +175,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       - name: Scan test files for duplicated blocks
@@ -141,14 +186,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      - name: Report files over length budget (non-blocking)
-        # Soft budget: surface the report in logs but never fail the PR gate.
-        # Use --strict locally to enforce; CI stays informational.
-        continue-on-error: true
-        run: node scripts/check-file-length.mjs
+      - name: Enforce file length budget
+        # Hard budget: every file is under its LOC budget, so any growth past
+        # it fails the PR gate. Split by responsibility rather than raising it.
+        run: node scripts/check-file-length.mjs --strict
 
   validate-firebase-rules:
     name: Validate Firebase rules changes
@@ -158,6 +202,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+
+      - name: Check firestore.rules size (Firebase 256 KiB limit)
+        run: node scripts/check-rules-size.mjs firestore.rules
 
       - name: Detect rules-related changes
         id: changed
@@ -169,7 +216,7 @@ jobs:
             echo "touched=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.changed.outputs.touched == 'true'
         with:
           node-version: 22
@@ -213,7 +260,7 @@ jobs:
             echo "touched=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.changed.outputs.touched == 'true'
         with:
           node-version: 22

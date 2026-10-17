@@ -3,6 +3,7 @@ import { Btn } from "../../../components/ui/Btn";
 import type { GameDoc } from "../../../services/games";
 import { isFirebaseStorageUrl } from "../../../utils/helpers";
 import { trickCategoryHeadline } from "../../../constants/trickCategories";
+import { CLIP_POSTER } from "../../../lib/clipPoster";
 
 interface Props {
   game: GameDoc;
@@ -44,6 +45,7 @@ export function SetTrickReviewPanel({
             src={game.currentTrickVideoUrl}
             controls
             playsInline
+            poster={CLIP_POSTER}
             preload="metadata"
             aria-label={`${setterUsername}'s ${game.currentTrickName || "trick"} video`}
             className="trick-frame rounded-2xl bg-black object-cover border border-border"

@@ -24,32 +24,13 @@ export function ClipsFeedError({
 export function ClipsFeedSkeleton() {
   return (
     <div
-      className="glass-card rounded-2xl overflow-hidden animate-pulse"
+      className="absolute inset-0 z-20 animate-pulse bg-black"
       role="status"
       aria-busy="true"
       aria-label="Loading clips"
     >
-      <div className="flex items-center justify-between px-4 pt-3.5 pb-3">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-full bg-surface-alt border border-border" />
-          <div className="h-3 w-20 rounded-md bg-surface-alt" />
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="h-4 w-10 rounded-md bg-surface-alt" />
-          <div className="h-3 w-12 rounded-md bg-surface-alt/70" />
-        </div>
-      </div>
-      <div className="px-4">
-        <div className="w-full aspect-[9/16] max-h-[560px] rounded-xl bg-surface-alt border border-border" />
-      </div>
-      <div className="px-4 pt-3">
-        <div className="h-5 w-40 rounded-md bg-surface-alt" />
-      </div>
-      <div className="px-4 pt-3 pb-4 flex items-center gap-2">
-        <div className="h-11 w-16 rounded-xl bg-surface-alt" />
-        <div className="h-11 flex-1 rounded-xl bg-surface-alt" />
-        <div className="h-11 w-20 rounded-xl bg-surface-alt" />
-      </div>
+      <div className="absolute bottom-[calc(6.5rem+env(safe-area-inset-bottom))] left-4 h-8 w-40 rounded-md bg-white/10" />
+      <div className="absolute bottom-[calc(6.5rem+env(safe-area-inset-bottom))] right-4 h-11 w-11 rounded-full bg-white/10" />
       <span className="sr-only">Loading feed…</span>
     </div>
   );

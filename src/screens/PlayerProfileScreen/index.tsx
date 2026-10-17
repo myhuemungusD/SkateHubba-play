@@ -12,7 +12,10 @@ import { usePlayerProfileController } from "./usePlayerProfileController";
 import { BlockControls } from "./components/BlockControls";
 import { ChallengeButton } from "./components/ChallengeButton";
 import { RollDiceButton } from "./components/RollDiceButton";
-import { isDiceEnabled, isExtrasEnabled } from "../../lib/featureFlags";
+import { isDiceEnabled, isExtrasEnabled, isProBlessingEnabled, isXpEnabled } from "../../lib/featureFlags";
+import { BlessProButton } from "../../components/pro/BlessProButton";
+import { BlessedByLine } from "../../components/pro/BlessedByLine";
+import { AchievementsRibbon } from "./components/AchievementsRibbon";
 import { GameHistorySection } from "./components/GameHistorySection";
 import { OpponentList } from "./components/OpponentList";
 import { PlayerProfileError } from "./components/PlayerProfileError";
@@ -23,6 +26,7 @@ import { ProfileStatsGrid } from "./components/ProfileStatsGrid";
 import { SignUpToChallengeCta } from "./components/SignUpToChallengeCta";
 import { AddedSpotsSection } from "./components/AddedSpotsSection";
 import { WinStreakBanner } from "./components/WinStreakBanner";
+import { ProShowcaseGate } from "./components/ProShowcaseGate";
 
 /**
  * Streak length before the banner appears. A "1 win streak" is just a win —
@@ -79,6 +83,8 @@ interface Props {
    * rather than a button that leads nowhere.
    */
   onViewMyStats?: () => void;
+  /** Opens the pro-only Pro tools screen. Shown on a verified pro's own profile. */
+  onOpenProTools?: () => void;
 }
 
 /**
@@ -101,14 +107,9 @@ interface Props {
  *     by the controller; each renders nothing when the player has earned
  *     nothing (LockerShowcase shows one hint card on your own profile).
  *
- * Deliberately NOT rendered until real data exists to back them. Rendering a
- * placeholder on a live profile reads as an unfinished product, so these stay
- * off the screen rather than shipping as visible stubs. Both components are
- * kept (with their tests) so re-enabling them is a one-line change:
- *   - AchievementsRibbon — 12 locked "???" tiles. Superseded by BadgesRow,
- *     which renders the badges actually granted under `users/{uid}/achievements`.
- *   - LevelChip (in ProfileIdentityCard) — hard-coded "L1"; `UserProfile` has
- *     no `level` field and there is no XP system. Re-add it with the XP work.
+ * The level chip, XP bar, and achievements ribbon render only when
+ * VITE_FEATURE_XP_ENABLED is the literal "true". Off, the profile looks as
+ * it does today. BadgesRow stays mounted either way.
  *
  * Signed-out visitors (`currentUserProfile` absent) reach this screen through
  * a shared `/player/:uid` link. They get the public doc's content — avatar,
@@ -134,6 +135,7 @@ export function PlayerProfileScreen({
   onSignUp,
   onEditProfile,
   onViewMyStats,
+  onOpenProTools,
 }: Props) {
   const c = usePlayerProfileController({
     viewedUid,
@@ -262,6 +264,25 @@ export function PlayerProfileScreen({
           profileImageUrl={profile.profileImageUrl}
           isOwnProfile={isOwnProfile}
           uid={profile.uid}
+          xp={profile.xp}
+        />
+
+        {isProBlessingEnabled() && profile.isVerifiedPro === true && (
+          <BlessedByLine uid={profile.uid} onViewPlayer={onViewPlayer} />
+        )}
+
+        <ProShowcaseGate
+          username={profile.username}
+          stance={profile.stance ?? ""}
+          bio={profile.proBio}
+          signatureTricks={profile.proSignatureTricks}
+          canEdit={isOwnProfile && profile.isVerifiedPro === true}
+          wins={profile.wins ?? 0}
+          losses={profile.losses ?? 0}
+          viewerUid={viewerUid}
+          uid={profile.uid}
+          onPlayPro={!isOwnProfile && hasViewer && !c.isBlocked ? onChallenge : undefined}
+          onOpenProTools={isOwnProfile && profile.isVerifiedPro ? onOpenProTools : undefined}
         />
 
         {isOwnProfile && (
@@ -314,6 +335,13 @@ export function PlayerProfileScreen({
           <ChallengeButton username={profile.username} uid={profile.uid} onChallenge={onChallenge} />
         )}
 
+        {/* Pro is never earned: only a verified pro can bless another skater. */}
+        {isProBlessingEnabled() &&
+          !isOwnProfile &&
+          currentUserProfile?.isVerifiedPro === true &&
+          profile.isVerifiedPro !== true &&
+          !c.isBlocked && <BlessProButton targetUid={profile.uid} username={profile.username} />}
+
         {isDiceEnabled() && !isOwnProfile && hasViewer && !c.isBlocked && <RollDiceButton opponentUid={profile.uid} />}
 
         {!hasViewer && onSignUp && <SignUpToChallengeCta username={profile.username} onSignUp={onSignUp} />}
@@ -337,6 +365,8 @@ export function PlayerProfileScreen({
 
         <BadgesRow achievements={c.achievements} />
 
+        {isXpEnabled() && <AchievementsRibbon achievements={c.achievements} clipsPosted={profile.clipsPosted} />}
+
         {/* The VS-YOU row this flag unlocks is head-to-head against the
             viewer. With no viewer there is no such record to report. */}
         <ProfileStatsGrid
@@ -349,8 +379,7 @@ export function PlayerProfileScreen({
         <LockerShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} />
 
         {/* Owner-only: advertising an unbuilt feature on someone else's public
-            profile is noise to every visitor but the owner. AchievementsRibbon
-            used to sit here too — see this file's docstring for why it doesn't. */}
+            profile is noise to every visitor but the owner. */}
         {isOwnProfile && isExtrasEnabled() && (
           <AddedSpotsSection uid={viewedUid} onAddSpot={onAddSpot ? handleAddSpot : undefined} />
         )}

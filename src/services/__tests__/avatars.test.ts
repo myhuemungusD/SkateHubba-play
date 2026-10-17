@@ -43,6 +43,8 @@ vi.mock("../../firebase", () => ({
     currentUser: currentUserUidRef.value === null ? null : { uid: currentUserUidRef.value },
   }),
   requireStorage: () => ({}),
+  ensureStorage: async () => ({}),
+  ensureAppCheck: async () => undefined,
 }));
 
 vi.mock("../analytics", () => ({

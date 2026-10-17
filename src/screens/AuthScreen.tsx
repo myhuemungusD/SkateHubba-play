@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { signUp, signIn, resetPassword, type SignUpResult } from "../services/auth";
-import { EMAIL_RE, getErrorCode, parseFirebaseError, getUserMessage } from "../utils/helpers";
-import { isMinorDob, parseDob } from "../utils/age";
+import { loadSignupPasswordPolicy } from "../services/passwordPolicy";
+import { EMAIL_RE, getErrorCode, parseFirebaseError } from "../utils/helpers";
+import { MIRRORED_PASSWORD_POLICY, type SignupPasswordPolicy } from "../utils/passwordPolicy";
+import { isMinorDob } from "../utils/age";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
-import { PasswordToggle } from "../components/ui/PasswordToggle";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { DobConsentFields } from "../components/DobConsentFields";
-import { PasswordStrengthMeter } from "../components/PasswordStrengthMeter";
 import { AppleButton } from "../components/AppleButton";
 import { GoogleButton } from "../components/GoogleButton";
 import { CoppaBlockedCard } from "../components/CoppaBlockedCard";
@@ -16,10 +16,21 @@ import type { MfaChallenge } from "../services/mfa";
 import type { MfaMethod } from "../context/AuthContext";
 import { logger, metrics } from "../services/logger";
 import { analytics } from "../services/analytics";
+import { AuthPasswordFields } from "./AuthPasswordFields";
+import {
+  authRecovery,
+  checkInlineDob,
+  reportVerificationSend,
+  emailAuthErrorMessage,
+  trackEmailAuthAttempt,
+  trackEmailAuthFailure,
+  validateCredentials,
+} from "./authScreenHelpers";
 import { captureException } from "../lib/sentry";
-import { isBenignAuthCode, getAuthErrorMessage } from "../utils/authCodes";
+import { isBenignAuthCode } from "../utils/authCodes";
 import { useNotifications } from "../context/NotificationContext";
 import { isAppleSignInEnabled } from "../lib/featureFlags";
+import { clearBootAuthDraft, peekBootAuthDraft } from "../boot/landingBoot";
 
 export function AuthScreen({
   mode,
@@ -70,15 +81,14 @@ export function AuthScreen({
   /** Navigate to the privacy/terms screen from inline consent links. */
   onNavLegal?: (screen: "privacy" | "terms") => void;
 }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [month, setMonth] = useState("");
-  const [day, setDay] = useState("");
-  const [year, setYear] = useState("");
-  const [parentConsent, setParentConsent] = useState(false);
+  const bootDraft = peekBootAuthDraft();
+  const [email, setEmail] = useState(bootDraft.email);
+  const [password, setPassword] = useState(bootDraft.password);
+  const [confirm, setConfirm] = useState(bootDraft.confirm);
+  const [month, setMonth] = useState(bootDraft.month);
+  const [day, setDay] = useState(bootDraft.day);
+  const [year, setYear] = useState(bootDraft.year);
+  const [parentConsent, setParentConsent] = useState(bootDraft.parentConsent);
   const [ageBlocked, setAgeBlocked] = useState(false);
   const [error, setError] = useState("");
   // Cleared alongside `error`; drives the inline recovery affordances below.
@@ -96,6 +106,17 @@ export function AuthScreen({
   // Reset one-shot UI state when the parent toggles mode, but preserve typed
   // email/password/DOB so the user doesn't have to retype. Skip on first mount
   // so a parent passing initial state isn't silently wiped.
+  const [passwordPolicy, setPasswordPolicy] = useState<SignupPasswordPolicy>(MIRRORED_PASSWORD_POLICY);
+  useEffect(() => {
+    let live = true;
+    void loadSignupPasswordPolicy().then((next) => {
+      if (live) setPasswordPolicy(next);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
   const didMount = useRef(false);
   useEffect(() => {
     if (!didMount.current) {
@@ -117,69 +138,39 @@ export function AuthScreen({
   const submit = async () => {
     setError("");
     setLastErrorCode("");
-    if (!EMAIL_RE.test(email.trim())) {
-      setError("Enter a valid email");
-      return;
-    }
-    if (password.length < 6) {
-      setError("Password must be 6+ characters");
-      return;
-    }
-    if (isSignup && password !== confirm) {
-      setError("Passwords don't match");
+    const credentialError = validateCredentials({ email, password, confirm, isSignup, policy: passwordPolicy });
+    if (credentialError) {
+      setError(credentialError);
       return;
     }
 
     let verifiedDob: string | undefined;
     let verifiedConsent = false;
     if (showDob) {
-      const result = parseDob(month, day, year);
-      if (result.kind === "invalid") {
-        setError(result.message);
+      const gate = checkInlineDob(month, day, year, parentConsent);
+      if (gate.kind === "error") {
+        setError(gate.message);
         return;
       }
-      if (result.kind === "blocked") {
-        logger.info("age_gate_blocked", { age: result.age });
+      if (gate.kind === "blocked") {
         setAgeBlocked(true);
         return;
       }
-      if (result.needsParentalConsent && !parentConsent) {
-        setError("Parental or guardian consent is required for users under 18");
-        return;
-      }
-      verifiedDob = result.dobString;
-      verifiedConsent = result.needsParentalConsent;
-      logger.info("age_gate_passed_inline", { age: result.age, parentalConsent: verifiedConsent });
+      verifiedDob = gate.dob;
+      verifiedConsent = gate.parentalConsent;
     }
 
     setLoading(true);
     const trimmedEmail = email.trim();
     logger.info("auth_screen_submit", { mode: isSignup ? "signup" : "signin", email: trimmedEmail });
-    if (isSignup) {
-      analytics.signUpAttempt("email");
-      metrics.signUpAttempt("email");
-    } else {
-      analytics.signInAttempt("email");
-      metrics.signInAttempt("email");
-    }
+    trackEmailAuthAttempt(isSignup);
     try {
       if (isSignup) {
         // Emit verified age data BEFORE the network call so ProfileSetup (which
         // mounts once auth state fires) can read it synchronously from context.
         if (verifiedDob) onAgeVerified?.(verifiedDob, verifiedConsent);
         const result: SignUpResult = await signUp(trimmedEmail, password);
-        if (!result.verificationEmailSent) {
-          // Fire a toast rather than inline banner state — onDone() below
-          // triggers a screen swap almost immediately, so any local banner
-          // would render for at most a frame. The toast persists in
-          // NotificationProvider state across the unmount and surfaces on
-          // the destination screen (usually ProfileSetup or Lobby).
-          notify({
-            type: "error",
-            title: "Verification email failed",
-            message: "Account created — use the Resend button to try again.",
-          });
-        }
+        reportVerificationSend(result, notify);
         analytics.signUp("email");
         metrics.signUp("email", result.user.uid);
       } else {
@@ -206,10 +197,7 @@ export function AuthScreen({
       // adoption read as a rising failure rate; the matching `sign_in` is
       // emitted by AuthContext once the challenge clears. The card takes over.
       if (onMfaBegin(err, "email")) return;
-      if (isSignup) analytics.signUpFailure("email", code || "unknown");
-      else analytics.signInFailure("email", code || "unknown");
-      if (isSignup) metrics.signUpFailure("email", code || "unknown");
-      else metrics.signInFailure("email", code || "unknown");
+      trackEmailAuthFailure(isSignup, code);
       // Only surface non-benign codes to Sentry as exceptions — benign codes
       // (wrong password, email taken, popup closed) would drown real outage
       // signals in user-error noise.
@@ -221,17 +209,17 @@ export function AuthScreen({
       setLastErrorCode(code);
       // Context-sensitive cases first — these pair with an inline recovery
       // action below that the generic mapper can't express.
-      if (code === "auth/email-already-in-use") {
-        setError("Looks like you already have an account with this email.");
-      } else if (code === "auth/user-not-found") {
-        setError("No account with that email. Create one?");
-      } else {
-        setError(getAuthErrorMessage(code) ?? getUserMessage(err, "Something went wrong"));
-      }
+      setError(emailAuthErrorMessage(code, err));
     } finally {
       setLoading(false);
     }
   };
+
+  // Drop the boot-shell draft once this screen owns the fields. State was
+  // already seeded from it; StrictMode reuses that state.
+  useEffect(() => {
+    clearBootAuthDraft();
+  }, []);
 
   const handleReset = async () => {
     if (!EMAIL_RE.test(email.trim())) {
@@ -257,32 +245,16 @@ export function AuthScreen({
   // Single source of truth for the inline recovery button rendered under the
   // ErrorBanner. Prevents two buttons stacking and keeps the action paired
   // with the exact error code that surfaced.
-  const recovery: { label: string; action: () => void } | null = (() => {
-    if (isSignup && lastErrorCode === "auth/email-already-in-use") {
-      return {
-        label: "Sign in with this email instead →",
-        action: () => {
-          setError("");
-          setLastErrorCode("");
-          onToggle();
-        },
-      };
-    }
-    if (!isSignup && lastErrorCode === "auth/user-not-found") {
-      return {
-        label: "Create an account with this email →",
-        action: () => {
-          setError("");
-          setLastErrorCode("");
-          onToggle();
-        },
-      };
-    }
-    if (!isSignup && (lastErrorCode === "auth/invalid-credential" || lastErrorCode === "auth/wrong-password")) {
-      return { label: "Forgot password? Send reset email →", action: handleReset };
-    }
-    return null;
-  })();
+  const recovery = authRecovery(
+    isSignup,
+    lastErrorCode,
+    () => {
+      setError("");
+      setLastErrorCode("");
+      onToggle();
+    },
+    handleReset,
+  );
 
   if (mfaChallenge) {
     return <MfaVerifyCard challenge={mfaChallenge} onDone={onDone} onCancel={onMfaCancel} />;
@@ -349,39 +321,15 @@ export function AuthScreen({
             inputMode="email"
             enterKeyHint="next"
           />
-          <Field
-            label="Password"
-            name="password"
-            value={password}
-            onChange={setPassword}
-            placeholder="••••••••"
-            icon="🔒"
-            type={showPassword ? "text" : "password"}
-            rightSlot={<PasswordToggle visible={showPassword} onToggle={() => setShowPassword((v) => !v)} />}
-            autoComplete={isSignup ? "new-password" : "current-password"}
-            enterKeyHint={isSignup ? "next" : "go"}
+          <AuthPasswordFields
+            isSignup={isSignup}
+            showDob={showDob}
+            password={password}
+            setPassword={setPassword}
+            confirm={confirm}
+            setConfirm={setConfirm}
+            policy={passwordPolicy}
           />
-          {isSignup && <PasswordStrengthMeter password={password} />}
-          {isSignup && (
-            <Field
-              label="Confirm"
-              name="confirm-password"
-              value={confirm}
-              onChange={setConfirm}
-              placeholder="••••••••"
-              icon="🔒"
-              type={showConfirm ? "text" : "password"}
-              rightSlot={
-                <PasswordToggle
-                  visible={showConfirm}
-                  onToggle={() => setShowConfirm((v) => !v)}
-                  label="confirm password"
-                />
-              }
-              autoComplete="new-password"
-              enterKeyHint={showDob ? "next" : "go"}
-            />
-          )}
 
           {showDob && (
             <DobConsentFields

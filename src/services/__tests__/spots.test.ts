@@ -20,7 +20,11 @@ const {
   mockOrderBy,
   mockTxGet,
   mockTxSet,
+  mockBatchSet,
+  mockBatchCommit,
 } = vi.hoisted(() => ({
+  mockBatchSet: vi.fn(),
+  mockBatchCommit: vi.fn().mockResolvedValue(undefined),
   mockAddDoc: vi.fn(),
   mockSetDoc: vi.fn().mockResolvedValue(undefined),
   mockGetDoc: vi.fn(),
@@ -50,6 +54,7 @@ vi.mock("firebase/firestore", () => ({
   getDoc: mockGetDoc,
   getDocs: mockGetDocs,
   runTransaction: mockRunTransaction,
+  writeBatch: () => ({ set: mockBatchSet, commit: mockBatchCommit }),
   query: mockQuery,
   where: mockWhere,
   limit: mockLimit,
@@ -155,19 +160,16 @@ beforeEach(() => {
 
 describe("createSpot", () => {
   it("writes a valid spot and returns the optimistic local copy", async () => {
-    mockAddDoc.mockResolvedValueOnce({ id: "new-spot-id" });
-
     const spot = await createSpot(validRequest, "creator-uid");
 
-    expect(spot.id).toBe("new-spot-id");
+    expect(spot.id).toBe("auto-id");
     expect(spot.createdBy).toBe("creator-uid");
     expect(spot.name).toBe("Hollenbeck Hubba");
     expect(spot.isVerified).toBe(false);
     expect(spot.isActive).toBe(true);
 
-    // First addDoc call is the spot write
-    expect(mockAddDoc).toHaveBeenCalledTimes(1);
-    const payload = mockAddDoc.mock.calls[0][1];
+    expect(mockBatchCommit).toHaveBeenCalledTimes(1);
+    const payload = mockBatchSet.mock.calls[0][1];
     expect(payload.createdBy).toBe("creator-uid");
     expect(payload.isVerified).toBe(false);
     expect(payload.isActive).toBe(true);
@@ -176,38 +178,36 @@ describe("createSpot", () => {
   });
 
   it("trims the name and description before writing", async () => {
-    mockAddDoc.mockResolvedValueOnce({ id: "g1" });
     await createSpot({ ...validRequest, name: "  Hubba  ", description: "  ledge  " }, "creator-uid");
-    const payload = mockAddDoc.mock.calls[0][1];
+    const payload = mockBatchSet.mock.calls[0][1];
     expect(payload.name).toBe("Hubba");
     expect(payload.description).toBe("ledge");
   });
 
   it("normalizes a missing description to null", async () => {
-    mockAddDoc.mockResolvedValueOnce({ id: "g1" });
     await createSpot({ ...validRequest, description: undefined }, "creator-uid");
-    const payload = mockAddDoc.mock.calls[0][1];
+    const payload = mockBatchSet.mock.calls[0][1];
     expect(payload.description).toBeNull();
   });
 
   it("rate-limits a second create within the cooldown window", async () => {
-    mockAddDoc.mockResolvedValueOnce({ id: "g1" });
     await createSpot(validRequest, "creator-uid");
     await expect(createSpot(validRequest, "creator-uid")).rejects.toThrow(/wait/);
   });
 
-  it("writes a best-effort lastSpotCreatedAt on the user doc", async () => {
-    mockAddDoc.mockResolvedValueOnce({ id: "g1" });
+  it("writes the mandatory lastSpotCreatedAt anchor in the same batch", async () => {
     await createSpot(validRequest, "creator-uid");
-    expect(mockSetDoc).toHaveBeenCalledTimes(1);
-    expect(mockSetDoc.mock.calls[0][1]).toEqual({ lastSpotCreatedAt: "SERVER_TS" });
+    expect(mockBatchSet).toHaveBeenCalledTimes(2);
+    expect(mockBatchSet.mock.calls[1][0].__path).toBe("users/creator-uid");
+    expect(mockBatchSet.mock.calls[1][1]).toEqual({ lastSpotCreatedAt: "SERVER_TS" });
+    expect(mockBatchSet.mock.calls[1][2]).toEqual({ merge: true });
+    expect(mockBatchCommit).toHaveBeenCalledTimes(1);
   });
 
-  it("still resolves successfully if the rate-limit timestamp write fails", async () => {
-    mockAddDoc.mockResolvedValueOnce({ id: "g1" });
-    mockSetDoc.mockRejectedValueOnce(new Error("write failed"));
-    const spot = await createSpot(validRequest, "creator-uid");
-    expect(spot.id).toBe("g1");
+  it("rejects and does not arm the client cooldown if the batch fails", async () => {
+    mockBatchCommit.mockRejectedValueOnce(new Error("permission-denied"));
+    await expect(createSpot(validRequest, "creator-uid")).rejects.toThrow("permission-denied");
+    await expect(createSpot(validRequest, "creator-uid")).resolves.toMatchObject({ id: "auto-id" });
   });
 
   it("rejects an empty name", async () => {

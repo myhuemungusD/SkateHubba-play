@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import { fetchReports, resolveReport, type AdminReport } from "../../../services/admin";
+import { fetchReports, hideDispute, resolveReport, type AdminReport } from "../../../services/admin";
 import { banUser } from "../../../services/admin.bans";
 import { useNotifications } from "../../../context/NotificationContext";
 import { errorMessage } from "../utils";
@@ -59,10 +59,19 @@ export function ReportsPanel({ adminUid }: { adminUid: string }) {
     // status's rows until the new fetch resolves.
   }, [reloadKey, view]);
 
-  const decide = async (report: AdminReport, verdict: Verdict): Promise<void> => {
+  const decide = async (report: AdminReport, verdict: Verdict, explanation?: string): Promise<void> => {
     setActing(report.id);
     try {
-      await resolveReport(adminUid, report.id, verdict);
+      if (verdict === "resolved") {
+        await resolveReport(adminUid, report.id, verdict, {
+          subjectUid: report.reportedUid,
+          explanation: explanation ?? "",
+          contentRef: report.clipId ?? report.gameId ?? "account",
+          reason: report.reason,
+        });
+      } else {
+        await resolveReport(adminUid, report.id, verdict);
+      }
       notify({
         type: "success",
         title: verdict === "resolved" ? "Report resolved" : "Report dismissed",
@@ -82,6 +91,19 @@ export function ReportsPanel({ adminUid }: { adminUid: string }) {
    * closing the ticket would erase the distinction between "banned and
    * resolved" and "banned, still under review".
    */
+  const hide = async (report: AdminReport): Promise<void> => {
+    if (!report.disputeId) return;
+    setActing(report.id);
+    try {
+      await hideDispute(report.disputeId);
+      notify({ type: "success", title: "Dispute hidden", message: report.disputeId });
+    } catch (err: unknown) {
+      notify({ type: "error", title: "Hide failed", message: errorMessage(err) });
+    } finally {
+      setActing(null);
+    }
+  };
+
   const ban = async (report: AdminReport): Promise<void> => {
     setActing(report.id);
     try {
@@ -161,9 +183,10 @@ export function ReportsPanel({ adminUid }: { adminUid: string }) {
               key={report.id}
               report={report}
               acting={acting === report.id}
-              onResolve={(r) => void decide(r, "resolved")}
+              onResolve={(r, explanation) => void decide(r, "resolved", explanation)}
               onDismiss={(r) => void decide(r, "dismissed")}
               onBan={(r) => void ban(r)}
+              onHideDispute={(r) => void hide(r)}
             />
           ))}
         </ul>

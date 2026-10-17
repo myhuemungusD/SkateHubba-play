@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ClipCooldownError, createUserClip, newUserClipId, UserBannedError } from "../../services/clips.userWrites";
+import { isClipModerationEnabled } from "../../lib/featureFlags";
 import { uploadUserClip } from "../../services/storage";
 import { trackEvent } from "../../services/analytics";
 import { logger } from "../../services/logger";
@@ -223,7 +224,15 @@ export function useUserClipUpload(
       // Storage first: a clip doc pointing at an object that failed to upload
       // is a broken tile in the feed, whereas an orphaned Storage object is
       // invisible and swept by the storage lifecycle rule.
-      const videoUrl = await uploadUserClip(uid, clipId, blob);
+      const videoUrl = await uploadUserClip(
+        uid,
+        clipId,
+        blob,
+        undefined,
+        2,
+        undefined,
+        isClipModerationEnabled() ? "private" : "public",
+      );
       // `playerUid` is not a parameter — the service pins it to the signed-in
       // user because the create rule does.
       await createUserClip({

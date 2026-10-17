@@ -25,6 +25,7 @@ import {
   type PhoneMultiFactorInfo,
   type User,
 } from "firebase/auth";
+import { Capacitor } from "@capacitor/core";
 import { requireAuth } from "../firebase";
 import { getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { logger } from "./logger";
@@ -72,6 +73,23 @@ export function getMfaChallenge(err: unknown): MfaChallenge | null {
   }
 }
 
+/** Error code thrown when an SMS code is requested inside the native app. */
+export const MFA_SMS_UNAVAILABLE_NATIVE = "mfa/sms-unavailable-native";
+
+export const SMS_UNAVAILABLE_NATIVE_MESSAGE =
+  "Text-message codes don't work in the iPhone app yet. Use an authenticator app instead: sign in at skatehubba.com, go to Settings > Two-step verification and add an authenticator app, then sign in here with its code.";
+
+/**
+ * The web SDK sends MFA texts only after an invisible reCAPTCHA, and
+ * RecaptchaVerifier refuses to run outside an http(s) page. The Capacitor
+ * WebView serves the app from capacitor://localhost, so on native it always
+ * fails with auth/operation-not-supported-in-this-environment and no SMS is
+ * ever requested. See capawesome-team/capacitor-firebase#346.
+ */
+export function canSendSmsCodeHere(): boolean {
+  return !Capacitor.isNativePlatform();
+}
+
 /**
  * Phone (SMS) second factor, step 1 — send the verification code and return
  * the `verificationId` that {@link completeSmsMfaSignIn} needs.
@@ -92,6 +110,10 @@ export async function startSmsMfaSignIn(
   hint: MultiFactorInfo,
   container: HTMLElement | string,
 ): Promise<string> {
+  if (!canSendSmsCodeHere()) {
+    logger.warn("mfa_sms_unavailable_native", { factorId: hint.factorId });
+    throw Object.assign(new Error(SMS_UNAVAILABLE_NATIVE_MESSAGE), { code: MFA_SMS_UNAVAILABLE_NATIVE });
+  }
   const auth = requireAuth();
   const verifier = new RecaptchaVerifier(auth, container, { size: "invisible" });
   try {

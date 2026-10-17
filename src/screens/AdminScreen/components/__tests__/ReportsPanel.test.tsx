@@ -4,11 +4,13 @@ import userEvent from "@testing-library/user-event";
 
 const mockFetchReports = vi.fn();
 const mockResolveReport = vi.fn();
+const mockHideDispute = vi.fn();
 const mockBanUser = vi.fn();
 
 vi.mock("../../../../services/admin", () => ({
   fetchReports: (...args: unknown[]) => mockFetchReports(...args),
   resolveReport: (...args: unknown[]) => mockResolveReport(...args),
+  hideDispute: (...args: unknown[]) => mockHideDispute(...args),
 }));
 
 vi.mock("../../../../services/admin.bans", () => ({
@@ -24,6 +26,17 @@ import { ADMIN_UID, renderWithToasts } from "./adminPanels.test-helpers";
 
 function renderPanel() {
   return renderWithToasts(<ReportsPanel adminUid={ADMIN_UID} />);
+}
+
+async function resolveWithStatement(
+  user: ReturnType<typeof userEvent.setup>,
+  typed: string,
+  statement: unknown,
+): Promise<void> {
+  await user.click(screen.getByRole("button", { name: "RESOLVE" }));
+  await user.type(screen.getByLabelText("STATEMENT OF REASONS"), typed);
+  await user.click(screen.getByRole("button", { name: "Confirm resolve" }));
+  await waitFor(() => expect(mockResolveReport).toHaveBeenCalledWith(ADMIN_UID, "r1", "resolved", statement));
 }
 
 const report = {
@@ -43,6 +56,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockFetchReports.mockResolvedValue([report]);
   mockResolveReport.mockResolvedValue(undefined);
+  mockHideDispute.mockResolvedValue(undefined);
   mockBanUser.mockResolvedValue(undefined);
 });
 
@@ -58,6 +72,25 @@ describe("ReportsPanel", () => {
     expect(row.getByText(/2h ago · game g1 · reporter u2/)).toBeInTheDocument();
     // v1 is triage-only — nothing in a row navigates away from the queue.
     expect(row.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("hides the named dispute and leaves the report open", async () => {
+    mockFetchReports.mockResolvedValue([{ ...report, disputeId: "g1_3" }]);
+    const user = userEvent.setup();
+    renderPanel();
+
+    const row = within(await screen.findByTestId("report-r1"));
+    expect(row.getByTestId("report-dispute-r1")).toHaveTextContent("dispute g1_3");
+    await user.click(row.getByRole("button", { name: "HIDE DISPUTE" }));
+    await user.click(row.getByRole("button", { name: "HIDE" }));
+    await waitFor(() => expect(mockHideDispute).toHaveBeenCalledWith("g1_3"));
+    expect(mockResolveReport).not.toHaveBeenCalled();
+  });
+
+  it("does not offer hide when the report is not about a dispute", async () => {
+    renderPanel();
+    const row = within(await screen.findByTestId("report-r1"));
+    expect(row.queryByRole("button", { name: "HIDE DISPUTE" })).not.toBeInTheDocument();
   });
 
   it("shows the evidence a verdict is made on: the description and the flagged clip", async () => {
@@ -209,12 +242,41 @@ describe("ReportsPanel", () => {
     await screen.findByTestId("report-r1");
     mockFetchReports.mockResolvedValue([]);
 
-    await user.click(screen.getByRole("button", { name: "RESOLVE" }));
-
-    await waitFor(() => expect(mockResolveReport).toHaveBeenCalledWith(ADMIN_UID, "r1", "resolved"));
+    await resolveWithStatement(user, "  The clip breaks the rules.  ", {
+      subjectUid: "u1",
+      explanation: "The clip breaks the rules.",
+      contentRef: "g1_3_set",
+      reason: "cheating",
+    });
     expect(await screen.findByText("Report resolved")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId("reports-empty")).toBeInTheDocument());
     expect(mockFetchReports).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses the game id when the report has no clip", async () => {
+    const user = userEvent.setup();
+    mockFetchReports.mockResolvedValue([{ ...report, clipId: null }]);
+    renderPanel();
+    await screen.findByTestId("report-r1");
+    await resolveWithStatement(user, "Reviewed the game.", expect.objectContaining({ contentRef: "g1" }));
+  });
+
+  it("uses account when the report names neither a clip nor a game", async () => {
+    const user = userEvent.setup();
+    mockFetchReports.mockResolvedValue([{ ...report, clipId: null, gameId: null }]);
+    renderPanel();
+    await screen.findByTestId("report-r1");
+    await resolveWithStatement(user, "Reviewed the account.", expect.objectContaining({ contentRef: "account" }));
+  });
+
+  it("leaves the statement unsent when the operator cancels", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findByTestId("report-r1");
+    await user.click(screen.getByRole("button", { name: "RESOLVE" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("button", { name: "RESOLVE" })).toBeInTheDocument();
+    expect(mockResolveReport).not.toHaveBeenCalled();
   });
 
   it("dismisses a report", async () => {
@@ -235,6 +297,8 @@ describe("ReportsPanel", () => {
     await screen.findByTestId("report-r1");
 
     await user.click(screen.getByRole("button", { name: "RESOLVE" }));
+    await user.type(screen.getByLabelText("STATEMENT OF REASONS"), "The clip breaks the rules.");
+    await user.click(screen.getByRole("button", { name: "Confirm resolve" }));
 
     expect(await screen.findByText("Action failed")).toBeInTheDocument();
     expect(screen.getByTestId("report-r1")).toBeInTheDocument();

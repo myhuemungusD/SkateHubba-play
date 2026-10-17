@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VerifyEmailBanner } from "../VerifyEmailBanner";
+import {
+  VERIFICATION_ACCEPTED_COPY,
+  VERIFICATION_SEND_STATE_KEY,
+  VERIFICATION_UNVERIFIED_COPY,
+} from "../../utils/verificationEmail";
 
 const mockResendVerification = vi.fn();
 const mockReloadUser = vi.fn();
@@ -13,13 +18,10 @@ vi.mock("../../utils/helpers", () => ({
   getErrorCode: (err: unknown) => (err as { code?: string })?.code ?? null,
   parseFirebaseError: (err: unknown) => (err as Error)?.message ?? "Unknown error",
 }));
-vi.mock("../../lib/sentry", () => ({
-  captureException: vi.fn(),
-}));
-
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  sessionStorage.clear();
 });
 
 describe("VerifyEmailBanner", () => {
@@ -66,7 +68,7 @@ describe("VerifyEmailBanner", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Failed to send — check your connection.")).toBeInTheDocument();
+      expect(screen.getByText(/No error code came back/)).toBeInTheDocument();
       // Button shows the 60s cooldown timer and is disabled — not "Retry".
       expect(screen.getByText("60s")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Resend available in/ })).toBeDisabled();
@@ -78,9 +80,9 @@ describe("VerifyEmailBanner", () => {
     vi.useRealTimers();
   });
 
-  it("applies 5-minute cooldown on auth/too-many-requests", async () => {
+  it.each(["auth/too-many-requests", "auth/quota-exceeded"])("applies the 5-minute cooldown on %s", async (code) => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    mockResendVerification.mockRejectedValueOnce({ code: "auth/too-many-requests" });
+    mockResendVerification.mockRejectedValueOnce({ code });
     render(<VerifyEmailBanner emailVerified={false} />);
 
     await act(async () => {
@@ -88,16 +90,31 @@ describe("VerifyEmailBanner", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Too many attempts — please wait 5 minutes before retrying.")).toBeInTheDocument();
+      expect(screen.getByText(/Wait five minutes, then use Resend/)).toBeInTheDocument();
       expect(screen.getByText("300s")).toBeInTheDocument();
-      // Multiple buttons exist now (resend + manual "check now"); disambiguate.
       expect(screen.getByRole("button", { name: /Resend available in/ })).toBeDisabled();
     });
 
-    // Cooldown persisted to localStorage
     expect(localStorage.getItem("skatehubba_resend_cooldown_until")).toBeTruthy();
 
     vi.useRealTimers();
+  });
+
+  it("shows a stored signup failure instead of claiming a mail is waiting", () => {
+    sessionStorage.setItem(
+      VERIFICATION_SEND_STATE_KEY,
+      JSON.stringify({ status: "failed", code: "auth/quota-exceeded" }),
+    );
+    render(<VerifyEmailBanner emailVerified={false} />);
+    expect(screen.getByText(/Wait five minutes, then use Resend/)).toBeInTheDocument();
+    expect(screen.queryByText(VERIFICATION_UNVERIFIED_COPY)).not.toBeInTheDocument();
+    expect(screen.queryByText(VERIFICATION_ACCEPTED_COPY)).not.toBeInTheDocument();
+  });
+
+  it("shows the accepted-send copy when signup recorded an acceptance", () => {
+    sessionStorage.setItem(VERIFICATION_SEND_STATE_KEY, JSON.stringify({ status: "accepted" }));
+    render(<VerifyEmailBanner emailVerified={false} />);
+    expect(screen.getByText(VERIFICATION_ACCEPTED_COPY)).toBeInTheDocument();
   });
 
   it("persists cooldown in localStorage across remounts", async () => {
@@ -135,21 +152,18 @@ describe("VerifyEmailBanner", () => {
     mockResendVerification.mockResolvedValueOnce(undefined);
     render(<VerifyEmailBanner emailVerified={false} />);
 
-    // Before resend, shows default copy with spam/junk mention
-    expect(screen.getByText("Check your inbox and spam/junk folder for the verification link.")).toBeInTheDocument();
+    // Before resend, do not claim a mail is already waiting.
+    expect(screen.getByText(VERIFICATION_UNVERIFIED_COPY)).toBeInTheDocument();
 
     await act(async () => {
       await userEvent.click(screen.getByText("Resend"));
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Sent! Check your inbox and spam/junk folder.")).toBeInTheDocument();
+      expect(screen.getByText(VERIFICATION_ACCEPTED_COPY)).toBeInTheDocument();
     });
 
-    // Default copy is no longer shown
-    expect(
-      screen.queryByText("Check your inbox and spam/junk folder for the verification link."),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(VERIFICATION_UNVERIFIED_COPY)).not.toBeInTheDocument();
 
     vi.useRealTimers();
   });

@@ -22,7 +22,8 @@ let package = Package(
             name: "SkatehubbaFcm",
             dependencies: [
                 .product(name: "FirebaseCore", package: "firebase-ios-sdk"),
-                .product(name: "FirebaseMessaging", package: "firebase-ios-sdk")
+                .product(name: "FirebaseMessaging", package: "firebase-ios-sdk"),
+                .product(name: "FirebaseAuth", package: "firebase-ios-sdk")
             ],
             path: "Sources")
     ]

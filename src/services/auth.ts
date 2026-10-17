@@ -17,12 +17,15 @@ import {
 } from "firebase/auth";
 import { Capacitor } from "@capacitor/core";
 import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
-import { auth, requireAuth, isEmulatorMode } from "../firebase";
+import { auth, ensureAppCheck, requireAuth, isEmulatorMode } from "../firebase";
 import { captureException } from "../lib/sentry";
 import { getErrorCode, parseFirebaseError } from "../utils/helpers";
+import { verificationContinueHost } from "../utils/verificationEmail";
 import { logger } from "./logger";
 
 export type AuthUser = User;
+
+export { deleteAccount } from "./auth.deleteAccount";
 
 /**
  * Build actionCodeSettings so Firebase email links redirect back to our app.
@@ -68,6 +71,12 @@ export interface SignUpResult {
    * on a successful send.
    */
   throttled: boolean;
+  /**
+   * Firebase Auth code from the failed send, or null when the send was
+   * accepted. Empty string means the rejection carried no `code`. Acceptance
+   * is not proof the message reached an inbox.
+   */
+  verificationErrorCode: string | null;
 }
 
 /**
@@ -94,11 +103,13 @@ const VERIFICATION_THROTTLED_CODES = new Set<string>(["auth/too-many-requests", 
  * weak password, etc). Callers should translate codes via `parseFirebaseError`.
  */
 export async function signUp(email: string, password: string): Promise<SignUpResult> {
+  await ensureAppCheck();
   logger.info("sign_up_attempt", { email });
   const cred = await createUserWithEmailAndPassword(requireAuth(), email, password);
   logger.info("sign_up_success", { uid: cred.user.uid, email: cred.user.email });
   let verificationEmailSent = false;
   let throttled = false;
+  let verificationErrorCode: string | null = null;
   try {
     await sendEmailVerification(cred.user, getActionCodeSettings());
     verificationEmailSent = true;
@@ -113,23 +124,39 @@ export async function signUp(email: string, password: string): Promise<SignUpRes
         logger.info("sign_up_verification_email_sent_fallback", { uid: cred.user.uid });
       } catch (retryErr) {
         const retryCode = getErrorCode(retryErr);
+        verificationErrorCode = retryCode;
         if (VERIFICATION_THROTTLED_CODES.has(retryCode)) throttled = true;
         logger.error("sign_up_verification_email_failed", {
           uid: cred.user.uid,
           error: retryCode || parseFirebaseError(retryErr),
+          continueHost: verificationContinueHost(),
         });
-        captureException(retryErr, { extra: { context: "sendEmailVerification on sign-up (fallback)" } });
+        captureException(retryErr, {
+          extra: {
+            context: "sendEmailVerification on sign-up (fallback)",
+            code: retryCode,
+            continueHost: verificationContinueHost(),
+          },
+        });
       }
     } else {
+      verificationErrorCode = code;
       if (VERIFICATION_THROTTLED_CODES.has(code)) throttled = true;
       logger.error("sign_up_verification_email_failed", {
         uid: cred.user.uid,
         error: code || parseFirebaseError(err),
+        continueHost: verificationContinueHost(),
       });
-      captureException(err, { extra: { context: "sendEmailVerification on sign-up" } });
+      captureException(err, {
+        extra: {
+          context: "sendEmailVerification on sign-up",
+          code,
+          continueHost: verificationContinueHost(),
+        },
+      });
     }
   }
-  return { user: cred.user, verificationEmailSent, throttled };
+  return { user: cred.user, verificationEmailSent, throttled, verificationErrorCode };
 }
 
 /**
@@ -139,6 +166,7 @@ export async function signUp(email: string, password: string): Promise<SignUpRes
  * avoid leaking account-existence signals.
  */
 export async function signIn(email: string, password: string): Promise<User> {
+  await ensureAppCheck();
   logger.info("sign_in_attempt", { email });
   const cred = await signInWithEmailAndPassword(requireAuth(), email, password);
   logger.info("sign_in_success", { uid: cred.user.uid, emailVerified: cred.user.emailVerified });
@@ -247,14 +275,19 @@ export async function getAdminClaim(): Promise<boolean> {
 
 /**
  * Resend the email-verification link for the currently signed-in user.
- * Silently no-ops if no user is signed in. Falls back to Firebase's default
+ * Throws `auth/no-current-user` when nobody is signed in — a resolved call
+ * used to look like a successful send. Falls back to Firebase's default
  * continue-URI when the configured one is not in the authorized-domains list.
+ * A resolved call means Identity Toolkit accepted the request, not that the
+ * message reached an inbox.
  */
 export async function resendVerification(): Promise<void> {
   const user = requireAuth().currentUser;
   if (!user) {
     logger.warn("resend_verification_no_user");
-    return;
+    throw Object.assign(new Error("No signed-in user to send a verification email to."), {
+      code: "auth/no-current-user",
+    });
   }
   logger.info("resend_verification", { uid: user.uid });
   try {
@@ -266,10 +299,31 @@ export async function resendVerification(): Promise<void> {
     // or invalid, retry without actionCodeSettings — Firebase will use its
     // default redirect URL (the firebaseapp.com handler).
     if (code === "auth/unauthorized-continue-uri" || code === "auth/invalid-continue-uri") {
-      await sendEmailVerification(user);
-      logger.info("resend_verification_sent_fallback", { uid: user.uid });
-      return;
+      try {
+        await sendEmailVerification(user);
+        logger.info("resend_verification_sent_fallback", { uid: user.uid });
+        return;
+      } catch (retryErr) {
+        const retryCode = getErrorCode(retryErr);
+        logger.error("resend_verification_failed", {
+          uid: user.uid,
+          code: retryCode,
+          continueHost: verificationContinueHost(),
+        });
+        captureException(retryErr, {
+          extra: { context: "resendVerification fallback", code: retryCode, continueHost: verificationContinueHost() },
+        });
+        throw retryErr;
+      }
     }
+    logger.error("resend_verification_failed", {
+      uid: user.uid,
+      code,
+      continueHost: verificationContinueHost(),
+    });
+    captureException(err, {
+      extra: { context: "resendVerification", code, continueHost: verificationContinueHost() },
+    });
     throw err;
   }
   logger.info("resend_verification_sent", { uid: user.uid });
@@ -314,6 +368,7 @@ const POPUP_FALLBACK_CODES = new Set<string>([
  * Google's OAuth page).
  */
 export async function signInWithGoogle(): Promise<User | null> {
+  await ensureAppCheck();
   const a = requireAuth();
 
   // ── Native path (iOS / Android) ─────────────────────────────────────
@@ -397,6 +452,7 @@ function makeAppleProvider(): OAuthProvider {
  * Returns the signed-in User, or null when a web redirect was started.
  */
 export async function signInWithApple(): Promise<User | null> {
+  await ensureAppCheck();
   const a = requireAuth();
 
   if (Capacitor.isNativePlatform()) {
@@ -441,142 +497,22 @@ export async function signInWithApple(): Promise<User | null> {
   }
 }
 
-/** Server-side erasure endpoint. See `api/account/delete.ts`. */
-const ACCOUNT_DELETE_PATH = "/api/account/delete";
-
 /**
- * Error carrying a `code`, so `getErrorCode` can branch on it exactly as it
- * does for a real Firebase Auth error.
+ * Firebase stores a pending redirect in sessionStorage under
+ * `firebase:pendingRedirect:{apiKey}:[DEFAULT]` (browserSessionPersistence).
+ * Absent on a normal visit, so we must not boot reCAPTCHA just to ask.
  */
-class CodedError extends Error {
-  readonly code: string;
-  constructor(code: string, message: string, cause?: unknown) {
-    super(message, cause === undefined ? undefined : { cause });
-    this.code = code;
-  }
-}
-
-/**
- * Permanently delete the signed-in account by delegating to the server.
- *
- * WHY THIS IS NOT DONE ON THE CLIENT: it cannot be. The previous implementation
- * called `deleteUser(user)` first and then wiped Firestore from the client.
- * `deleteUser` internally clears the refresh token and calls `signOut`, so the
- * cascade ran with `auth.currentUser === null` and a null token. Every rule on
- * that path requires `request.auth != null`, so the first query failed
- * `permission-denied` before a single document was deleted — and because
- * `permission-denied` is classified permanent by `withRetry`, there was one
- * attempt and no retry. The failure was then swallowed so the user was told
- * deletion succeeded. In practice every account deletion orphaned all of the
- * user's personal data.
- *
- * Flipping the order client-side does not fix it either: wiping Firestore first
- * and then bouncing on `auth/requires-recent-login` leaves a live Auth account
- * with no profile. Both client orderings are broken, which is why erasure moved
- * behind an admin-credentialed endpoint that deletes data first and the Auth
- * user last.
- *
- * Contract:
- *  - Resolves only when the server has erased the data. The Auth user is gone
- *    too in the normal case; if only the final Auth delete failed the data is
- *    still gone, so this still resolves and the local session is cleared.
- *  - Throws `auth/requires-recent-login` when the sign-in is too old, so the
- *    existing re-auth affordance keeps working unchanged. Note a forced token
- *    refresh does not help — `auth_time` reflects the original sign-in, which
- *    is exactly the property the recency check is testing.
- *  - Throws on any other failure. The account is untouched and the flow is
- *    safe to retry; every phase server-side is idempotent.
- *
- * The username is intentionally NOT sent: the server reads it from the profile
- * it is about to delete, so a caller cannot name someone else's reservation to
- * release. For the same reason there is no uid parameter on the wire — the
- * server derives identity solely from the verified ID token.
- */
-export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean }> {
-  const user = requireAuth().currentUser;
-  if (!user) throw new Error("Not signed in");
-  if (user.uid !== uid) {
-    // Defensive: the caller snapshots uid before the flow starts, so a
-    // mismatch here means identity drift mid-delete — refuse rather than
-    // delete the wrong account.
-    throw new Error("Auth uid does not match requested delete uid");
-  }
-  logger.info("delete_account_attempt", { uid });
-
-  const idToken = await user.getIdToken();
-
-  // On the web a relative URL is correct and same-origin, so CORS never engages.
-  // On native it is not: the Capacitor webview origin is `capacitor://localhost`
-  // (iOS) / `https://localhost` (Android), so a relative path resolves to the
-  // webview itself and there is no API there. `window.location.origin` is the
-  // same dead end. The deployed origin must be supplied at build time, and if
-  // it wasn't, failing here is far better than firing a request that cannot
-  // succeed — this is the App-Store-required delete flow.
-  const configuredBase = import.meta.env.VITE_APP_URL || "";
-  if (!configuredBase && Capacitor.isNativePlatform()) {
-    logger.error("delete_account_missing_app_url", { uid });
-    throw new CodedError(
-      "account-delete/misconfigured",
-      "Account deletion is unavailable in this build. Please contact support.",
-    );
-  }
-  const base = configuredBase;
-
-  let res: Response;
+function hasPendingGoogleRedirect(): boolean {
+  const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+  if (typeof apiKey !== "string" || apiKey.length === 0) return false;
   try {
-    res = await fetch(`${base}${ACCOUNT_DELETE_PATH}`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${idToken}` },
-    });
+    return sessionStorage.getItem(`firebase:pendingRedirect:${apiKey}:[DEFAULT]`) === "true";
   } catch (err) {
-    // Network-level failure: nothing was deleted, so this is cleanly retryable.
-    logger.error("delete_account_request_failed", { uid, error: parseFirebaseError(err) });
-    throw new CodedError("account-delete/network", "Could not reach the server. Please try again.", err);
-  }
-
-  if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { code?: unknown; message?: unknown } | null;
-    const serverCode = typeof body?.code === "string" ? body.code : "unknown";
-    const message =
-      typeof body?.message === "string" ? body.message : "Could not delete your account. Please try again.";
-    logger.error("delete_account_rejected", { uid, status: res.status, serverCode });
-
-    if (serverCode === "requires_recent_login" || serverCode === "invalid_token") {
-      // Re-authenticating is the remedy for both, and the caller already has a
-      // dedicated branch (plus a "Finish deletion" affordance) for this code.
-      throw new CodedError("auth/requires-recent-login", message);
-    }
-    captureException(new Error(`account delete failed: ${serverCode}`), {
-      level: "error",
-      extra: { context: "server-side account deletion rejected", uid, status: res.status, serverCode },
+    logger.warn("pending_redirect_probe_failed", {
+      message: err instanceof Error ? err.message : String(err),
     });
-    throw new CodedError(`account-delete/${serverCode}`, message);
+    return false;
   }
-
-  const result = (await res.json().catch(() => null)) as { authDeleted?: unknown } | null;
-  const authDeleted = result?.authDeleted !== false;
-  if (!authDeleted) {
-    // Data is erased but the Auth record survived. Not a user-facing failure —
-    // there is nothing left to protect — but it must not pass silently, because
-    // a sign-in would land in profile setup with no explanation. The caller
-    // keeps the pending-delete marker on this result so the retry affordance
-    // stays reachable; a retry re-runs the (now empty) cascade and deletes the
-    // Auth record.
-    logger.warn("delete_account_auth_survived", { uid });
-    captureException(new Error("account data erased but Auth user survived"), {
-      level: "warning",
-      extra: { context: "server erased all data; Auth deletion failed and needs a sweep", uid },
-    });
-  }
-
-  // The server deleted the Auth user, so the cached session is already dead.
-  // Clear it explicitly rather than waiting for the next token refresh to fail.
-  await fbSignOut(requireAuth()).catch((err: unknown) => {
-    logger.warn("delete_account_signout_failed", { uid, error: parseFirebaseError(err) });
-  });
-
-  logger.info("delete_account_success", { uid, authDeleted });
-  return { authDeleted };
 }
 
 /**
@@ -594,6 +530,9 @@ export async function resolveGoogleRedirect(): Promise<User | null> {
     logger.debug("resolve_google_redirect_skip_emulator");
     return null;
   }
+  // App Check only when a redirect is actually in flight. Warming it on
+  // every load pulls reCAPTCHA into the Lighthouse trace.
+  if (hasPendingGoogleRedirect()) await ensureAppCheck();
   logger.debug("resolve_google_redirect_start");
   try {
     const result = await getRedirectResult(auth);

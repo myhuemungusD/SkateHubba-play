@@ -24,6 +24,7 @@
 
 import { doc, runTransaction, serverTimestamp } from "firebase/firestore";
 import { requireAuth, requireDb } from "../firebase";
+import { isClipModerationEnabled } from "../lib/featureFlags";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { clipsRef } from "./clips.mappers";
@@ -72,9 +73,12 @@ export class UserBannedError extends Error {
  * Checked here so a mis-plumbed upload fails with a legible message instead
  * of an opaque rejection at commit time.
  */
-function isUserClipVideoUrl(url: string, uid: string): boolean {
+function isUserClipVideoUrl(url: string, uid: string, pending: boolean): boolean {
+  // A pending clip must point at the private prefix. A public post may use
+  // that prefix (older uploads) or approvedClips/.
+  const prefix = pending ? "userClips" : "(?:userClips|approvedClips)";
   return new RegExp(
-    `^https://firebasestorage\\.googleapis\\.com/v0/b/[^/]+/o/userClips%2F${uid}%2F[A-Za-z0-9_-]+\\.(webm|mp4)(\\?.*)?$`,
+    `^https://firebasestorage\\.googleapis\\.com/v0/b/[^/]+/o/${prefix}%2F${uid}%2F[A-Za-z0-9_-]+\\.(webm|mp4)(\\?.*)?$`,
   ).test(url);
 }
 
@@ -136,8 +140,9 @@ export function newUserClipId(): string {
  * `tx.set` at the pre-minted id (not `addDoc`) because the id is already
  * committed to by the storage path.
  *
- * Both vote aggregates seed at 0 and `moderationStatus` at "active" — the
- * only values the create rule accepts; takedowns are Admin SDK only.
+ * Both vote aggregates seed at 0. `moderationStatus` is "active" unless
+ * clip moderation is on, in which case the clip starts "pending" and stays
+ * out of the feed until the server approves it.
  *
  * Throws {@link ClipCooldownError} inside the cooldown window,
  * {@link UserBannedError} for a banned account, and a plain error when the
@@ -160,11 +165,12 @@ export async function createUserClip(params: CreateUserClipParams): Promise<stri
   if (trimmedTrick.length > MAX_TRICK_NAME_LEN) {
     throw new Error(`Trick names are limited to ${MAX_TRICK_NAME_LEN} characters.`);
   }
+  const moderationOn = isClipModerationEnabled();
   if (
     typeof videoUrl !== "string" ||
     videoUrl.length === 0 ||
     videoUrl.length > MAX_VIDEO_URL_LEN ||
-    !isUserClipVideoUrl(videoUrl, uid)
+    !isUserClipVideoUrl(videoUrl, uid, moderationOn)
   ) {
     throw new Error("That video could not be attached. Please try again.");
   }
@@ -183,7 +189,7 @@ export async function createUserClip(params: CreateUserClipParams): Promise<stri
       // anchor both live here.
       const userSnap = await tx.get(userRef);
       if (!userSnap.exists()) throw new Error("Finish setting up your profile before posting a clip.");
-      const userData = userSnap.data() as { banned?: unknown; lastClipCreatedAt?: unknown };
+      const userData = userSnap.data() as { banned?: unknown; lastClipCreatedAt?: unknown; clipsPosted?: unknown };
       if (userData.banned === true) throw new UserBannedError();
 
       const lastMs = toMillisOrNull(userData.lastClipCreatedAt);
@@ -214,7 +220,8 @@ export async function createUserClip(params: CreateUserClipParams): Promise<stri
         videoUrl,
         spotId: typeof spotId === "string" && spotId.length > 0 ? spotId.slice(0, MAX_SPOT_ID_LEN) : null,
         createdAt: serverTimestamp(),
-        moderationStatus: "active",
+        moderationStatus: moderationOn ? "pending" : "active",
+        ...(moderationOn ? { moderation: "pending" as const } : {}),
         upvoteCount: 0,
         downvoteCount: 0,
       });
@@ -222,7 +229,18 @@ export async function createUserClip(params: CreateUserClipParams): Promise<stri
       // Mandatory companion write. `update` (not set/merge) because the
       // owner-update rule is what pins this field to `request.time`, and the
       // profile is known to exist from the read above.
-      tx.update(userRef, { lastClipCreatedAt: serverTimestamp() });
+      // A public post counts immediately. A pending post waits for approval,
+      // which is the only place clipsPosted moves after that.
+      const userUpdate: Record<string, unknown> = {
+        lastClipCreatedAt: serverTimestamp(),
+      };
+      if (!moderationOn) {
+        const priorClips =
+          typeof userData.clipsPosted === "number" && userData.clipsPosted > 0 ? userData.clipsPosted : 0;
+        userUpdate.clipsPosted = priorClips + 1;
+        userUpdate.clipsPostedClipId = clipId;
+      }
+      tx.update(userRef, userUpdate);
     });
     return clipId;
   } catch (err) {

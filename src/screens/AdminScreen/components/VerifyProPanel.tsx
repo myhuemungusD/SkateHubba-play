@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { BadgeCheck, ShieldOff } from "lucide-react";
-import { grantVerifiedPro, revokeVerifiedPro } from "../../../services/admin";
+import { grantVerifiedPro } from "../../../services/admin";
+import { revokePro } from "../../../services/proBlessing";
 import { useNotifications } from "../../../context/NotificationContext";
 import { useAdminUserLookup } from "../useAdminUserLookup";
 import { errorMessage } from "../utils";
@@ -8,6 +9,8 @@ import { UserLookupForm } from "./UserLookupForm";
 import { ConfirmButton } from "./ConfirmButton";
 
 /**
+ * Founder seeding + revoke of Verified Pro. Blessing by another pro (the
+ * proBlessing callable) is the normal path; this tab seeds the first pros.
  * Verified Pro grant/revoke. Verification is human-approved, audited and
  * revocable (ECONOMY.md), so both directions are two-step and both refetch
  * the profile afterwards rather than flipping a local flag — the badge the
@@ -28,7 +31,8 @@ export function VerifyProPanel({ adminUid }: { adminUid: string }) {
       if (grant) {
         await grantVerifiedPro(adminUid, target.uid);
       } else {
-        await revokeVerifiedPro(adminUid, target.uid);
+        // Server path: also marks accepted blessings revoked (lineage stays honest).
+        await revokePro(target.uid);
       }
       notify({
         type: "success",
@@ -48,7 +52,14 @@ export function VerifyProPanel({ adminUid }: { adminUid: string }) {
   };
 
   return (
-    <section aria-label="Verify Pro">
+    <section aria-label="Seed Pro">
+      <p
+        role="note"
+        className="mb-3 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 font-body text-xs text-amber-100"
+      >
+        Founder seeding and revoke only. Pros normally turn pro when another verified pro blesses them. Grant here only
+        to seed the first pros; every grant is stamped with your uid.
+      </p>
       <UserLookupForm lookup={lookup} label="Player username" />
 
       {target && (

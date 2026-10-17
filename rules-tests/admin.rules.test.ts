@@ -32,6 +32,7 @@ import {
   updateDoc,
   deleteDoc,
   serverTimestamp,
+  writeBatch,
   type DocumentData,
   type DocumentReference,
 } from "firebase/firestore";
@@ -174,6 +175,24 @@ function lockerAward(overrides: Record<string, unknown> = {}): Record<string, un
 /** Moderation close-out payload — exactly ['status', 'resolvedBy', 'resolvedAt']. */
 function resolution(by: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return { status: "resolved", resolvedBy: by, resolvedAt: serverTimestamp(), ...overrides };
+}
+
+/** Resolve plus the statement of reasons the rules require in the same batch. */
+async function resolveWithStatement(): Promise<void> {
+  const db = getEnv().authenticatedContext(ADMIN_UID, { email_verified: true, admin: true }).firestore();
+  const batch = writeBatch(db);
+  batch.update(doc(db, "reports", REPORT_ID), resolution(ADMIN_UID));
+  batch.set(doc(db, "moderationStatements", REPORT_ID), {
+    subjectUid: TARGET_UID,
+    reportId: REPORT_ID,
+    action: "content_restricted",
+    reason: "cheating",
+    explanation: "The clip did not match the claimed trick.",
+    contentRef: "game-1",
+    createdBy: ADMIN_UID,
+    createdAt: serverTimestamp(),
+  });
+  await batch.commit();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -441,7 +460,11 @@ describe("reports/{reportId} — admin read access", () => {
 
 describe("reports/{reportId} — admin close-out", () => {
   it("admin CAN resolve a report", async () => {
-    await assertSucceeds(updateDoc(reportDoc("admin"), resolution(ADMIN_UID)));
+    await assertSucceeds(resolveWithStatement());
+  });
+
+  it("admin CANNOT resolve a report without a statement of reasons", async () => {
+    await assertFails(updateDoc(reportDoc("admin"), resolution(ADMIN_UID)));
   });
 
   it("admin CAN dismiss a report", async () => {
@@ -461,7 +484,7 @@ describe("reports/{reportId} — close-out is one-way (audit-trail overwrite)", 
   it("a pending report CAN be closed out", async () => {
     const before = await assertSucceeds(getDoc(reportDoc("admin")));
     expect(before.data()?.status).toBe("pending");
-    await assertSucceeds(updateDoc(reportDoc("admin"), resolution(ADMIN_UID)));
+    await assertSucceeds(resolveWithStatement());
   });
 
   it("an already-resolved report CANNOT be flipped to dismissed", async () => {
