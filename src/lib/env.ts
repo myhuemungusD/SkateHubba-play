@@ -82,6 +82,27 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Closet: earned + purchased items, limited drops, trading. DEFAULTS TO OFF.
+  // Read via isClosetEnabled() in featureFlags.ts. Traction gate: 100 finished
+  // games (plan §13). Server switches: CLOSET_ENABLED, CLOSET_DROPS_ENABLED,
+  // CLOSET_TRADING_ENABLED, CLOSET_BUCKS_PURCHASE_ENABLED.
+  VITE_FEATURE_CLOSET_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+  VITE_FEATURE_CLOSET_DROPS_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+  VITE_FEATURE_CLOSET_TRADING_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+  VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // Sign in with Apple button. DEFAULTS TO OFF until the Firebase Apple
   // provider is enabled. Read via isAppleSignInEnabled() in featureFlags.ts.
   VITE_FEATURE_APPLE_SIGNIN_ENABLED: z

@@ -94,3 +94,26 @@ export function isProProfilesEnabled(): boolean {
 export function isProBlessingEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_PRO_BLESSING);
 }
+
+/**
+ * Closet: earned + purchased items, limited drops, trading, Hubba Bucks.
+ * Off by default; the server switches (CLOSET_ENABLED, CLOSET_DROPS_ENABLED,
+ * CLOSET_TRADING_ENABLED, CLOSET_BUCKS_PURCHASE_ENABLED) are the real gates.
+ * Traction gate: 100 finished games before public launch (plan §13).
+ * Literal "true" only.
+ */
+export function isClosetEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_CLOSET_ENABLED);
+}
+
+export function isClosetDropsEnabled(): boolean {
+  return isClosetEnabled() && parseFlag(import.meta.env.VITE_FEATURE_CLOSET_DROPS_ENABLED);
+}
+
+export function isClosetTradingEnabled(): boolean {
+  return isClosetEnabled() && parseFlag(import.meta.env.VITE_FEATURE_CLOSET_TRADING_ENABLED);
+}
+
+export function isClosetBucksPurchaseEnabled(): boolean {
+  return isClosetEnabled() && parseFlag(import.meta.env.VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED);
+}

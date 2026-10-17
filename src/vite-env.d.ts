@@ -46,6 +46,16 @@ interface ImportMetaEnv {
   /** XP and levels switch: "true" shows the chip, bar, level-up, and ribbon.
    *  Unset (default) hides them. Read via isXpEnabled() — not the extras flag. */
   readonly VITE_FEATURE_XP_ENABLED?: string;
+
+  /**
+   * Closet (earned + purchased items, drops, trading) flag.
+   * DEFAULTS TO OFF; literal "true" only. Server switch is CLOSET_ENABLED.
+   * Plan: ../uploads/closet-drops-plan.md.
+   */
+  readonly VITE_FEATURE_CLOSET_ENABLED?: string;
+  readonly VITE_FEATURE_CLOSET_DROPS_ENABLED?: string;
+  readonly VITE_FEATURE_CLOSET_TRADING_ENABLED?: string;
+  readonly VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED?: string;
   /** Sign in with Apple switch: "true" shows the button. Unset (default)
    *  hides it. Read via isAppleSignInEnabled(). */
   readonly VITE_FEATURE_APPLE_SIGNIN_ENABLED?: string;
