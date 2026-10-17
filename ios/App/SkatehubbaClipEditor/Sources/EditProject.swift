@@ -31,6 +31,9 @@ struct SfxPlacement: Decodable {
     let soundId: String
     let outAtSec: Double
     let gain: Double
+    /// File seconds where the sound starts / stops (nil = whole file).
+    let trimStartSec: Double?
+    let trimEndSec: Double?
 }
 
 struct MusicChoice: Decodable {

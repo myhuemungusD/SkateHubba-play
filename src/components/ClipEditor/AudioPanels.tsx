@@ -1,9 +1,10 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { EditProject } from "../../lib/clipEditor/types";
 import { MUSIC_TRACKS } from "../../lib/clipEditor/musicLibrary";
 import { SKATE_SOUNDS, soundCredits } from "../../lib/clipEditor/sfxLibrary";
 import { alignMusicToLanding } from "../../lib/clipEditor/beats";
-import { placeSfx } from "../../lib/clipEditor/overlays";
+import { addSfx } from "../../lib/clipEditor/overlays";
+import { pickSfxSrc } from "./sfxAudio";
 import { sourceToOutput } from "../../lib/clipEditor/speed";
 import { Chip, PanelHeading } from "./Chip";
 import { SFX_DRAG_TYPE } from "./Timeline";
@@ -69,47 +70,65 @@ export function MusicPanel({ project, onChange }: PanelProps) {
   );
 }
 
-/** AAC everywhere it plays; Ogg only where the browser can't do AAC. */
-function pickSfxSrc(s: { src: string; oggSrc?: string }): string {
-  if (!s.oggSrc || typeof document === "undefined") return s.src;
-  const probe = document.createElement("audio");
-  return typeof probe.canPlayType === "function" && probe.canPlayType("audio/mp4") === "" ? s.oggSrc : s.src;
+export interface SoundsPanelProps extends PanelProps {
+  /** Called with the new placement's id so the editor can open it for trimming. */
+  onAdded?: (id: string) => void;
 }
 
-/** Skate SFX library. Drag onto the timeline lane, or tap to drop at the playhead. */
-export function SoundsPanel({ project, onChange, outputTime }: PanelProps) {
+/**
+ * Skate SFX library. Tap a sound to hear it (and pick it), then one tap on
+ * "Add" drops it at the playhead. Desktop can still drag a sound onto the lane.
+ */
+export function SoundsPanel({ project, onChange, outputTime, onAdded }: SoundsPanelProps) {
   const preview = useRef<HTMLAudioElement | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
+  const pickedSound = picked ? SKATE_SOUNDS.find((x) => x.id === picked) : undefined;
+  const audition = (id: string): void => {
+    const s = SKATE_SOUNDS.find((x) => x.id === id);
+    if (!s) return;
+    setPicked(id);
+    preview.current?.pause();
+    preview.current = new Audio(pickSfxSrc(s));
+    void preview.current.play().catch(() => undefined);
+  };
+  const add = (): void => {
+    if (!picked) return;
+    preview.current?.pause();
+    const { project: next, id } = addSfx(project, picked, outputTime);
+    onChange(next);
+    if (id) onAdded?.(id);
+  };
   return (
     <div className="flex flex-col gap-3">
       <PanelHeading>SKATE SOUNDS</PanelHeading>
-      <p className="font-body text-xs text-faint">
-        Drag a sound onto the lane under the timeline, or tap to drop it at {outputTime.toFixed(1)}s. Long-press to hear
-        it.
-      </p>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2" role="listbox" aria-label="Skate sounds — tap to hear">
         {SKATE_SOUNDS.map((s) => (
           <button
             key={s.id}
             type="button"
+            role="option"
+            aria-selected={picked === s.id}
             draggable
             onDragStart={(e) => {
               e.dataTransfer.setData(SFX_DRAG_TYPE, s.id);
               e.dataTransfer.effectAllowed = "copy";
             }}
-            onClick={() => onChange(placeSfx(project, s.id, outputTime))}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              preview.current?.pause();
-              preview.current = new Audio(pickSfxSrc(s));
-              void preview.current.play().catch(() => undefined);
-            }}
-            aria-label={`Add ${s.label} at ${outputTime.toFixed(1)} seconds`}
-            className="min-h-[44px] rounded-xl border border-border bg-surface-alt/60 px-3 py-2 font-body text-sm text-muted hover:text-white focus-visible:outline-2 focus-visible:outline-brand-orange"
+            onClick={() => audition(s.id)}
+            aria-label={`Hear ${s.label}`}
+            className={`min-h-[44px] rounded-xl border px-3 py-2 font-body text-sm focus-visible:outline-2 focus-visible:outline-brand-orange ${picked === s.id ? "border-brand-orange bg-brand-orange/15 text-white" : "border-border bg-surface-alt/60 text-muted hover:text-white"}`}
           >
             {s.label}
           </button>
         ))}
       </div>
+      <button
+        type="button"
+        onClick={add}
+        disabled={!pickedSound}
+        className="min-h-[48px] rounded-xl bg-brand-orange font-display text-sm tracking-wide text-black disabled:opacity-40"
+      >
+        {pickedSound ? `ADD ${pickedSound.label.toUpperCase()} AT ${outputTime.toFixed(1)}S` : "TAP A SOUND TO HEAR IT"}
+      </button>
       <p className="font-body text-[11px] text-faint" data-testid="sfx-credits">
         Sound credits:{" "}
         {soundCredits().map((c, i) => (

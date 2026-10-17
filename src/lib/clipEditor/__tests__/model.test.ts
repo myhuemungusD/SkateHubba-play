@@ -34,6 +34,13 @@ import {
   removeOverlay,
   overlaysAt,
   placeSfx,
+  addSfx,
+  trimSfx,
+  setSfxGain,
+  sfxSpan,
+  sfxSchedule,
+  SFX_FADE_SEC,
+  MIN_SFX_SEC,
   moveSfx,
   removeSfx,
   MAX_SFX,
@@ -276,5 +283,45 @@ describe("export plan", () => {
     expect(plan.fps).toBe(30);
     expect(plan.exceedsUploadCap).toBe(false);
     expect(bitrateFor("720p", 30)).toBe(6_000_000);
+  });
+});
+
+describe("sfx trim", () => {
+  const proj = () =>
+    createProject({ id: "m", label: "A", durationSec: 10, offsetSec: 0, width: 1, height: 1, fps: 30 });
+
+  it("addSfx returns the new id; trimSfx clamps and keeps a minimum length", () => {
+    const { project: p, id } = addSfx(proj(), "landing", 2);
+    expect(id).toBe(p.sfx[0].id);
+    expect(addSfx(p, "nope", 1).id).toBeNull();
+    const sid = id as string;
+    expect(sfxSpan(p.sfx[0])).toEqual({ start: 0, end: 0.9, length: 0.9 });
+    let t = trimSfx(p, sid, 0.2, 0.5);
+    expect(sfxSpan(t.sfx[0])).toMatchObject({ start: 0.2, end: 0.5 });
+    t = trimSfx(t, sid, 0.49, 0.5);
+    expect(t.sfx[0].trimStartSec).toBeCloseTo(0.45);
+    expect(sfxSpan(t.sfx[0]).length).toBeCloseTo(MIN_SFX_SEC);
+    t = trimSfx(t, sid, -5, 99);
+    expect(t.sfx[0]).toMatchObject({ trimStartSec: 0, trimEndSec: 0.9 });
+    expect(trimSfx(t, "other", 0.1, 0.2)).toEqual(t);
+    expect(setSfxGain(t, sid, 5).sfx[0].gain).toBe(2);
+    expect(setSfxGain(t, "other", 5).sfx[0].gain).toBe(1);
+    expect(sfxSpan({ id: "x", soundId: "nope", outAtSec: 0, gain: 1 }).length).toBe(0);
+  });
+
+  it("sfxSchedule plays only the trimmed part, with fades, from any playhead", () => {
+    const s = { id: "x", soundId: "landing", outAtSec: 2, gain: 1, trimStartSec: 0.2, trimEndSec: 0.6 };
+    const first = sfxSchedule(s, 0.9, 0);
+    expect(first).toMatchObject({ delay: 2, offset: 0.2, fadeIn: SFX_FADE_SEC, fadeOut: SFX_FADE_SEC });
+    expect(first?.length).toBeCloseTo(0.4);
+    const mid = sfxSchedule(s, 0.9, 2.1);
+    expect(mid?.delay).toBe(0);
+    expect(mid?.offset).toBeCloseTo(0.3);
+    expect(mid?.length).toBeCloseTo(0.3);
+    expect(mid?.fadeIn).toBe(0);
+    expect(sfxSchedule(s, 0.9, 2.6)).toBeNull();
+    const tiny = sfxSchedule({ ...s, trimEndSec: 0.21 }, 0.9, 0);
+    expect(tiny?.length).toBeCloseTo(MIN_SFX_SEC);
+    expect(sfxSchedule({ ...s, trimStartSec: undefined, trimEndSec: undefined }, 0.9, 0)?.length).toBe(0.9);
   });
 });
