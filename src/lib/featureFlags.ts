@@ -68,6 +68,15 @@ export function isRefereeEnabled(): boolean {
 }
 
 /**
+ * Searchable trick picker. Off until the catalog has been tried on a phone.
+ * Literal "true" only. While off, setters still type a trick name and no
+ * structured trick fields are required.
+ */
+export function isTrickPickerEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_TRICK_PICKER_ENABLED);
+}
+
+/**
  * Public-clip moderation. Off until the Video Intelligence function is
  * deployed. Anything except the literal string "true" keeps uploads
  * visible immediately, which is today's behavior.

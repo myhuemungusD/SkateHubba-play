@@ -98,11 +98,18 @@ beforeEach(() => {
 
 afterEach(() => {
   (globalThis as unknown as Record<string, unknown>).MediaRecorder = OriginalMR;
+  vi.unstubAllEnvs();
 });
 
 const OriginalMR = (globalThis as unknown as Record<string, unknown>).MediaRecorder;
 
-/** A MediaRecorder that fires ondataavailable before onstop. */
+async function landOpenedTake(): Promise<void> {
+  await userEvent.click(await screen.findByText(/Open Camera/));
+  await userEvent.click(await screen.findByRole("button", { name: /Record/ }));
+  await userEvent.click(await screen.findByRole("button", { name: /Stop Recording/ }));
+  await screen.findByRole("group", { name: "Did you land the trick?" });
+  await userEvent.click(screen.getByText(/Landed/));
+}
 class DataProducingMR {
   static isTypeSupported = vi.fn().mockReturnValue(false);
   ondataavailable: ((e: { data: Blob }) => void) | null = null;
@@ -407,6 +414,56 @@ describe("GamePlayScreen", () => {
       );
     });
     expect(mockPlayHaptic).toHaveBeenCalledWith("trick_landed");
+  });
+
+  it("uses the trick picker when the flag is on and stores the selection", async () => {
+    vi.stubEnv("VITE_FEATURE_TRICK_PICKER_ENABLED", "true");
+    localStorage.removeItem("skatehubba.recentTrickIds");
+    (globalThis as unknown as Record<string, unknown>).MediaRecorder = DataProducingMR;
+    mockSetTrick.mockResolvedValueOnce(undefined);
+
+    render(<GamePlayScreen game={makeGame({ trickCategory: "flip" })} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.queryByLabelText("TRICK NAME")).not.toBeInTheDocument();
+    expect(screen.getByText("Flip Tricks only")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Switch" }));
+    await userEvent.click(screen.getByRole("button", { name: "Ledge" }));
+    await userEvent.click(screen.getByRole("option", { name: "Kickflip" }));
+    expect(screen.getByText("Set your Switch Kickflip")).toBeInTheDocument();
+    await landOpenedTake();
+
+    await waitFor(() => {
+      expect(mockSetTrick).toHaveBeenCalledWith("game1", "Switch Kickflip", VIDEO_URL, {
+        trickId: "kickflip",
+        stance: "switch",
+        obstacle: "ledge",
+        trickNameCustom: null,
+      });
+    });
+    expect(localStorage.getItem("skatehubba.recentTrickIds")).toContain("kickflip");
+  });
+
+  it("keeps a custom Other trick out of the recent list", async () => {
+    vi.stubEnv("VITE_FEATURE_TRICK_PICKER_ENABLED", "true");
+    localStorage.removeItem("skatehubba.recentTrickIds");
+    (globalThis as unknown as Record<string, unknown>).MediaRecorder = DataProducingMR;
+    mockSetTrick.mockResolvedValueOnce(undefined);
+
+    render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
+    await userEvent.click(screen.getByRole("option", { name: "Other" }));
+    await userEvent.type(screen.getByLabelText("Custom trick name"), "Casper");
+    expect(screen.getByText("Set your Casper")).toBeInTheDocument();
+    await landOpenedTake();
+
+    await waitFor(() => {
+      expect(mockSetTrick).toHaveBeenCalledWith(
+        "game1",
+        "Casper",
+        VIDEO_URL,
+        expect.objectContaining({ trickId: "other", trickNameCustom: "Casper" }),
+      );
+    });
+    expect(localStorage.getItem("skatehubba.recentTrickIds")).toBeNull();
   });
 
   it("forfeit check logs correctly for non-Error rejection", async () => {

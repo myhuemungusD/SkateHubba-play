@@ -7,6 +7,7 @@ import { createPushDispatchOutbox, drainPushDispatchOutbox, resetPushDispatchOut
 import { toGameDoc, type GameDoc } from "./games.mappers";
 import { TURN_DURATION_MS } from "./turnDuration";
 import { decideExpiredForfeit, type ForfeitGameUpdate } from "./turnForfeit.shared";
+import { applyTrainingLabelPending } from "./trainingLabels.materialize";
 
 export { TURN_DURATION_MS };
 
@@ -209,5 +210,6 @@ export function toWebGameUpdate(update: ForfeitGameUpdate): Record<string, unkno
   if (update.p2Letters !== undefined) out.p2Letters = update.p2Letters;
   if (update.judgeReviewFor !== undefined) out.judgeReviewFor = update.judgeReviewFor;
   if (update.appendTurnRecord !== undefined) out.turnHistory = arrayUnion(update.appendTurnRecord);
+  applyTrainingLabelPending(out, update.appendTurnRecord);
   return out;
 }

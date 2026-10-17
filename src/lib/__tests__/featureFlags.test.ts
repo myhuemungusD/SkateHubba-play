@@ -6,6 +6,7 @@ import {
   isDiceEnabled,
   isExtrasEnabled,
   isRefereeEnabled,
+  isTrickPickerEnabled,
   isXpEnabled,
   parseFlag,
 } from "../featureFlags";
@@ -166,6 +167,30 @@ describe("isClipModerationEnabled (VITE_FEATURE_CLIP_MODERATION_ENABLED)", () =>
     expect(isClipModerationEnabled()).toBe(false);
     vi.stubEnv("VITE_FEATURE_CLIP_MODERATION_ENABLED", "true");
     expect(isClipModerationEnabled()).toBe(true);
+  });
+});
+
+describe("isTrickPickerEnabled (VITE_FEATURE_TRICK_PICKER_ENABLED)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is OFF when the env var is unset — the production default", () => {
+    expect(import.meta.env.VITE_FEATURE_TRICK_PICKER_ENABLED).toBeUndefined();
+    expect(isTrickPickerEnabled()).toBe(false);
+  });
+
+  it("stays off for anything other than the literal string true", () => {
+    vi.stubEnv("VITE_FEATURE_TRICK_PICKER_ENABLED", "TRUE");
+    expect(isTrickPickerEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_TRICK_PICKER_ENABLED", "true");
+    expect(isTrickPickerEnabled()).toBe(true);
+  });
+
+  it("does not follow the other feature flags", () => {
+    vi.stubEnv("VITE_FEATURE_EXTRAS_ENABLED", "true");
+    vi.stubEnv("VITE_FEATURE_REFEREE_ENABLED", "true");
+    expect(isTrickPickerEnabled()).toBe(false);
   });
 });
 

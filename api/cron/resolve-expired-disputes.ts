@@ -60,6 +60,7 @@ import {
   decidePendingReviewExpiry,
   type DisputeGameUpdate,
 } from "../../src/services/dispute.resolution.shared.js";
+import { applyTrainingLabelPending } from "../../src/services/trainingLabels.materialize.js";
 import { toGameDoc, type GameDoc } from "../../src/services/games.mappers.js";
 import { ACHIEVEMENTS, CALL_XP, DAILY_XP_CAP, levelForXp, utcDayFromMs } from "../../src/constants/xp.js";
 import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
@@ -183,6 +184,7 @@ export function toAdminDisputeUpdate(update: DisputeGameUpdate): Record<string, 
   out.reviewFor = update.reviewFor;
   out.reviewDeadline = update.reviewDeadline;
   if (update.appendTurnRecord !== undefined) out.turnHistory = FieldValue.arrayUnion(update.appendTurnRecord);
+  applyTrainingLabelPending(out, update.appendTurnRecord);
   return out;
 }
 
