@@ -7,10 +7,11 @@ name: CodeQL
 # scanning merge-protection rule) on main.
 
 on:
+  # Cost: main pushes + weekly schedule only (not every PR). Not a required
+  # check, so dropping the PR trigger blocks nothing.
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+    paths-ignore: ['**/*.md', 'docs/**']
   schedule:
     # Weekly re-scan so new CodeQL queries run against unchanged code.
     # Mondays 07:27 UTC, off the top of the hour.

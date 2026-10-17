@@ -1,4 +1,5 @@
-import { useRef } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
+import { isClipEditorEnabled } from "../../lib/featureFlags";
 import { USER_CLIP_MAX_DURATION_SECONDS } from "../../constants/video";
 import { isNativePlatform } from "../../services/nativeVideo";
 import { useFocusTrap } from "../../hooks/useFocusTrap";
@@ -9,6 +10,9 @@ import { VideoRecorder } from "../VideoRecorder";
 import { UserClipForm } from "./UserClipForm";
 import { useUserClipUpload } from "./useUserClipUpload";
 import { VIDEO_ACCEPT_ATTR } from "./validation";
+
+// Code-split: the editor (WebGL engine, panels) never touches the entry chunk.
+const ClipEditor = lazy(() => import("../ClipEditor/ClipEditor").then((m) => ({ default: m.ClipEditor })));
 
 export interface UserClipUploadModalProps {
   uid: string;
@@ -33,6 +37,7 @@ export function UserClipUploadModal({ uid, username, onClose, onPosted }: UserCl
   const c = useUserClipUpload(uid, username, onPosted);
   const panelRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [editing, setEditing] = useState(false);
   useFocusTrap(panelRef);
 
   // The file picker is web-only. Inside the Capacitor shell the OS sheet is
@@ -104,7 +109,21 @@ export function UserClipUploadModal({ uid, username, onClose, onPosted }: UserCl
             submitting={c.submitting}
             canSubmit={c.canSubmit}
             cooldownSeconds={c.cooldownSeconds}
+            onEdit={isClipEditorEnabled() ? () => setEditing(true) : undefined}
           />
+        )}
+
+        {editing && c.blob && (
+          <Suspense fallback={null}>
+            <ClipEditor
+              blob={c.blob}
+              onCancel={() => setEditing(false)}
+              onDone={(edited) => {
+                setEditing(false);
+                c.handleRecorded(edited);
+              }}
+            />
+          </Suspense>
         )}
 
         {/* Kept mounted across steps so the ref is always live. `hidden`

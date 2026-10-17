@@ -33,4 +33,12 @@ describe("saveProProfile", () => {
       proSponsors: ["A", "B", "C"],
     });
   });
+
+  it("rejects a bio with slurs before writing (App Store 1.2)", async () => {
+    const base = { bio: "", signatureTricks: [], tagline: "", hometown: "", sponsors: [] };
+    await expect(saveProProfile("u1", { ...base, bio: "just kys" })).rejects.toThrow(/don't allow/);
+    await expect(saveProProfile("u1", { ...base, tagline: "N1GG3RS" })).rejects.toThrow(/don't allow/);
+    await expect(saveProProfile("u1", { ...base, sponsors: ["ok", "f4gg0t"] })).rejects.toThrow(/don't allow/);
+    expect(mockUpdateDoc).not.toHaveBeenCalled();
+  });
 });

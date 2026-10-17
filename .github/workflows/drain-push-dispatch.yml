@@ -37,7 +37,7 @@
 #   a genuinely stale push from ever waking a device. `workflow_dispatch` is
 #   included so an operator can force a drain from the Actions UI.
 
-name: Drain Push Dispatch (push courier)
+name: Drain Push Dispatch (push courier + referee sweeps)
 
 on:
   schedule:
@@ -81,6 +81,8 @@ jobs:
           persist-credentials: false
 
       - name: Invoke drain endpoint
+        id: drain
+        continue-on-error: true
         # `shell: bash` is load-bearing: it tells GitHub to run the step with
         # `bash --noprofile --norc -eo pipefail`. Without an explicit shell the
         # default is `bash -e {0}` (no pipefail), and the trailing
@@ -109,7 +111,87 @@ jobs:
         if: always()
         uses: ./.github/actions/cron-failure-alert
         with:
-          status: ${{ job.status }}
+          status: ${{ steps.drain.outcome == 'success' && 'success' || 'failure' }}
           label: cron-alert-drain-push-dispatch
           job-name: Drain Push Dispatch (push dispatcher)
           endpoint: /api/cron/drain-push-dispatch
+
+      # ── Referee sweeps, folded in to save Actions minutes ──
+      # Every scheduled job bills at least 1 minute even for a 3-second curl, so
+      # three separate cron workflows (5 + 15 + 15 min) billed ~14,400 min/month.
+      # The two 15-minute referees now ride this 5-minute job and fire on every
+      # third tick (minute 0-4, 15-19, 30-34, 45-49) or on manual dispatch. The
+      # old workflows stay as workflow_dispatch-only for manual runs.
+      - name: Decide whether the 15-minute referees are due
+        id: due
+        if: always()
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          m=$((10#$(date -u +%M)))
+          if [ "$EVENT" != "schedule" ] || [ $((m % 15)) -lt 5 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Invoke sweep endpoint
+        id: sweep
+        if: always() && steps.due.outputs.run == 'true'
+        continue-on-error: true
+        shell: bash
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl \
+            --fail-with-body \
+            --show-error \
+            --silent \
+            --max-time 240 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -w "\nHTTP %{http_code} in %{time_total}s\n" \
+            https://skatehubba.com/api/cron/sweep-expired-turns \
+            | tee /dev/stderr
+
+      - name: Failure alert / auto-resolve (sweep)
+        if: always() && steps.due.outputs.run == 'true'
+        uses: ./.github/actions/cron-failure-alert
+        with:
+          status: ${{ steps.sweep.outcome == 'success' && 'success' || 'failure' }}
+          label: cron-alert-sweep-expired-turns
+          job-name: Sweep Expired Turns (turn sweeper)
+          endpoint: /api/cron/sweep-expired-turns
+
+      - name: Invoke resolve endpoint
+        id: resolve
+        if: always() && steps.due.outputs.run == 'true'
+        continue-on-error: true
+        shell: bash
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl \
+            --fail-with-body \
+            --show-error \
+            --silent \
+            --max-time 240 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -w "\nHTTP %{http_code} in %{time_total}s\n" \
+            https://skatehubba.com/api/cron/resolve-expired-disputes \
+            | tee /dev/stderr
+
+      - name: Failure alert / auto-resolve (resolve)
+        if: always() && steps.due.outputs.run == 'true'
+        uses: ./.github/actions/cron-failure-alert
+        with:
+          status: ${{ steps.resolve.outcome == 'success' && 'success' || 'failure' }}
+          label: cron-alert-resolve-expired-disputes
+          job-name: Resolve Expired Disputes (dispute referee)
+          endpoint: /api/cron/resolve-expired-disputes
+
+      # continue-on-error keeps all three endpoints running; fail the job at
+      # the end if any of them failed so the run still shows red.
+      - name: Fail if any endpoint failed
+        if: always() && (steps.drain.outcome == 'failure' || steps.sweep.outcome == 'failure' || steps.resolve.outcome == 'failure')
+        run: exit 1
