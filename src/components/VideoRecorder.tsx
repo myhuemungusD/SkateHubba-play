@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { ActionDock } from "./ActionDock";
 import { Btn } from "./ui/Btn";
 import { FilmIcon, FisheyeIcon, FlipCameraIcon } from "./icons";
@@ -8,6 +8,18 @@ import { FisheyeRenderer } from "./FisheyeRenderer";
 import { useMediaRecorder, isIOSSafari } from "../hooks/useMediaRecorder";
 import { MAX_VIDEO_DURATION_SECONDS } from "../constants/video";
 import { CLIP_POSTER } from "../lib/clipPoster";
+
+// Lazy-load pro camera controls to keep them off the initial bundle
+const NativeCameraControls = lazy(() =>
+  import("./NativeCameraControls").then((m) => ({ default: m.NativeCameraControls })),
+);
+
+/**
+ * Full recorded frame, centered in the 9:16 viewfinder. The crosshair is
+ * centered on this same box, so it stays on the middle of the picture when
+ * a non-9:16 stream letterboxes.
+ */
+const FRAME_FIT = "w-full h-full object-contain";
 
 /** Shared classes for the viewfinder chrome toggles — 44px touch target. */
 const CHROME_BTN =
@@ -105,19 +117,37 @@ export function VideoRecorder({
   const showChromeToggles = state === "preview";
   const showFisheyeOverlay = fisheyeOn && (state === "preview" || state === "recording");
   const secondsLeft = maxDurationSeconds - seconds;
+  // Native capture draws the camera BEHIND the web view, so the viewfinder and
+  // every ancestor must be see-through while it runs (see .sh-native-cam).
+  const nativeLive = isNative && state === "recording";
+  // Mark the viewfinder's ancestors directly instead of using a global
+  // `:has()` selector — a stylesheet-wide `*:has(...)` rule forces Chrome to
+  // re-check ancestors on every DOM mutation, which blew the Lighthouse TBT
+  // budget on pages that never open the camera.
+  const viewfinderRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!nativeLive) return;
+    const marked: Element[] = [];
+    for (let el = viewfinderRef.current?.parentElement ?? null; el; el = el.parentElement) {
+      el.classList.add("sh-native-cam");
+      marked.push(el);
+    }
+    return () => marked.forEach((el) => el.classList.remove("sh-native-cam"));
+  }, [nativeLive]);
 
   return (
     <div className="w-full flex flex-col items-center gap-4">
       {/* Viewfinder */}
       <div
+        ref={viewfinderRef}
         data-testid="trick-viewfinder"
-        className={`trick-frame bg-black rounded-2xl overflow-hidden relative transition-all duration-300
+        className={`trick-frame ${nativeLive ? "bg-transparent" : "bg-black"} rounded-2xl overflow-hidden relative transition-all duration-300
           ${state === "recording" ? "border-2 border-brand-red shadow-[0_0_30px_rgba(255,61,0,0.15)]" : "border border-border"}`}
       >
         {state === "done" && blobUrl ? (
           <video
             src={blobUrl}
-            className="w-full h-full object-cover"
+            className={FRAME_FIT}
             controls
             playsInline
             poster={CLIP_POSTER}
@@ -128,7 +158,7 @@ export function VideoRecorder({
           <>
             <video
               ref={setVideoRef}
-              className={`w-full h-full object-cover ${showFisheyeOverlay ? "invisible" : ""}`}
+              className={`${FRAME_FIT} ${showFisheyeOverlay ? "invisible" : ""}`}
               muted
               playsInline
               preload="none"
@@ -140,7 +170,7 @@ export function VideoRecorder({
                 active={true}
                 strength={2.0}
                 onCanvas={setFisheyeCanvas}
-                className="absolute inset-0 w-full h-full object-cover"
+                className={`absolute inset-0 ${FRAME_FIT}`}
               />
             )}
           </>
@@ -189,6 +219,10 @@ export function VideoRecorder({
             )}
           </div>
         )}
+
+        <Suspense fallback={null}>
+          <NativeCameraControls active={nativeLive} />
+        </Suspense>
 
         {state !== "done" && (
           <div className="absolute top-4 right-4 flex items-center gap-2">

@@ -38,6 +38,8 @@ function mockTrack(kind: "video" | "audio", stop: () => void) {
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     getSettings: () => ({ frameRate: 30 }),
+    getCapabilities: () => ({}),
+    applyConstraints: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -354,8 +356,8 @@ describe("VideoRecorder", () => {
   });
 
   it("constructs the recorder with the most-preferred supported codec", async () => {
-    // The candidate the hook prefers first. This must stay in sync with
-    // MIME_CANDIDATES[0] in src/hooks/useMediaRecorder.ts — an `isTypeSupported`
+    // The candidate non-WebKit browsers prefer first. This must stay in sync
+    // with the WebM list in src/hooks/cameraCapture.ts — an `isTypeSupported`
     // stub that matches nothing silently degrades this into a test that only
     // proves recording completes, which is how it previously passed while
     // asserting nothing about codec selection at all.
@@ -392,6 +394,7 @@ describe("VideoRecorder", () => {
 
     expect(seenOptions).toHaveLength(1);
     expect(seenOptions[0]?.mimeType).toBe(PREFERRED);
+    expect(screen.getByLabelText("Your recorded trick video")).toHaveClass("object-contain");
 
     (globalThis as any).MediaRecorder = originalMR;
   });
@@ -582,6 +585,11 @@ describe("VideoRecorder", () => {
     expect(crosshair).toHaveAttribute("aria-hidden", "true");
     expect(crosshair).toHaveClass("pointer-events-none");
 
+    // Preview shows the whole recorded frame. `cover` cropped a landscape
+    // stream into this portrait frame and looked zoomed in. The crosshair
+    // markup above is unchanged — it stays centered on that frame.
+    expect(screen.getByLabelText("Camera preview")).toHaveClass("object-contain");
+
     // Preview: instruction bubble present and readable by screen readers
     const instruction = screen.getByTestId("crosshair-instruction");
     expect(instruction).toHaveTextContent(/crosshair is aiming/i);
@@ -608,6 +616,7 @@ describe("VideoRecorder", () => {
     await userEvent.click(screen.getByLabelText("Enable fisheye"));
     expect(screen.getByLabelText("Disable fisheye")).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByTestId("camera-crosshair")).toBeInTheDocument();
+    expect(screen.getByLabelText("Fisheye camera preview")).toHaveClass("object-contain");
   });
 
   it("auto-opens the camera on mount when camera and mic are already granted", async () => {

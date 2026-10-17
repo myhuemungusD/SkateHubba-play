@@ -67,6 +67,8 @@ function fakeTrack(kind: "video" | "audio") {
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     getSettings: () => ({ frameRate: 30 }),
+    getCapabilities: () => ({}),
+    applyConstraints: vi.fn().mockResolvedValue(undefined),
   };
 }
 const fakeVideoTrack = fakeTrack("video");

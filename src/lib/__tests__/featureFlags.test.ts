@@ -5,6 +5,7 @@ import {
   isClipModerationEnabled,
   isDiceEnabled,
   isExtrasEnabled,
+  isProCameraEnabled,
   isRefereeEnabled,
   isTrickPickerEnabled,
   isXpEnabled,
@@ -209,5 +210,25 @@ describe("isClipEditorEnabled (VITE_FEATURE_CLIP_EDITOR)", () => {
     expect(isClipEditorEnabled()).toBe(false);
     vi.stubEnv("VITE_FEATURE_CLIP_EDITOR", "true");
     expect(isClipEditorEnabled()).toBe(true);
+  });
+});
+
+describe("isProCameraEnabled (VITE_FEATURE_PRO_CAMERA)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is OFF when the env var is unset", () => {
+    expect(import.meta.env.VITE_FEATURE_PRO_CAMERA).toBeUndefined();
+    expect(isProCameraEnabled()).toBe(false);
+  });
+
+  it("stays off for anything other than the literal string true", () => {
+    vi.stubEnv("VITE_FEATURE_PRO_CAMERA", "TRUE");
+    expect(isProCameraEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_PRO_CAMERA", "enabled");
+    expect(isProCameraEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_PRO_CAMERA", "true");
+    expect(isProCameraEnabled()).toBe(true);
   });
 });

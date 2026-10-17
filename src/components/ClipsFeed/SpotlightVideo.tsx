@@ -186,7 +186,7 @@ function SpotlightVideoImpl({ src, active = true, mediaLabel, muted: mutedProp, 
         onPlay={handlePlay}
         onPause={handlePause}
         onError={handleError}
-        className="h-full w-full object-cover"
+        className="h-full w-full bg-black object-contain"
       />
 
       {active && !failed && (
