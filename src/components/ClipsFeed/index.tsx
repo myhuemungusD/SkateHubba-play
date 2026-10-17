@@ -6,14 +6,12 @@ import { isFirebaseStorageUrl } from "../../utils/helpers";
 import { isFeedModesEnabled, isWttEnabled } from "../../lib/featureFlags";
 import { useFeedMode } from "../../hooks/useFeedMode";
 
-const ReportModal = lazy(() => import("../ReportModal").then((m) => ({ default: m.ReportModal })));
-const UserClipUploadModal = lazy(() => import("../UserClipUpload").then((m) => ({ default: m.UserClipUploadModal })));
-const ClipComments = lazy(() => import("./ClipComments").then((m) => ({ default: m.ClipComments })));
 const FeedModeToggle = lazy(() => import("../FeedModeToggle").then((m) => ({ default: m.FeedModeToggle })));
 import { ClipsFeedEmpty, ClipsFeedError, ClipsFeedExhausted, ClipsFeedSkeleton } from "./ClipsFeedStates";
 import { OwnClipModeration } from "./OwnClipModeration";
 import { ClipsFeedHeader } from "./ClipsFeedHeader";
 import { DisputeSlides, disputeSlideCount } from "./DisputeLane";
+import { FeedModals } from "./FeedModals";
 import { isNearSlide } from "./feedLayout";
 import { NextClipPrefetcher } from "./NextClipPrefetcher";
 import { SpotlightCard } from "./SpotlightCard";
@@ -213,68 +211,36 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         />
       )}
 
-      {commentsTarget && (
-        <Suspense fallback={null}>
-          <ClipComments
-            key={commentsTarget.id}
-            clip={commentsTarget}
-            viewerUid={profile.uid}
-            viewerUsername={profile.username}
-            blockedUids={clips.blockedUids}
-            onClose={() => setCommentsTarget(null)}
-            onReport={() => {
-              setCommentsTarget(null);
-              setReportTarget(commentsTarget);
-            }}
-          />
-        </Suspense>
-      )}
-
-      {uploadOpen && (
-        <Suspense fallback={null}>
-          <UserClipUploadModal
-            uid={profile.uid}
-            username={profile.username}
-            onClose={() => setUploadOpen(false)}
-            onPosted={() => {
-              setUploadOpen(false);
-              setModerationRefresh((key) => key + 1);
-              void clips.loadPool();
-            }}
-          />
-        </Suspense>
-      )}
-
-      {disputeReport && (
-        <Suspense fallback={null}>
-          <ReportModal
-            reporterUid={profile.uid}
-            reportedUid={disputeReport.matcherUid}
-            reportedUsername={disputeReport.matcherUsername}
-            gameId={disputeReport.gameId}
-            disputeId={disputeReport.id}
-            onClose={() => setDisputeReport(null)}
-            onSubmitted={() => setDisputeReport(null)}
-          />
-        </Suspense>
-      )}
-
-      {reportTarget && (
-        <Suspense fallback={null}>
-          <ReportModal
-            reporterUid={profile.uid}
-            reportedUid={reportTarget.playerUid}
-            reportedUsername={reportTarget.playerUsername}
-            gameId={reportTarget.gameId}
-            clipId={reportTarget.id}
-            onClose={() => setReportTarget(null)}
-            onSubmitted={() => {
-              clips.dismissClip(reportTarget.id);
-              setReportTarget(null);
-            }}
-          />
-        </Suspense>
-      )}
+      <FeedModals
+        uid={profile.uid}
+        username={profile.username}
+        blockedUids={clips.blockedUids}
+        commentsTarget={commentsTarget}
+        onCloseComments={() => setCommentsTarget(null)}
+        onReportFromComments={() => {
+          if (commentsTarget) {
+            setCommentsTarget(null);
+            setReportTarget(commentsTarget);
+          }
+        }}
+        uploadOpen={uploadOpen}
+        onCloseUpload={() => setUploadOpen(false)}
+        onPosted={() => {
+          setUploadOpen(false);
+          setModerationRefresh((key) => key + 1);
+          void clips.loadPool();
+        }}
+        disputeReport={disputeReport}
+        onCloseDisputeReport={() => setDisputeReport(null)}
+        reportTarget={reportTarget}
+        onCloseClipReport={() => setReportTarget(null)}
+        onClipReportSubmitted={() => {
+          if (reportTarget) {
+            clips.dismissClip(reportTarget.id);
+            setReportTarget(null);
+          }
+        }}
+      />
     </section>
   );
 }
