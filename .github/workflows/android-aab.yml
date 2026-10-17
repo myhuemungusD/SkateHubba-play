@@ -21,6 +21,10 @@ on:
     tags:
       - 'v*'
 
+concurrency:
+  group: android-aab-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

@@ -6,19 +6,12 @@ name: Build iOS App
 # (`bundle exec fastlane ios beta`), which needs match + App Store Connect
 # secrets and is run deliberately, not on every push.
 on:
+  # Cost: macOS minutes bill at 10x. Runs only on manual dispatch, or on a PR
+  # that BOTH touches the native shell AND carries the `ios-build` label.
+  # Signed TestFlight builds go through ios-release.yml (manual).
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'ios/**'
-      - 'package.json'
-      - 'capacitor.config.ts'
-      - '.github/workflows/ios-build.yml'
-      - '.github/scripts/ios-simulator-screenshots.sh'
-  # PRs pay macOS minutes only when they touch the native shell itself —
-  # src/** changes are covered by the push-to-main run instead.
   pull_request:
+    types: [opened, synchronize, reopened, labeled, ready_for_review]
     paths:
       - 'ios/**'
       - 'capacitor.config.ts'
@@ -35,6 +28,10 @@ concurrency:
 jobs:
   build:
     name: Simulator build (unsigned)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.draft == false &&
+       contains(github.event.pull_request.labels.*.name, 'ios-build'))
     runs-on: macos-15
     timeout-minutes: 60
     steps:
