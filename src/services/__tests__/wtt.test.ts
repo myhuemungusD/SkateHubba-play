@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fetchWttItems, submitWttVote, fetchWttReliability, subscribeToWttReliability, submitProReview } from "../wtt";
-import type { WttItem, WttReliability } from "../wtt.types";
 
 const mockGetDocs = vi.fn();
 const mockGetDoc = vi.fn();
@@ -24,7 +23,7 @@ vi.mock("../../firebase", () => ({
 vi.mock("firebase/firestore", () => ({
   collection: (...args: unknown[]) => mockCollection(...args),
   doc: (...args: unknown[]) => mockDoc(...args),
-  getDoc: (...args: unknown[]) => mockGetDocs(...args),
+  getDoc: (...args: unknown[]) => mockGetDoc(...args),
   getDocs: (...args: unknown[]) => mockGetDocs(...args),
   setDoc: (...args: unknown[]) => mockSetDoc(...args),
   onSnapshot: (...args: unknown[]) => mockOnSnapshot(...args),
@@ -228,7 +227,7 @@ describe("fetchWttReliability", () => {
 describe("subscribeToWttReliability", () => {
   it("calls callback with null when doc doesn't exist", () => {
     const callback = vi.fn();
-    mockOnSnapshot.mockImplementation((docRef, onNext) => {
+    mockOnSnapshot.mockImplementation((_docRef, onNext) => {
       onNext({ exists: () => false });
       return vi.fn();
     });
@@ -240,7 +239,7 @@ describe("subscribeToWttReliability", () => {
 
   it("calls callback with reliability data when doc exists", () => {
     const callback = vi.fn();
-    mockOnSnapshot.mockImplementation((docRef, onNext) => {
+    mockOnSnapshot.mockImplementation((_docRef, onNext) => {
       onNext({
         exists: () => true,
         data: () =>
@@ -270,7 +269,7 @@ describe("subscribeToWttReliability", () => {
     const callback = vi.fn();
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    mockOnSnapshot.mockImplementation((docRef, onNext, onError) => {
+    mockOnSnapshot.mockImplementation((_docRef, _onNext, onError) => {
       onError?.(new Error("Firestore error"));
       return vi.fn();
     });

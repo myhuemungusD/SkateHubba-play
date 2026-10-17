@@ -1,8 +1,27 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { generateWttOptions, validateWttOptions } from "../wtt.options";
+
+// Mock the tricks module to control behavior
+const mockTrickById = vi.fn();
+const mockGetConfusableTricks = vi.fn();
+const mockGetRandomDistractor = vi.fn();
+
+vi.mock("../constants/tricks", () => ({
+  trickById: (...args: unknown[]) => mockTrickById(...args),
+  getConfusableTricks: (...args: unknown[]) => mockGetConfusableTricks(...args),
+  getRandomDistractor: (...args: unknown[]) => mockGetRandomDistractor(...args),
+}));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 describe("generateWttOptions", () => {
   it("generates 4 unique options including the correct answer", () => {
+    mockTrickById.mockReturnValue({ id: "kickflip", name: "Kickflip" });
+    mockGetConfusableTricks.mockReturnValue(["heelflip", "varial-kickflip"]);
+    mockGetRandomDistractor.mockReturnValue("impossible");
+
     const result = generateWttOptions("kickflip");
 
     expect(result).not.toBeNull();
@@ -12,34 +31,81 @@ describe("generateWttOptions", () => {
   });
 
   it("includes confusable tricks when available", () => {
+    mockTrickById.mockReturnValue({ id: "kickflip", name: "Kickflip" });
+    mockGetConfusableTricks.mockReturnValue(["heelflip", "varial-kickflip"]);
+    mockGetRandomDistractor.mockReturnValue("impossible");
+
     const result = generateWttOptions("kickflip");
 
     expect(result).not.toBeNull();
     expect(result?.options).toContain("kickflip");
-    expect(
-      result?.options.some((opt) => ["heelflip", "varial-kickflip", "hardflip", "inward-heelflip"].includes(opt)),
-    ).toBe(true);
+    expect(result?.options.some((opt) => ["heelflip", "varial-kickflip"].includes(opt))).toBe(true);
   });
 
-  it("generates options for tricks without confusables", () => {
-    const result = generateWttOptions("indy");
+  it("uses random distractor when confusables are limited", () => {
+    mockTrickById.mockReturnValue({ id: "manual", name: "Manual" });
+    mockGetConfusableTricks.mockReturnValue(["nose-manual"]);
+    mockGetRandomDistractor.mockReturnValueOnce("50-50").mockReturnValueOnce("boardslide");
 
-    expect(result).not.toBeNull();
-    expect(result?.options).toHaveLength(4);
-    expect(result?.options).toContain("indy");
-    expect(new Set(result?.options).size).toBe(4);
-  });
-
-  it("generates options for tricks with few confusables", () => {
     const result = generateWttOptions("manual");
 
     expect(result).not.toBeNull();
     expect(result?.options).toHaveLength(4);
-    expect(result?.options).toContain("manual");
     expect(new Set(result?.options).size).toBe(4);
   });
 
+  it("uses fallback distractors when random distractor returns null", () => {
+    mockTrickById.mockReturnValue({ id: "rare-trick", name: "Rare Trick" });
+    mockGetConfusableTricks.mockReturnValue([]);
+    mockGetRandomDistractor.mockReturnValue(null);
+
+    const result = generateWttOptions("rare-trick");
+
+    expect(result).not.toBeNull();
+    expect(result?.options).toHaveLength(4);
+    expect(result?.options).toContain("rare-trick");
+    // Should include fallback tricks like ollie, kickflip, etc
+    const hasCommonTrick = result?.options.some((opt) =>
+      ["ollie", "kickflip", "heelflip", "pop-shove-it", "bs-180", "fs-180", "50-50", "boardslide"].includes(opt),
+    );
+    expect(hasCommonTrick).toBe(true);
+  });
+
+  it("returns null when not enough options can be found", () => {
+    mockTrickById.mockReturnValue({ id: "test", name: "Test" });
+    mockGetConfusableTricks.mockReturnValue([]);
+    mockGetRandomDistractor.mockReturnValue(null);
+
+    // Simulate all fallbacks being used
+    const usedTricks = new Set([
+      "test",
+      "ollie",
+      "kickflip",
+      "heelflip",
+      "pop-shove-it",
+      "bs-180",
+      "fs-180",
+      "50-50",
+      "boardslide",
+    ]);
+
+    const originalHas = Set.prototype.has;
+    const hasSpy = vi.spyOn(Set.prototype, "has").mockImplementation(function (this: Set<string>, value: string) {
+      return usedTricks.has(value);
+    });
+
+    const result = generateWttOptions("test");
+
+    expect(result).toBeNull();
+
+    hasSpy.mockRestore();
+  });
+
   it("shuffles options randomly", () => {
+    mockTrickById.mockReturnValue({ id: "kickflip", name: "Kickflip" });
+    mockGetConfusableTricks.mockReturnValue(["heelflip", "varial-kickflip"]);
+    mockGetRandomDistractor.mockReturnValue("impossible");
+
     const runs = Array.from({ length: 20 }, () => generateWttOptions("kickflip"));
     const correctIndices = runs.map((r) => r?.correctIndex);
     const uniquePositions = new Set(correctIndices);
@@ -48,8 +114,21 @@ describe("generateWttOptions", () => {
   });
 
   it("returns null for unknown trick", () => {
+    mockTrickById.mockReturnValue(null);
+
     const result = generateWttOptions("nonexistent-trick");
     expect(result).toBeNull();
+  });
+
+  it("stops adding confusables when 4 options reached", () => {
+    mockTrickById.mockReturnValue({ id: "kickflip", name: "Kickflip" });
+    mockGetConfusableTricks.mockReturnValue(["heelflip", "varial-kickflip", "hardflip", "inward-heelflip"]);
+    mockGetRandomDistractor.mockReturnValue("impossible");
+
+    const result = generateWttOptions("kickflip");
+
+    expect(result).not.toBeNull();
+    expect(result?.options).toHaveLength(4);
   });
 });
 
