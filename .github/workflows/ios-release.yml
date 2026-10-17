@@ -12,6 +12,16 @@ on:
         required: false
         type: string
         default: ""
+      clip_editor:
+        description: "Tester build: show the clip editor (VITE_FEATURE_CLIP_EDITOR). Leave off for App Store builds."
+        required: false
+        type: boolean
+        default: false
+      dice:
+        description: "Tester build: show Roll Dice (VITE_FEATURE_DICE_ENABLED). Server stays gated by DICE_ENABLED / DICE_TESTER_UIDS. Leave off for App Store builds."
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -101,8 +111,11 @@ jobs:
           # first (docs/IOS_RELEASE.md). The website and Android stay off until
           # VITE_FEATURE_APPLE_SIGNIN_ENABLED is the literal "true" in Vercel.
           VITE_FEATURE_APPLE_SIGNIN_ENABLED: "true"
-          # Roll Dice stays off. Do not turn this into a secret that can flip it on.
-          VITE_FEATURE_DICE_ENABLED: "false"
+          # Roll Dice is off unless the person dispatching ticks the "dice"
+          # input for a tester build. Do not turn this into a secret.
+          VITE_FEATURE_DICE_ENABLED: ${{ inputs.dice && 'true' || 'false' }}
+          # Clip editor: off unless the "clip_editor" input is ticked.
+          VITE_FEATURE_CLIP_EDITOR: ${{ inputs.clip_editor && 'true' || 'false' }}
           VITE_FEATURE_EXTRAS_ENABLED: "false"
           # Pro blessing UI. The proBlessing function still gates who can act
           # (PRO_BLESSING_ENABLED / PRO_BLESSING_TESTER_UIDS, docs/PRO_BLESSING.md).
