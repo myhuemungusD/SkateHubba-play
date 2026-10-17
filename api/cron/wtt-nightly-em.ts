@@ -6,24 +6,21 @@
  * NOT YET DEPLOYED — stubbed behind WTT_ENABLED flag.
  */
 
-import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { WTT_ENABLED } from "../../src/constants/wtt.config";
 
 /**
  * Cron endpoint: nightly Dawid-Skene reliability update.
  * GET /api/cron/wtt-nightly-em
  *
- * Should be triggered once daily (e.g., 2am UTC) via Vercel cron.
+ * Should be triggered once daily (e.g., 2am UTC) via GitHub Actions.
  */
-export default async function wttNightlyEm(req: VercelRequest, res: VercelResponse): Promise<void> {
+export default async function wttNightlyEm(req: Request): Promise<Response> {
   if (req.method !== "GET" && req.method !== "POST") {
-    res.status(405).json({ error: "Method not allowed" });
-    return;
+    return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
 
   if (!WTT_ENABLED) {
-    res.status(200).json({ message: "WTT disabled", processed: 0 });
-    return;
+    return Response.json({ message: "WTT disabled", processed: 0 });
   }
 
   console.log("[WTT] Starting wttNightlyEm cron");
@@ -60,7 +57,7 @@ export default async function wttNightlyEm(req: VercelRequest, res: VercelRespon
     const averageReliability = 0.0; // Stub
 
     console.log(`[WTT] wttNightlyEm complete: ${usersUpdated} users, avg reliability ${averageReliability}`);
-    res.status(200).json({
+    return Response.json({
       message: "WTT nightly EM complete (stub)",
       usersUpdated,
       averageReliability,
@@ -68,9 +65,12 @@ export default async function wttNightlyEm(req: VercelRequest, res: VercelRespon
     });
   } catch (error) {
     console.error("[WTT] wttNightlyEm error:", error);
-    res.status(500).json({
-      error: "Failed to run WTT nightly EM",
-      message: error instanceof Error ? error.message : String(error),
-    });
+    return Response.json(
+      {
+        error: "Failed to run WTT nightly EM",
+        message: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 },
+    );
   }
 }

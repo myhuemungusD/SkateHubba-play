@@ -6,24 +6,21 @@
  * NOT YET DEPLOYED — stubbed behind WTT_ENABLED flag.
  */
 
-import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { WTT_ENABLED } from "../../src/constants/wtt.config";
 
 /**
  * Cron endpoint: builds WTT quiz items from eligible clips.
  * GET /api/cron/build-wtt-items
  *
- * Should be triggered hourly via Vercel cron or similar scheduler.
+ * Should be triggered hourly via GitHub Actions or similar scheduler.
  */
-export default async function buildWttItems(req: VercelRequest, res: VercelResponse): Promise<void> {
+export default async function buildWttItems(req: Request): Promise<Response> {
   if (req.method !== "GET" && req.method !== "POST") {
-    res.status(405).json({ error: "Method not allowed" });
-    return;
+    return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
 
   if (!WTT_ENABLED) {
-    res.status(200).json({ message: "WTT disabled", processed: 0 });
-    return;
+    return Response.json({ message: "WTT disabled", processed: 0 });
   }
 
   console.log("[WTT] Starting buildWttItems cron");
@@ -58,7 +55,7 @@ export default async function buildWttItems(req: VercelRequest, res: VercelRespo
     const goldItemsCreated = 0; // Stub
 
     console.log(`[WTT] buildWttItems complete: ${itemsCreated} items, ${goldItemsCreated} gold`);
-    res.status(200).json({
+    return Response.json({
       message: "WTT items built (stub)",
       itemsCreated,
       goldItemsCreated,
@@ -66,9 +63,12 @@ export default async function buildWttItems(req: VercelRequest, res: VercelRespo
     });
   } catch (error) {
     console.error("[WTT] buildWttItems error:", error);
-    res.status(500).json({
-      error: "Failed to build WTT items",
-      message: error instanceof Error ? error.message : String(error),
-    });
+    return Response.json(
+      {
+        error: "Failed to build WTT items",
+        message: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 },
+    );
   }
 }
