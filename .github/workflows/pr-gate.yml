@@ -3,6 +3,7 @@ name: PR Gate
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
@@ -233,6 +234,13 @@ jobs:
 
       - run: npm ci
         if: steps.changed.outputs.touched == 'true'
+
+      - name: Cache Firebase emulator binaries
+        if: steps.changed.outputs.touched == 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Run Firestore rules tests
         if: steps.changed.outputs.touched == 'true'

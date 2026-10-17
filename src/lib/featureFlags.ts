@@ -68,6 +68,15 @@ export function isRefereeEnabled(): boolean {
 }
 
 /**
+ * Searchable trick picker. Off until the catalog has been tried on a phone.
+ * Literal "true" only. While off, setters still type a trick name and no
+ * structured trick fields are required.
+ */
+export function isTrickPickerEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_TRICK_PICKER_ENABLED);
+}
+
+/**
  * Public-clip moderation. Off until the Video Intelligence function is
  * deployed. Anything except the literal string "true" keeps uploads
  * visible immediately, which is today's behavior.
@@ -116,4 +125,13 @@ export function isClosetTradingEnabled(): boolean {
 
 export function isClosetBucksPurchaseEnabled(): boolean {
   return isClosetEnabled() && parseFlag(import.meta.env.VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED);
+}
+
+/**
+ * Skate clip editor: speed ramps, landing-marker trim, VX/VHS looks, color
+ * presets, line cuts, trick captions, beat-synced music, skate SFX and
+ * full-quality export (native AVFoundation on iOS). Literal "true" only.
+ */
+export function isClipEditorEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_CLIP_EDITOR);
 }

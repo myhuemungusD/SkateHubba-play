@@ -277,6 +277,9 @@ export function PlayerProfileScreen({
           stance={profile.stance ?? ""}
           bio={profile.proBio}
           signatureTricks={profile.proSignatureTricks}
+          tagline={profile.proTagline}
+          hometown={profile.proHometown}
+          sponsors={profile.proSponsors}
           canEdit={isOwnProfile && profile.isVerifiedPro === true}
           wins={profile.wins ?? 0}
           losses={profile.losses ?? 0}

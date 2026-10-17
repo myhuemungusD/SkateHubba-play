@@ -13,6 +13,7 @@ import { JudgeInviteCard } from "./components/JudgeInviteCard";
 import { GamePlayHeader } from "./components/GamePlayHeader";
 import { LetterScoreboard } from "./components/LetterScoreboard";
 import { SetterTrickInput } from "./components/SetterTrickInput";
+import { TrickPicker } from "../../components/TrickPicker";
 import { MatcherInstructionBanner } from "./components/MatcherInstructionBanner";
 import { MatcherTrickViewer } from "./components/MatcherTrickViewer";
 import { SetterDecisionPanel } from "./components/SetterDecisionPanel";
@@ -71,7 +72,16 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
           isMatcher={c.isMatcher}
         />
 
-        {!c.isJudge && c.isSetter && (
+        {!c.isJudge && c.isSetter && c.trickPickerEnabled && (
+          <TrickPicker
+            selection={c.trickSelection}
+            onChange={c.setTrickSelection}
+            disabled={c.videoRecorded}
+            trickCategory={game.trickCategory}
+            customRules={game.customRules}
+          />
+        )}
+        {!c.isJudge && c.isSetter && !c.trickPickerEnabled && (
           <SetterTrickInput
             trickName={c.trickName}
             setTrickName={c.setTrickName}

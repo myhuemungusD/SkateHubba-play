@@ -110,6 +110,12 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Searchable trick picker. DEFAULTS TO OFF. Read via isTrickPickerEnabled().
+  VITE_FEATURE_TRICK_PICKER_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // Referee nomination on new games. DEFAULTS TO OFF so a missing env var
   // cannot put a judge on a new game. Read via isRefereeEnabled().
   VITE_FEATURE_REFEREE_ENABLED: z
@@ -120,6 +126,13 @@ const envSchema = z.object({
   // Public-clip moderation. DEFAULTS TO OFF until the server function is
   // deployed. Read via isClipModerationEnabled() in featureFlags.ts.
   VITE_FEATURE_CLIP_MODERATION_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
+  // Skate clip editor (speed ramps, looks, music, SFX, 4K export). DEFAULTS
+  // TO OFF. Read via isClipEditorEnabled() in featureFlags.ts.
+  VITE_FEATURE_CLIP_EDITOR: z
     .string()
     .optional()
     .transform((v) => v === "true"),

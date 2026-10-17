@@ -171,30 +171,6 @@ function requireStorage(): FirebaseStorage {
 }
 
 /**
- * Get the Functions instance for calling Cloud Functions callables.
- * Connects to the emulator in dev mode with VITE_USE_EMULATORS.
- */
-let functionsInstance: ReturnType<typeof import("firebase/functions").getFunctions> | null = null;
-let functionsEmulatorConnected = false;
-
-async function requireFunctions(): Promise<ReturnType<typeof import("firebase/functions").getFunctions>> {
-  if (!app) throw new Error("Firebase not initialized — check VITE_FIREBASE_* env vars");
-  if (functionsInstance) return functionsInstance;
-
-  await ensureAppCheck();
-  const { getFunctions, connectFunctionsEmulator } = await import("firebase/functions");
-  const fns = getFunctions(app, "us-central1");
-
-  if (useEmulators && !functionsEmulatorConnected) {
-    connectFunctionsEmulator(fns, "127.0.0.1", 5001);
-    functionsEmulatorConnected = true;
-  }
-
-  functionsInstance = fns;
-  return fns;
-}
-
-/**
  * Install Firebase App Check before the first Firestore, Storage, Functions,
  * or Auth network call. The reCAPTCHA provider is a dynamic import so it is
  * not on the first-paint graph. Resolves immediately when App Check is off
@@ -325,5 +301,5 @@ export function ensureStorage(): Promise<FirebaseStorage | null> {
 /** True when running against local Firebase emulators */
 export const isEmulatorMode = Boolean(import.meta.env.DEV && env?.VITE_USE_EMULATORS === true && firebaseReady);
 
-export { db, auth, storage, requireDb, requireAuth, requireStorage, requireFunctions };
+export { db, auth, storage, requireDb, requireAuth, requireStorage };
 export default app;

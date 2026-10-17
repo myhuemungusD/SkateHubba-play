@@ -15,6 +15,7 @@ import { InstallAppCard } from "../components/InstallAppCard";
 import { AccountActions } from "../components/AccountActions";
 import { TwoFactorSection } from "../components/TwoFactorSection";
 import { SOCIAL_LINKS } from "../constants/socialLinks";
+import { TrainingConsentToggle } from "../components/TrainingConsentToggle";
 import { SafetyReportsSection } from "../components/SafetyReportsSection";
 import { usePushPermission } from "./settings/usePushPermission";
 import { PrefRow, SectionHeader } from "./settings/SettingsPrimitives";
@@ -222,6 +223,11 @@ export function Settings({
               </p>
             </div>
           )}
+        </div>
+
+        <SectionHeader title="TRICK AI" />
+        <div className="space-y-2">
+          <TrainingConsentToggle uid={profile.uid} />
         </div>
 
         {/* Sound & haptics */}

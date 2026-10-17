@@ -8,6 +8,8 @@ import { captureException } from "../../lib/sentry";
 import { logger } from "../../services/logger";
 import { playHaptic } from "../../services/haptics";
 import { parseFirebaseError } from "../../utils/helpers";
+import { isTrickPickerEnabled } from "../../lib/featureFlags";
+import { formatTrickDisplayName, rememberRecentTrick, type TrickSelection } from "../../constants/tricks";
 import { useCommunityDispute } from "./useCommunityDispute";
 import { useGameReviewActions } from "./useGameReviewActions";
 import type { GamePlayController } from "./gamePlayController.types";
@@ -16,12 +18,19 @@ export type { GamePlayController } from "./gamePlayController.types";
 
 export function useGamePlayController(game: GameDoc, profile: UserProfile): GamePlayController {
   const [trickName, setTrickName] = useState("");
+  const [trickSelection, setTrickSelectionState] = useState<TrickSelection | null>(null);
   // Mirrors the committed trick name for submitSetterTrick, which reads it
   // after the upload await. Synced in a layout effect, not during render.
   const trickNameRef = useRef(trickName);
+  const trickSelectionRef = useRef(trickSelection);
   useLayoutEffect(() => {
     trickNameRef.current = trickName;
-  }, [trickName]);
+    trickSelectionRef.current = trickSelection;
+  }, [trickName, trickSelection]);
+  const setTrickSelection = useCallback((selection: TrickSelection | null) => {
+    setTrickSelectionState(selection);
+    setTrickName(selection ? formatTrickDisplayName(selection) : "");
+  }, []);
   // Sticky: once the setter has typed a trick name the recorder stays
   // revealed even if the field is cleared again.
   const [recorderRevealed, setRecorderRevealed] = useState(false);
@@ -153,7 +162,13 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
           );
         }
         setUploadProgress(null);
-        await setTrick(game.id, trickNameRef.current.trim(), videoUrl);
+        const selection = isTrickPickerEnabled() ? trickSelectionRef.current : null;
+        if (selection) {
+          await setTrick(game.id, trickNameRef.current.trim(), videoUrl, selection);
+          if (selection.trickId !== "other") rememberRecentTrick(selection.trickId);
+        } else {
+          await setTrick(game.id, trickNameRef.current.trim(), videoUrl);
+        }
       } catch (err: unknown) {
         // Unmount-triggered abort: the component is gone, so skip state +
         // Sentry to avoid setState-after-unmount noise.
@@ -279,6 +294,9 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
     profile,
     trickName,
     setTrickName,
+    trickPickerEnabled: isTrickPickerEnabled(),
+    trickSelection,
+    setTrickSelection,
     trimmedTrickName,
     showRecorder,
     videoBlob,

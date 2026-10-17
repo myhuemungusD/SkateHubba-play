@@ -1,3 +1,4 @@
+import type { TrickSelection } from "../../constants/tricks";
 import type { GameDoc } from "../../services/games";
 import type { Dispute } from "../../services/disputes";
 import type { UploadProgress as UploadProgressData } from "../../services/storage";
@@ -11,6 +12,9 @@ export interface GamePlayController {
 
   trickName: string;
   setTrickName: (value: string) => void;
+  trickPickerEnabled: boolean;
+  trickSelection: TrickSelection | null;
+  setTrickSelection: (selection: TrickSelection | null) => void;
   trimmedTrickName: string;
   showRecorder: boolean;
 

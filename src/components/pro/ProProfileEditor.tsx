@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { PRO_BIO_MAX, PRO_TRICKS_MAX, TRICK_CATALOG } from "../../constants/trickCatalog";
+import {
+  PRO_BIO_MAX,
+  PRO_HOMETOWN_MAX,
+  PRO_SPONSOR_MAX,
+  PRO_SPONSORS_MAX,
+  PRO_TAGLINE_MAX,
+  PRO_TRICKS_MAX,
+  TRICK_CATALOG,
+} from "../../constants/trickCatalog";
 import { saveProProfile, type ProProfileEdit } from "../../services/proProfile";
 import { getUserMessage } from "../../utils/helpers";
 
@@ -10,12 +18,20 @@ interface Props {
   onCancel: () => void;
 }
 
+const LABEL = "mb-1 block font-display text-[11px] tracking-[0.2em] text-brand-orange";
+const INPUT =
+  "mb-3 min-h-[44px] w-full rounded-xl border border-white/[0.08] bg-surface-alt px-3 font-body text-sm text-white";
 const CHIP = "min-h-[36px] rounded-lg border px-2.5 font-body text-xs transition-colors";
 
-/** A verified pro edits their own bio and picks up to three signature tricks. */
+/** A verified pro writes their own tagline, hometown, sponsors and bio, and picks up to three signature tricks. */
 export function ProProfileEditor({ uid, initial, onSaved, onCancel }: Props) {
   const [bio, setBio] = useState(initial.bio);
   const [tricks, setTricks] = useState<string[]>(initial.signatureTricks);
+  const [tagline, setTagline] = useState(initial.tagline);
+  const [hometown, setHometown] = useState(initial.hometown);
+  const [sponsors, setSponsors] = useState<string[]>(() =>
+    Array.from({ length: PRO_SPONSORS_MAX }, (_, i) => initial.sponsors[i] ?? ""),
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -28,7 +44,7 @@ export function ProProfileEditor({ uid, initial, onSaved, onCancel }: Props) {
     setSaving(true);
     setError("");
     try {
-      onSaved(await saveProProfile(uid, { bio, signatureTricks: tricks }));
+      onSaved(await saveProProfile(uid, { bio, signatureTricks: tricks, tagline, hometown, sponsors }));
     } catch (err) {
       setError(getUserMessage(err, "Couldn't save. Try again."));
     } finally {
@@ -42,7 +58,41 @@ export function ProProfileEditor({ uid, initial, onSaved, onCancel }: Props) {
       data-testid="pro-profile-editor"
       className="mb-4 rounded-2xl border border-amber-300/20 bg-surface p-4"
     >
-      <label htmlFor="pro-bio" className="mb-1 block font-display text-[11px] tracking-[0.2em] text-brand-orange">
+      <label htmlFor="pro-tagline" className={LABEL}>
+        TAGLINE
+      </label>
+      <input
+        id="pro-tagline"
+        value={tagline}
+        maxLength={PRO_TAGLINE_MAX}
+        onChange={(e) => setTagline(e.target.value)}
+        className={INPUT}
+      />
+      <label htmlFor="pro-hometown" className={LABEL}>
+        HOMETOWN
+      </label>
+      <input
+        id="pro-hometown"
+        value={hometown}
+        maxLength={PRO_HOMETOWN_MAX}
+        autoComplete="address-level2"
+        onChange={(e) => setHometown(e.target.value)}
+        className={INPUT}
+      />
+      <fieldset className="mb-1">
+        <legend className={LABEL}>SPONSORS</legend>
+        {sponsors.map((s, i) => (
+          <input
+            key={i}
+            aria-label={`Sponsor ${i + 1}`}
+            value={s}
+            maxLength={PRO_SPONSOR_MAX}
+            onChange={(e) => setSponsors((cur) => cur.map((x, j) => (j === i ? e.target.value : x)))}
+            className={INPUT}
+          />
+        ))}
+      </fieldset>
+      <label htmlFor="pro-bio" className={LABEL}>
         BIO
       </label>
       <textarea
