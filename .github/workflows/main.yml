@@ -70,7 +70,9 @@ jobs:
             echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           files=$(git diff --name-only "$BASE...$HEAD" 2>/dev/null || git diff --name-only "$BASE" "$HEAD")
-          if [ -z "$files" ] || echo "$files" | grep -qvE '(\.md$|^docs/|^design/|^LICENSE|^\.github/ISSUE_TEMPLATE/)'; then
+          # functions/ is skipped here too: pr-gate.yml's "Build and test Cloud
+          # Functions" job covers it, and the web build never imports it.
+          if [ -z "$files" ] || echo "$files" | grep -qvE '(\.md$|^docs/|^design/|^functions/|^LICENSE|^\.github/ISSUE_TEMPLATE/)'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "Docs-only change — skipping heavy jobs."
@@ -99,6 +101,19 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # Restored after `npm ci` (which wipes node_modules). Holds the tsc -b
+      # incremental .tsBuildInfo files and Vite/Vitest caches so warm runs
+      # only re-check what changed.
+      - name: Cache TypeScript / Vite build state
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            node_modules/.tmp
+            node_modules/.vite
+          key: build-state-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: |
+            build-state-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
 
       # ── Dependency audit, scoped to what this change can control ──
       # History: the audit used to run unconditionally as a hard gate, which
