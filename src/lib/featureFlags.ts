@@ -139,6 +139,15 @@ export function isClipEditorEnabled(): boolean {
 }
 
 /**
+ * SMS 2FA enrollment. Off by default; when on, email/password users can enroll
+ * SMS as a second factor in Settings (via phone number). Never shown to
+ * Google/Apple users (they already have 2-step from their IdP). Literal "true" only.
+ */
+export function isSms2faEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_SMS_2FA_ENABLED);
+}
+
+/**
  * Pro camera features: 4K60, 120/240fps slow-mo, lens switching (0.5x/1x/2x),
  * tap-to-focus with AE/AF lock, quality selector, cinematic stabilization,
  * thermal management, 2.5s pre-roll buffer, native AVFoundation fisheye,

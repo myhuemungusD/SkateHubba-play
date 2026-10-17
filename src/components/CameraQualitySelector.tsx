@@ -74,9 +74,7 @@ export function CameraQualitySelector({ active }: { active: boolean }) {
                 role="menuitem"
                 onClick={() => void select(mode)}
                 className={`w-full px-4 py-3 text-left transition-colors ${
-                  mode === current
-                    ? "bg-brand-orange/20 text-brand-orange"
-                    : "text-white hover:bg-white/10"
+                  mode === current ? "bg-brand-orange/20 text-brand-orange" : "text-white hover:bg-white/10"
                 }`}
               >
                 <div className="font-display text-sm tracking-wider">{QUALITY_LABELS[mode]}</div>

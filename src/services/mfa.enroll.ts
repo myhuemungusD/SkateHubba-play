@@ -14,12 +14,16 @@ import {
   GoogleAuthProvider,
   OAuthProvider,
   TotpMultiFactorGenerator,
+  PhoneMultiFactorGenerator,
+  PhoneAuthProvider,
+  RecaptchaVerifier,
   multiFactor,
   reauthenticateWithCredential,
   reauthenticateWithPopup,
   type MultiFactorInfo,
   type TotpSecret,
   type User,
+  type PhoneMultiFactorInfo,
 } from "firebase/auth";
 import { requireAuth } from "../firebase";
 import { getErrorCode, parseFirebaseError } from "../utils/errors";
@@ -238,4 +242,116 @@ export async function reauthenticateForMfa(password?: string): Promise<void> {
     logger.warn("mfa_reauth_failed", { code: getErrorCode(err), message: parseFirebaseError(err) });
     throw err;
   }
+}
+
+/* ────────────────────────────────────────────
+ * SMS (phone) enrollment
+ * ──────────────────────────────────────────── */
+
+/** Enrolled SMS factors for the signed-in user. */
+export function listSmsFactors(): MultiFactorInfo[] {
+  try {
+    const user = requireAuth().currentUser;
+    if (!user) return [];
+    return multiFactor(user).enrolledFactors.filter(
+      (factor) => factor.factorId === PhoneMultiFactorGenerator.FACTOR_ID,
+    );
+  } catch (err) {
+    logger.warn("mfa_sms_list_failed", { code: getErrorCode(err), message: parseFirebaseError(err) });
+    return [];
+  }
+}
+
+/**
+ * Start SMS enrollment (step 1). Sends a verification code to the phone number.
+ *
+ * Returns the verification ID that {@link confirmSmsEnrollment} needs. On web,
+ * this uses an invisible reCAPTCHA. On native, reCAPTCHA doesn't work
+ * (capacitor://localhost), so callers should use a custom-token flow via a
+ * Cloud Function instead.
+ */
+export async function beginSmsEnrollment(
+  phoneNumber: string,
+  recaptchaContainer: HTMLElement | string,
+): Promise<string> {
+  if (!phoneNumber || typeof phoneNumber !== "string") {
+    throw new MfaFlowError("mfa/invalid-phone", "Enter a valid phone number");
+  }
+
+  // Normalize to E.164 format if needed (simple US check)
+  let normalized = phoneNumber.trim();
+  if (!/^\+/.test(normalized)) {
+    // Assume US if no country code
+    normalized = `+1${normalized.replace(/\D/g, "")}`;
+  }
+
+  if (!/^\+\d{10,15}$/.test(normalized)) {
+    throw new MfaFlowError("mfa/invalid-phone", "Enter a phone number with country code (e.g. +1234567890)");
+  }
+
+  const user = currentUser();
+  const auth = requireAuth();
+
+  try {
+    // Get session to prove user is authenticated for MFA enrollment
+    await multiFactor(user).getSession();
+    const verifier = new RecaptchaVerifier(auth, recaptchaContainer, { size: "invisible" });
+
+    try {
+      const provider = new PhoneAuthProvider(auth);
+      const verificationId = await provider.verifyPhoneNumber(normalized, verifier);
+      logger.info("mfa_sms_enroll_code_sent", { uid: user.uid });
+      return verificationId;
+    } finally {
+      verifier.clear();
+    }
+  } catch (err) {
+    rejectMapped(err, "mfa_sms_enroll_begin_failed");
+  }
+}
+
+/**
+ * Complete SMS enrollment (step 2). Verifies the code and enrolls the phone.
+ */
+export async function confirmSmsEnrollment(verificationId: string, code: string, displayName?: string): Promise<void> {
+  const user = currentUser();
+  const trimmed = code.replace(/\s+/g, "");
+
+  if (!/^\d{6}$/.test(trimmed)) {
+    throw new MfaFlowError("mfa/invalid-code", "Enter the 6-digit code from your phone");
+  }
+
+  try {
+    const credential = PhoneAuthProvider.credential(verificationId, trimmed);
+    const assertion = PhoneMultiFactorGenerator.assertion(credential);
+    await multiFactor(user).enroll(assertion, displayName || "Phone");
+    logger.info("mfa_sms_enrolled", { uid: user.uid });
+  } catch (err) {
+    rejectMapped(err, "mfa_sms_enroll_failed");
+  }
+}
+
+/**
+ * Remove an enrolled SMS factor by its enrollment ID.
+ */
+export async function unenrollSmsFactor(factorUid: string): Promise<void> {
+  const user = currentUser();
+  if (!factorUid || factorUid.length === 0) {
+    throw new MfaFlowError("mfa/invalid-factor", "No phone number to remove");
+  }
+
+  try {
+    await multiFactor(user).unenroll(factorUid);
+    logger.info("mfa_sms_unenrolled", { uid: user.uid });
+  } catch (err) {
+    rejectMapped(err, "mfa_sms_unenroll_failed");
+  }
+}
+
+/**
+ * Helper to extract phone number from a phone multi-factor info.
+ */
+export function getPhoneNumber(factor: MultiFactorInfo): string {
+  const phoneInfo = factor as PhoneMultiFactorInfo;
+  return phoneInfo.phoneNumber || "";
 }
