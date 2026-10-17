@@ -16,12 +16,21 @@ describe("saveProProfile", () => {
     const out = await saveProProfile("u1", {
       bio: `  ${"x".repeat(300)}  `,
       signatureTricks: ["Hardflip", "Made Up Flip", "Hardflip", "Kickflip", "Heelflip", "Ollie"],
+      tagline: `  ${"t".repeat(90)} `,
+      hometown: "  Los   Angeles ",
+      sponsors: [" A ", "", "A", "B", "C", "D"],
     });
+    expect(out.tagline).toHaveLength(80);
+    expect(out.hometown).toBe("Los Angeles");
+    expect(out.sponsors).toEqual(["A", "B", "C"]);
     expect(out.bio).toHaveLength(280);
     expect(out.signatureTricks).toEqual(["Hardflip", "Kickflip", "Heelflip"]);
     expect(mockUpdateDoc).toHaveBeenCalledWith("users/u1", {
       proBio: out.bio,
       proSignatureTricks: out.signatureTricks,
+      proTagline: out.tagline,
+      proHometown: "Los Angeles",
+      proSponsors: ["A", "B", "C"],
     });
   });
 });

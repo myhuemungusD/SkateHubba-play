@@ -305,6 +305,34 @@ describe("users/{uid} — pro-authored bio and signature tricks", () => {
     }
   });
 
+  it("allows a verified pro capped tagline, hometown and up to three sponsors", async () => {
+    await asPro();
+    await assertSucceeds(
+      updateDoc(ownerDoc(), {
+        proTagline: "t".repeat(80),
+        proHometown: "h".repeat(60),
+        proSponsors: ["a", "b", "x".repeat(40)],
+      }),
+    );
+    await assertSucceeds(updateDoc(ownerDoc(), { proTagline: "", proHometown: "", proSponsors: [] }));
+    for (const bad of [
+      { proTagline: "t".repeat(81) },
+      { proHometown: "h".repeat(61) },
+      { proSponsors: ["a", "b", "c", "d"] },
+      { proSponsors: ["a", "x".repeat(41)] },
+      { proSponsors: "a" },
+      { proTagline: 1 },
+    ]) {
+      await assertFails(updateDoc(ownerDoc(), bad));
+    }
+  });
+
+  it("attack: a non-pro CANNOT write tagline, hometown or sponsors", async () => {
+    await assertFails(updateDoc(ownerDoc(), { proTagline: "hi" }));
+    await assertFails(updateDoc(ownerDoc(), { proHometown: "LA" }));
+    await assertFails(updateDoc(ownerDoc(), { proSponsors: ["X"] }));
+  });
+
   it("attack: a non-pro CANNOT write a bio or tricks on their own doc", async () => {
     await assertFails(updateDoc(ownerDoc(), { proBio: "hi" }));
     await assertFails(updateDoc(ownerDoc(), { proSignatureTricks: ["Ollie"] }));
