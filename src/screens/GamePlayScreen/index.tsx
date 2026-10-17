@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import type { GameDoc } from "../../services/games";
 import type { UserProfile } from "../../services/users";
 import { ErrorBanner } from "../../components/ui/ErrorBanner";
@@ -13,13 +14,14 @@ import { JudgeInviteCard } from "./components/JudgeInviteCard";
 import { GamePlayHeader } from "./components/GamePlayHeader";
 import { LetterScoreboard } from "./components/LetterScoreboard";
 import { SetterTrickInput } from "./components/SetterTrickInput";
-import { TrickPicker } from "../../components/TrickPicker";
 import { MatcherInstructionBanner } from "./components/MatcherInstructionBanner";
 import { MatcherTrickViewer } from "./components/MatcherTrickViewer";
 import { SetterDecisionPanel } from "./components/SetterDecisionPanel";
 import { MatcherDecisionPanel } from "./components/MatcherDecisionPanel";
 import { PendingReviewPanel } from "./components/PendingReviewPanel";
 import { ReviewStatusPanel } from "./components/ReviewStatusPanel";
+
+const TrickPicker = lazy(() => import("../../components/TrickPicker").then((m) => ({ default: m.TrickPicker })));
 
 export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profile: UserProfile; onBack: () => void }) {
   const c = useGamePlayController(game, profile);
@@ -73,13 +75,15 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         />
 
         {!c.isJudge && c.isSetter && c.trickPickerEnabled && (
-          <TrickPicker
-            selection={c.trickSelection}
-            onChange={c.setTrickSelection}
-            disabled={c.videoRecorded}
-            trickCategory={game.trickCategory}
-            customRules={game.customRules}
-          />
+          <Suspense fallback={<div className="h-14" />}>
+            <TrickPicker
+              selection={c.trickSelection}
+              onChange={c.setTrickSelection}
+              disabled={c.videoRecorded}
+              trickCategory={game.trickCategory}
+              customRules={game.customRules}
+            />
+          </Suspense>
         )}
         {!c.isJudge && c.isSetter && !c.trickPickerEnabled && (
           <SetterTrickInput
