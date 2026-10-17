@@ -199,4 +199,41 @@ describe("useWttFeed", () => {
 
     unmount();
   });
+
+  it("sets daily count from goldSeen when lastAnsweredDay is today", async () => {
+    const today = new Date().toISOString().split("T")[0];
+    mockFetchWttReliability.mockResolvedValue({
+      ...mockReliability,
+      goldSeen: 5,
+      lastAnsweredDay: today,
+    });
+
+    const { result } = renderHook(() => useWttFeed("user123"));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.dailyCount).toBe(5);
+  });
+
+  it("handles loadMore errors gracefully", async () => {
+    mockFetchWttItems.mockResolvedValueOnce([mockItem1]).mockRejectedValueOnce(new Error("Load more failed"));
+
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { result } = renderHook(() => useWttFeed("user123"));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.loadMore();
+    });
+
+    expect(consoleErrorSpy).toHaveBeenCalled();
+
+    consoleErrorSpy.mockRestore();
+  });
 });
