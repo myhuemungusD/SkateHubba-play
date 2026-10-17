@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { focusNativeAt, getNativeLenses, setNativeLens } from "../services/nativeVideo";
+import { CameraQualitySelector } from "./CameraQualitySelector";
 
 const LONG_PRESS_MS = 500;
 
@@ -94,6 +95,9 @@ export function NativeCameraControls({ active }: { active: boolean }) {
           AE/AF LOCK
         </span>
       )}
+      <div className="absolute top-4 right-4">
+        <CameraQualitySelector active={active} />
+      </div>
       <div
         role="group"
         aria-label="Lens"
