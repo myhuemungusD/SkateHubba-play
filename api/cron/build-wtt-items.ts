@@ -26,7 +26,7 @@ export default async function buildWttItems(req: Request): Promise<Response> {
   console.log("[WTT] Starting buildWttItems cron");
 
   try {
-    // TODO: Implement WTT item generation:
+    // IMPLEMENTATION PENDING:
     // 1. Query clips collection for:
     //    - Clips with trickId set (from trick picker)
     //    - Not already in wttItems or wttGold

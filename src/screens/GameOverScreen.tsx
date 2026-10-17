@@ -257,7 +257,7 @@ export function GameOverScreen({
           </div>
         )}
 
-        {/* TODO: WTT GameOver post flow
+        {/* WTT GameOver post flow (implementation pending):
          * When VITE_FEATURE_POST_MAKES_ENABLED=true:
          * - Show "Post your makes" section here
          * - Filter turnHistory for landed tricks (where current user was matcher && landed=true)

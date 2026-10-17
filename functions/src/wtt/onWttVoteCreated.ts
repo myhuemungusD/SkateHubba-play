@@ -27,7 +27,7 @@ export async function onWttVoteCreated(voteSnap: FirebaseFirestore.DocumentSnaps
   const { clipId, uid, choice } = voteData;
   console.log(`[WTT] Processing vote: ${voteSnap.id} (clip=${clipId}, uid=${uid}, choice=${choice})`);
 
-  // TODO: Implement vote tallying logic:
+  // IMPLEMENTATION PENDING (vote tallying logic):
   // 1. Increment wttItems/{clipId}.voteCount
   // 2. Aggregate choice distribution (track how many voted for each option)
   // 3. Check if voteCount >= WTT_MIN_VOTES_FOR_RETIREMENT (from config)

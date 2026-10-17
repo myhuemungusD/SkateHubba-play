@@ -10,7 +10,6 @@ const ReportModal = lazy(() => import("../ReportModal").then((m) => ({ default: 
 const UserClipUploadModal = lazy(() => import("../UserClipUpload").then((m) => ({ default: m.UserClipUploadModal })));
 const ClipComments = lazy(() => import("./ClipComments").then((m) => ({ default: m.ClipComments })));
 const FeedModeToggle = lazy(() => import("../FeedModeToggle").then((m) => ({ default: m.FeedModeToggle })));
-const NameItCard = lazy(() => import("../NameItCard").then((m) => ({ default: m.NameItCard })));
 import { ClipsFeedEmpty, ClipsFeedError, ClipsFeedExhausted, ClipsFeedSkeleton } from "./ClipsFeedStates";
 import { OwnClipModeration } from "./OwnClipModeration";
 import { ClipsFeedHeader } from "./ClipsFeedHeader";
@@ -18,11 +17,11 @@ import { DisputeSlides, disputeSlideCount } from "./DisputeLane";
 import { isNearSlide } from "./feedLayout";
 import { NextClipPrefetcher } from "./NextClipPrefetcher";
 import { SpotlightCard } from "./SpotlightCard";
+import { WttNameItOverlay } from "./WttNameItOverlay";
 import { useClipsFeedController } from "./useClipsFeedController";
 import { useDisputeLaneController } from "./useDisputeLaneController";
 import { useVerticalFeed } from "./useVerticalFeed";
 import { useWttFeed } from "../../hooks/useWttFeed";
-import { submitWttVote } from "../../services/wtt";
 
 export interface ClipsFeedProps {
   profile: UserProfile;
@@ -202,34 +201,16 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         </div>
       )}
 
-      {activeMode === "name-it" && activeWtt?.currentItem && (
-        <Suspense fallback={null}>
-          <NameItCard
-            item={activeWtt.currentItem}
-            onAnswer={async (choice) => {
-              await submitWttVote(activeWtt.currentItem!.clipId, profile.uid, choice);
-              activeWtt.skipCurrent();
-            }}
-            onSkip={activeWtt.skipCurrent}
-            disabled={activeWtt.loading}
-          />
-        </Suspense>
-      )}
-
-      {activeMode === "name-it" && activeWtt && activeWtt.dailyCount >= activeWtt.dailyLimit && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center px-6">
-          <div className="text-center">
-            <p className="font-display text-2xl text-white">Daily 3 done 🔥</p>
-            <p className="font-body text-sm text-faint mt-2">Come back tomorrow to keep your streak!</p>
-            <button
-              type="button"
-              onClick={() => setMode("scroll")}
-              className="mt-6 rounded-full border border-brand-orange bg-brand-orange/20 px-6 py-2 font-body text-sm text-white"
-            >
-              Back to Scroll
-            </button>
-          </div>
-        </div>
+      {activeMode === "name-it" && activeWtt && (
+        <WttNameItOverlay
+          currentItem={activeWtt.currentItem}
+          uid={profile.uid}
+          dailyCount={activeWtt.dailyCount}
+          dailyLimit={activeWtt.dailyLimit}
+          loading={activeWtt.loading}
+          onSkipCurrent={activeWtt.skipCurrent}
+          onBackToScroll={() => setMode("scroll")}
+        />
       )}
 
       {commentsTarget && (

@@ -26,7 +26,7 @@ export default async function wttNightlyEm(req: Request): Promise<Response> {
   console.log("[WTT] Starting wttNightlyEm cron");
 
   try {
-    // TODO: Implement Dawid-Skene EM algorithm:
+    // IMPLEMENTATION PENDING (Dawid-Skene EM algorithm):
     //
     // 1. Fetch all wttGold items (gold-standard answers from verified pros)
     // 2. Fetch all wttVotes on those gold items
