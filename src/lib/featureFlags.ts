@@ -111,3 +111,7 @@ export function isClipEditorEnabled(): boolean {
 export function isTrickLibraryEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_TRICK_LIBRARY_ENABLED);
 }
+
+export function isCrewChallengesEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_CREW_CHALLENGES_ENABLED);
+}

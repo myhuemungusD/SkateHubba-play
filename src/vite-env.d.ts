@@ -60,6 +60,8 @@ interface ImportMetaEnv {
   readonly VITE_FEATURE_CLIP_EDITOR?: string;
   /** Trick library. "true" shows the community trick index. Unset (default) hides it. */
   readonly VITE_FEATURE_TRICK_LIBRARY_ENABLED?: string;
+  /** Crew challenges (3v3 team matches). "true" enables the feature. Unset (default) hides it. */
+  readonly VITE_FEATURE_CREW_CHALLENGES_ENABLED?: string;
   readonly VITE_MAPBOX_TOKEN?: string;
   /** Optional Mapbox Studio style URL. Falls back to mapbox://styles/mapbox/dark-v11. */
   readonly VITE_MAPBOX_STYLE_URL?: string;
