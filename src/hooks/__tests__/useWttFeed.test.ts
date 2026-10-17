@@ -3,42 +3,48 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { useWttFeed } from "../useWttFeed";
 import type { WttItem, WttReliability } from "../../services/wtt.types";
 
-const mockFetchWttItems = vi.fn<[string, number], Promise<WttItem[]>>();
-const mockSubmitWttVote = vi.fn<[string, string, string], Promise<void>>();
-const mockFetchWttReliability = vi.fn<[string], Promise<WttReliability | null>>();
+const mockFetchWttItems = vi.fn();
+const mockSubmitWttVote = vi.fn();
+const mockFetchWttReliability = vi.fn();
 
 vi.mock("../../services/wtt", () => ({
-  fetchWttItems: (...args: [string, number]) => mockFetchWttItems(...args),
-  submitWttVote: (...args: [string, string, string]) => mockSubmitWttVote(...args),
-  fetchWttReliability: (...args: [string]) => mockFetchWttReliability(...args),
+  fetchWttItems: (...args: unknown[]) => mockFetchWttItems(...args),
+  submitWttVote: (...args: unknown[]) => mockSubmitWttVote(...args),
+  fetchWttReliability: (...args: unknown[]) => mockFetchWttReliability(...args),
 }));
 
 const mockItem1: WttItem = {
   clipId: "clip1",
-  correctTrickId: "kickflip",
+  trickFamily: "kickflip",
   options: ["kickflip", "heelflip", "impossible", "bigflip"],
+  status: "open",
   voteCount: 2,
-  consensus: null,
-  retired: false,
+  weightedTally: {},
+  top: null,
+  topPosterior: 0,
+  createdAt: new Date(),
 };
 
 const mockItem2: WttItem = {
   clipId: "clip2",
-  correctTrickId: "heelflip",
+  trickFamily: "heelflip",
   options: ["heelflip", "kickflip", "varial-heelflip", "hardflip"],
+  status: "open",
   voteCount: 1,
-  consensus: null,
-  retired: false,
+  weightedTally: {},
+  top: null,
+  topPosterior: 0,
+  createdAt: new Date(),
 };
 
 const mockReliability: WttReliability = {
-  reliabilityScore: 0.85,
-  votesSubmitted: 10,
-  goldCorrect: 8,
+  reliability: { kickflip: 0.85 },
+  goldSeen: 0,
+  goldCorrect: 0,
   trickIq: 85,
-  currentStreak: 3,
-  bestStreak: 5,
-  updatedAt: null,
+  streakDays: 3,
+  lastAnsweredDay: null,
+  freezesLeft: 2,
 };
 
 beforeEach(() => {
@@ -131,7 +137,7 @@ describe("useWttFeed", () => {
   });
 
   it("returns null currentItem when all items exhausted", async () => {
-    mockFetchWttItems.mockResolvedValue([mockItem1]);
+    mockFetchWttItems.mockResolvedValueOnce([mockItem1]).mockResolvedValue([]);
 
     const { result } = renderHook(() => useWttFeed("user123"));
 
@@ -139,11 +145,16 @@ describe("useWttFeed", () => {
       expect(result.current.loading).toBe(false);
     });
 
+    expect(result.current.items).toHaveLength(1);
+    expect(result.current.currentItem?.clipId).toBe("clip1");
+
     await act(async () => {
       await result.current.submitAnswer("kickflip");
     });
 
-    expect(result.current.currentItem).toBeNull();
+    await waitFor(() => {
+      expect(result.current.currentItem).toBeNull();
+    });
   });
 
   it("tracks daily limit", async () => {

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { renderHook, act, waitFor } from "@testing-library/react";
+import { describe, it, expect } from "vitest";
+import { renderHook, act } from "@testing-library/react";
 import { useFeedMode } from "../useFeedMode";
 
 const mockStorage = new Map<string, string>();
@@ -24,32 +24,32 @@ beforeEach(() => {
 describe("useFeedMode", () => {
   it("returns default mode 'scroll' when no stored mode", () => {
     const { result } = renderHook(() => useFeedMode());
-    expect(result.current.feedMode).toBe("scroll");
+    expect(result.current.mode).toBe("scroll");
   });
 
   it("loads stored mode from localStorage", () => {
-    mockStorage.set("skatehubba.feedMode", "name-it");
+    mockStorage.set("skatehubba_feed_mode", "name-it");
 
     const { result } = renderHook(() => useFeedMode());
-    expect(result.current.feedMode).toBe("name-it");
+    expect(result.current.mode).toBe("name-it");
   });
 
   it("updates mode and persists to localStorage", () => {
     const { result } = renderHook(() => useFeedMode());
 
     act(() => {
-      result.current.setFeedMode("vote");
+      result.current.setMode("vote");
     });
 
-    expect(result.current.feedMode).toBe("vote");
-    expect(mockStorage.get("skatehubba.feedMode")).toBe("vote");
+    expect(result.current.mode).toBe("vote");
+    expect(mockStorage.get("skatehubba_feed_mode")).toBe("vote");
   });
 
   it("handles invalid stored mode by falling back to default", () => {
-    mockStorage.set("skatehubba.feedMode", "invalid-mode");
+    mockStorage.set("skatehubba_feed_mode", "invalid-mode");
 
     const { result } = renderHook(() => useFeedMode());
-    expect(result.current.feedMode).toBe("scroll");
+    expect(result.current.mode).toBe("scroll");
   });
 
   it("handles localStorage errors gracefully", () => {
@@ -67,12 +67,12 @@ describe("useFeedMode", () => {
     });
 
     const { result } = renderHook(() => useFeedMode());
-    expect(result.current.feedMode).toBe("scroll");
+    expect(result.current.mode).toBe("scroll");
 
     act(() => {
-      result.current.setFeedMode("name-it");
+      result.current.setMode("name-it");
     });
 
-    expect(result.current.feedMode).toBe("name-it");
+    expect(result.current.mode).toBe("name-it");
   });
 });
