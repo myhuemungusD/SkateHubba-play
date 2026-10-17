@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { lenses, setLens, focus, qualityModes } = vi.hoisted(() => ({
   lenses: vi.fn(),
@@ -18,9 +18,22 @@ vi.mock("../../services/nativeVideo", () => ({
 import { NativeCameraControls } from "../NativeCameraControls";
 
 describe("NativeCameraControls", () => {
+  beforeEach(() => {
+    // Enable pro camera flag for all tests
+    vi.stubEnv("VITE_FEATURE_PRO_CAMERA", "true");
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it("renders nothing when pro camera flag is off", () => {
+    vi.stubEnv("VITE_FEATURE_PRO_CAMERA", "false");
+    lenses.mockResolvedValue([0.5, 1, 2]);
+    const { container } = render(<NativeCameraControls active />);
+    expect(container).toBeEmptyDOMElement();
   });
 
   it("renders nothing when inactive or when no lens info comes back", async () => {
