@@ -31,8 +31,7 @@
 name: Resolve Expired Disputes (dispute referee)
 
 on:
-  schedule:
-    - cron: '*/15 * * * *'
+  # Schedule moved into drain-push-dispatch.yml (Actions cost); manual only.
   workflow_dispatch:
 
 permissions:
