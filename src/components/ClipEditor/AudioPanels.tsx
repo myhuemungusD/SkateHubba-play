@@ -69,6 +69,13 @@ export function MusicPanel({ project, onChange }: PanelProps) {
   );
 }
 
+/** AAC everywhere it plays; Ogg only where the browser can't do AAC. */
+function pickSfxSrc(s: { src: string; oggSrc?: string }): string {
+  if (!s.oggSrc || typeof document === "undefined") return s.src;
+  const probe = document.createElement("audio");
+  return typeof probe.canPlayType === "function" && probe.canPlayType("audio/mp4") === "" ? s.oggSrc : s.src;
+}
+
 /** Skate SFX library. Drag onto the timeline lane, or tap to drop at the playhead. */
 export function SoundsPanel({ project, onChange, outputTime }: PanelProps) {
   const preview = useRef<HTMLAudioElement | null>(null);
@@ -93,9 +100,7 @@ export function SoundsPanel({ project, onChange, outputTime }: PanelProps) {
             onContextMenu={(e) => {
               e.preventDefault();
               preview.current?.pause();
-              const a = new Audio();
-              a.src = s.oggSrc && !a.canPlayType("audio/mp4") ? s.oggSrc : s.src;
-              preview.current = a;
+              preview.current = new Audio(pickSfxSrc(s));
               void preview.current.play().catch(() => undefined);
             }}
             aria-label={`Add ${s.label} at ${outputTime.toFixed(1)} seconds`}
