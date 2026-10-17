@@ -24,7 +24,12 @@
     "src/services/dispute.resolution.shared.ts",
     "src/services/turnDuration.ts",
     "src/services/games.mappers.ts",
+    "src/services/trickFields.ts",
+    "src/services/trainingLabels.shared.ts",
+    "src/services/trainingLabels.materialize.ts",
+    "src/constants/tricks.ts",
     "src/constants/trickCategories.ts",
+    "src/constants/wtt.config.ts",
     "src/constants/xp.ts"
   ]
 }

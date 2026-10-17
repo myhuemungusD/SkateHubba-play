@@ -49,6 +49,16 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.admin == true;
     }
 
+    // WTT helpers: verified email on the token; Verified-Pro flag on the
+    // user's public profile (set only by admin tooling).
+    function emailVerified() {
+      return request.auth.token.email_verified == true;
+    }
+
+    function isVerifiedPro() {
+      return fsGet('users', request.auth.uid).data.get('isVerifiedPro', false) == true;
+    }
+
     // ── Ban gate (moderation) ──
     // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r3
     function notBanned() {
@@ -691,6 +701,28 @@ service cloud.firestore {
             || request.resource.data.pushEnabled is bool;
         }
 
+        // Trick-training opt-in. Default is the field's absence (off).
+        // Age (18+) is enforced in src/services/trainingConsent.ts — rules
+        // cannot subtract 18 years from request.time.
+        function trainingConsentStampOk(field) {
+          return !(field in request.resource.data)
+            || request.resource.data[field] == null
+            || request.resource.data[field] == request.time
+            || (request.resource.data[field] is timestamp
+                && request.resource.data[field] <= request.time + duration.value(5, 's'));
+        }
+        function trainingConsentOk() {
+          return (!('trainingConsentOptedIn' in request.resource.data)
+              || request.resource.data.trainingConsentOptedIn is bool)
+            && (!('trainingConsentPolicyVersion' in request.resource.data)
+              || (request.resource.data.trainingConsentPolicyVersion is string
+                  && request.resource.data.trainingConsentPolicyVersion.size() > 0
+                  && request.resource.data.trainingConsentPolicyVersion.size() <= 32))
+            && trainingConsentStampOk('trainingConsentUpdatedAt')
+            && trainingConsentStampOk('trainingConsentRevokedAt')
+            && trainingConsentStampOk('trainingConsentPromptSeenAt');
+        }
+
         // ── Allowlist of accepted keys ──
         // Every key currently written to users/{uid}/private/profile by
         // the codebase. Keep in sync with UserPrivateProfile in
@@ -706,7 +738,12 @@ service cloud.firestore {
             'onboardingTutorialVersion',
             'onboardingCompletedAt',
             'onboardingSkippedAt',
-            'pushEnabled'
+            'pushEnabled',
+            'trainingConsentOptedIn',
+            'trainingConsentPolicyVersion',
+            'trainingConsentUpdatedAt',
+            'trainingConsentRevokedAt',
+            'trainingConsentPromptSeenAt'
           ]);
         }
 
@@ -716,14 +753,16 @@ service cloud.firestore {
           && onboardingTutorialVersionOk()
           && onboardingCompletedAtOk()
           && onboardingSkippedAtOk()
-          && pushEnabledOk();
+          && pushEnabledOk()
+          && trainingConsentOk();
         allow update: if isOwner(uid)
           && privateProfileKeysOk()
           && fcmTokensOk()
           && onboardingTutorialVersionOk()
           && onboardingCompletedAtOk()
           && onboardingSkippedAtOk()
-          && pushEnabledOk();
+          && pushEnabledOk()
+          && trainingConsentOk();
         allow delete: if isOwner(uid);
       }
 
@@ -994,6 +1033,51 @@ service cloud.firestore {
       );
     }
 
+    // ── Trick picker fields (optional; absent on free-text and legacy docs) ──
+    // Shape only. The catalog lives in src/constants/tricks.ts — listing every
+    // id here would blow the 256KB rules cap. A slug that is not in the catalog
+    // is still rejected by the client; rules reject the wrong types.
+    function trickFieldsCleared() {
+      return (!('currentTrickId' in request.resource.data) || request.resource.data.currentTrickId == null)
+        && (!('currentTrickStance' in request.resource.data) || request.resource.data.currentTrickStance == null)
+        && (!('currentTrickObstacle' in request.resource.data) || request.resource.data.currentTrickObstacle == null)
+        && (!('currentTrickNameCustom' in request.resource.data) || request.resource.data.currentTrickNameCustom == null);
+    }
+    function trickFieldsShapeOk() {
+      return trickFieldsCleared() || (
+        request.resource.data.currentTrickId is string
+        && request.resource.data.currentTrickId.size() > 0
+        && request.resource.data.currentTrickId.size() <= 40
+        && request.resource.data.currentTrickId.matches('^[a-z0-9]+(-[a-z0-9]+)*$')
+        && request.resource.data.currentTrickStance in ['regular', 'fakie', 'nollie', 'switch']
+        && (
+          !('currentTrickObstacle' in request.resource.data)
+          || request.resource.data.currentTrickObstacle == null
+          || request.resource.data.currentTrickObstacle in ['flat', 'ledge', 'rail', 'stairs', 'gap', 'bank', 'transition', 'manual-pad']
+        )
+        && (
+          (request.resource.data.currentTrickId != 'other'
+            && (!('currentTrickNameCustom' in request.resource.data) || request.resource.data.currentTrickNameCustom == null))
+          || (request.resource.data.currentTrickId == 'other'
+            && request.resource.data.currentTrickNameCustom is string
+            && request.resource.data.currentTrickNameCustom.size() > 0
+            && request.resource.data.currentTrickNameCustom.size() <= 64)
+        )
+      );
+    }
+    // Later update branches do not re-pin these four fields. A presence-pair
+    // per field on every branch blows the 1000-expression budget on the
+    // setReview auto-clear and expired-dispute auto-accept rules, which are
+    // already at the ceiling. The setting write is what introduces them.
+    // Client may raise the flag when a catalog turn resolves. Only the cron
+    // (admin SDK) may clear it. Absent on legacy writes.
+    function trainingLabelPendingOk() {
+      return (!('trainingLabelPending' in resource.data) && !('trainingLabelPending' in request.resource.data))
+        || ('trainingLabelPending' in request.resource.data && request.resource.data.trainingLabelPending == true)
+        || ('trainingLabelPending' in resource.data && 'trainingLabelPending' in request.resource.data
+            && request.resource.data.trainingLabelPending == resource.data.trainingLabelPending);
+    }
+
     // One call for the pins every /games update shares. Inlined at each
     // branch they were re-evaluated once per allow-rule, and the late
     // auto-accept / setReview rules crossed the 1000-expression cap.
@@ -1002,7 +1086,8 @@ service cloud.firestore {
         && statsAppliedUnchanged()
         && createdAtUnchanged()
         && cronNotifyTombstonesUnchanged()
-        && verifiedProBadgesUnchanged();
+        && verifiedProBadgesUnchanged()
+        && trainingLabelPendingOk();
     }
 
     // Product window is 24h (TURN_DURATION_MS). ±1h absorbs client clock skew.
@@ -1046,6 +1131,8 @@ service cloud.firestore {
         && request.resource.data.currentTrickName == null
         && request.resource.data.currentTrickVideoUrl == null
         && request.resource.data.matchVideoUrl == null
+        && trickFieldsCleared()
+        && (!('trainingLabelPending' in request.resource.data) || request.resource.data.trainingLabelPending == false)
         // Optional spotId must be a string if present (location context for
         // the challenge — clients validate UUID shape, rules enforce the
         // coarser type invariant).
@@ -1360,7 +1447,8 @@ service cloud.firestore {
            // videoUrlBucketPinned() accepts both forms (getDownloadURL() and
            // the bucket-as-host CDN form). Mirrors the matchVideoUrl +
            // clips.videoUrl pins below.
-           && videoUrlBucketPinned(request.resource.data.currentTrickVideoUrl))
+           && videoUrlBucketPinned(request.resource.data.currentTrickVideoUrl)
+           && trickFieldsShapeOk())
           // setting → setting (setter failed to land, turn passes to opponent)
           //   • currentSetter MUST flip to the other player (the whole point of
           //     failSetTrick is the role passes) — this is the invariant the
@@ -1375,7 +1463,8 @@ service cloud.firestore {
               && request.resource.data.currentTurn == request.resource.data.currentSetter
               && request.resource.data.turnNumber == resource.data.turnNumber + 1
               && request.resource.data.currentTrickName == null
-              && request.resource.data.currentTrickVideoUrl == null)
+              && request.resource.data.currentTrickVideoUrl == null
+              && trickFieldsCleared())
         )
         // turnHistory must not change during setting-phase updates
         && (
@@ -1784,7 +1873,8 @@ service cloud.firestore {
           || (request.resource.data.phase == 'setting'
               && request.resource.data.currentTurn == resource.data.currentSetter
               && request.resource.data.currentTrickName == null
-              && request.resource.data.currentTrickVideoUrl == null)
+              && request.resource.data.currentTrickVideoUrl == null
+              && trickFieldsCleared())
         )
         // No append and no content rewrite. Call BS does not finish a turn,
         // so the growth helper's +1 arm is not a legal outcome here.
@@ -3100,6 +3190,23 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Trick-training labels. Written by the sweep cron (admin SDK). Admins
+    // may read them for export. Clients cannot write or read.
+    match /trainingLabels/{labelId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Owner-created withdrawal marker. The cron marks that skater's labels
+    // excluded and deletes the doc. Doc id is the uid.
+    match /trainingRevocations/{uid} {
+      allow read: if false;
+      allow create, update: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['revokedAt'])
+        && request.resource.data.revokedAt == request.time;
+      allow delete: if false;
+    }
+
     // Pro blessing lineage. Written only by the proBlessing callable (Admin
     // SDK). A pro badge cannot be earned: no client can create, edit or
     // delete a blessing. Accepted and revoked records are public lineage;
@@ -3111,6 +3218,59 @@ service cloud.firestore {
           || request.auth.uid == resource.data.targetUid
           || isAdmin()));
       allow create, update, delete: if false;
+    }
+
+    // ── What's That Trick (WTT) collections ──
+    // wttItems: server-only write, public read when status=='open'
+    // wttGold: admin/server-only (gold answers never client-readable)
+    // wttVotes: client create-only, one per user per clip
+    // users/{uid}/private/wtt: server-only write, owner read
+    // proReviews: verified-pro create; admin read
+
+    match /wttItems/{clipId} {
+      allow read: if isSignedIn() && resource.data.status == 'open';
+      allow write: if false;
+    }
+
+    match /wttGold/{clipId} {
+      allow read, write: if false;
+    }
+
+    match /wttVotes/{voteId} {
+      allow create: if isSignedIn()
+        && notBanned()
+        && emailVerified()
+        && voteId == request.resource.data.clipId + '_' + request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['clipId','uid','choice','createdAt'])
+        && request.resource.data.choice is string
+        && request.resource.data.choice.size() > 0
+        && request.resource.data.choice.size() <= 48
+        && request.resource.data.createdAt == request.time
+        && fsExists('clips', request.resource.data.clipId)
+        && fsGet('clips', request.resource.data.clipId).data.playerUid != request.auth.uid;
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /users/{uid}/private/wtt {
+      allow read: if isOwner(uid);
+      allow write: if false;
+    }
+
+    match /proReviews/{reviewId} {
+      allow create: if isSignedIn()
+        && isVerifiedPro()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['clipId','uid','answerTrickId','note','createdAt'])
+        && request.resource.data.clipId is string
+        && request.resource.data.answerTrickId is string
+        && request.resource.data.answerTrickId.size() > 0
+        && request.resource.data.answerTrickId.size() <= 48
+        && (!('note' in request.resource.data)
+          || (request.resource.data.note is string && request.resource.data.note.size() <= 280))
+        && request.resource.data.createdAt == request.time;
+      allow read, update, delete: if false;
     }
   }
 }

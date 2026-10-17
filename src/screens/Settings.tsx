@@ -16,6 +16,7 @@ import { AccountActions } from "../components/AccountActions";
 import { TwoFactorSection } from "../components/TwoFactorSection";
 import { SmsTwoFactorSection } from "../components/SmsTwoFactorSection";
 import { SOCIAL_LINKS } from "../constants/socialLinks";
+import { TrainingConsentToggle } from "../components/TrainingConsentToggle";
 import { SafetyReportsSection } from "../components/SafetyReportsSection";
 import { usePushPermission } from "./settings/usePushPermission";
 import { PrefRow, SectionHeader } from "./settings/SettingsPrimitives";
@@ -148,11 +149,7 @@ export function Settings({
 
         <SectionHeader title="SECURITY" />
         <TwoFactorSection />
-        {isSms2faEnabled() && (
-          <div className="mt-3">
-            <SmsTwoFactorSection />
-          </div>
-        )}
+        {isSms2faEnabled() && <SmsTwoFactorSection />}
 
         {/* Notifications */}
         <SectionHeader title="NOTIFICATIONS" />
@@ -229,6 +226,11 @@ export function Settings({
               </p>
             </div>
           )}
+        </div>
+
+        <SectionHeader title="TRICK AI" />
+        <div className="space-y-2">
+          <TrainingConsentToggle uid={profile.uid} />
         </div>
 
         {/* Sound & haptics */}

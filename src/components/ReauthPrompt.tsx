@@ -31,10 +31,10 @@ export function ReauthPrompt({ method, password, onPasswordChange, onReauth, onC
         />
       )}
       <div className="flex gap-2">
-        <Btn onClick={onReauth} disabled={busy} variant="primary" size="sm">
+        <Btn onClick={onReauth} disabled={busy} variant="primary">
           {method === "password" ? "Confirm" : "Re-authenticate"}
         </Btn>
-        <Btn onClick={onCancel} disabled={busy} variant="secondary" size="sm">
+        <Btn onClick={onCancel} disabled={busy} variant="secondary">
           Cancel
         </Btn>
       </div>

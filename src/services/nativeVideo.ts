@@ -159,8 +159,9 @@ export async function recordNativeVideo(
     await raceAbort(
       VideoRecorder.initialize({
         camera: VideoRecorderCamera.BACK,
-        // 1080p matches the 1080x1920 the web MediaRecorder path requests, so
-        // a clip looks the same on either platform.
+        // 1080p preset. The web path asks for 1080×1920 in portrait and
+        // 1920×1080 in landscape (src/hooks/cameraCapture.ts); this plugin
+        // only exposes a quality enum, not a lens or a frame rate.
         quality: VideoRecorderQuality.MAX_1080P,
         // Left unset, the plugin encodes at a 3 Mbps default hardcoded in its
         // native sources — well below what the web path asks for, so the same
@@ -176,7 +177,14 @@ export async function recordNativeVideo(
       }),
     );
 
+    const tInit = typeof performance !== "undefined" ? performance.now() : 0;
     await raceAbort(VideoRecorder.startRecording());
+    // Record-start latency, measured on device (Sentry breadcrumb) so camera lag is a number, not a feeling.
+    addBreadcrumb({
+      category: "camera",
+      message: "native_record_start_ms",
+      data: { ms: Math.round((typeof performance !== "undefined" ? performance.now() : 0) - tInit) },
+    });
 
     // Frames are now being captured. From here an abort means "stop and keep
     // what we have" rather than "cancel", so retire the warm-up handler and
@@ -262,5 +270,153 @@ export async function recordNativeVideo(
         });
       }
     }
+  }
+}
+
+/**
+ * Pro-capture extras added to the iOS plugin by scripts/patch-ios-spm.mjs
+ * (Fix 3). They are not in the plugin's TypeScript types, so they go through
+ * the same Capacitor proxy untyped. Every call is best-effort: on Android or
+ * an unpatched build the method is missing and we fall back silently.
+ */
+export type CaptureQuality = "standard1080p60" | "pro4k60" | "slomo120" | "slomo240";
+
+type ProRecorder = {
+  setZoom?: (o: { lens: number }) => Promise<{ lens: number }>;
+  getLensInfo?: () => Promise<{ ultraWide: boolean; maxLens: number }>;
+  focusAt?: (o: { x: number; y: number; lock: boolean }) => Promise<{ locked: boolean }>;
+  setQuality?: (o: { quality: CaptureQuality }) => Promise<{ quality: string }>;
+  getQualityModes?: () => Promise<{ modes: CaptureQuality[]; current: CaptureQuality }>;
+  getPerformanceMetrics?: () => Promise<{
+    previewFps: number;
+    droppedFrames: number;
+    thermalState: "nominal" | "fair" | "serious" | "critical" | "unknown";
+    quality: CaptureQuality;
+  }>;
+  setPreRoll?: (o: { enabled: boolean }) => Promise<{ enabled: boolean }>;
+  getPreRollStatus?: () => Promise<{
+    enabled: boolean;
+    bufferedSeconds: number;
+    bufferCount: number;
+  }>;
+  setNativeFisheye?: (o: { enabled: boolean; strength: number }) => Promise<{ enabled: boolean; strength: number }>;
+};
+const pro = VideoRecorder as unknown as ProRecorder;
+
+/** Lenses the native camera offers, in display units ([0.5, 1, 2] on an ultra-wide phone). */
+export async function getNativeLenses(): Promise<number[]> {
+  // Pro camera feature guard - return empty when flag is off
+  if (import.meta.env.VITE_FEATURE_PRO_CAMERA !== "true") return [];
+  try {
+    const info = await pro.getLensInfo?.();
+    if (!info) return [];
+    return [...(info.ultraWide ? [0.5] : []), 1, ...(info.maxLens >= 2 ? [2] : [])];
+  } catch {
+    return [];
+  }
+}
+
+/** Ramp to a lens (0.5 = ultra-wide). Safe mid-recording. Resolves false if unsupported. */
+export async function setNativeLens(lens: number): Promise<boolean> {
+  if (import.meta.env.VITE_FEATURE_PRO_CAMERA !== "true") return false;
+  try {
+    if (!pro.setZoom) return false;
+    await pro.setZoom({ lens });
+    addBreadcrumb({ category: "camera", message: `native lens ${lens}x` });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Tap to focus + expose at a 0..1 screen point; `lock` holds AE/AF there. */
+export async function focusNativeAt(x: number, y: number, lock: boolean): Promise<boolean> {
+  if (import.meta.env.VITE_FEATURE_PRO_CAMERA !== "true") return false;
+  try {
+    if (!pro.focusAt) return false;
+    await pro.focusAt({ x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)), lock });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Set capture quality mode (4K60, 1080p60, slow-mo, etc.). */
+export async function setNativeQuality(quality: CaptureQuality): Promise<boolean> {
+  if (import.meta.env.VITE_FEATURE_PRO_CAMERA !== "true") return false;
+  try {
+    if (!pro.setQuality) return false;
+    await pro.setQuality({ quality });
+    addBreadcrumb({ category: "camera", message: `native quality ${quality}` });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Get available quality modes and current setting. */
+export async function getNativeQualityModes(): Promise<{ modes: CaptureQuality[]; current: CaptureQuality }> {
+  if (import.meta.env.VITE_FEATURE_PRO_CAMERA !== "true")
+    return { modes: ["standard1080p60"], current: "standard1080p60" };
+  try {
+    const result = await pro.getQualityModes?.();
+    return result || { modes: ["standard1080p60"], current: "standard1080p60" };
+  } catch {
+    return { modes: ["standard1080p60"], current: "standard1080p60" };
+  }
+}
+
+/** Get real-time performance metrics: FPS, dropped frames, thermal state. */
+export async function getNativeMetrics(): Promise<{
+  previewFps: number;
+  droppedFrames: number;
+  thermalState: "nominal" | "fair" | "serious" | "critical" | "unknown";
+  quality: CaptureQuality;
+} | null> {
+  if (import.meta.env.VITE_FEATURE_PRO_CAMERA !== "true") return null;
+  try {
+    return (await pro.getPerformanceMetrics?.()) || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Enable/disable pre-roll buffer (captures 2.5s before record button is pressed). */
+export async function setNativePreRoll(enabled: boolean): Promise<boolean> {
+  if (import.meta.env.VITE_FEATURE_PRO_CAMERA !== "true") return false;
+  try {
+    if (!pro.setPreRoll) return false;
+    await pro.setPreRoll({ enabled });
+    addBreadcrumb({ category: "camera", message: `pre-roll ${enabled ? "enabled" : "disabled"}` });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Get pre-roll buffer status (how many seconds are currently buffered). */
+export async function getNativePreRollStatus(): Promise<{
+  enabled: boolean;
+  bufferedSeconds: number;
+  bufferCount: number;
+} | null> {
+  if (import.meta.env.VITE_FEATURE_PRO_CAMERA !== "true") return null;
+  try {
+    return (await pro.getPreRollStatus?.()) || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Enable native AVFoundation fisheye effect (alternative to web GPU shader). */
+export async function setNativeFisheye(enabled: boolean, strength: number = 2.0): Promise<boolean> {
+  if (import.meta.env.VITE_FEATURE_PRO_CAMERA !== "true") return false;
+  try {
+    if (!pro.setNativeFisheye) return false;
+    await pro.setNativeFisheye({ enabled, strength });
+    addBreadcrumb({ category: "camera", message: `native fisheye ${enabled ? "on" : "off"} strength=${strength}` });
+    return true;
+  } catch {
+    return false;
   }
 }

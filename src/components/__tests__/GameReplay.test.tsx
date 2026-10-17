@@ -69,6 +69,7 @@ describe("GameReplay", () => {
     // Should show the clip label
     expect(screen.getByText(/Round 1/)).toBeInTheDocument();
     expect(screen.getByText(/Trick 1/)).toBeInTheDocument();
+    expect(document.querySelector("video")).toHaveClass("object-contain");
   });
 
   it("advances to next clip on video ended", async () => {

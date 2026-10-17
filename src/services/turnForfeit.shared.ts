@@ -22,6 +22,7 @@
 
 import { TURN_DURATION_MS } from "./turnDuration.js";
 import type { GameDoc, TurnRecord } from "./games.mappers.js";
+import { trickSnapshot } from "./trickFields.js";
 
 /** The opponent of `playerUid` in a two-player game. Mirrors getOpponent. */
 function opponentOf(game: GameDoc, playerUid: string): string {
@@ -172,6 +173,7 @@ export function decideExpiredForfeit(game: GameDoc, nowMs: number, gameId: strin
       landed: true,
       letterTo: null,
       judgedBy: null,
+      ...trickSnapshot(game),
     };
 
     return {
@@ -267,6 +269,7 @@ export function decideExpiredForfeit(game: GameDoc, nowMs: number, gameId: strin
     // took the letter ending the game.
     letterTo: game.currentTurn,
     judgedBy: null,
+    ...trickSnapshot(game),
   };
 
   return {

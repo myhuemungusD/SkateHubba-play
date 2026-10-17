@@ -141,7 +141,7 @@ export const DisputeCard = memo(function DisputeCard({
                   poster={CLIP_POSTER}
                   preload="none"
                   aria-label={`${dispute.setterUsername}'s ${dispute.trickName} set video`}
-                  className="mt-2 max-h-[240px] w-full rounded-xl border border-white/10 bg-black object-cover"
+                  className="mt-2 max-h-[240px] w-full rounded-xl border border-white/10 bg-black object-contain"
                 />
               </details>
             )}

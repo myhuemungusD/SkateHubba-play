@@ -39,9 +39,11 @@
 
 name: Drain Push Dispatch (push courier + referee sweeps)
 
+# Schedule removed 2026-10-17 (approved by Jason): the Cloud Functions
+# pushDispatchOnCreate (instant send) and pushDispatchSweep (5-minute retry +
+# 15-minute referee calls) in functions/src/index.ts now do this job. Kept as
+# workflow_dispatch-only for a manual drain.
 on:
-  schedule:
-    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 permissions:

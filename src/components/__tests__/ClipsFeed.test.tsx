@@ -93,6 +93,19 @@ vi.mock("../../hooks/useBlockedUsers", () => ({
   useBlockedUsers: () => new Set<string>(),
 }));
 
+// Feed modes + Name It stay off unless a test flips them on.
+const flags = vi.hoisted(() => ({ feedModes: false, wtt: false }));
+vi.mock("../../lib/featureFlags", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/featureFlags")>()),
+  isFeedModesEnabled: () => flags.feedModes,
+  isWttEnabled: () => flags.wtt,
+}));
+
+const mockUseWttFeed = vi.hoisted(() => vi.fn());
+vi.mock("../../hooks/useWttFeed", () => ({
+  useWttFeed: (...args: unknown[]) => mockUseWttFeed(...args),
+}));
+
 vi.mock("../../services/logger", () => ({
   logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
@@ -197,6 +210,17 @@ async function reportAwayThenLoadMore(firstPage: ClipDoc[] | { clips: ClipDoc[];
 
 beforeEach(() => {
   vi.clearAllMocks();
+  flags.feedModes = false;
+  flags.wtt = false;
+  mockUseWttFeed.mockReturnValue({
+    currentItem: null,
+    dailyCount: 20,
+    dailyLimit: 20,
+    loading: false,
+    reliability: null,
+    submitAnswer: vi.fn(),
+    skipCurrent: vi.fn(),
+  });
   mockFetchClipVoteState.mockResolvedValue(new Map());
   mockFetchOpenDisputes.mockResolvedValue([]);
   mockFetchDisputeViewerState.mockResolvedValue(new Map());
@@ -968,6 +992,8 @@ describe("ClipsFeed", () => {
     const dialog = await screen.findByRole("dialog", { name: "report-modal" });
     expect(dialog).toHaveAttribute("data-dispute", "g1_3");
     expect(dialog).toHaveAttribute("data-clip", "");
+    await user.click(screen.getByRole("button", { name: "__close__" }));
+    expect(screen.queryByRole("dialog", { name: "report-modal" })).not.toBeInTheDocument();
   });
 
   it("puts open disputes ahead of clips and stays put after a LAND vote", async () => {
@@ -1134,6 +1160,10 @@ describe("ClipsFeed — user clips and comments", () => {
     expect(await screen.findByRole("dialog", { name: /upload-modal/i })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "__posted__" }));
     expect(screen.queryByRole("dialog", { name: /upload-modal/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /post a clip to the feed/i }));
+    await user.click(await screen.findByRole("button", { name: "__close_upload__" }));
+    expect(screen.queryByRole("dialog", { name: /upload-modal/i })).not.toBeInTheDocument();
   });
 
   /** Render the feed, wait for its one clip, and open the comment sheet. */
@@ -1146,8 +1176,11 @@ describe("ClipsFeed — user clips and comments", () => {
     expect(await screen.findByRole("dialog", { name: /comments-sheet/i })).toBeInTheDocument();
   }
 
-  it("opens the comment sheet from the clip's COMMENTS action", async () => {
-    await renderAndOpenComments(userEvent.setup());
+  it("opens the comment sheet from the clip's COMMENTS action and closes it", async () => {
+    const user = userEvent.setup();
+    await renderAndOpenComments(user);
+    await user.click(screen.getByRole("button", { name: "__close_comments__" }));
+    expect(screen.queryByRole("dialog", { name: /comments-sheet/i })).not.toBeInTheDocument();
   });
 
   it("opens the report modal (and closes the comment sheet) from the REPORT action inside comments", async () => {
@@ -1158,5 +1191,30 @@ describe("ClipsFeed — user clips and comments", () => {
 
     expect(await screen.findByRole("dialog", { name: /report-modal/i })).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: /comments-sheet/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "__close__" }));
+    expect(screen.queryByRole("dialog", { name: /report-modal/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps the WTT queue idle and hides the mode bar while the flags are off", async () => {
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Name It" })).not.toBeInTheDocument();
+    expect(mockUseWttFeed).toHaveBeenLastCalledWith("me", false);
+  });
+
+  it("switches to Name It, loads WTT, and returns to Scroll from the done screen", async () => {
+    flags.feedModes = true;
+    flags.wtt = true;
+    const user = userEvent.setup();
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+
+    await user.click(await screen.findByRole("button", { name: "Name It" }));
+    expect(mockUseWttFeed).toHaveBeenLastCalledWith("me", true);
+    await user.click(await screen.findByRole("button", { name: /back to scroll/i }));
+    expect(screen.getByRole("button", { name: "Scroll" })).toHaveAttribute("aria-pressed", "true");
+    expect(mockUseWttFeed).toHaveBeenLastCalledWith("me", false);
   });
 });

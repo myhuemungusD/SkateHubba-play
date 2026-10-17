@@ -33,9 +33,7 @@ import { ReauthPrompt } from "./ReauthPrompt";
 
 type Pending = "enroll" | "unenroll";
 
-function messageFrom(err: unknown): string {
-  return err instanceof Error ? err.message : "Something went wrong. Try again.";
-}
+const messageFrom = (err: unknown): string => (err instanceof Error ? err.message : "Something went wrong. Try again.");
 
 export function SmsTwoFactorSection() {
   const [factors, setFactors] = useState(() => listSmsFactors());
@@ -47,6 +45,7 @@ export function SmsTwoFactorSection() {
   const [unavailable, setUnavailable] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [needsReauth, setNeedsReauth] = useState(false);
   const recaptchaRef = useRef<HTMLDivElement>(null);
   const passwordAuth = hasPasswordSignIn();
   const method = reauthMethod();
@@ -54,7 +53,7 @@ export function SmsTwoFactorSection() {
   if (!passwordAuth) return null;
 
   const renderHeader = (text: string) => (
-    <div className="rounded-lg border border-slate-700 bg-slate-800 p-4">
+    <div className="mt-3 rounded-lg border border-slate-700 bg-slate-800 p-4">
       <div className="mb-3 flex items-center gap-2">
         <Phone size={18} className="text-blue-400" />
         <h3 className="text-sm font-semibold text-white">Text Message Codes</h3>
@@ -86,7 +85,9 @@ export function SmsTwoFactorSection() {
         setUnavailable(true);
         return;
       }
-      if (getErrorCode(err) !== "auth/requires-recent-login") setPending(null);
+      const reauth = getErrorCode(err) === "auth/requires-recent-login";
+      if (!reauth) setPending(null);
+      setNeedsReauth(reauth);
       setError(messageFrom(err));
     } finally {
       setBusy(false);
@@ -125,7 +126,9 @@ export function SmsTwoFactorSection() {
       setPending(null);
       setPassword("");
     } catch (err: unknown) {
-      if (getErrorCode(err) !== "auth/requires-recent-login") setPending(null);
+      const reauth = getErrorCode(err) === "auth/requires-recent-login";
+      if (!reauth) setPending(null);
+      setNeedsReauth(reauth);
       setError(messageFrom(err));
     } finally {
       setBusy(false);
@@ -141,6 +144,7 @@ export function SmsTwoFactorSection() {
     setError("");
     try {
       await reauthenticateForMfa(password);
+      setNeedsReauth(false);
       if (pending === "enroll" && phoneNumber) {
         const vid = await beginSmsEnrollment(phoneNumber, recaptchaRef.current!);
         setVerificationId(vid);
@@ -165,12 +169,11 @@ export function SmsTwoFactorSection() {
     setPhoneNumber("");
     setPassword("");
     setError("");
+    setNeedsReauth(false);
   };
 
-  const needsReauth = getErrorCode(error) === "auth/requires-recent-login";
-
   return (
-    <div className="rounded-lg border border-slate-700 bg-slate-800 p-4">
+    <div className="mt-3 rounded-lg border border-slate-700 bg-slate-800 p-4">
       <div className="mb-3 flex items-center gap-2">
         <Phone size={18} className="text-blue-400" />
         <h3 className="text-sm font-semibold text-white">Text Message Codes</h3>
@@ -191,7 +194,7 @@ export function SmsTwoFactorSection() {
           {factors.map((factor) => (
             <div key={factor.uid} className="flex items-center justify-between">
               <span className="text-sm text-white">{getPhoneNumber(factor) || "Phone"}</span>
-              <Btn onClick={() => handleUnenroll(factor.uid)} disabled={busy} variant="secondary" size="sm">
+              <Btn onClick={() => handleUnenroll(factor.uid)} disabled={busy} variant="secondary">
                 Remove
               </Btn>
             </div>
@@ -204,7 +207,7 @@ export function SmsTwoFactorSection() {
           <p className="text-xs text-slate-400">
             Get codes sent to your phone when you sign in. More secure than password alone.
           </p>
-          <Btn onClick={() => setPending("enroll")} variant="primary" size="sm">
+          <Btn onClick={() => setPending("enroll")} variant="primary">
             Set up text codes
           </Btn>
         </div>
@@ -233,10 +236,10 @@ export function SmsTwoFactorSection() {
           />
           <div ref={recaptchaRef} />
           <div className="flex gap-2">
-            <Btn onClick={handleStartEnroll} disabled={busy} variant="primary" size="sm">
+            <Btn onClick={handleStartEnroll} disabled={busy} variant="primary">
               Send code
             </Btn>
-            <Btn onClick={handleCancel} disabled={busy} variant="secondary" size="sm">
+            <Btn onClick={handleCancel} disabled={busy} variant="secondary">
               Cancel
             </Btn>
           </div>
@@ -256,10 +259,10 @@ export function SmsTwoFactorSection() {
             className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-center text-lg tracking-widest text-white"
           />
           <div className="flex gap-2">
-            <Btn onClick={handleConfirmEnroll} disabled={busy || code.length !== 6} variant="primary" size="sm">
+            <Btn onClick={handleConfirmEnroll} disabled={busy || code.length !== 6} variant="primary">
               Verify
             </Btn>
-            <Btn onClick={handleCancel} disabled={busy} variant="secondary" size="sm">
+            <Btn onClick={handleCancel} disabled={busy} variant="secondary">
               Cancel
             </Btn>
           </div>
