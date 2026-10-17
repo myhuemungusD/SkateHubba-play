@@ -80,7 +80,10 @@ if (existsSync(recorderSwift)) {
           '        CAPPluginMethod(name: "focusAt", returnType: CAPPluginReturnPromise),\n' +
           '        CAPPluginMethod(name: "setQuality", returnType: CAPPluginReturnPromise),\n' +
           '        CAPPluginMethod(name: "getQualityModes", returnType: CAPPluginReturnPromise),\n' +
-          '        CAPPluginMethod(name: "getPerformanceMetrics", returnType: CAPPluginReturnPromise),\n',
+          '        CAPPluginMethod(name: "getPerformanceMetrics", returnType: CAPPluginReturnPromise),\n' +
+          '        CAPPluginMethod(name: "setPreRoll", returnType: CAPPluginReturnPromise),\n' +
+          '        CAPPluginMethod(name: "getPreRollStatus", returnType: CAPPluginReturnPromise),\n' +
+          '        CAPPluginMethod(name: "setNativeFisheye", returnType: CAPPluginReturnPromise),\n',
       ],
       [
         "                        if (self.backCamera == nil) {\n",

@@ -293,6 +293,13 @@ type ProRecorder = {
     thermalState: "nominal" | "fair" | "serious" | "critical" | "unknown";
     quality: CaptureQuality;
   }>;
+  setPreRoll?: (o: { enabled: boolean }) => Promise<{ enabled: boolean }>;
+  getPreRollStatus?: () => Promise<{
+    enabled: boolean;
+    bufferedSeconds: number;
+    bufferCount: number;
+  }>;
+  setNativeFisheye?: (o: { enabled: boolean; strength: number }) => Promise<{ enabled: boolean; strength: number }>;
 };
 const pro = VideoRecorder as unknown as ProRecorder;
 
@@ -363,5 +370,42 @@ export async function getNativeMetrics(): Promise<{
     return (await pro.getPerformanceMetrics?.()) || null;
   } catch {
     return null;
+  }
+}
+
+/** Enable/disable pre-roll buffer (captures 2.5s before record button is pressed). */
+export async function setNativePreRoll(enabled: boolean): Promise<boolean> {
+  try {
+    if (!pro.setPreRoll) return false;
+    await pro.setPreRoll({ enabled });
+    addBreadcrumb({ category: "camera", message: `pre-roll ${enabled ? "enabled" : "disabled"}` });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Get pre-roll buffer status (how many seconds are currently buffered). */
+export async function getNativePreRollStatus(): Promise<{
+  enabled: boolean;
+  bufferedSeconds: number;
+  bufferCount: number;
+} | null> {
+  try {
+    return (await pro.getPreRollStatus?.()) || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Enable native AVFoundation fisheye effect (alternative to web GPU shader). */
+export async function setNativeFisheye(enabled: boolean, strength: number = 2.0): Promise<boolean> {
+  try {
+    if (!pro.setNativeFisheye) return false;
+    await pro.setNativeFisheye({ enabled, strength });
+    addBreadcrumb({ category: "camera", message: `native fisheye ${enabled ? "on" : "off"} strength=${strength}` });
+    return true;
+  } catch {
+    return false;
   }
 }

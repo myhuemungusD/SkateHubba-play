@@ -33,6 +33,9 @@ vi.mock("@capacitor-community/video-recorder", () => ({
     setQuality: (o: unknown) => mockPro("setQuality", o),
     getQualityModes: () => mockPro("getQualityModes"),
     getPerformanceMetrics: () => mockPro("getPerformanceMetrics"),
+    setPreRoll: (o: unknown) => mockPro("setPreRoll", o),
+    getPreRollStatus: () => mockPro("getPreRollStatus"),
+    setNativeFisheye: (o: unknown) => mockPro("setNativeFisheye", o),
   },
   VideoRecorderCamera: { FRONT: 0, BACK: 1 },
   VideoRecorderQuality: {
@@ -499,5 +502,30 @@ describe("native pro-capture extras", () => {
     mockPro.mockReset();
     mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
     expect(await getNativeMetrics()).toBeNull();
+  });
+
+  it("enables and checks pre-roll buffer status", async () => {
+    const { setNativePreRoll, getNativePreRollStatus } = await import("../nativeVideo");
+    mockPro.mockResolvedValueOnce({ enabled: true });
+    expect(await setNativePreRoll(true)).toBe(true);
+    expect(mockPro).toHaveBeenCalledWith("setPreRoll", { enabled: true });
+    mockPro.mockResolvedValueOnce({ enabled: true, bufferedSeconds: 2.3, bufferCount: 138 });
+    const status = await getNativePreRollStatus();
+    expect(status).toEqual({ enabled: true, bufferedSeconds: 2.3, bufferCount: 138 });
+    mockPro.mockReset();
+    mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
+    expect(await setNativePreRoll(false)).toBe(false);
+  });
+
+  it("enables native AVFoundation fisheye effect", async () => {
+    const { setNativeFisheye } = await import("../nativeVideo");
+    mockPro.mockResolvedValueOnce({ enabled: true, strength: 2.0 });
+    expect(await setNativeFisheye(true, 2.0)).toBe(true);
+    expect(mockPro).toHaveBeenCalledWith("setNativeFisheye", { enabled: true, strength: 2.0 });
+    mockPro.mockResolvedValueOnce({ enabled: false, strength: 0 });
+    expect(await setNativeFisheye(false)).toBe(true);
+    mockPro.mockReset();
+    mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
+    expect(await setNativeFisheye(true, 3.0)).toBe(false);
   });
 });

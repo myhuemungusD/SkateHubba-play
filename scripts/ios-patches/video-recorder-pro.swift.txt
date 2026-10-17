@@ -9,6 +9,14 @@
     private var previewStartTime: CFAbsoluteTime = 0
     private var thermalStateToken: NSObjectProtocol?
     
+    // MARK: - Pre-Roll Buffer
+    private var preRollEnabled: Bool = true
+    private let preRollDuration: TimeInterval = 2.5  // 2.5 seconds of pre-roll
+    private var preRollBufferQueue: DispatchQueue = DispatchQueue(label: "com.skatehubba.preroll", qos: .userInitiated)
+    private var bufferedSamples: [(sample: CMSampleBuffer, timestamp: CMTime)] = []
+    private var videoDataOutput: AVCaptureVideoDataOutput?
+    private var isCapturingPreRoll: Bool = false
+    
     func shZoomBase(_ dev: AVCaptureDevice) -> CGFloat {
         if dev.deviceType == .builtInTripleCamera || dev.deviceType == .builtInDualWideCamera,
            let first = dev.virtualDeviceSwitchOverVideoZoomFactors.first {
@@ -312,11 +320,161 @@
         previewStartTime = CFAbsoluteTimeGetCurrent()
     }
     
+    // MARK: - Pre-Roll Buffering
+    
+    /** Enable/disable pre-roll buffer (default: enabled) */
+    @objc func setPreRoll(_ call: CAPPluginCall) {
+        let enabled = call.getBool("enabled", true)
+        preRollEnabled = enabled
+        if enabled {
+            startPreRollCapture()
+        } else {
+            stopPreRollCapture()
+        }
+        call.resolve(["enabled": enabled])
+    }
+    
+    /** Get pre-roll buffer status */
+    @objc func getPreRollStatus(_ call: CAPPluginCall) {
+        let bufferedSeconds = bufferedSamples.isEmpty ? 0.0 : CMTimeGetSeconds(bufferedSamples.last!.timestamp - bufferedSamples.first!.timestamp)
+        call.resolve([
+            "enabled": preRollEnabled,
+            "bufferedSeconds": bufferedSeconds,
+            "bufferCount": bufferedSamples.count
+        ])
+    }
+    
+    func startPreRollCapture() {
+        guard preRollEnabled, !isCapturingPreRoll else { return }
+        guard let session = self.captureSession else { return }
+        
+        // Add video data output to capture raw frames
+        let dataOutput = AVCaptureVideoDataOutput()
+        dataOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange]
+        dataOutput.alwaysDiscardsLateVideoFrames = true
+        dataOutput.setSampleBufferDelegate(self, queue: preRollBufferQueue)
+        
+        if session.canAddOutput(dataOutput) {
+            session.addOutput(dataOutput)
+            videoDataOutput = dataOutput
+            isCapturingPreRoll = true
+        }
+    }
+    
+    func stopPreRollCapture() {
+        guard let output = videoDataOutput, let session = self.captureSession else { return }
+        session.removeOutput(output)
+        videoDataOutput = nil
+        isCapturingPreRoll = false
+        clearPreRollBuffer()
+    }
+    
+    func clearPreRollBuffer() {
+        preRollBufferQueue.async {
+            self.bufferedSamples.removeAll()
+        }
+    }
+    
+    // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
+    
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        guard isCapturingPreRoll, !self.isRecording else { return }
+        
+        // Create a copy of the sample buffer (required because the buffer is reused by the system)
+        guard let copy = copySampleBuffer(sampleBuffer) else { return }
+        let timestamp = CMSampleBufferGetPresentationTimeStamp(copy)
+        
+        preRollBufferQueue.async {
+            self.bufferedSamples.append((sample: copy, timestamp: timestamp))
+            
+            // Keep only the last preRollDuration seconds
+            let cutoffTime = timestamp - CMTime(seconds: self.preRollDuration, preferredTimescale: 600)
+            self.bufferedSamples.removeAll { sample in
+                sample.timestamp < cutoffTime
+            }
+        }
+    }
+    
+    func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        droppedFrameCount += 1
+    }
+    
+    func copySampleBuffer(_ sampleBuffer: CMSampleBuffer) -> CMSampleBuffer? {
+        guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return nil }
+        
+        var copiedBuffer: CMSampleBuffer?
+        var formatDescription: CMFormatDescription?
+        CMVideoFormatDescriptionCreateForImageBuffer(
+            allocator: kCFAllocatorDefault,
+            imageBuffer: imageBuffer,
+            formatDescriptionOut: &formatDescription
+        )
+        
+        guard let format = formatDescription else { return nil }
+        
+        var timingInfo = CMSampleTimingInfo()
+        CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timingInfo)
+        
+        CMSampleBufferCreateForImageBuffer(
+            allocator: kCFAllocatorDefault,
+            imageBuffer: imageBuffer,
+            dataReady: true,
+            makeDataReadyCallback: nil,
+            refcon: nil,
+            formatDescription: format,
+            sampleTiming: &timingInfo,
+            sampleBufferOut: &copiedBuffer
+        )
+        
+        return copiedBuffer
+    }
+    
+    // MARK: - Native Fisheye Effect
+    
+    private var fisheyeFilter: CIFilter?
+    private var fisheyeStrength: Float = 2.0
+    
+    /** Enable native AVFoundation fisheye effect (alternative to web GPU shader) */
+    @objc func setNativeFisheye(_ call: CAPPluginCall) {
+        let enabled = call.getBool("enabled", false)
+        let strength = Float(call.getDouble("strength", 2.0))
+        
+        if enabled {
+            // Create bump distortion filter for fisheye effect
+            fisheyeFilter = CIFilter(name: "CIBumpDistortion")
+            fisheyeFilter?.setValue(CIVector(x: 0.5, y: 0.5), forKey: kCIInputCenterKey)
+            fisheyeFilter?.setValue(strength * 150.0, forKey: kCIInputRadiusKey)
+            fisheyeFilter?.setValue(strength * 0.5, forKey: kCIInputScaleKey)
+            fisheyeStrength = strength
+        } else {
+            fisheyeFilter = nil
+        }
+        
+        call.resolve(["enabled": enabled, "strength": Double(strength)])
+    }
+    
+    // Apply fisheye to captured frame (called during sample buffer processing)
+    func applyFisheyeToSampleBuffer(_ sampleBuffer: CMSampleBuffer) -> CMSampleBuffer? {
+        guard let filter = fisheyeFilter else { return sampleBuffer }
+        guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return sampleBuffer }
+        
+        let ciImage = CIImage(cvPixelBuffer: imageBuffer)
+        filter.setValue(ciImage, forKey: kCIInputImageKey)
+        
+        guard let outputImage = filter.outputImage else { return sampleBuffer }
+        
+        let context = CIContext()
+        context.render(outputImage, to: imageBuffer)
+        
+        return sampleBuffer
+    }
+    
     // MARK: - Cleanup
     deinit {
         if let token = thermalStateToken {
             NotificationCenter.default.removeObserver(token)
         }
+        stopPreRollCapture()
     }
     // ── end SkateHubba pro capture ──
 
