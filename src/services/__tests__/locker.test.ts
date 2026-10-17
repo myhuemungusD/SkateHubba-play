@@ -72,6 +72,7 @@ describe("fetchLockerItems — reads", () => {
         rarity: "rare",
         acquiredAt: new Date("2026-05-20T18:00:00Z"),
         provenanceReason: "Won the Hollenbeck bracket",
+        equipped: false,
       },
     ]);
   });
@@ -98,6 +99,7 @@ describe("fetchLockerItems — reads", () => {
     expect(Object.keys(item).sort()).toEqual([
       "acquiredAt",
       "brand",
+      "equipped",
       "id",
       "imageUrl",
       "name",
