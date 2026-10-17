@@ -47,6 +47,32 @@ beforeEach(() => {
   mockLimit.mockReturnValue({ _type: "limit" });
 });
 
+const makeMockClipDoc = (overrides?: Record<string, unknown>) => ({
+  id: "clip1",
+  data: () => ({
+    trickFamily: "kickflip",
+    options: ["kickflip", "heelflip", "impossible", "bigflip"],
+    status: "open",
+    voteCount: 2,
+    weightedTally: { kickflip: 1.5, heelflip: 0.5 },
+    top: "kickflip",
+    topPosterior: 0.75,
+    createdAt: { toDate: mockTimestampToDate },
+    ...overrides,
+  }),
+});
+
+const makeMockReliabilityData = (overrides?: Record<string, unknown>) => ({
+  reliability: { kickflip: 0.85, heelflip: 0.9 },
+  goldSeen: 20,
+  goldCorrect: 18,
+  trickIq: 90,
+  streakDays: 5,
+  lastAnsweredDay: "2026-10-17",
+  freezesLeft: 2,
+  ...overrides,
+});
+
 describe("fetchWttItems", () => {
   it("returns empty array when no items found", async () => {
     mockGetDocs.mockResolvedValue({ docs: [] });
@@ -58,21 +84,7 @@ describe("fetchWttItems", () => {
 
   it("returns items user hasn't voted on", async () => {
     mockGetDocs.mockResolvedValueOnce({
-      docs: [
-        {
-          id: "clip1",
-          data: () => ({
-            trickFamily: "kickflip",
-            options: ["kickflip", "heelflip", "impossible", "bigflip"],
-            status: "open",
-            voteCount: 2,
-            weightedTally: { kickflip: 1.5, heelflip: 0.5 },
-            top: "kickflip",
-            topPosterior: 0.75,
-            createdAt: { toDate: mockTimestampToDate },
-          }),
-        },
-      ],
+      docs: [makeMockClipDoc()],
     });
 
     mockGetDoc.mockResolvedValue({ exists: () => false });
@@ -91,18 +103,7 @@ describe("fetchWttItems", () => {
 
   it("excludes items user already voted on", async () => {
     mockGetDocs.mockResolvedValueOnce({
-      docs: [
-        {
-          id: "clip1",
-          data: () => ({
-            trickFamily: "kickflip",
-            options: ["kickflip", "heelflip", "impossible", "bigflip"],
-            status: "open",
-            voteCount: 2,
-            createdAt: { toDate: mockTimestampToDate },
-          }),
-        },
-      ],
+      docs: [makeMockClipDoc()],
     });
 
     mockGetDoc.mockResolvedValue({ exists: () => true });
@@ -115,17 +116,11 @@ describe("fetchWttItems", () => {
   it("handles items with retiredAt timestamp", async () => {
     mockGetDocs.mockResolvedValueOnce({
       docs: [
-        {
-          id: "clip1",
-          data: () => ({
-            trickFamily: "kickflip",
-            options: ["kickflip", "heelflip", "impossible", "bigflip"],
-            status: "retired",
-            voteCount: 10,
-            createdAt: { toDate: mockTimestampToDate },
-            retiredAt: { toDate: mockTimestampToDate },
-          }),
-        },
+        makeMockClipDoc({
+          status: "retired",
+          voteCount: 10,
+          retiredAt: { toDate: mockTimestampToDate },
+        }),
       ],
     });
 
@@ -202,28 +197,12 @@ describe("fetchWttReliability", () => {
   it("returns reliability data with all fields", async () => {
     mockGetDoc.mockResolvedValue({
       exists: () => true,
-      data: () => ({
-        reliability: { kickflip: 0.85, heelflip: 0.9 },
-        goldSeen: 20,
-        goldCorrect: 18,
-        trickIq: 90,
-        streakDays: 5,
-        lastAnsweredDay: "2026-10-17",
-        freezesLeft: 2,
-      }),
+      data: () => makeMockReliabilityData(),
     });
 
     const result = await fetchWttReliability("user123");
 
-    expect(result).toMatchObject({
-      reliability: { kickflip: 0.85, heelflip: 0.9 },
-      goldSeen: 20,
-      goldCorrect: 18,
-      trickIq: 90,
-      streakDays: 5,
-      lastAnsweredDay: "2026-10-17",
-      freezesLeft: 2,
-    });
+    expect(result).toMatchObject(makeMockReliabilityData());
   });
 
   it("returns defaults for missing fields", async () => {
@@ -264,15 +243,14 @@ describe("subscribeToWttReliability", () => {
     mockOnSnapshot.mockImplementation((docRef, onNext) => {
       onNext({
         exists: () => true,
-        data: () => ({
-          reliability: { kickflip: 0.9 },
-          goldSeen: 15,
-          goldCorrect: 14,
-          trickIq: 93,
-          streakDays: 3,
-          lastAnsweredDay: "2026-10-16",
-          freezesLeft: 2,
-        }),
+        data: () =>
+          makeMockReliabilityData({
+            goldSeen: 15,
+            goldCorrect: 14,
+            trickIq: 93,
+            streakDays: 3,
+            lastAnsweredDay: "2026-10-16",
+          }),
       });
       return vi.fn();
     });
@@ -317,21 +295,25 @@ describe("subscribeToWttReliability", () => {
 });
 
 describe("submitProReview", () => {
-  it("submits pro review with note", async () => {
-    mockSetDoc.mockResolvedValue(undefined);
-
-    await submitProReview("clip789", "pro123", "kickflip", "Clean execution");
-
+  const expectProReviewCall = (overrides?: Record<string, unknown>) => {
     expect(mockSetDoc).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         clipId: "clip789",
         uid: "pro123",
         answerTrickId: "kickflip",
-        note: "Clean execution",
         createdAt: expect.anything(),
+        ...overrides,
       }),
     );
+  };
+
+  it("submits pro review with note", async () => {
+    mockSetDoc.mockResolvedValue(undefined);
+
+    await submitProReview("clip789", "pro123", "kickflip", "Clean execution");
+
+    expectProReviewCall({ note: "Clean execution" });
   });
 
   it("submits pro review without note", async () => {
@@ -339,15 +321,7 @@ describe("submitProReview", () => {
 
     await submitProReview("clip789", "pro123", "kickflip");
 
-    expect(mockSetDoc).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        clipId: "clip789",
-        uid: "pro123",
-        answerTrickId: "kickflip",
-        createdAt: expect.anything(),
-      }),
-    );
+    expectProReviewCall();
 
     const callArgs = mockSetDoc.mock.calls[0][1] as Record<string, unknown>;
     expect("note" in callArgs).toBe(false);
