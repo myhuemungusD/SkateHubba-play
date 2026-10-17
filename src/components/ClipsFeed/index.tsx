@@ -3,10 +3,14 @@ import type { ClipDoc } from "../../services/clips";
 import type { UserProfile } from "../../services/users";
 import type { Dispute } from "../../types/dispute";
 import { isFirebaseStorageUrl } from "../../utils/helpers";
+import { isFeedModesEnabled, isWttEnabled } from "../../lib/featureFlags";
+import { useFeedMode } from "../../hooks/useFeedMode";
 
 const ReportModal = lazy(() => import("../ReportModal").then((m) => ({ default: m.ReportModal })));
 const UserClipUploadModal = lazy(() => import("../UserClipUpload").then((m) => ({ default: m.UserClipUploadModal })));
 const ClipComments = lazy(() => import("./ClipComments").then((m) => ({ default: m.ClipComments })));
+const FeedModeToggle = lazy(() => import("../FeedModeToggle").then((m) => ({ default: m.FeedModeToggle })));
+const NameItCard = lazy(() => import("../NameItCard").then((m) => ({ default: m.NameItCard })));
 import { ClipsFeedEmpty, ClipsFeedError, ClipsFeedExhausted, ClipsFeedSkeleton } from "./ClipsFeedStates";
 import { OwnClipModeration } from "./OwnClipModeration";
 import { ClipsFeedHeader } from "./ClipsFeedHeader";
@@ -17,6 +21,8 @@ import { SpotlightCard } from "./SpotlightCard";
 import { useClipsFeedController } from "./useClipsFeedController";
 import { useDisputeLaneController } from "./useDisputeLaneController";
 import { useVerticalFeed } from "./useVerticalFeed";
+import { useWttFeed } from "../../hooks/useWttFeed";
+import { submitWttVote } from "../../services/wtt";
 
 export interface ClipsFeedProps {
   profile: UserProfile;
@@ -31,16 +37,29 @@ export interface ClipsFeedProps {
  * with a decision on them — then community clips in the active Top/New order.
  * One scroller, CSS scroll-snap, arrow keys on desktop. A vote updates the
  * page in place and never advances it.
+ *
+ * When feed modes are enabled, shows a mode switcher (Scroll · Name It · Vote · Judge).
+ * Name It mode shows WTT quiz cards; Vote mode emphasizes voting; Judge shows disputes.
  */
 export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedProps) {
+  const feedModesEnabled = isFeedModesEnabled();
+  const wttEnabled = isWttEnabled();
+  const { mode, setMode } = useFeedMode();
+
   const clips = useClipsFeedController(profile.uid);
   const disputes = useDisputeLaneController(profile.uid);
+  const wtt = useWttFeed(profile.uid);
+
   const [muted, setMuted] = useState(true);
   const [reportTarget, setReportTarget] = useState<ClipDoc | null>(null);
   const [disputeReport, setDisputeReport] = useState<Dispute | null>(null);
   const [commentsTarget, setCommentsTarget] = useState<ClipDoc | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [moderationRefresh, setModerationRefresh] = useState(0);
+
+  // Only use feed mode and WTT when features are enabled
+  const activeMode = feedModesEnabled ? mode : ("scroll" as const);
+  const activeWtt = wttEnabled && activeMode === "name-it" ? wtt : null;
 
   const pendingTarget = useRef<number | null>(null);
   const wasLoadingMore = useRef(false);
@@ -100,6 +119,22 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         position={showSlides && slideCount > 0 ? { index: activeIndex, total: slideCount } : undefined}
         onPostClip={() => setUploadOpen(true)}
       />
+
+      {feedModesEnabled && (
+        <Suspense fallback={null}>
+          <div className="absolute inset-x-0 top-16 z-20">
+            <FeedModeToggle
+              mode={activeMode}
+              onChange={setMode}
+              disabled={clips.loading || disputes.loading}
+              showJudge={disputes.disputes.length > 0}
+              showNameIt={wttEnabled}
+              disputesPending={disputes.disputes.length > 0}
+              streakDue={activeWtt?.dailyCount === 0 && activeWtt?.reliability?.streakDays === 0}
+            />
+          </div>
+        </Suspense>
+      )}
 
       <OwnClipModeration uid={profile.uid} refreshKey={moderationRefresh} />
 
@@ -164,6 +199,36 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
               );
             })}
           <NextClipPrefetcher src={nextSrc} />
+        </div>
+      )}
+
+      {activeMode === "name-it" && activeWtt?.currentItem && (
+        <Suspense fallback={null}>
+          <NameItCard
+            item={activeWtt.currentItem}
+            onAnswer={async (choice) => {
+              await submitWttVote(activeWtt.currentItem!.clipId, profile.uid, choice);
+              activeWtt.skipCurrent();
+            }}
+            onSkip={activeWtt.skipCurrent}
+            disabled={activeWtt.loading}
+          />
+        </Suspense>
+      )}
+
+      {activeMode === "name-it" && activeWtt && activeWtt.dailyCount >= activeWtt.dailyLimit && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center px-6">
+          <div className="text-center">
+            <p className="font-display text-2xl text-white">Daily 3 done 🔥</p>
+            <p className="font-body text-sm text-faint mt-2">Come back tomorrow to keep your streak!</p>
+            <button
+              type="button"
+              onClick={() => setMode("scroll")}
+              className="mt-6 rounded-full border border-brand-orange bg-brand-orange/20 px-6 py-2 font-body text-sm text-white"
+            >
+              Back to Scroll
+            </button>
+          </div>
         </div>
       )}
 

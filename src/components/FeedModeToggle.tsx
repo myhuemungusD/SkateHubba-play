@@ -42,8 +42,9 @@ export function FeedModeToggle({
   const handleSwipe = useCallback(
     (e: React.TouchEvent) => {
       const startX = e.touches[0].clientX;
-      const onTouchEnd = (endEvent: TouchEvent) => {
-        const endX = endEvent.changedTouches[0].clientX;
+      const onTouchEnd = (endEvent: Event) => {
+        const touchEvent = endEvent as TouchEvent;
+        const endX = touchEvent.changedTouches[0].clientX;
         const diff = startX - endX;
         if (Math.abs(diff) > 50) {
           const currentIndex = modes.indexOf(mode);

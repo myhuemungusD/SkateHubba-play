@@ -17,7 +17,7 @@ import {
   where,
   type Unsubscribe,
 } from "firebase/firestore";
-import { db } from "../firebase";
+import { requireDb } from "../firebase";
 import type { ProReview, WttChoice, WttItem, WttReliability, WttVote } from "./wtt.types";
 
 const WTT_ITEMS_COLLECTION = "wttItems";
@@ -29,6 +29,7 @@ const PRO_REVIEWS_COLLECTION = "proReviews";
  * Returns items the user hasn't voted on yet.
  */
 export async function fetchWttItems(uid: string, batchSize: number = 20): Promise<WttItem[]> {
+  const db = requireDb();
   const q = query(
     collection(db, WTT_ITEMS_COLLECTION),
     where("status", "==", "open"),
@@ -69,6 +70,7 @@ export async function fetchWttItems(uid: string, batchSize: number = 20): Promis
  * Server function will validate and update tallies.
  */
 export async function submitWttVote(clipId: string, uid: string, choice: WttChoice): Promise<void> {
+  const db = requireDb();
   const voteId = `${clipId}_${uid}`;
   const voteDoc: WttVote = {
     clipId,
@@ -89,6 +91,7 @@ export async function submitWttVote(clipId: string, uid: string, choice: WttChoi
  * Fetch user's WTT reliability stats and streak.
  */
 export async function fetchWttReliability(uid: string): Promise<WttReliability | null> {
+  const db = requireDb();
   const docRef = doc(db, `users/${uid}/private/wtt`);
   const docSnap = await getDoc(docRef);
 
@@ -115,6 +118,7 @@ export function subscribeToWttReliability(
   uid: string,
   callback: (reliability: WttReliability | null) => void,
 ): Unsubscribe {
+  const db = requireDb();
   const docRef = doc(db, `users/${uid}/private/wtt`);
 
   return onSnapshot(
@@ -152,6 +156,7 @@ export async function submitProReview(
   answerTrickId: string,
   note?: string,
 ): Promise<void> {
+  const db = requireDb();
   const reviewDoc: ProReview = {
     clipId,
     uid,
