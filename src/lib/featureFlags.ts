@@ -95,6 +95,31 @@ export function isProProfilesEnabled(): boolean {
 }
 
 /**
+ * What's That Trick (WTT) — Name It mode in the clips feed. Off until
+ * option generation and vote tallying are tested. Literal "true" only.
+ * Server switch: WTT_ENABLED / WTT_TESTER_UIDS.
+ */
+export function isWttEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_WTT_ENABLED);
+}
+
+/**
+ * Post your makes from GameOver screen. Off until consent flow is tested.
+ * Literal "true" only.
+ */
+export function isPostMakesEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_POST_MAKES_ENABLED);
+}
+
+/**
+ * Feed mode switcher (Scroll / Name It / Vote / Judge). Off until modes
+ * are implemented and tested. Literal "true" only.
+ */
+export function isFeedModesEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_FEED_MODES_ENABLED);
+}
+
+/**
  * Pro blessing: a verified pro turns another skater pro (the only non-admin
  * way to get the badge). Off by default; the proBlessing callable has its own
  * server switch (PRO_BLESSING_ENABLED / PRO_BLESSING_TESTER_UIDS), which is
