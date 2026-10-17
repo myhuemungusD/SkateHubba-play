@@ -7,7 +7,7 @@ import type { StatTileName } from "./components/ProfileStatsGrid";
 import { usePullToRefresh } from "../../hooks/usePullToRefresh";
 import { PullToRefreshIndicator } from "../../components/PullToRefreshIndicator";
 import { BadgesRow } from "../../components/BadgesRow";
-import { LockerShowcase } from "../../components/LockerShowcase";
+import { ClosetShowcase } from "../../components/ClosetShowcase";
 import { usePlayerProfileController } from "./usePlayerProfileController";
 import { BlockControls } from "./components/BlockControls";
 import { ChallengeButton } from "./components/ChallengeButton";
@@ -376,7 +376,7 @@ export function PlayerProfileScreen({
           onTileTap={handleTileTap}
         />
 
-        <LockerShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} />
+        <ClosetShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} />
 
         {/* Owner-only: advertising an unbuilt feature on someone else's public
             profile is noise to every visitor but the owner. */}
