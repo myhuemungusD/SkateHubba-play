@@ -126,6 +126,12 @@ describe("safeParseEnv", () => {
     },
   );
 
+  it.each(flagCases)("parses VITE_FEATURE_CLIP_EDITOR=%j as %s (clip editor, default off)", (raw, expected) => {
+    const result = safeParseEnv({ ...validEnv, VITE_FEATURE_CLIP_EDITOR: raw });
+    expect(result).not.toBeNull();
+    expect(result?.VITE_FEATURE_CLIP_EDITOR).toBe(expected);
+  });
+
   it("accepts every optional var when provided with a valid string", () => {
     const result = safeParseEnv({
       ...validEnv,
