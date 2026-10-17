@@ -560,12 +560,13 @@ describe("users service", () => {
       expect(mockDeleteUserDisputes).toHaveBeenCalledWith("u1");
       expect(mockDeleteUserDisputeVotes).toHaveBeenCalledWith("u1");
       // Profile + private profile doc + username deleted via batch.
-      // Three deletes since the public/private split: the private
+      // Four deletes (profile, private, profileCustom, username) — since the public/private split: the private
       // users/{uid}/private/profile doc holds the sensitive fields
       // (dob, fcmTokens, parentalConsent) and must be scrubbed as
       // part of the account-deletion cascade.
       const batch = mockWriteBatch();
-      expect(batch.delete).toHaveBeenCalledTimes(3);
+      expect(batch.delete).toHaveBeenCalledTimes(4);
+      expect(batch.delete).toHaveBeenCalledWith("users/u1/profileCustom/main");
       expect(batch.commit).toHaveBeenCalled();
     });
 
@@ -713,7 +714,7 @@ describe("users service", () => {
 
       // 2 achievements + private profile + public profile + username = 5 deletes.
       const batch = mockWriteBatch();
-      expect(batch.delete).toHaveBeenCalledTimes(5);
+      expect(batch.delete).toHaveBeenCalledTimes(6);
       expect(batch.delete).toHaveBeenCalledWith(achievementRefs[0]);
       expect(batch.delete).toHaveBeenCalledWith(achievementRefs[1]);
       expect(batch.commit).toHaveBeenCalled();
@@ -739,7 +740,7 @@ describe("users service", () => {
       expect(mockCollection).toHaveBeenCalledWith(expect.anything(), "users", "u1", "locker");
       // 2 locker items + private profile + public profile + username = 5 deletes.
       const batch = mockWriteBatch();
-      expect(batch.delete).toHaveBeenCalledTimes(5);
+      expect(batch.delete).toHaveBeenCalledTimes(6);
       expect(batch.delete).toHaveBeenCalledWith(lockerRefs[0]);
       expect(batch.delete).toHaveBeenCalledWith(lockerRefs[1]);
       expect(batch.commit).toHaveBeenCalled();
@@ -757,7 +758,7 @@ describe("users service", () => {
 
       const batch = mockWriteBatch();
       // 1 achievement + 1 locker item + private + public + username = 5.
-      expect(batch.delete).toHaveBeenCalledTimes(5);
+      expect(batch.delete).toHaveBeenCalledTimes(6);
       expect(batch.delete).toHaveBeenCalledWith(achievementRef);
       expect(batch.delete).toHaveBeenCalledWith(lockerRef);
       // One commit — a partial failure must not leave half the identity surface.

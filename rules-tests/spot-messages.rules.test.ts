@@ -10,7 +10,7 @@
  *
  * Run via: npm run test:rules
  */
-import { describe, it, beforeEach, afterEach } from "vitest";
+import { describe, it, beforeEach } from "vitest";
 import { assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
 import {
   collection,
@@ -28,43 +28,42 @@ const BOB = "bob-uid";
 const ADMIN = "admin-uid";
 const SPOT_ID = "test-spot-123";
 
-const getEnv = setupRulesTestEnv("demo-skatehubba-rules-spot-messages", async (env) => {
-  const admin = env.authenticatedContext(ADMIN, { admin: true });
-  await setDoc(doc(admin.firestore(), "spots", SPOT_ID), {
-    name: "Test Spot",
-    createdBy: ALICE,
-    latitude: 40.7,
-    longitude: -74.0,
-    gnarRating: 3,
-    bustRisk: 2,
-    obstacles: ["ledge"],
-    photoUrls: [],
-    isVerified: false,
-    isActive: true,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  // Seed user docs for rate limiting
-  await setDoc(doc(admin.firestore(), "users", ALICE), {
-    uid: ALICE,
-    username: "alice",
-    createdAt: serverTimestamp(),
-  });
-  await setDoc(doc(admin.firestore(), "users", BOB), {
-    uid: BOB,
-    username: "bob",
-    createdAt: serverTimestamp(),
-  });
-});
+const getEnv = setupRulesTestEnv("demo-skatehubba-rules-spot-messages", (env) =>
+  env.withSecurityRulesDisabled(async (admin) => {
+    await setDoc(doc(admin.firestore(), "spots", SPOT_ID), {
+      name: "Test Spot",
+      createdBy: ALICE,
+      latitude: 40.7,
+      longitude: -74.0,
+      gnarRating: 3,
+      bustRisk: 2,
+      obstacles: ["ledge"],
+      photoUrls: [],
+      isVerified: false,
+      isActive: true,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    // Seed user docs for rate limiting
+    await setDoc(doc(admin.firestore(), "users", ALICE), {
+      uid: ALICE,
+      username: "alice",
+      createdAt: serverTimestamp(),
+    });
+    await setDoc(doc(admin.firestore(), "users", BOB), {
+      uid: BOB,
+      username: "bob",
+      createdAt: serverTimestamp(),
+    });
+  }),
+);
 
 let env: RulesTestEnvironment;
 
-beforeEach(async () => {
-  env = await getEnv();
-});
-
-afterEach(async () => {
-  await env.cleanup();
+// setupRulesTestEnv owns boot, per-test clearing and cleanup; this only
+// refreshes the handle so the tests below can keep using `env`.
+beforeEach(() => {
+  env = getEnv();
 });
 
 describe("spots/{spotId}/messages — read", () => {
@@ -162,31 +161,33 @@ describe("spots/{spotId}/messages — create (word filter)", () => {
   });
 });
 
-describe("spots/{spotId}/messages — update (admin hide/unhide)", () => {
-  it("allows admin to hide a message", async () => {
-    // Seed a message
-    const admin = env.authenticatedContext(ADMIN, { admin: true });
-    const msgRef = doc(collection(admin.firestore(), "spots", SPOT_ID, "messages"), "msg1");
-    await setDoc(msgRef, {
+/** Seed a message as admin tooling would (rules off): it belongs to BOB. */
+function seedMessage(id: string): Promise<void> {
+  return env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "spots", SPOT_ID, "messages", id), {
       userId: BOB,
       content: "Some message",
       createdAt: serverTimestamp(),
       isHidden: false,
     });
+  });
+}
+
+describe("spots/{spotId}/messages — update (admin hide/unhide)", () => {
+  it("allows admin to hide a message", async () => {
+    // Seed a message
+    await seedMessage("msg1");
+    const admin = env.authenticatedContext(ADMIN, { admin: true });
+    const msgRef = doc(collection(admin.firestore(), "spots", SPOT_ID, "messages"), "msg1");
 
     // Admin hides it
     await assertSucceeds(setDoc(msgRef, { isHidden: true, hiddenReason: "reported" }, { merge: true }));
   });
 
   it("denies non-admin hide", async () => {
+    await seedMessage("msg2");
     const admin = env.authenticatedContext(ADMIN, { admin: true });
     const msgRef = doc(collection(admin.firestore(), "spots", SPOT_ID, "messages"), "msg2");
-    await setDoc(msgRef, {
-      userId: BOB,
-      content: "Some message",
-      createdAt: serverTimestamp(),
-      isHidden: false,
-    });
 
     const alice = env.authenticatedContext(ALICE);
     await assertFails(

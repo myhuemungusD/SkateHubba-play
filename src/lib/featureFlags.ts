@@ -217,7 +217,7 @@ export function isProCameraEnabled(): boolean {
  * moderation (report, block, word filter, rate limits). Literal "true" only.
  */
 export function isSpotChatsEnabled(): boolean {
-  return parseFlag(import.meta.env.VITE_FEATURE_SPOT_CHATS_ENABLED);
+  return flagOn(import.meta.env.VITE_FEATURE_SPOT_CHATS_ENABLED);
 }
 
 /** Profile banner (background) photo on the profile screen. Literal "true" only; off by default. */
