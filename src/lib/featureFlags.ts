@@ -26,9 +26,33 @@ export function parseFlag(raw: unknown): boolean {
   return raw === "true";
 }
 
+/**
+ * Per-user tester override. When the signed-in uid is listed in the Firestore
+ * doc config/featureTesters, services/featureTesters.ts stores that uid under
+ * this key and reloads once; from then on every VITE_FEATURE_* flag reads as
+ * on in this browser. Sign-out or a non-tester sign-in clears it.
+ *
+ * Client flags only hide UI, so a hand-edited key just shows screens whose
+ * server calls still refuse non-testers (*_TESTER_UIDS / rules gate those).
+ */
+export const FEATURE_TESTER_STORAGE_KEY = "sh_feature_tester_uid";
+
+export function isFeatureTesterOverrideActive(): boolean {
+  try {
+    return Boolean(globalThis.localStorage?.getItem(FEATURE_TESTER_STORAGE_KEY));
+  } catch {
+    return false;
+  }
+}
+
+/** A VITE_FEATURE_* value is on when it is the literal "true" or this browser is a tester's. */
+function flagOn(raw: unknown): boolean {
+  return parseFlag(raw) || isFeatureTesterOverrideActive();
+}
+
 /** True when the Map / Clips feed / Verified Pro surfaces should render. */
 export function isExtrasEnabled(): boolean {
-  return parseFlag(import.meta.env.VITE_FEATURE_EXTRAS_ENABLED);
+  return flagOn(import.meta.env.VITE_FEATURE_EXTRAS_ENABLED);
 }
 
 /**
@@ -36,7 +60,7 @@ export function isExtrasEnabled(): boolean {
  * off, and turning extras on must not surface it. Literal "true" only.
  */
 export function isDiceEnabled(): boolean {
-  return parseFlag(import.meta.env.VITE_FEATURE_DICE_ENABLED);
+  return flagOn(import.meta.env.VITE_FEATURE_DICE_ENABLED);
 }
 
 /**
@@ -44,7 +68,7 @@ export function isDiceEnabled(): boolean {
  * S.K.A.T.E. scores. Literal "true" only — a missing env var cannot ship it.
  */
 export function isRunnerEnabled(): boolean {
-  return parseFlag(import.meta.env.VITE_FEATURE_RUNNER_ENABLED);
+  return flagOn(import.meta.env.VITE_FEATURE_RUNNER_ENABLED);
 }
 
 /**
@@ -53,7 +77,7 @@ export function isRunnerEnabled(): boolean {
  * levels. Literal "true" only. The server switch is XP_ENABLED.
  */
 export function isXpEnabled(): boolean {
-  return parseFlag(import.meta.env.VITE_FEATURE_XP_ENABLED);
+  return flagOn(import.meta.env.VITE_FEATURE_XP_ENABLED);
 }
 
 /**
@@ -62,7 +86,7 @@ export function isXpEnabled(): boolean {
  * until then. The iOS store build sets this so App Review sees the button.
  */
 export function isAppleSignInEnabled(): boolean {
-  return parseFlag(import.meta.env.VITE_FEATURE_APPLE_SIGNIN_ENABLED);
+  return flagOn(import.meta.env.VITE_FEATURE_APPLE_SIGNIN_ENABLED);
 }
 
 /**
@@ -72,7 +96,7 @@ export function isAppleSignInEnabled(): boolean {
  * unaffected — this flag is read only at create time.
  */
 export function isRefereeEnabled(): boolean {
-  return parseFlag(import.meta.env.VITE_FEATURE_REFEREE_ENABLED);
+  return flagOn(import.meta.env.VITE_FEATURE_REFEREE_ENABLED);
 }
 
 /**
@@ -81,7 +105,7 @@ export function isRefereeEnabled(): boolean {
  * structured trick fields are required.
  */
 export function isTrickPickerEnabled(): boolean {
-  return parseFlag(import.meta.env.VITE_FEATURE_TRICK_PICKER_ENABLED);
+  return flagOn(import.meta.env.VITE_FEATURE_TRICK_PICKER_ENABLED);
 }
 
 /**
@@ -90,7 +114,7 @@ export function isTrickPickerEnabled(): boolean {
  * visible immediately, which is today's behavior.
  */
 export function isClipModerationEnabled(): boolean {
-  return parseFlag(import.meta.env.VITE_FEATURE_CLIP_MODERATION_ENABLED);
+  return flagOn(import.meta.env.VITE_FEATURE_CLIP_MODERATION_ENABLED);
 }
 
 /**
@@ -99,7 +123,7 @@ export function isClipModerationEnabled(): boolean {
  * it so the content can be reviewed before it goes public. Literal "true" only.
  */
 export function isProProfilesEnabled(): boolean {
-  return parseFlag(import.meta.env.VITE_FEATURE_PRO_PROFILES);
+  return flagOn(import.meta.env.VITE_FEATURE_PRO_PROFILES);
 }
 
 /**
@@ -108,7 +132,7 @@ export function isProProfilesEnabled(): boolean {
  * Server switch: WTT_ENABLED / WTT_TESTER_UIDS.
  */
 export function isWttEnabled(): boolean {
-  return parseFlag(import.meta.env.VITE_FEATURE_WTT_ENABLED);
+  return flagOn(import.meta.env.VITE_FEATURE_WTT_ENABLED);
 }
 
 /**
@@ -116,7 +140,7 @@ export function isWttEnabled(): boolean {
  * Literal "true" only.
  */
 export function isPostMakesEnabled(): boolean {
-  return parseFlag(import.meta.env.VITE_FEATURE_POST_MAKES_ENABLED);
+  return flagOn(import.meta.env.VITE_FEATURE_POST_MAKES_ENABLED);
 }
 
 /**
@@ -124,7 +148,7 @@ export function isPostMakesEnabled(): boolean {
  * are implemented and tested. Literal "true" only.
  */
 export function isFeedModesEnabled(): boolean {
-  return parseFlag(import.meta.env.VITE_FEATURE_FEED_MODES_ENABLED);
+  return flagOn(import.meta.env.VITE_FEATURE_FEED_MODES_ENABLED);
 }
 
 /**
@@ -134,7 +158,7 @@ export function isFeedModesEnabled(): boolean {
  * the real gate. Literal "true" only.
  */
 export function isProBlessingEnabled(): boolean {
-  return parseFlag(import.meta.env.VITE_FEATURE_PRO_BLESSING);
+  return flagOn(import.meta.env.VITE_FEATURE_PRO_BLESSING);
 }
 
 /**
@@ -145,19 +169,19 @@ export function isProBlessingEnabled(): boolean {
  * Literal "true" only.
  */
 export function isClosetEnabled(): boolean {
-  return parseFlag(import.meta.env.VITE_FEATURE_CLOSET_ENABLED);
+  return flagOn(import.meta.env.VITE_FEATURE_CLOSET_ENABLED);
 }
 
 export function isClosetDropsEnabled(): boolean {
-  return isClosetEnabled() && parseFlag(import.meta.env.VITE_FEATURE_CLOSET_DROPS_ENABLED);
+  return isClosetEnabled() && flagOn(import.meta.env.VITE_FEATURE_CLOSET_DROPS_ENABLED);
 }
 
 export function isClosetTradingEnabled(): boolean {
-  return isClosetEnabled() && parseFlag(import.meta.env.VITE_FEATURE_CLOSET_TRADING_ENABLED);
+  return isClosetEnabled() && flagOn(import.meta.env.VITE_FEATURE_CLOSET_TRADING_ENABLED);
 }
 
 export function isClosetBucksPurchaseEnabled(): boolean {
-  return isClosetEnabled() && parseFlag(import.meta.env.VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED);
+  return isClosetEnabled() && flagOn(import.meta.env.VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED);
 }
 
 /**
@@ -166,7 +190,7 @@ export function isClosetBucksPurchaseEnabled(): boolean {
  * full-quality export (native AVFoundation on iOS). Literal "true" only.
  */
 export function isClipEditorEnabled(): boolean {
-  return parseFlag(import.meta.env.VITE_FEATURE_CLIP_EDITOR);
+  return flagOn(import.meta.env.VITE_FEATURE_CLIP_EDITOR);
 }
 
 /**
@@ -175,7 +199,7 @@ export function isClipEditorEnabled(): boolean {
  * Google/Apple users (they already have 2-step from their IdP). Literal "true" only.
  */
 export function isSms2faEnabled(): boolean {
-  return parseFlag(import.meta.env.VITE_FEATURE_SMS_2FA_ENABLED);
+  return flagOn(import.meta.env.VITE_FEATURE_SMS_2FA_ENABLED);
 }
 
 /**
@@ -185,10 +209,10 @@ export function isSms2faEnabled(): boolean {
  * and performance metrics. Literal "true" only; off by default.
  */
 export function isProCameraEnabled(): boolean {
-  return parseFlag(import.meta.env.VITE_FEATURE_PRO_CAMERA);
+  return flagOn(import.meta.env.VITE_FEATURE_PRO_CAMERA);
 }
 
 /** Profile banner (background) photo on the profile screen. Literal "true" only; off by default. */
 export function isProfileBannerEnabled(): boolean {
-  return parseFlag(import.meta.env.VITE_FEATURE_PROFILE_BANNER);
+  return flagOn(import.meta.env.VITE_FEATURE_PROFILE_BANNER);
 }
