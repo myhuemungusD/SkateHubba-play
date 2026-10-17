@@ -173,6 +173,9 @@ export default defineConfig({
         // firebase.ts: App Check branches depend on runtime env vars (VITE_RECAPTCHA_SITE_KEY)
         // that cannot be set in Vitest's test environment — ~2 lines are legitimately untestable.
         "src/firebase.ts": { lines: 93, functions: 100, branches: 80, statements: 93 },
+        // nativeVideo.ts: Defensive `typeof performance !== "undefined"` checks are environment-
+        // specific and untestable without mocking global.performance in ways that break other tests.
+        "src/services/nativeVideo.ts": { lines: 99, functions: 100, branches: 96, statements: 99 },
         // UI coverage floors — enforces that component/screen coverage doesn't regress.
         // These are AGGREGATE floors: a single file can sit at 0% and still pass.
         // The per-file rule lives in scripts/check-coverage-per-file.mjs (run by
