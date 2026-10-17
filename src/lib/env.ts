@@ -142,6 +142,12 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Customizable profiles. DEFAULTS TO OFF. Read via isProfileCustomEnabled().
+  VITE_FEATURE_PROFILE_CUSTOM: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // Skate clip editor (speed ramps, looks, music, SFX, 4K export). DEFAULTS
   // TO OFF. Read via isClipEditorEnabled() in featureFlags.ts.
   VITE_FEATURE_CLIP_EDITOR: z

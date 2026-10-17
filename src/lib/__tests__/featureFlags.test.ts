@@ -7,6 +7,7 @@ import {
   isExtrasEnabled,
   isProCameraEnabled,
   isProfileBannerEnabled,
+  isProfileCustomEnabled,
   isRefereeEnabled,
   isSpotChatsEnabled,
   isRunnerEnabled,
@@ -290,5 +291,19 @@ describe("isProfileBannerEnabled (VITE_FEATURE_PROFILE_BANNER)", () => {
     expect(isProfileBannerEnabled()).toBe(false);
     vi.stubEnv("VITE_FEATURE_PROFILE_BANNER", "true");
     expect(isProfileBannerEnabled()).toBe(true);
+  });
+});
+
+describe("isProfileCustomEnabled (VITE_FEATURE_PROFILE_CUSTOM)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is off unless the env var is the literal string true", () => {
+    expect(isProfileCustomEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_PROFILE_CUSTOM", "1");
+    expect(isProfileCustomEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_PROFILE_CUSTOM", "true");
+    expect(isProfileCustomEnabled()).toBe(true);
   });
 });

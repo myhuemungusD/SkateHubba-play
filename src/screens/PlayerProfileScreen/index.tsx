@@ -18,6 +18,7 @@ import {
   isExtrasEnabled,
   isProBlessingEnabled,
   isProfileBannerEnabled,
+  isProfileCustomEnabled,
   isXpEnabled,
 } from "../../lib/featureFlags";
 import { BlessProButton } from "../../components/pro/BlessProButton";
@@ -35,6 +36,13 @@ import { SignUpToChallengeCta } from "./components/SignUpToChallengeCta";
 import { AddedSpotsSection } from "./components/AddedSpotsSection";
 import { WinStreakBanner } from "./components/WinStreakBanner";
 import { ProShowcaseGate } from "./components/ProShowcaseGate";
+import { Palette } from "lucide-react";
+import { useProfileCustom } from "./components/custom/useProfileCustom";
+import { ProfileAbout } from "./components/custom/ProfileAbout";
+import { PinnedClips } from "./components/custom/PinnedClips";
+import { SignatureShowcase } from "./components/custom/SignatureShowcase";
+import { ProfileCustomizeSheet } from "./components/custom/ProfileCustomizeSheet";
+import { gradientCss, type SectionId } from "../../services/profileCustom";
 
 /**
  * Streak length before the banner appears. A "1 win streak" is just a win —
@@ -158,6 +166,9 @@ export function PlayerProfileScreen({
   // `hashUid("")` passes it straight through, so the telemetry below reports
   // an anonymous view without inventing a uid (and, as everywhere else, a
   // raw Firebase uid never leaves the app).
+  const customOn = isProfileCustomEnabled();
+  const pc = useProfileCustom(viewedUid, customOn);
+  const [customizing, setCustomizing] = useState(false);
   const viewerUid = currentUserProfile?.uid ?? "";
   const hasViewer = currentUserProfile != null;
 
@@ -258,7 +269,12 @@ export function PlayerProfileScreen({
   const ptrBindings = isOwnProfile ? ptr.containerProps : undefined;
 
   return (
-    <div className="min-h-dvh pb-24 overflow-y-auto bg-profile-glow" {...ptrBindings}>
+    <div
+      className="min-h-dvh pb-24 overflow-y-auto bg-profile-glow"
+      style={customOn ? { backgroundImage: gradientCss(pc.custom) } : undefined}
+      data-testid="player-profile-root"
+      {...ptrBindings}
+    >
       {isOwnProfile && (
         <PullToRefreshIndicator offset={ptr.offset} state={ptr.state} triggerReached={ptr.triggerReached} />
       )}
@@ -266,7 +282,14 @@ export function PlayerProfileScreen({
 
       <div className="px-5 pt-7 max-w-[430px] mx-auto">
         {isProfileBannerEnabled() && (
-          <ProfileBanner uid={profile.uid} bannerImageUrl={profile.bannerImageUrl} isOwnProfile={isOwnProfile} />
+          <ProfileBanner
+            uid={profile.uid}
+            bannerImageUrl={profile.bannerImageUrl}
+            isOwnProfile={isOwnProfile}
+            crop={
+              customOn ? { x: pc.custom.bannerPosX, y: pc.custom.bannerPosY, zoom: pc.custom.bannerZoom } : undefined
+            }
+          />
         )}
         <ProfileIdentityCard
           username={profile.username}
@@ -277,6 +300,8 @@ export function PlayerProfileScreen({
           uid={profile.uid}
           xp={profile.xp}
         />
+
+        {customOn && <ProfileAbout custom={pc.custom} stance={profile.stance} />}
 
         {isProBlessingEnabled() && profile.isVerifiedPro === true && (
           <BlessedByLine uid={profile.uid} onViewPlayer={onViewPlayer} />
@@ -324,6 +349,17 @@ export function PlayerProfileScreen({
             >
               {shareCopiedAt ? "LINK COPIED" : "SHARE"}
             </button>
+            {customOn && (
+              <button
+                type="button"
+                onClick={() => setCustomizing(true)}
+                data-testid="customize-profile-button"
+                aria-label="Customize profile"
+                className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-xl bg-surface border border-white/[0.06] shadow-card text-white/80 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              >
+                <Palette size={16} />
+              </button>
+            )}
           </div>
         )}
 
@@ -379,25 +415,70 @@ export function PlayerProfileScreen({
 
         <BadgesRow achievements={c.achievements} />
 
-        <ProfileShowcase equippedItems={c.equippedItems} pinnedItems={c.pinnedItems} isOwnProfile={isOwnProfile} />
+        {customOn ? (
+          <>
+            {isXpEnabled() && <AchievementsRibbon achievements={c.achievements} clipsPosted={profile.clipsPosted} />}
+            {pc.custom.sections.map((id: SectionId) => (
+              <div key={id} data-testid={`custom-section-${id}`}>
+                {id === "clips" && <PinnedClips clips={pc.pinned} />}
+                {id === "stats" && (
+                  <ProfileStatsGrid
+                    stats={c.stats}
+                    isOwnProfile={isOwnProfile}
+                    hasCompletedGames={hasViewer && c.completedGames.length > 0}
+                    onTileTap={handleTileTap}
+                  />
+                )}
+                {id === "closet" && (
+                  <>
+                    {pc.custom.showcaseSignature && (
+                      <SignatureShowcase items={c.lockerItems} accent={pc.custom.accent} />
+                    )}
+                    <ProfileShowcase
+                      equippedItems={c.equippedItems}
+                      pinnedItems={c.pinnedItems}
+                      isOwnProfile={isOwnProfile}
+                    />
+                    <ClosetShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} />
+                  </>
+                )}
+                {id === "crew" && hasViewer && (
+                  <OpponentList
+                    opponents={c.opponents}
+                    currentUserUid={viewerUid}
+                    isOwnProfile={isOwnProfile}
+                    onViewPlayer={onViewPlayer}
+                  />
+                )}
+                {id === "spots" && isOwnProfile && isExtrasEnabled() && (
+                  <AddedSpotsSection uid={viewedUid} onAddSpot={onAddSpot ? handleAddSpot : undefined} />
+                )}
+              </div>
+            ))}
+          </>
+        ) : (
+          <>
+            <ProfileShowcase equippedItems={c.equippedItems} pinnedItems={c.pinnedItems} isOwnProfile={isOwnProfile} />
 
-        {isXpEnabled() && <AchievementsRibbon achievements={c.achievements} clipsPosted={profile.clipsPosted} />}
+            {isXpEnabled() && <AchievementsRibbon achievements={c.achievements} clipsPosted={profile.clipsPosted} />}
 
-        {/* The VS-YOU row this flag unlocks is head-to-head against the
-            viewer. With no viewer there is no such record to report. */}
-        <ProfileStatsGrid
-          stats={c.stats}
-          isOwnProfile={isOwnProfile}
-          hasCompletedGames={hasViewer && c.completedGames.length > 0}
-          onTileTap={handleTileTap}
-        />
+            {/* The VS-YOU row this flag unlocks is head-to-head against the
+              viewer. With no viewer there is no such record to report. */}
+            <ProfileStatsGrid
+              stats={c.stats}
+              isOwnProfile={isOwnProfile}
+              hasCompletedGames={hasViewer && c.completedGames.length > 0}
+              onTileTap={handleTileTap}
+            />
 
-        <ClosetShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} />
+            <ClosetShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} />
 
-        {/* Owner-only: advertising an unbuilt feature on someone else's public
-            profile is noise to every visitor but the owner. */}
-        {isOwnProfile && isExtrasEnabled() && (
-          <AddedSpotsSection uid={viewedUid} onAddSpot={onAddSpot ? handleAddSpot : undefined} />
+            {/* Owner-only: advertising an unbuilt feature on someone else's public
+              profile is noise to every visitor but the owner. */}
+            {isOwnProfile && isExtrasEnabled() && (
+              <AddedSpotsSection uid={viewedUid} onAddSpot={onAddSpot ? handleAddSpot : undefined} />
+            )}
+          </>
         )}
 
         {/* Both sections are derived from games, and game reads are gated on
@@ -407,12 +488,14 @@ export function PlayerProfileScreen({
             the player's record. Omit both rather than under-report. */}
         {hasViewer && (
           <>
-            <OpponentList
-              opponents={c.opponents}
-              currentUserUid={viewerUid}
-              isOwnProfile={isOwnProfile}
-              onViewPlayer={onViewPlayer}
-            />
+            {!customOn && (
+              <OpponentList
+                opponents={c.opponents}
+                currentUserUid={viewerUid}
+                isOwnProfile={isOwnProfile}
+                onViewPlayer={onViewPlayer}
+              />
+            )}
 
             <GameHistorySection
               isOwnProfile={isOwnProfile}
@@ -426,6 +509,14 @@ export function PlayerProfileScreen({
           </>
         )}
       </div>
+      {customizing && (
+        <ProfileCustomizeSheet
+          uid={profile.uid}
+          initial={pc.custom}
+          onClose={() => setCustomizing(false)}
+          onSaved={(next) => void pc.applySaved(next)}
+        />
+      )}
     </div>
   );
 }
