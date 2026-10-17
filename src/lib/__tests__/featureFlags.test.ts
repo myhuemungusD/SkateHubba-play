@@ -8,6 +8,7 @@ import {
   isProCameraEnabled,
   isProfileBannerEnabled,
   isProfileCustomEnabled,
+  FEATURE_TESTER_STORAGE_KEY,
   isRefereeEnabled,
   isSpotChatsEnabled,
   isRunnerEnabled,
@@ -305,5 +306,14 @@ describe("isProfileCustomEnabled (VITE_FEATURE_PROFILE_CUSTOM)", () => {
     expect(isProfileCustomEnabled()).toBe(false);
     vi.stubEnv("VITE_FEATURE_PROFILE_CUSTOM", "true");
     expect(isProfileCustomEnabled()).toBe(true);
+  });
+
+  it("turns on for a feature tester", () => {
+    localStorage.setItem(FEATURE_TESTER_STORAGE_KEY, "u1");
+    try {
+      expect(isProfileCustomEnabled()).toBe(true);
+    } finally {
+      localStorage.removeItem(FEATURE_TESTER_STORAGE_KEY);
+    }
   });
 });
