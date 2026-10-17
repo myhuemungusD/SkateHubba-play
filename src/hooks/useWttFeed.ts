@@ -26,15 +26,16 @@ const WTT_BATCH_SIZE = 10;
 /**
  * Manages WTT item queue, vote submission, and daily limits.
  */
-export function useWttFeed(uid: string): UseWttFeedResult {
+export function useWttFeed(uid: string, enabled = true): UseWttFeedResult {
   const [items, setItems] = useState<WttItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<Error | null>(null);
   const [reliability, setReliability] = useState<WttReliability | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [dailyCount, setDailyCount] = useState(0);
 
   useEffect(() => {
+    if (!enabled) return;
     let mounted = true;
 
     const loadData = async () => {
@@ -69,7 +70,7 @@ export function useWttFeed(uid: string): UseWttFeedResult {
     return () => {
       mounted = false;
     };
-  }, [uid]);
+  }, [uid, enabled]);
 
   const loadMore = useCallback(async () => {
     if (loading || items.length > currentIndex + 3) return;
@@ -87,14 +88,11 @@ export function useWttFeed(uid: string): UseWttFeedResult {
       const current = items[currentIndex];
       if (!current) return;
 
-      try {
-        await submitWttVote(current.clipId, uid, choice);
-        setDailyCount((prev) => prev + 1);
-        setCurrentIndex((prev) => prev + 1);
-        void loadMore();
-      } catch (err) {
-        throw err instanceof Error ? err : new Error("Failed to submit vote");
-      }
+      // A failed vote rejects to the caller, which shows its own error UI.
+      await submitWttVote(current.clipId, uid, choice);
+      setDailyCount((prev) => prev + 1);
+      setCurrentIndex((prev) => prev + 1);
+      void loadMore();
     },
     [items, currentIndex, uid, loadMore],
   );

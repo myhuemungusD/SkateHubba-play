@@ -12,8 +12,9 @@ import {
   onSnapshot,
   orderBy,
   query,
+  serverTimestamp,
   setDoc,
-  Timestamp,
+  type Timestamp,
   where,
   type Unsubscribe,
 } from "firebase/firestore";
@@ -83,7 +84,7 @@ export async function submitWttVote(clipId: string, uid: string, choice: WttChoi
     clipId: voteDoc.clipId,
     uid: voteDoc.uid,
     choice: voteDoc.choice,
-    createdAt: Timestamp.now(),
+    createdAt: serverTimestamp(),
   });
 }
 
@@ -170,6 +171,6 @@ export async function submitProReview(
     uid: reviewDoc.uid,
     answerTrickId: reviewDoc.answerTrickId,
     ...(note && { note }),
-    createdAt: Timestamp.now(),
+    createdAt: serverTimestamp(),
   });
 }

@@ -31,9 +31,7 @@ vi.mock("firebase/firestore", () => ({
   where: (...args: unknown[]) => mockWhere(...args),
   orderBy: (...args: unknown[]) => mockOrderBy(...args),
   limit: (...args: unknown[]) => mockLimit(...args),
-  Timestamp: {
-    now: () => mockTimestampNow(),
-  },
+  serverTimestamp: () => mockTimestampNow(),
 }));
 
 beforeEach(() => {

@@ -45,7 +45,6 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
 
   const clips = useClipsFeedController(profile.uid);
   const disputes = useDisputeLaneController(profile.uid);
-  const wtt = useWttFeed(profile.uid);
 
   const [muted, setMuted] = useState(true);
   const [reportTarget, setReportTarget] = useState<ClipDoc | null>(null);
@@ -56,7 +55,10 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
 
   // Only use feed mode and WTT when features are enabled
   const activeMode = feedModesEnabled ? mode : ("scroll" as const);
-  const activeWtt = wttEnabled && activeMode === "name-it" ? wtt : null;
+  // The WTT queue only loads once Name It is actually open, so the flag-off
+  // feed never touches the wtt collections.
+  const nameItOpen = wttEnabled && activeMode === "name-it";
+  const wtt = useWttFeed(profile.uid, nameItOpen);
 
   const pendingTarget = useRef<number | null>(null);
   const wasLoadingMore = useRef(false);
@@ -127,7 +129,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
               showJudge={disputes.disputes.length > 0}
               showNameIt={wttEnabled}
               disputesPending={disputes.disputes.length > 0}
-              streakDue={activeWtt?.dailyCount === 0 && activeWtt?.reliability?.streakDays === 0}
+              streakDue={nameItOpen && wtt.dailyCount === 0 && wtt.reliability?.streakDays === 0}
             />
           </div>
         </Suspense>
@@ -199,14 +201,14 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         </div>
       )}
 
-      {activeMode === "name-it" && activeWtt && (
+      {nameItOpen && (
         <WttNameItOverlay
-          currentItem={activeWtt.currentItem}
-          uid={profile.uid}
-          dailyCount={activeWtt.dailyCount}
-          dailyLimit={activeWtt.dailyLimit}
-          loading={activeWtt.loading}
-          onSkipCurrent={activeWtt.skipCurrent}
+          currentItem={wtt.currentItem}
+          dailyCount={wtt.dailyCount}
+          dailyLimit={wtt.dailyLimit}
+          loading={wtt.loading}
+          onAnswer={wtt.submitAnswer}
+          onSkipCurrent={wtt.skipCurrent}
           onBackToScroll={() => setMode("scroll")}
         />
       )}
@@ -217,11 +219,9 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         blockedUids={clips.blockedUids}
         commentsTarget={commentsTarget}
         onCloseComments={() => setCommentsTarget(null)}
-        onReportFromComments={() => {
-          if (commentsTarget) {
-            setCommentsTarget(null);
-            setReportTarget(commentsTarget);
-          }
+        onReportFromComments={(clip) => {
+          setCommentsTarget(null);
+          setReportTarget(clip);
         }}
         uploadOpen={uploadOpen}
         onCloseUpload={() => setUploadOpen(false)}
@@ -234,11 +234,9 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         onCloseDisputeReport={() => setDisputeReport(null)}
         reportTarget={reportTarget}
         onCloseClipReport={() => setReportTarget(null)}
-        onClipReportSubmitted={() => {
-          if (reportTarget) {
-            clips.dismissClip(reportTarget.id);
-            setReportTarget(null);
-          }
+        onClipReportSubmitted={(clip) => {
+          clips.dismissClip(clip.id);
+          setReportTarget(null);
         }}
       />
     </section>

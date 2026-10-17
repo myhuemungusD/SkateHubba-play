@@ -1,15 +1,14 @@
 import { lazy, Suspense } from "react";
-import { submitWttVote } from "../../services/wtt";
-import type { WttItem } from "../../services/wtt.types";
+import type { WttChoice, WttItem } from "../../services/wtt.types";
 
 const NameItCard = lazy(() => import("../NameItCard").then((m) => ({ default: m.NameItCard })));
 
 interface WttNameItOverlayProps {
   currentItem: WttItem | null;
-  uid: string;
   dailyCount: number;
   dailyLimit: number;
   loading: boolean;
+  onAnswer: (choice: WttChoice) => Promise<void>;
   onSkipCurrent: () => void;
   onBackToScroll: () => void;
 }
@@ -20,10 +19,10 @@ interface WttNameItOverlayProps {
  */
 export function WttNameItOverlay({
   currentItem,
-  uid,
   dailyCount,
   dailyLimit,
   loading,
+  onAnswer,
   onSkipCurrent,
   onBackToScroll,
 }: WttNameItOverlayProps) {
@@ -31,7 +30,7 @@ export function WttNameItOverlay({
     return (
       <div className="absolute inset-0 z-20 flex items-center justify-center px-6">
         <div className="text-center">
-          <p className="font-display text-2xl text-white">Daily 3 done 🔥</p>
+          <p className="font-display text-2xl text-white">Daily {dailyLimit} done 🔥</p>
           <p className="font-body text-sm text-faint mt-2">Come back tomorrow to keep your streak!</p>
           <button
             type="button"
@@ -49,14 +48,9 @@ export function WttNameItOverlay({
     return null;
   }
 
-  const handleAnswer = async (choice: string) => {
-    await submitWttVote(currentItem.clipId, uid, choice);
-    onSkipCurrent();
-  };
-
   return (
     <Suspense fallback={null}>
-      <NameItCard item={currentItem} onAnswer={handleAnswer} onSkip={onSkipCurrent} disabled={loading} />
+      <NameItCard item={currentItem} onAnswer={onAnswer} onSkip={onSkipCurrent} disabled={loading} />
     </Suspense>
   );
 }

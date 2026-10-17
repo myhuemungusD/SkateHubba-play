@@ -13,7 +13,7 @@ interface FeedModalsProps {
   // Comments
   commentsTarget: ClipDoc | null;
   onCloseComments: () => void;
-  onReportFromComments: () => void;
+  onReportFromComments: (clip: ClipDoc) => void;
   // Upload
   uploadOpen: boolean;
   onCloseUpload: () => void;
@@ -24,7 +24,7 @@ interface FeedModalsProps {
   // Report (clip)
   reportTarget: ClipDoc | null;
   onCloseClipReport: () => void;
-  onClipReportSubmitted: () => void;
+  onClipReportSubmitted: (clip: ClipDoc) => void;
 }
 
 /**
@@ -58,7 +58,7 @@ export function FeedModals({
             viewerUsername={username}
             blockedUids={blockedUids}
             onClose={onCloseComments}
-            onReport={onReportFromComments}
+            onReport={() => onReportFromComments(commentsTarget)}
           />
         </Suspense>
       )}
@@ -92,7 +92,7 @@ export function FeedModals({
             gameId={reportTarget.gameId}
             clipId={reportTarget.id}
             onClose={onCloseClipReport}
-            onSubmitted={onClipReportSubmitted}
+            onSubmitted={() => onClipReportSubmitted(reportTarget)}
           />
         </Suspense>
       )}

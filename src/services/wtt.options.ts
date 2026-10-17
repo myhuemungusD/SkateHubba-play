@@ -27,7 +27,6 @@ export function generateWttOptions(correctTrickId: string): WttQuizOptions | nul
   // Add confusable neighbors (up to 2)
   const confusables = getConfusableTricks(correctTrickId, 2);
   for (const confusableId of confusables) {
-    if (options.length >= 4) break;
     if (!usedIds.has(confusableId)) {
       options.push(confusableId);
       usedIds.add(confusableId);

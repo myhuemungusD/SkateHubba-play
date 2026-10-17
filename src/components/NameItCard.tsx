@@ -15,19 +15,13 @@ interface Props {
   disabled?: boolean;
 }
 
-interface AnswerResult {
-  correct?: boolean;
-  crowdPercent?: number;
-  xp?: number;
-}
-
 /**
  * WTT quiz card: looped clip + 4 options + secondary buttons.
  * After answer: shows right/wrong or crowd %.
  */
 export function NameItCard({ item, onAnswer, onSkip, disabled = false }: Props) {
   const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState<AnswerResult | null>(null);
+  const [result, setResult] = useState(false);
 
   const handleAnswer = useCallback(
     async (choice: WttChoice) => {
@@ -35,11 +29,9 @@ export function NameItCard({ item, onAnswer, onSkip, disabled = false }: Props) 
       setSubmitting(true);
       try {
         await onAnswer(choice);
-        setResult({
-          crowdPercent: item.topPosterior,
-        });
+        setResult(true);
         setTimeout(() => {
-          setResult(null);
+          setResult(false);
           setSubmitting(false);
         }, 2000);
       } catch (error) {
@@ -47,7 +39,7 @@ export function NameItCard({ item, onAnswer, onSkip, disabled = false }: Props) 
         setSubmitting(false);
       }
     },
-    [submitting, result, onAnswer, item.topPosterior],
+    [submitting, result, onAnswer],
   );
 
   const getTrickName = (trickId: string): string => {
@@ -59,16 +51,11 @@ export function NameItCard({ item, onAnswer, onSkip, disabled = false }: Props) 
     <div className="absolute inset-x-0 bottom-32 z-20 px-4">
       {result ? (
         <div className="bg-black/90 backdrop-blur-md rounded-2xl p-6 text-center">
-          {result.correct !== undefined ? (
-            <p className="font-display text-xl text-white">{result.correct ? "✓ Correct!" : "✗ Not quite"}</p>
-          ) : (
-            <p className="font-body text-faint">
-              {item.topPosterior >= 0.6
-                ? `${Math.round(item.topPosterior * 100)}% of skaters said ${getTrickName(item.top ?? "")}`
-                : "The crowd is split on this one"}
-            </p>
-          )}
-          {result.xp && <p className="font-body text-sm text-brand-orange mt-2">+{result.xp} XP</p>}
+          <p className="font-body text-faint">
+            {item.top && item.topPosterior >= 0.6
+              ? `${Math.round(item.topPosterior * 100)}% of skaters said ${getTrickName(item.top)}`
+              : "The crowd is split on this one"}
+          </p>
         </div>
       ) : (
         <div className="bg-black/90 backdrop-blur-md rounded-2xl p-4">

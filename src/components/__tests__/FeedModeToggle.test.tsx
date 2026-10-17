@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeedModeToggle } from "../FeedModeToggle";
 
@@ -81,5 +81,43 @@ describe("FeedModeToggle", () => {
 
     expect(screen.getByRole("button", { name: /scroll/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /vote/i })).toBeInTheDocument();
+  });
+
+  function swipe(fromX: number, toX: number) {
+    const bar = screen.getByRole("button", { name: /scroll/i }).parentElement as HTMLElement;
+    fireEvent.touchStart(bar, { touches: [{ clientX: fromX }] });
+    fireEvent.touchEnd(bar, { changedTouches: [{ clientX: toX }] });
+  }
+
+  it("swipes left to the next mode and right to the previous one", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<FeedModeToggle mode="scroll" onChange={onChange} showJudge showNameIt />);
+    swipe(300, 100);
+    expect(onChange).toHaveBeenLastCalledWith("name-it");
+
+    rerender(<FeedModeToggle mode="vote" onChange={onChange} showJudge showNameIt />);
+    swipe(100, 300);
+    expect(onChange).toHaveBeenLastCalledWith("name-it");
+  });
+
+  it("ignores short swipes and swipes past either end", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <FeedModeToggle mode="scroll" onChange={onChange} showJudge={false} showNameIt={false} />,
+    );
+    swipe(200, 180);
+    swipe(100, 300);
+    rerender(<FeedModeToggle mode="vote" onChange={onChange} showJudge={false} showNameIt={false} />);
+    swipe(300, 100);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("dots inactive Judge and Name It when something is waiting", () => {
+    const { container, rerender } = render(
+      <FeedModeToggle mode="scroll" onChange={vi.fn()} showJudge showNameIt disputesPending streakDue />,
+    );
+    expect(container.querySelectorAll("span.-top-1")).toHaveLength(2);
+    rerender(<FeedModeToggle mode="judge" onChange={vi.fn()} showJudge showNameIt disputesPending />);
+    expect(container.querySelectorAll("span.-top-1")).toHaveLength(0);
   });
 });

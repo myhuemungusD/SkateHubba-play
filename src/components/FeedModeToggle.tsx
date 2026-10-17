@@ -42,6 +42,8 @@ export function FeedModeToggle({
   const handleSwipe = useCallback(
     (e: React.TouchEvent) => {
       const startX = e.touches[0].clientX;
+      // React clears currentTarget after the handler returns, so keep the node.
+      const target = e.currentTarget;
       const onTouchEnd = (endEvent: Event) => {
         const touchEvent = endEvent as TouchEvent;
         const endX = touchEvent.changedTouches[0].clientX;
@@ -54,9 +56,9 @@ export function FeedModeToggle({
             onChange(modes[currentIndex - 1]);
           }
         }
-        e.currentTarget.removeEventListener("touchend", onTouchEnd);
+        target.removeEventListener("touchend", onTouchEnd);
       };
-      e.currentTarget.addEventListener("touchend", onTouchEnd);
+      target.addEventListener("touchend", onTouchEnd);
     },
     [mode, modes, onChange],
   );

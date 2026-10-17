@@ -236,4 +236,73 @@ describe("useWttFeed", () => {
 
     consoleErrorSpy.mockRestore();
   });
+
+  it("ignores a load that resolves after unmount", async () => {
+    let resolve!: (v: WttItem[]) => void;
+    mockFetchWttItems.mockReturnValueOnce(new Promise<WttItem[]>((r) => (resolve = r)));
+    const { result, unmount } = renderHook(() => useWttFeed("user123"));
+    unmount();
+    await act(async () => {
+      resolve([mockItem1]);
+    });
+    expect(result.current.items).toEqual([]);
+  });
+
+  it("ignores a load that rejects after unmount", async () => {
+    let reject!: (e: unknown) => void;
+    mockFetchWttItems.mockReturnValueOnce(new Promise<WttItem[]>((_, r) => (reject = r)));
+    const { result, unmount } = renderHook(() => useWttFeed("user123"));
+    unmount();
+    await act(async () => {
+      reject(new Error("late"));
+    });
+    expect(result.current.error).toBeNull();
+  });
+
+  it("wraps a non-Error load failure", async () => {
+    mockFetchWttItems.mockRejectedValueOnce("nope");
+    const { result } = renderHook(() => useWttFeed("user123"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error?.message).toBe("Failed to load WTT items");
+  });
+
+  it("leaves the daily count at zero with no stats or a stale day", async () => {
+    mockFetchWttReliability.mockResolvedValueOnce(null);
+    const first = renderHook(() => useWttFeed("user123"));
+    await waitFor(() => expect(first.result.current.loading).toBe(false));
+    expect(first.result.current.dailyCount).toBe(0);
+
+    mockFetchWttReliability.mockResolvedValueOnce({ ...mockReliability, goldSeen: 5, lastAnsweredDay: "2000-01-01" });
+    const second = renderHook(() => useWttFeed("user456"));
+    await waitFor(() => expect(second.result.current.loading).toBe(false));
+    expect(second.result.current.dailyCount).toBe(0);
+  });
+
+  it("does nothing when submitting with no current item", async () => {
+    mockFetchWttItems.mockResolvedValueOnce([]);
+    const { result } = renderHook(() => useWttFeed("user123"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => {
+      await result.current.submitAnswer("kickflip");
+    });
+    expect(mockSubmitWttVote).not.toHaveBeenCalled();
+  });
+
+  it("skips loadMore while the queue is still full", async () => {
+    mockFetchWttItems.mockResolvedValueOnce([mockItem1, mockItem2, mockItem1, mockItem2, mockItem1]);
+    const { result } = renderHook(() => useWttFeed("user123"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    mockFetchWttItems.mockClear();
+    await act(async () => {
+      await result.current.loadMore();
+    });
+    expect(mockFetchWttItems).not.toHaveBeenCalled();
+  });
+
+  it("stays idle and never fetches when disabled", () => {
+    const { result } = renderHook(() => useWttFeed("user123", false));
+    expect(result.current.loading).toBe(false);
+    expect(mockFetchWttItems).not.toHaveBeenCalled();
+    expect(mockFetchWttReliability).not.toHaveBeenCalled();
+  });
 });
