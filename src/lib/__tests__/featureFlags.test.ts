@@ -317,3 +317,14 @@ describe("isProfileCustomEnabled (VITE_FEATURE_PROFILE_CUSTOM)", () => {
     }
   });
 });
+
+describe("isSpotChatsEnabled tester override", () => {
+  it("turns on for a feature tester", () => {
+    localStorage.setItem(FEATURE_TESTER_STORAGE_KEY, "u1");
+    try {
+      expect(isSpotChatsEnabled()).toBe(true);
+    } finally {
+      localStorage.removeItem(FEATURE_TESTER_STORAGE_KEY);
+    }
+  });
+});

@@ -561,6 +561,8 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
     batch.delete(ownedDoc.ref);
   }
   batch.delete(doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID));
+  // Customizable profile (VITE_FEATURE_PROFILE_CUSTOM); a no-op when never saved.
+  batch.delete(doc(db, "users", uid, "profileCustom", "main"));
   batch.delete(doc(db, "users", uid));
   batch.delete(doc(db, "usernames", username.toLowerCase().trim()));
   await batch.commit();
