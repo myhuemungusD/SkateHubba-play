@@ -65,7 +65,8 @@ describe("ClosetShowcase", () => {
 
   it("renders the brand when present", () => {
     render(<ClosetShowcase items={[item()]} isOwnProfile />);
-    expect(document.querySelector("[data-testid=closet-item-d1]")?.textContent).toMatch(/TEST BRAND/);
+    const card = document.querySelector("[data-testid=closet-item-d1]");
+    expect(card?.textContent).toContain("Test Brand");
   });
 
   it("omits the brand line when brand is empty", () => {

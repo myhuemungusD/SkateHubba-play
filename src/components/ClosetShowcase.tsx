@@ -54,7 +54,14 @@ function stylesForRarity(rarity: string): { card: string; tag: string } {
 }
 
 export function ClosetShowcase({ items, isOwnProfile }: Props) {
-  if (items.length === 0) {
+  // Sort items by acquisition date (newest first)
+  const sortedItems = [...items].sort((a, b) => {
+    const aTime = a.acquiredAt?.getTime() ?? 0;
+    const bTime = b.acquiredAt?.getTime() ?? 0;
+    return bTime - aTime;
+  });
+
+  if (sortedItems.length === 0) {
     if (!isOwnProfile) return null;
     return (
       <section aria-label="Closet" data-testid="closet-showcase" className="mb-8 animate-fade-in">
@@ -73,7 +80,7 @@ export function ClosetShowcase({ items, isOwnProfile }: Props) {
     <section aria-label="Closet" data-testid="closet-showcase" className="mb-8 animate-fade-in">
       <SectionHeading />
       <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
-        {items.map((item) => (
+        {sortedItems.map((item) => (
           <ClosetCard key={item.id} item={item} />
         ))}
       </ul>
