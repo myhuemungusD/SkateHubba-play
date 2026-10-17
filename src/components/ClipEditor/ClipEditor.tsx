@@ -13,6 +13,7 @@ import { Timeline } from "./Timeline";
 import { TrimSpeedPanel, LookPanel, TextPanel } from "./EditPanels";
 import { MusicPanel, SoundsPanel } from "./AudioPanels";
 import { SfxInspector } from "./SfxInspector";
+import { ToolTabs } from "./Chip";
 import { AnglesPanel, ExportPanel } from "./AnglesExportPanels";
 import { exportClip, audioUrls } from "./exportClip";
 import { readAngle } from "./readAngle";
@@ -231,20 +232,7 @@ export function ClipEditor({ blob, onDone, onCancel }: ClipEditorProps) {
             </div>
           </div>
 
-          <div role="tablist" aria-label="Editor tools" className="flex gap-1 overflow-x-auto">
-            {TABS.map((t) => (
-              <button
-                key={t}
-                role="tab"
-                type="button"
-                aria-selected={tab === t}
-                onClick={() => setTab(t)}
-                className={`min-h-[44px] shrink-0 rounded-lg px-3 font-body text-sm ${tab === t ? "bg-white/10 text-white" : "text-faint"}`}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
+          <ToolTabs tabs={TABS} tab={tab} onTab={setTab} />
 
           {selectedSfx && project.sfx.some((x) => x.id === selectedSfx) ? (
             <SfxInspector

@@ -35,3 +35,31 @@ export function Chip({
 export function PanelHeading({ children }: { children: ReactNode }) {
   return <h4 className="mb-2 font-display text-xs tracking-[0.14em] text-dim">{children}</h4>;
 }
+
+/** The editor's tool tab strip (Trim, Look, Text, ...). */
+export function ToolTabs<T extends string>({
+  tabs,
+  tab,
+  onTab,
+}: {
+  tabs: readonly T[];
+  tab: T;
+  onTab: (t: T) => void;
+}) {
+  return (
+    <div role="tablist" aria-label="Editor tools" className="flex gap-1 overflow-x-auto">
+      {tabs.map((t) => (
+        <button
+          key={t}
+          role="tab"
+          type="button"
+          aria-selected={tab === t}
+          onClick={() => onTab(t)}
+          className={`min-h-[44px] shrink-0 rounded-lg px-3 font-body text-sm ${tab === t ? "bg-white/10 text-white" : "text-faint"}`}
+        >
+          {t}
+        </button>
+      ))}
+    </div>
+  );
+}
