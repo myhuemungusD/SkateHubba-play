@@ -14,6 +14,8 @@ import {
 import { useAuth } from "../hooks/useAuth";
 import { parseFirebaseError } from "../utils/helpers";
 import { WalletDisplay } from "../components/WalletDisplay";
+import { DesignerCredit } from "../components/DesignerCredit";
+import { designerCreditFor } from "../lib/closet/mikeWhiteCollection";
 import { trackEvent } from "../services/analytics";
 
 export function ClosetShopScreen() {
@@ -118,6 +120,7 @@ interface ShopItemCardProps {
 }
 
 function ShopItemCard({ item, onBuy, isPurchasing, canAfford }: ShopItemCardProps) {
+  const credit = designerCreditFor(item.id);
   const rarityColors: Record<string, string> = {
     common: "border-zinc-700/70",
     uncommon: "border-brand-green/50",
@@ -147,8 +150,12 @@ function ShopItemCard({ item, onBuy, isPurchasing, canAfford }: ShopItemCardProp
       </div>
       <div className="p-4">
         <h3 className="font-display text-lg text-white truncate">{item.name}</h3>
-        {item.licensed.brand && (
-          <p className="text-xs text-subtle uppercase tracking-wider mt-1">{item.licensed.brand}</p>
+        {credit ? (
+          <DesignerCredit credit={credit} />
+        ) : (
+          item.licensed.brand && (
+            <p className="text-xs text-subtle uppercase tracking-wider mt-1">{item.licensed.brand}</p>
+          )
         )}
         <span
           className={`inline-block mt-2 px-2 py-1 rounded text-xs font-display tracking-wider ${rarityTagColors[item.rarity] ?? rarityTagColors.common}`}

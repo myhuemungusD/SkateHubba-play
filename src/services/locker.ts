@@ -54,6 +54,8 @@ export interface LockerItem {
   provenanceReason: string | null;
   /** Whether this item is currently equipped on the avatar. */
   equipped: boolean;
+  /** Catalog definition id the copy was minted from, or `null` for legacy gear. */
+  itemDefId: string | null;
 }
 
 /**
@@ -134,6 +136,7 @@ function toLockerItem(snap: ParsableDoc): LockerItem | null {
     acquiredAt: toDateOrNull(data.acquiredAt),
     provenanceReason: toProvenanceReason(data.provenance),
     equipped: data.equipped === true,
+    itemDefId: isNonEmptyString(data.itemDefId) ? data.itemDefId : null,
   };
 }
 

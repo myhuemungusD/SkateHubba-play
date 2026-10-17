@@ -7,6 +7,7 @@ import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { parseFirebaseError } from "../utils/helpers";
 import { logger } from "./logger";
+import { toDateOrNull } from "./closet.time";
 
 export type Rarity = "common" | "uncommon" | "rare" | "limited" | "grail";
 export type Slot = "head" | "top" | "bottom" | "shoes" | "deck" | "accessory";
@@ -36,15 +37,6 @@ export interface CatalogItem {
   licensed: { brand: string | null; licenseRef: string | null };
   releasedAt: Date | null;
   retiredAt: Date | null;
-}
-
-function toDateOrNull(value: unknown): Date | null {
-  if (!value || typeof value !== "object") return null;
-  const toDate = (value as { toDate?: unknown }).toDate;
-  if (typeof toDate !== "function") return null;
-  const date: unknown = toDate.call(value);
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
-  return date;
 }
 
 function parseCatalogDoc(snap: DocumentSnapshot): CatalogItem | null {
@@ -109,25 +101,19 @@ export async function fetchCatalog(sourceFilter?: Source): Promise<CatalogItem[]
     const q = sourceFilter ? query(catalogRef, where("source", "==", sourceFilter)) : catalogRef;
 
     const snap = await withRetry(() => getDocs(q));
-    const items: CatalogItem[] = [];
+    const live: { item: CatalogItem; releasedMs: number }[] = [];
     const now = Date.now();
 
     for (const docSnap of snap.docs) {
       const parsed = parseCatalogDoc(docSnap);
-      if (!parsed) continue;
+      if (!parsed?.releasedAt) continue;
 
-      const released = parsed.releasedAt && parsed.releasedAt.getTime() <= now;
+      const releasedMs = parsed.releasedAt.getTime();
       const retired = parsed.retiredAt && parsed.retiredAt.getTime() <= now;
-      if (released && !retired) {
-        items.push(parsed);
-      }
+      if (releasedMs <= now && !retired) live.push({ item: parsed, releasedMs });
     }
 
-    return items.sort((a, b) => {
-      const aTime = a.releasedAt?.getTime() ?? 0;
-      const bTime = b.releasedAt?.getTime() ?? 0;
-      return bTime - aTime;
-    });
+    return live.sort((a, b) => b.releasedMs - a.releasedMs).map((entry) => entry.item);
   } catch (err) {
     logger.warn("fetch_catalog_failed", { error: parseFirebaseError(err) });
     return [];

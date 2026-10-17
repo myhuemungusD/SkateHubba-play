@@ -30,6 +30,7 @@ export function buildLockerItem(overrides?: Partial<LockerItem>): LockerItem {
     acquiredAt: null,
     provenanceReason: null,
     equipped: false,
+    itemDefId: null,
     ...overrides,
   };
 }

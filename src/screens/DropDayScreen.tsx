@@ -19,6 +19,21 @@ interface DropWithItem {
   entry: DrawEntry | null;
 }
 
+/** Active drops with their item, and the viewer's claim / draw entry. */
+async function loadDrops(uid: string): Promise<DropWithItem[]> {
+  const activeDrops = await fetchActiveDrops();
+  return Promise.all(
+    activeDrops.map(async (drop) => {
+      const [item, claim, entry] = await Promise.all([
+        fetchCatalogItem(drop.itemDefId),
+        fetchDropClaim(drop.id, uid),
+        drop.isDraw ? fetchDrawEntry(drop.id, uid) : Promise.resolve(null),
+      ]);
+      return { drop, item, claim, entry };
+    }),
+  );
+}
+
 export function DropDayScreen() {
   const { user } = useAuth();
   const [drops, setDrops] = useState<DropWithItem[]>([]);
@@ -32,17 +47,7 @@ export function DropDayScreen() {
     let stale = false;
     void (async () => {
       try {
-        const activeDrops = await fetchActiveDrops();
-        const enriched = await Promise.all(
-          activeDrops.map(async (drop) => {
-            const [item, claim, entry] = await Promise.all([
-              fetchCatalogItem(drop.itemDefId),
-              fetchDropClaim(drop.id, user.uid),
-              drop.isDraw ? fetchDrawEntry(drop.id, user.uid) : Promise.resolve(null),
-            ]);
-            return { drop, item, claim, entry };
-          }),
-        );
+        const enriched = await loadDrops(user.uid);
         if (!stale) {
           setDrops(enriched);
           setLoading(false);
@@ -60,24 +65,11 @@ export function DropDayScreen() {
     };
   }, [user]);
 
-  const handleClaimDrop = async (dropId: string) => {
-    if (!user) return;
+  const handleClaimDrop = async (dropId: string, uid: string) => {
     setActionLoading(dropId);
     try {
       await claimDrop(dropId);
-      // Refresh drops after claim
-      const activeDrops = await fetchActiveDrops();
-      const enriched = await Promise.all(
-        activeDrops.map(async (drop) => {
-          const [item, claim, entry] = await Promise.all([
-            fetchCatalogItem(drop.itemDefId),
-            fetchDropClaim(drop.id, user.uid),
-            drop.isDraw ? fetchDrawEntry(drop.id, user.uid) : Promise.resolve(null),
-          ]);
-          return { drop, item, claim, entry };
-        }),
-      );
-      setDrops(enriched);
+      setDrops(await loadDrops(uid));
     } catch (err) {
       logger.warn("drop_claim_failed", { dropId, error: parseFirebaseError(err) });
       setError(parseFirebaseError(err));
@@ -86,24 +78,11 @@ export function DropDayScreen() {
     }
   };
 
-  const handleEnterDraw = async (dropId: string) => {
-    if (!user) return;
+  const handleEnterDraw = async (dropId: string, uid: string) => {
     setActionLoading(dropId);
     try {
       await enterDraw(dropId);
-      // Refresh drops after entry
-      const activeDrops = await fetchActiveDrops();
-      const enriched = await Promise.all(
-        activeDrops.map(async (drop) => {
-          const [item, claim, entry] = await Promise.all([
-            fetchCatalogItem(drop.itemDefId),
-            fetchDropClaim(drop.id, user.uid),
-            drop.isDraw ? fetchDrawEntry(drop.id, user.uid) : Promise.resolve(null),
-          ]);
-          return { drop, item, claim, entry };
-        }),
-      );
-      setDrops(enriched);
+      setDrops(await loadDrops(uid));
     } catch (err) {
       logger.warn("draw_entry_failed", { dropId, error: parseFirebaseError(err) });
       setError(parseFirebaseError(err));
@@ -112,7 +91,7 @@ export function DropDayScreen() {
     }
   };
 
-  if (!isClosetDropsEnabled()) {
+  if (!isClosetDropsEnabled() || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface">
         <p className="text-subtle">Drop Day is coming soon.</p>
@@ -164,8 +143,8 @@ export function DropDayScreen() {
               item={item}
               claim={claim}
               entry={entry}
-              onClaim={() => handleClaimDrop(drop.id)}
-              onEnterDraw={() => handleEnterDraw(drop.id)}
+              onClaim={() => handleClaimDrop(drop.id, user.uid)}
+              onEnterDraw={() => handleEnterDraw(drop.id, user.uid)}
               actionLoading={actionLoading === drop.id}
             />
           ))}

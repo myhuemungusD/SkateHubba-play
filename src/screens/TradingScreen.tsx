@@ -19,6 +19,7 @@ export function TradingScreen() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<TradeStatus | "all">("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!user || !isClosetTradingEnabled()) return;
@@ -42,9 +43,9 @@ export function TradingScreen() {
     return () => {
       stale = true;
     };
-  }, [user, filter]);
+  }, [user, filter, refreshKey]);
 
-  if (!isClosetTradingEnabled()) {
+  if (!isClosetTradingEnabled() || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface">
         <p className="text-subtle">Trading is coming soon.</p>
@@ -118,13 +119,16 @@ export function TradingScreen() {
 
         <div className="grid gap-4">
           {trades.map((trade) => (
-            <TradeCard key={trade.id} trade={trade} currentUid={user!.uid} onRefresh={() => setFilter(filter)} />
+            <TradeCard
+              key={trade.id}
+              trade={trade}
+              currentUid={user.uid}
+              onRefresh={() => setRefreshKey((k) => k + 1)}
+            />
           ))}
         </div>
 
-        {showCreateModal && user && (
-          <CreateTradeModal onClose={() => setShowCreateModal(false)} currentUid={user.uid} />
-        )}
+        {showCreateModal && <CreateTradeModal onClose={() => setShowCreateModal(false)} currentUid={user.uid} />}
       </div>
     </div>
   );

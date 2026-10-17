@@ -1,8 +1,7 @@
 /**
  * Closet shop service — buy open-edition items with Hubba Bucks.
  */
-import { httpsCallable } from "firebase/functions";
-import { requireFunctions } from "../firebase";
+import { callCloset } from "./closet.callable";
 import { parseFirebaseError } from "../utils/helpers";
 import { logger } from "./logger";
 import { trackEvent } from "./analytics";
@@ -13,11 +12,9 @@ import { trackEvent } from "./analytics";
  */
 export async function buyShopItem(itemDefId: string): Promise<{ copyId: string }> {
   try {
-    const fns = await requireFunctions();
-    const callable = httpsCallable<{ itemDefId: string }, { copyId: string }>(fns, "buyShopItem");
-    const result = await callable({ itemDefId });
+    const data = await callCloset<{ itemDefId: string }, { copyId: string }>("buyShopItem", { itemDefId });
     trackEvent("closet_shop_purchase", { itemDefId });
-    return result.data;
+    return data;
   } catch (err) {
     logger.warn("buy_shop_item_failed", { itemDefId, error: parseFirebaseError(err) });
     throw err;
@@ -29,9 +26,7 @@ export async function buyShopItem(itemDefId: string): Promise<{ copyId: string }
  */
 export async function equipItem(copyId: string, equip: boolean): Promise<void> {
   try {
-    const fns = await requireFunctions();
-    const callable = httpsCallable<{ copyId: string; equip: boolean }, void>(fns, "equipItem");
-    await callable({ copyId, equip });
+    await callCloset<{ copyId: string; equip: boolean }, void>("equipItem", { copyId, equip });
     trackEvent("closet_item_equipped", { copyId, equip });
   } catch (err) {
     logger.warn("equip_item_failed", { copyId, error: parseFirebaseError(err) });

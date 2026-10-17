@@ -277,4 +277,21 @@ describe("fetchShopItems", () => {
 
     expect(items).toEqual([]);
   });
+
+  it("keeps a back layer, 3D model and license ref when the server sets them", async () => {
+    mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      id: "full",
+      data: () => ({
+        name: "Full",
+        layerUrls: { front: "/f.png", back: "/b.png" },
+        model3dUrl: "/m.glb",
+        licensed: { brand: "Mike White", licenseRef: "lic-1" },
+      }),
+    });
+    const item = await fetchCatalogItem("full");
+    expect(item?.layerUrls.back).toBe("/b.png");
+    expect(item?.model3dUrl).toBe("/m.glb");
+    expect(item?.licensed.licenseRef).toBe("lic-1");
+  });
 });

@@ -147,4 +147,17 @@ describe("fetchLedgerHistory", () => {
 
     expect(entries).toEqual([]);
   });
+
+  it("defaults a sparse ledger entry", async () => {
+    mockGetDocs.mockResolvedValueOnce({ docs: [{ id: "e1", data: () => ({ createdAt: TIMESTAMP_NOW }) }] });
+    const [entry] = await fetchLedgerHistory(UID);
+    expect(entry).toEqual({
+      id: "e1",
+      amount: 0,
+      reason: "",
+      createdAt: new Date("2026-10-17T12:00:00Z"),
+      source: "earned",
+      ref: null,
+    });
+  });
 });

@@ -13,6 +13,7 @@ function item(overrides?: Partial<Parameters<typeof ClosetShowcase>[0]["items"][
     acquiredAt: new Date(),
     provenanceReason: null,
     equipped: false,
+    itemDefId: null as string | null,
     ...overrides,
   };
 }
@@ -83,5 +84,26 @@ describe("ClosetShowcase", () => {
     const cards = document.querySelectorAll("[data-testid^=closet-item-]");
     expect(cards[0]).toHaveAttribute("data-testid", "closet-item-newer");
     expect(cards[1]).toHaveAttribute("data-testid", "closet-item-old");
+  });
+
+  it("credits Mike White with his signature and collection on his designs", () => {
+    render(
+      <ClosetShowcase
+        items={[
+          item({ id: "m1", type: "shoes", brand: "Mike White", name: "Teeth", itemDefId: "mike_white_teeth_fire" }),
+        ]}
+        isOwnProfile
+      />,
+    );
+    const card = document.querySelector("[data-testid=closet-item-m1]") as HTMLElement;
+    expect(card).toHaveTextContent("Designed by Mike White");
+    expect(card).toHaveTextContent("Mike White Signature collection");
+    expect(card.querySelector("img[alt='Mike White signature']")).toBeInTheDocument();
+    expect(card.getAttribute("aria-label")).toContain("Designed by Mike White");
+  });
+
+  it("shows no designer credit on uncredited gear", () => {
+    render(<ClosetShowcase items={[item()]} isOwnProfile />);
+    expect(document.querySelector("[data-testid=designer-credit]")).not.toBeInTheDocument();
   });
 });

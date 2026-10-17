@@ -3,11 +3,12 @@
  * All mutations go through Cloud Functions callables.
  */
 import { doc, getDoc, collection, getDocs, query, where, orderBy, limit as fbLimit } from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
-import { requireDb, requireFunctions } from "../firebase";
+import { requireDb } from "../firebase";
+import { callCloset } from "./closet.callable";
 import { withRetry } from "../utils/retry";
 import { parseFirebaseError } from "../utils/helpers";
 import { logger } from "./logger";
+import { toDateOrNull } from "./closet.time";
 import { trackEvent } from "./analytics";
 
 export type TradeStatus = "proposed" | "accepted" | "declined" | "canceled" | "held" | "complete";
@@ -31,15 +32,6 @@ export interface Trade {
   respondedAt: Date | null;
   completedAt: Date | null;
   holdUntil: Date | null;
-}
-
-function toDateOrNull(value: unknown): Date | null {
-  if (!value || typeof value !== "object") return null;
-  const toDate = (value as { toDate?: unknown }).toDate;
-  if (typeof toDate !== "function") return null;
-  const date: unknown = toDate.call(value);
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
-  return date;
 }
 
 function parseTradeDoc(id: string, data: Record<string, unknown>): Trade | null {
@@ -137,11 +129,9 @@ export interface ProposeTradeParams {
  */
 export async function proposeTrade(params: ProposeTradeParams): Promise<{ tradeId: string }> {
   try {
-    const fns = await requireFunctions();
-    const callable = httpsCallable<ProposeTradeParams, { tradeId: string }>(fns, "proposeTrade");
-    const result = await callable(params);
-    trackEvent("closet_trade_proposed", { tradeId: result.data.tradeId });
-    return result.data;
+    const data = await callCloset<ProposeTradeParams, { tradeId: string }>("proposeTrade", params);
+    trackEvent("closet_trade_proposed", { tradeId: data.tradeId });
+    return data;
   } catch (err) {
     logger.warn("propose_trade_failed", { error: parseFirebaseError(err) });
     throw err;
@@ -164,9 +154,7 @@ export interface RespondTradeParams {
  */
 export async function respondTrade(params: RespondTradeParams): Promise<void> {
   try {
-    const fns = await requireFunctions();
-    const callable = httpsCallable<RespondTradeParams, void>(fns, "respondTrade");
-    await callable(params);
+    await callCloset<RespondTradeParams, void>("respondTrade", params);
     trackEvent("closet_trade_responded", { tradeId: params.tradeId, response: params.response });
   } catch (err) {
     logger.warn("respond_trade_failed", { tradeId: params.tradeId, error: parseFirebaseError(err) });
@@ -181,9 +169,7 @@ export async function respondTrade(params: RespondTradeParams): Promise<void> {
  */
 export async function confirmTrade(tradeId: string): Promise<void> {
   try {
-    const fns = await requireFunctions();
-    const callable = httpsCallable<{ tradeId: string }, void>(fns, "confirmTrade");
-    await callable({ tradeId });
+    await callCloset<{ tradeId: string }, void>("confirmTrade", { tradeId });
     trackEvent("closet_trade_confirmed", { tradeId });
   } catch (err) {
     logger.warn("confirm_trade_failed", { tradeId, error: parseFirebaseError(err) });

@@ -817,9 +817,28 @@ service cloud.firestore {
       match /locker/{copyId} {
         // Closet items are public reputation, shown on /player/:uid.
         allow read: if isSignedIn();
-        // Server-only, admins included: an `admin: true` token is a custody
-        // risk (ECONOMY.md), and a console mint skips serials and the ledger.
-        allow create, update: if false;
+        // Closet copies are minted by the callables (Admin SDK). The one
+        // client path kept from main is the admin award panel: exact shape,
+        // bounded strings, server-stamped acquiredAt.
+        allow create: if isAdmin()
+          && request.resource.data.keys().hasOnly(
+               ['type', 'brand', 'name', 'imageUrl', 'rarity', 'acquiredAt', 'provenance'])
+          && request.resource.data.type is string
+          && request.resource.data.type.size() <= 100
+          && request.resource.data.brand is string
+          && request.resource.data.brand.size() <= 100
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 100
+          && request.resource.data.rarity is string
+          && request.resource.data.rarity.size() <= 100
+          && (request.resource.data.imageUrl == null || request.resource.data.imageUrl is string)
+          && request.resource.data.acquiredAt == request.time
+          && request.resource.data.provenance is map
+          && request.resource.data.provenance.keys().hasOnly(['reason'])
+          && request.resource.data.provenance.reason is string
+          && request.resource.data.provenance.reason.size() <= 200;
+        allow update: if false;
         // Owner: GDPR erasure batch. Admin: revoke wrongly-awarded gear.
         allow delete: if isOwner(uid) || isAdmin();
       }

@@ -3,11 +3,12 @@
  * Reads drop state; mutations go through Cloud Functions callables.
  */
 import { doc, getDoc, collection, getDocs, query, where, orderBy } from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
-import { requireDb, requireFunctions } from "../firebase";
+import { requireDb } from "../firebase";
+import { callCloset } from "./closet.callable";
 import { withRetry } from "../utils/retry";
 import { parseFirebaseError } from "../utils/helpers";
 import { logger } from "./logger";
+import { toDateOrNull } from "./closet.time";
 import { trackEvent } from "./analytics";
 
 export interface Drop {
@@ -34,15 +35,6 @@ export interface DropClaim {
 export interface DrawEntry {
   enteredAt: Date;
   eligible: boolean;
-}
-
-function toDateOrNull(value: unknown): Date | null {
-  if (!value || typeof value !== "object") return null;
-  const toDate = (value as { toDate?: unknown }).toDate;
-  if (typeof toDate !== "function") return null;
-  const date: unknown = toDate.call(value);
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
-  return date;
 }
 
 function parseDropDoc(id: string, data: Record<string, unknown>): Drop | null {
@@ -156,11 +148,9 @@ export async function fetchDrawEntry(dropId: string, uid: string): Promise<DrawE
  */
 export async function claimDrop(dropId: string): Promise<{ copyId: string; serial: number }> {
   try {
-    const fns = await requireFunctions();
-    const callable = httpsCallable<{ dropId: string }, { copyId: string; serial: number }>(fns, "claimDrop");
-    const result = await callable({ dropId });
+    const data = await callCloset<{ dropId: string }, { copyId: string; serial: number }>("claimDrop", { dropId });
     trackEvent("closet_drop_claimed", { dropId });
-    return result.data;
+    return data;
   } catch (err) {
     logger.warn("claim_drop_failed", { dropId, error: parseFirebaseError(err) });
     throw err;
@@ -173,9 +163,7 @@ export async function claimDrop(dropId: string): Promise<{ copyId: string; seria
  */
 export async function enterDraw(dropId: string): Promise<void> {
   try {
-    const fns = await requireFunctions();
-    const callable = httpsCallable<{ dropId: string }, void>(fns, "enterDraw");
-    await callable({ dropId });
+    await callCloset<{ dropId: string }, void>("enterDraw", { dropId });
     trackEvent("closet_draw_entered", { dropId });
   } catch (err) {
     logger.warn("enter_draw_failed", { dropId, error: parseFirebaseError(err) });

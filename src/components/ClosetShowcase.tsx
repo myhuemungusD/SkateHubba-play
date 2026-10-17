@@ -1,6 +1,8 @@
 import { Boxes, CircleDot, Footprints, HardHat, Layers, Shirt, Sticker, Wrench } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { LockerItem } from "../services/locker";
+import { designerCreditFor } from "../lib/closet/mikeWhiteCollection";
+import { DesignerCredit } from "./DesignerCredit";
 
 /**
  * "Hubba Locker" — the gear a player has earned (Economy Phase A).
@@ -100,11 +102,13 @@ function ClosetCard({ item }: { item: LockerItem }) {
   // as "Ledge Deck by , common".
   const byBrand = item.brand ? ` by ${item.brand}` : "";
   const detail = item.provenanceReason ? `. ${item.provenanceReason}` : "";
+  const credit = designerCreditFor(item.itemDefId);
+  const creditLabel = credit ? `. ${credit.credit}` : "";
 
   return (
     <li
       data-testid={`closet-item-${item.id}`}
-      aria-label={`${item.name}${byBrand}, ${item.rarity}${detail}`}
+      aria-label={`${item.name}${byBrand}, ${item.rarity}${creditLabel}${detail}`}
       title={item.provenanceReason ?? undefined}
       className={`overflow-hidden rounded-2xl border bg-surface ${rarity.card}`}
     >
@@ -130,8 +134,12 @@ function ClosetCard({ item }: { item: LockerItem }) {
       </div>
       <div className="p-2.5">
         <p className="font-display text-sm leading-tight text-white truncate">{item.name}</p>
-        {item.brand && (
-          <p className="font-body text-[10px] uppercase tracking-wider text-subtle mt-0.5 truncate">{item.brand}</p>
+        {credit ? (
+          <DesignerCredit credit={credit} compact />
+        ) : (
+          item.brand && (
+            <p className="font-body text-[10px] uppercase tracking-wider text-subtle mt-0.5 truncate">{item.brand}</p>
+          )
         )}
         <span
           className={`mt-1.5 inline-block rounded px-1.5 py-0.5 font-display text-[9px] tracking-wider leading-none ${rarity.tag}`}
