@@ -224,3 +224,12 @@ export function isSpotChatsEnabled(): boolean {
 export function isProfileBannerEnabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_PROFILE_BANNER);
 }
+
+/**
+ * Customizable profiles: theme colors + gradient, banner crop, section
+ * order, pinned clips, closet showcase, links/sponsors, favorite tricks,
+ * theme song. Builds on the profile banner. Literal "true" only; off by default.
+ */
+export function isProfileCustomEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_PROFILE_CUSTOM);
+}

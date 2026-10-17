@@ -28,6 +28,65 @@ service cloud.firestore {
 
     // ── Helper functions ──
 
+    // ── Customizable profile helpers ──
+    function pcLinkOk(url) {
+      return url is string && url.size() <= 200
+        && url.matches('^https://([a-z0-9-]+\\.)?(instagram\\.com|tiktok\\.com|youtube\\.com|youtu\\.be|x\\.com|twitter\\.com|twitch\\.tv|spotify\\.com|soundcloud\\.com|linktr\\.ee|threads\\.net|facebook\\.com|vimeo\\.com|myshopify\\.com|bigcartel\\.com|etsy\\.com|depop\\.com|skatehubba\\.com)(/[^\\s]*)?$');
+    }
+    function pcHex(v) {
+      return v is string && v.matches('^#[0-9A-Fa-f]{6}$');
+    }
+    function pcInt(v, lo, hi) {
+      return v is int && v >= lo && v <= hi;
+    }
+    function pcStr(v, lo, hi) {
+      return v is string && v.size() >= lo && v.size() <= hi;
+    }
+    function pcLinkAt(l, i) {
+      return i >= l.size() || (
+        l[i] is map && l[i].keys().hasOnly(['label', 'url']) && l[i].keys().hasAll(['label', 'url'])
+        && pcStr(l[i].label, 1, 30) && pcLinkOk(l[i].url));
+    }
+    function pcSponsorAt(l, i) {
+      return i >= l.size() || (
+        l[i] is map && l[i].keys().hasOnly(['name', 'url']) && l[i].keys().hasAll(['name', 'url'])
+        && pcStr(l[i].name, 1, 40) && (l[i].url == '' || pcLinkOk(l[i].url)));
+    }
+    function pcStrAt(l, i, hi) {
+      return i >= l.size() || pcStr(l[i], 1, hi);
+    }
+    function profileCustomValid(d) {
+      return d.keys().hasOnly(['accent', 'gradientFrom', 'gradientTo', 'gradientAngle',
+          'bannerPosX', 'bannerPosY', 'bannerZoom', 'sections', 'pinnedClipIds',
+          'showcaseSignature', 'bio', 'links', 'sponsors', 'favoriteTricks',
+          'themeSongId', 'updatedAt'])
+        && d.keys().hasAll(['accent', 'gradientFrom', 'gradientTo', 'gradientAngle',
+          'bannerPosX', 'bannerPosY', 'bannerZoom', 'sections', 'pinnedClipIds',
+          'showcaseSignature', 'bio', 'links', 'sponsors', 'favoriteTricks',
+          'themeSongId', 'updatedAt'])
+        && d.updatedAt == request.time
+        && pcHex(d.accent) && pcHex(d.gradientFrom) && pcHex(d.gradientTo)
+        && pcInt(d.gradientAngle, 0, 359)
+        && pcInt(d.bannerPosX, 0, 100) && pcInt(d.bannerPosY, 0, 100)
+        && pcInt(d.bannerZoom, 100, 200)
+        && d.sections is list && d.sections.size() == 5
+        && d.sections.hasAll(['clips', 'stats', 'closet', 'crew', 'spots'])
+        && d.pinnedClipIds is list && d.pinnedClipIds.size() <= 3
+        && pcStrAt(d.pinnedClipIds, 0, 128) && pcStrAt(d.pinnedClipIds, 1, 128) && pcStrAt(d.pinnedClipIds, 2, 128)
+        && d.showcaseSignature is bool
+        && pcStr(d.bio, 0, 280)
+        && d.links is list && d.links.size() <= 5
+        && pcLinkAt(d.links, 0) && pcLinkAt(d.links, 1) && pcLinkAt(d.links, 2)
+        && pcLinkAt(d.links, 3) && pcLinkAt(d.links, 4)
+        && d.sponsors is list && d.sponsors.size() <= 5
+        && pcSponsorAt(d.sponsors, 0) && pcSponsorAt(d.sponsors, 1) && pcSponsorAt(d.sponsors, 2)
+        && pcSponsorAt(d.sponsors, 3) && pcSponsorAt(d.sponsors, 4)
+        && d.favoriteTricks is list && d.favoriteTricks.size() <= 5
+        && pcStrAt(d.favoriteTricks, 0, 40) && pcStrAt(d.favoriteTricks, 1, 40) && pcStrAt(d.favoriteTricks, 2, 40)
+        && pcStrAt(d.favoriteTricks, 3, 40) && pcStrAt(d.favoriteTricks, 4, 40)
+        && d.themeSongId in ['', 'boom-bap-90', 'punk-170', 'lofi-75', 'breaks-128'];
+    }
+
     function isSignedIn() {
       return request.auth != null;
     }
@@ -910,6 +969,19 @@ service cloud.firestore {
       // (nightly audit). Only the closet callables write either, so a
       // client can never credit itself. Private to the owner: the balance
       // and spending history are hidden from profile visitors.
+      // ── Customizable profile (VITE_FEATURE_PROFILE_CUSTOM) ──
+      // users/{uid}/profileCustom/main. Public get (same as the profile
+      // doc), owner-only write, fixed key set, caps on every field and a
+      // host allowlist on every link (mirror: services/profileCustom.ts).
+      match /profileCustom/{docId} {
+        allow get: if true;
+        allow list: if false;
+        allow create, update: if isOwner(uid)
+          && docId == 'main'
+          && profileCustomValid(request.resource.data);
+        allow delete: if isOwner(uid);
+      }
+
       match /wallet/{walletId} {
         allow read: if isOwner(uid);
         allow write: if false;

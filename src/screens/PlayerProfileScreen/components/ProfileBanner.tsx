@@ -6,6 +6,8 @@ interface Props {
   uid: string;
   bannerImageUrl?: string | null;
   isOwnProfile: boolean;
+  /** Crop from the custom profile: focal point (0–100 %) and zoom (100–200 %). */
+  crop?: { x: number; y: number; zoom: number };
 }
 
 const MESSAGES: Record<string, string> = {
@@ -18,7 +20,7 @@ const MESSAGES: Record<string, string> = {
  * Background picture across the top of a profile (VITE_FEATURE_PROFILE_BANNER).
  * The owner gets one small camera icon to change it; no extra buttons.
  */
-export function ProfileBanner({ uid, bannerImageUrl, isOwnProfile }: Props) {
+export function ProfileBanner({ uid, bannerImageUrl, isOwnProfile, crop }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -42,7 +44,22 @@ export function ProfileBanner({ uid, bannerImageUrl, isOwnProfile }: Props) {
 
   return (
     <div className="relative -mx-5 -mt-7 mb-4 h-28 overflow-hidden bg-surface-alt" data-testid="profile-banner">
-      {src && <img src={src} alt="" className="h-full w-full object-cover" />}
+      {src && (
+        <img
+          src={src}
+          alt=""
+          className="h-full w-full object-cover"
+          style={
+            crop
+              ? {
+                  objectPosition: `${crop.x}% ${crop.y}%`,
+                  transform: `scale(${crop.zoom / 100})`,
+                  transformOrigin: `${crop.x}% ${crop.y}%`,
+                }
+              : undefined
+          }
+        />
+      )}
       {isOwnProfile && (
         <>
           <button

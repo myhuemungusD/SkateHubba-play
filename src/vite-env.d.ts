@@ -106,6 +106,7 @@ interface ImportMetaEnv {
    *  Literal "true" only; off by default. Read via isProCameraEnabled(). */
   readonly VITE_FEATURE_PRO_CAMERA?: string;
   readonly VITE_FEATURE_PROFILE_BANNER?: string;
+  readonly VITE_FEATURE_PROFILE_CUSTOM?: string;
   readonly VITE_MAPBOX_TOKEN?: string;
   /** Optional Mapbox Studio style URL. Falls back to mapbox://styles/mapbox/dark-v11. */
   readonly VITE_MAPBOX_STYLE_URL?: string;
