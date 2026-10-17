@@ -62,6 +62,7 @@ describe("renderNative", () => {
     project: {} as never,
     plan: { width: 1, height: 1, fps: 30 as const, bitrate: 1 },
     audio: {},
+    colorMatrix: [],
     saveToPhotos: false,
   };
 

@@ -59,6 +59,7 @@ describe("exportClip", () => {
     const r = await exportClip(setTrim(project(), 0, 3), { main: new Blob(["x"]) }, {} as EditorEngine, onProgress);
     expect(native.renderNative).toHaveBeenCalledTimes(1);
     expect(native.renderNative.mock.calls[0][0].plan).toMatchObject({ width: 1920, fps: 30 });
+    expect(native.renderNative.mock.calls[0][0].colorMatrix).toHaveLength(20);
     expect(onProgress).toHaveBeenCalledWith(1);
     expect(r.blob.type).toBe("video/mp4");
   });

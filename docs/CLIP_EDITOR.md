@@ -65,3 +65,25 @@ see `public/editor/CREDITS.md` and `scripts/generate-skate-sfx.mjs`
 Where we're behind: no keyframed zoom/punch-in, no per-clip transitions, no
 curve editor for custom ramps, no frame-accurate waveform. Those are the
 next additions if testers ask for them.
+
+## Native iOS renderer
+
+`ios/App/SkatehubbaClipEditor` is a local Swift package, wired in the same way
+as `SkatehubbaFcm`. `SkateBridgeViewController` (the storyboard root) registers
+the `ClipEditor` plugin.
+
+- **Composition:** each piece of the edit (one angle, one speed) is inserted
+  into an `AVMutableComposition` and time-scaled with `scaleTimeRange`. The
+  original audio uses the `.spectral` pitch algorithm, so slow-mo doesn't
+  sound like a demon.
+- **Looks:** a Core Image graph applies the same order and parameters as the
+  WebGL shader. Captions are rasterised once per caption, not per frame.
+- **Stabilization:** Vision `VNTranslationalImageRegistrationRequest` runs on
+  a 320 px proxy. The camera path gets a ±15-frame moving average, and each
+  frame is shifted onto the smoothed path with a 1.1× zoom.
+- **Music and SFX:** these tracks are added after time-scaling, at output
+  times, with per-track volume through `AVAudioMix`. Files are read from the
+  app bundle (`public/editor/...`).
+- **Export:** `AVAssetReader` feeds `AVAssetWriter`, so the bitrate is exact.
+  4K uses HEVC and smaller sizes use H.264. Output is AAC 192 kbps in MP4.
+  Optionally saves to Photos (add-only permission).
