@@ -452,6 +452,30 @@ describe("native pro-capture extras", () => {
     vi.unstubAllEnvs();
   });
 
+  it("returns safe defaults when pro camera flag is off", async () => {
+    vi.stubEnv("VITE_FEATURE_PRO_CAMERA", "false");
+    const {
+      getNativeLenses,
+      setNativeLens,
+      focusNativeAt,
+      setNativeQuality,
+      getNativeQualityModes,
+      getNativeMetrics,
+      setNativePreRoll,
+      getNativePreRollStatus,
+      setNativeFisheye,
+    } = await import("../nativeVideo");
+    expect(await getNativeLenses()).toEqual([]);
+    expect(await setNativeLens(0.5)).toBe(false);
+    expect(await focusNativeAt(0.5, 0.5, true)).toBe(false);
+    expect(await setNativeQuality("pro4k60")).toBe(false);
+    expect(await getNativeQualityModes()).toEqual({ modes: ["standard1080p60"], current: "standard1080p60" });
+    expect(await getNativeMetrics()).toBeNull();
+    expect(await setNativePreRoll(true)).toBe(false);
+    expect(await getNativePreRollStatus()).toBeNull();
+    expect(await setNativeFisheye(true)).toBe(false);
+  });
+
   it("lists 0.5x/1x/2x on an ultra-wide phone and 1x only otherwise", async () => {
     const { getNativeLenses } = await import("../nativeVideo");
     mockPro.mockResolvedValueOnce({ ultraWide: true, maxLens: 15 });
