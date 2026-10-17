@@ -342,7 +342,14 @@ function writeAac(dir, id, samples, rate, kbps) {
   ]);
   rmSync(tmp);
 }
-for (const [id, fn] of Object.entries(SFX)) writeAac("sfx", id, fn(), R, 96);
+// These slots now hold real recordings (scripts/process-recorded-sfx.sh, CC BY
+// SoundBiterSFX). Their synth versions stay defined as fallbacks but are not
+// written unless SYNTH_ALL=1.
+const RECORDED = new Set(["ollie-pop", "flick", "landing", "grind-5050", "slide-concrete", "powerslide", "wheel-roll"]);
+for (const [id, fn] of Object.entries(SFX)) {
+  if (RECORDED.has(id) && !process.env.SYNTH_ALL) continue;
+  writeAac("sfx", id, fn(), R, 96);
+}
 for (const [id, [bpm, style]] of Object.entries(MUSIC)) {
   const loop = drumLoop(bpm, style);
   writeAac("music", id, style === "lofi" ? lowpass(loop, MR, 3500) : loop, MR, 64);

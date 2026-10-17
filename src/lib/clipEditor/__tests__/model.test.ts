@@ -26,6 +26,7 @@ import {
   lookParams,
   COLOR_PRESETS,
   SKATE_SOUNDS,
+  soundCredits,
   getSound,
   MUSIC_TRACKS,
   getTrack,
@@ -208,6 +209,17 @@ describe("libraries", () => {
     for (const s of SKATE_SOUNDS) expect(existsSync(join(process.cwd(), "public", s.src))).toBe(true);
     expect(getSound("bail")?.category).toBe("board");
     expect(getSound("nope")).toBeUndefined();
+  });
+
+  it("recorded sounds ship an ogg copy and a CC BY credit", () => {
+    const recorded = SKATE_SOUNDS.filter((s) => s.credit);
+    expect(recorded.map((s) => s.id)).toContain("grind-5050");
+    for (const s of recorded) {
+      expect(s.credit?.license).toMatch(/CC BY|CC0/);
+      expect(existsSync(join(process.cwd(), "public", s.oggSrc ?? ""))).toBe(true);
+    }
+    expect(soundCredits()).toEqual([expect.objectContaining({ author: "SoundBiterSFX" })]);
+    expect(getSound("bail")?.credit).toBeUndefined();
   });
 
   it("music tracks exist on disk and are CC0 originals", () => {

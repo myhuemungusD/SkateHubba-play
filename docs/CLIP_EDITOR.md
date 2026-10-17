@@ -47,9 +47,13 @@ VX1000 on ultra-wide footage is the classic combo. Output stays inside the
 
 ## Audio licensing
 
-Every sound and loop is an original synthesized work released under CC0 —
+Seven SFX (ollie pop, flick, landing, 50-50 grind, concrete slide,
+powerslide, wheel roll) are real recordings edited from SoundBiterSFX's
+"Skateboarding Tricks" (Freesound 746602, CC BY 4.0, credited in the Skate
+Sounds panel) by `scripts/process-recorded-sfx.sh`, shipped as .m4a plus .ogg.
+Every other sound and loop is an original synthesized work released under CC0 —
 see `public/editor/CREDITS.md` and `scripts/generate-skate-sfx.mjs`
-(deterministic; re-run with ffmpeg on PATH). No third-party audio ships.
+(deterministic; re-run with ffmpeg on PATH).
 
 ## Benchmark
 
