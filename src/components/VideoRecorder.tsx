@@ -1,14 +1,18 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { ActionDock } from "./ActionDock";
 import { Btn } from "./ui/Btn";
 import { FilmIcon, FisheyeIcon, FlipCameraIcon } from "./icons";
 import { RecorderControls } from "./RecorderControls";
 import { hasGrantedCameraAndMic } from "./mediaPermissions";
 import { FisheyeRenderer } from "./FisheyeRenderer";
-import { NativeCameraControls } from "./NativeCameraControls";
 import { useMediaRecorder, isIOSSafari } from "../hooks/useMediaRecorder";
 import { MAX_VIDEO_DURATION_SECONDS } from "../constants/video";
 import { CLIP_POSTER } from "../lib/clipPoster";
+
+// Lazy-load pro camera controls to keep them off the initial bundle
+const NativeCameraControls = lazy(() =>
+  import("./NativeCameraControls").then((m) => ({ default: m.NativeCameraControls })),
+);
 
 /**
  * Full recorded frame, centered in the 9:16 viewfinder. The crosshair is
@@ -206,7 +210,9 @@ export function VideoRecorder({
           </div>
         )}
 
-        <NativeCameraControls active={nativeLive} />
+        <Suspense fallback={null}>
+          <NativeCameraControls active={nativeLive} />
+        </Suspense>
 
         {state !== "done" && (
           <div className="absolute top-4 right-4 flex items-center gap-2">
