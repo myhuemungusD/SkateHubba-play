@@ -15,9 +15,9 @@ const SIMULATION_DAYS = 180;
 const TOTAL_USERS = 10_000;
 
 const EARN_RATES = {
-  gameComplete: 25, // Bucks per S.K.A.T.E. game completed
+  gameComplete: 35, // Bucks per S.K.A.T.E. game completed (was 25, +40% to reduce spend ratio)
   dailyLoginStreak: [0, 5, 5, 10, 10, 15, 25], // Day 1-7
-  achievementGrant: 50, // Average per achievement badge earned
+  achievementGrant: 75, // Average per achievement badge earned (was 50, +50%)
 };
 
 const SHOP_PRICES = {
