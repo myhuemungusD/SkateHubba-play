@@ -9,6 +9,9 @@ interface Props {
   stance: string;
   bio?: string;
   signatureTricks?: string[];
+  tagline?: string;
+  hometown?: string;
+  sponsors?: string[];
   /** True on a verified pro's own profile: enables bio/trick editing. */
   canEdit?: boolean;
   wins: number;
@@ -33,6 +36,9 @@ export function ProShowcaseGate({
   stance,
   bio,
   signatureTricks,
+  tagline,
+  hometown,
+  sponsors,
   canEdit = false,
   wins,
   losses,
@@ -53,6 +59,9 @@ export function ProShowcaseGate({
       stance={stance}
       bio={bio}
       signatureTricks={signatureTricks}
+      tagline={tagline}
+      hometown={hometown}
+      sponsors={sponsors}
       editableUid={canEdit ? uid : undefined}
       wins={wins}
       losses={losses}

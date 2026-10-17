@@ -141,6 +141,12 @@ export interface UserProfile {
   proBio?: string;
   /** Pro-picked signature tricks from TRICK_CATALOG (verified pros only, <= 3). */
   proSignatureTricks?: string[];
+  /** Pro-written one-liner (verified pros only, <= 80 chars). */
+  proTagline?: string;
+  /** Pro-written hometown (verified pros only, <= 60 chars). */
+  proHometown?: string;
+  /** Pro-written sponsors (verified pros only, <= 3, each <= 40 chars). */
+  proSponsors?: string[];
   /**
    * Custom avatar URL — Firebase Storage download URL pinned to this
    * project's bucket and the calling UID by both client-side guard

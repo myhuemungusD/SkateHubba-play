@@ -39,15 +39,13 @@ describe("registerCacheWorker", () => {
     Object.defineProperty(navigator, "serviceWorker", {
       value: {
         register,
-        getRegistrations: vi
-          .fn()
-          .mockResolvedValue([
-            {
-              active: { scriptURL: "https://skatehubba.com/firebase-messaging-sw.js" },
-              waiting: null,
-              installing: null,
-            },
-          ]),
+        getRegistrations: vi.fn().mockResolvedValue([
+          {
+            active: { scriptURL: "https://skatehubba.com/firebase-messaging-sw.js" },
+            waiting: null,
+            installing: null,
+          },
+        ]),
       },
       configurable: true,
     });
