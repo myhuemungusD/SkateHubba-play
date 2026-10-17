@@ -40,8 +40,8 @@ function featureOn(flags: ClosetFlags, feature: ClosetFeature): boolean {
     case "bucksPurchase":
       return flags.bucksPurchase;
     default: {
-      const never: never = feature;
-      return never;
+      const unknown: never = feature;
+      throw new Error(`unknown closet feature: ${String(unknown)}`);
     }
   }
 }

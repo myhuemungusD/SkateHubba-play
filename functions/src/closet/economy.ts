@@ -104,8 +104,8 @@ export function priceFits(rarity: Rarity, price: number | null): boolean {
     case "grail":
       return price <= LIMITED_PRICE_MAX;
     default: {
-      const never: never = rarity;
-      return never;
+      const unknown: never = rarity;
+      throw new Error(`unknown rarity: ${String(unknown)}`);
     }
   }
 }
