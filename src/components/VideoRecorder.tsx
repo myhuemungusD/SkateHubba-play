@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { ActionDock } from "./ActionDock";
 import { Btn } from "./ui/Btn";
 import { FilmIcon, FisheyeIcon, FlipCameraIcon } from "./icons";
@@ -120,16 +120,26 @@ export function VideoRecorder({
   // Native capture draws the camera BEHIND the web view, so the viewfinder and
   // every ancestor must be see-through while it runs (see .sh-native-cam).
   const nativeLive = isNative && state === "recording";
+  // Mark the viewfinder's ancestors directly instead of using a global
+  // `:has()` selector — a stylesheet-wide `*:has(...)` rule forces Chrome to
+  // re-check ancestors on every DOM mutation, which blew the Lighthouse TBT
+  // budget on pages that never open the camera.
+  const viewfinderRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!nativeLive) return;
-    document.documentElement.classList.add("sh-native-cam");
-    return () => document.documentElement.classList.remove("sh-native-cam");
+    const marked: Element[] = [];
+    for (let el = viewfinderRef.current?.parentElement ?? null; el; el = el.parentElement) {
+      el.classList.add("sh-native-cam");
+      marked.push(el);
+    }
+    return () => marked.forEach((el) => el.classList.remove("sh-native-cam"));
   }, [nativeLive]);
 
   return (
     <div className="w-full flex flex-col items-center gap-4">
       {/* Viewfinder */}
       <div
+        ref={viewfinderRef}
         data-testid="trick-viewfinder"
         className={`trick-frame ${nativeLive ? "bg-transparent" : "bg-black"} rounded-2xl overflow-hidden relative transition-all duration-300
           ${state === "recording" ? "border-2 border-brand-red shadow-[0_0_30px_rgba(255,61,0,0.15)]" : "border border-border"}`}

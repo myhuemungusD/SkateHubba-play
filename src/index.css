@@ -831,11 +831,9 @@ input:-webkit-autofill {
 }
 
 /* Native (Capacitor) capture renders the camera behind the web view. While a
-   take runs, clear the page backgrounds on the viewfinder's ancestors so the
-   live picture shows through the viewfinder. */
-.sh-native-cam,
-.sh-native-cam body,
-.sh-native-cam #root,
-.sh-native-cam *:has([data-testid="trick-viewfinder"]) {
+   take runs, VideoRecorder tags the viewfinder's ancestors (up to <html>) with
+   .sh-native-cam so the live picture shows through. No :has() here — a global
+   :has() rule costs style-recalc time on every DOM change (Lighthouse TBT). */
+.sh-native-cam {
   background: transparent !important;
 }
