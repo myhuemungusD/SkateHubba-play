@@ -96,6 +96,14 @@ export function isProBlessingEnabled(): boolean {
 }
 
 /**
+ * Spot group chats. Off by default; when on, each spot gets a group chat with
+ * moderation (report, block, word filter, rate limits). Literal "true" only.
+ */
+export function isSpotChatsEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_SPOT_CHATS_ENABLED);
+}
+
+/**
  * Spot group chats (per-spot chat rooms with moderation). Off by default and
  * independent of the extras switch: the rules ship with the service layer,
  * but no UI may surface chats until this is the literal "true".
