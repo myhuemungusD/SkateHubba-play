@@ -29,6 +29,7 @@ import {
 import { getErrorCode } from "../utils/errors";
 import { Phone, AlertCircle } from "lucide-react";
 import { Btn } from "./ui/Btn";
+import { ReauthPrompt } from "./ReauthPrompt";
 
 type Pending = "enroll" | "unenroll";
 
@@ -46,42 +47,26 @@ export function SmsTwoFactorSection() {
   const [unavailable, setUnavailable] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-
   const recaptchaRef = useRef<HTMLDivElement>(null);
-
-  // Only show to email/password users
   const passwordAuth = hasPasswordSignIn();
   const method = reauthMethod();
 
-  if (!passwordAuth) {
-    return null;
-  }
+  if (!passwordAuth) return null;
+
+  const renderHeader = (text: string) => (
+    <div className="rounded-lg border border-slate-700 bg-slate-800 p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <Phone size={18} className="text-blue-400" />
+        <h3 className="text-sm font-semibold text-white">Text Message Codes</h3>
+      </div>
+      <p className="text-xs text-slate-400">{text}</p>
+    </div>
+  );
 
   if (Capacitor.isNativePlatform()) {
-    return (
-      <div className="rounded-lg border border-slate-700 bg-slate-800 p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <Phone size={18} className="text-blue-400" />
-          <h3 className="text-sm font-semibold text-white">Text Message Codes</h3>
-        </div>
-        <p className="text-xs text-slate-400">
-          SMS two-step verification is not available in the app yet. Use the website to set it up.
-        </p>
-      </div>
-    );
+    return renderHeader("SMS two-step verification is not available in the app yet. Use the website to set it up.");
   }
-
-  if (unavailable) {
-    return (
-      <div className="rounded-lg border border-slate-700 bg-slate-800 p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <Phone size={18} className="text-blue-400" />
-          <h3 className="text-sm font-semibold text-white">Text Message Codes</h3>
-        </div>
-        <p className="text-xs text-slate-400">SMS two-step verification isn't available yet.</p>
-      </div>
-    );
-  }
+  if (unavailable) return renderHeader("SMS two-step verification isn't available yet.");
 
   const enrolled = factors.length > 0;
 
@@ -90,11 +75,9 @@ export function SmsTwoFactorSection() {
       setError("Enter your phone number");
       return;
     }
-
     setBusy(true);
     setError("");
     setPending("enroll");
-
     try {
       const vid = await beginSmsEnrollment(phoneNumber, recaptchaRef.current!);
       setVerificationId(vid);
@@ -103,13 +86,8 @@ export function SmsTwoFactorSection() {
         setUnavailable(true);
         return;
       }
-      if (getErrorCode(err) === "auth/requires-recent-login") {
-        // Re-auth required, will retry after password entry
-        setError(messageFrom(err));
-      } else {
-        setError(messageFrom(err));
-        setPending(null);
-      }
+      if (getErrorCode(err) !== "auth/requires-recent-login") setPending(null);
+      setError(messageFrom(err));
     } finally {
       setBusy(false);
     }
@@ -120,10 +98,8 @@ export function SmsTwoFactorSection() {
       setError("Enter the 6-digit code");
       return;
     }
-
     setBusy(true);
     setError("");
-
     try {
       await confirmSmsEnrollment(verificationId, code);
       setFactors(listSmsFactors());
@@ -143,19 +119,14 @@ export function SmsTwoFactorSection() {
     setBusy(true);
     setError("");
     setPending("unenroll");
-
     try {
       await unenrollSmsFactor(factorUid);
       setFactors(listSmsFactors());
       setPending(null);
       setPassword("");
     } catch (err: unknown) {
-      if (getErrorCode(err) === "auth/requires-recent-login") {
-        setError(messageFrom(err));
-      } else {
-        setError(messageFrom(err));
-        setPending(null);
-      }
+      if (getErrorCode(err) !== "auth/requires-recent-login") setPending(null);
+      setError(messageFrom(err));
     } finally {
       setBusy(false);
     }
@@ -166,13 +137,10 @@ export function SmsTwoFactorSection() {
       setError("Enter your password");
       return;
     }
-
     setBusy(true);
     setError("");
-
     try {
       await reauthenticateForMfa(password);
-      // Retry the pending action
       if (pending === "enroll" && phoneNumber) {
         const vid = await beginSmsEnrollment(phoneNumber, recaptchaRef.current!);
         setVerificationId(vid);
@@ -199,6 +167,8 @@ export function SmsTwoFactorSection() {
     setError("");
   };
 
+  const needsReauth = getErrorCode(error) === "auth/requires-recent-login";
+
   return (
     <div className="rounded-lg border border-slate-700 bg-slate-800 p-4">
       <div className="mb-3 flex items-center gap-2">
@@ -213,7 +183,7 @@ export function SmsTwoFactorSection() {
         </div>
       )}
 
-      {enrolled && !pending ? (
+      {enrolled && !pending && (
         <div className="space-y-3">
           <p className="text-xs text-slate-400">
             Two-step verification is on. You'll need your phone when you sign in.
@@ -227,9 +197,9 @@ export function SmsTwoFactorSection() {
             </div>
           ))}
         </div>
-      ) : null}
+      )}
 
-      {!enrolled && !pending ? (
+      {!enrolled && !pending && (
         <div className="space-y-3">
           <p className="text-xs text-slate-400">
             Get codes sent to your phone when you sign in. More secure than password alone.
@@ -238,56 +208,42 @@ export function SmsTwoFactorSection() {
             Set up text codes
           </Btn>
         </div>
-      ) : null}
+      )}
 
-      {pending === "enroll" && !verificationId ? (
+      {pending === "enroll" && !verificationId && needsReauth && (
+        <ReauthPrompt
+          method={method}
+          password={password}
+          onPasswordChange={setPassword}
+          onReauth={handleReauth}
+          onCancel={handleCancel}
+          busy={busy}
+        />
+      )}
+
+      {pending === "enroll" && !verificationId && !needsReauth && (
         <div className="space-y-3">
-          {getErrorCode(error) === "auth/requires-recent-login" ? (
-            <>
-              <p className="text-xs text-slate-400">Confirm it's you to continue.</p>
-              {method === "password" && (
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Your password"
-                  className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-sm text-white placeholder-slate-400"
-                />
-              )}
-              <div className="flex gap-2">
-                <Btn onClick={handleReauth} disabled={busy} variant="primary" size="sm">
-                  {method === "password" ? "Confirm" : "Re-authenticate"}
-                </Btn>
-                <Btn onClick={handleCancel} disabled={busy} variant="secondary" size="sm">
-                  Cancel
-                </Btn>
-              </div>
-            </>
-          ) : (
-            <>
-              <p className="text-xs text-slate-400">Enter your phone number to receive a code.</p>
-              <input
-                type="tel"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                placeholder="+1234567890"
-                className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-sm text-white placeholder-slate-400"
-              />
-              <div ref={recaptchaRef} />
-              <div className="flex gap-2">
-                <Btn onClick={handleStartEnroll} disabled={busy} variant="primary" size="sm">
-                  Send code
-                </Btn>
-                <Btn onClick={handleCancel} disabled={busy} variant="secondary" size="sm">
-                  Cancel
-                </Btn>
-              </div>
-            </>
-          )}
+          <p className="text-xs text-slate-400">Enter your phone number to receive a code.</p>
+          <input
+            type="tel"
+            value={phoneNumber}
+            onChange={(e) => setPhoneNumber(e.target.value)}
+            placeholder="+1234567890"
+            className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-sm text-white placeholder-slate-400"
+          />
+          <div ref={recaptchaRef} />
+          <div className="flex gap-2">
+            <Btn onClick={handleStartEnroll} disabled={busy} variant="primary" size="sm">
+              Send code
+            </Btn>
+            <Btn onClick={handleCancel} disabled={busy} variant="secondary" size="sm">
+              Cancel
+            </Btn>
+          </div>
         </div>
-      ) : null}
+      )}
 
-      {pending === "enroll" && verificationId ? (
+      {pending === "enroll" && verificationId && (
         <div className="space-y-3">
           <p className="text-xs text-slate-400">Enter the 6-digit code sent to {phoneNumber}</p>
           <input
@@ -308,30 +264,18 @@ export function SmsTwoFactorSection() {
             </Btn>
           </div>
         </div>
-      ) : null}
+      )}
 
-      {pending === "unenroll" && getErrorCode(error) === "auth/requires-recent-login" ? (
-        <div className="space-y-3">
-          <p className="text-xs text-slate-400">Confirm it's you to remove SMS verification.</p>
-          {method === "password" && (
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Your password"
-              className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-sm text-white placeholder-slate-400"
-            />
-          )}
-          <div className="flex gap-2">
-            <Btn onClick={handleReauth} disabled={busy} variant="primary" size="sm">
-              {method === "password" ? "Confirm" : "Re-authenticate"}
-            </Btn>
-            <Btn onClick={handleCancel} disabled={busy} variant="secondary" size="sm">
-              Cancel
-            </Btn>
-          </div>
-        </div>
-      ) : null}
+      {pending === "unenroll" && needsReauth && (
+        <ReauthPrompt
+          method={method}
+          password={password}
+          onPasswordChange={setPassword}
+          onReauth={handleReauth}
+          onCancel={handleCancel}
+          busy={busy}
+        />
+      )}
     </div>
   );
 }
