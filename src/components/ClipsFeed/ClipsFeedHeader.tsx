@@ -1,6 +1,6 @@
 import { memo } from "react";
 import type { ClipsFeedSort } from "../../services/clips";
-import { CameraIcon } from "../icons";
+import { CameraIcon, ScissorsIcon } from "../icons";
 import { TopNewToggle } from "./TopNewToggle";
 
 export interface ClipsFeedHeaderProps {
@@ -12,6 +12,8 @@ export interface ClipsFeedHeaderProps {
   position?: { index: number; total: number };
   /** Opens the user-clip upload modal. */
   onPostClip: () => void;
+  /** Opens pick/film, then goes straight into the clip editor. Omitted (no icon) while VITE_FEATURE_CLIP_EDITOR is off. */
+  onEditClip?: () => void;
 }
 
 /**
@@ -24,6 +26,7 @@ export const ClipsFeedHeader = memo(function ClipsFeedHeader({
   disabled,
   position,
   onPostClip,
+  onEditClip,
 }: ClipsFeedHeaderProps) {
   return (
     <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-between gap-2 px-3 pt-safe">
@@ -36,6 +39,17 @@ export const ClipsFeedHeader = memo(function ClipsFeedHeader({
         )}
       </div>
       <div className="pointer-events-auto flex items-center gap-2">
+        {onEditClip && (
+          <button
+            type="button"
+            onClick={onEditClip}
+            aria-label="Edit a clip"
+            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-black/50 px-3 font-display text-[11px] tracking-[0.15em] text-white backdrop-blur-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          >
+            <ScissorsIcon size={14} />
+            <span className="sr-only sm:not-sr-only">EDIT</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={onPostClip}

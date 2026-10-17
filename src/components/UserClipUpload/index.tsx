@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { isClipEditorEnabled } from "../../lib/featureFlags";
 import { USER_CLIP_MAX_DURATION_SECONDS } from "../../constants/video";
 import { isNativePlatform } from "../../services/nativeVideo";
@@ -20,6 +20,8 @@ export interface UserClipUploadModalProps {
   onClose: () => void;
   /** Fired after the clip doc is written — the feed reloads on this. */
   onPosted: () => void;
+  /** Opened from the feed's Edit icon: open the editor as soon as footage is staged. */
+  editFirst?: boolean;
 }
 
 /**
@@ -33,12 +35,22 @@ export interface UserClipUploadModalProps {
  * Three steps, one at a time so the sheet never gets taller than a phone:
  * pick a source → capture/choose → name it and post.
  */
-export function UserClipUploadModal({ uid, username, onClose, onPosted }: UserClipUploadModalProps) {
+export function UserClipUploadModal({ uid, username, onClose, onPosted, editFirst = false }: UserClipUploadModalProps) {
   const c = useUserClipUpload(uid, username, onPosted);
   const panelRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState(false);
   useFocusTrap(panelRef);
+
+  // Edit-first entry: the first staged clip goes straight into the editor.
+  // Only once, so the clip the editor hands back doesn't reopen it.
+  const autoEdited = useRef(false);
+  const stagedBlob = c.blob;
+  useEffect(() => {
+    if (!editFirst || autoEdited.current || !stagedBlob || !isClipEditorEnabled()) return;
+    autoEdited.current = true;
+    setEditing(true);
+  }, [editFirst, stagedBlob]);
 
   // The file picker is web-only. Inside the Capacitor shell the OS sheet is
   // an inconsistent, permission-heavy detour and the native recorder is right
@@ -66,7 +78,7 @@ export function UserClipUploadModal({ uid, username, onClose, onPosted }: UserCl
         onClick={(e) => e.stopPropagation()}
       >
         <h3 id="user-clip-upload-title" className="mb-1 font-display text-xl text-white">
-          Post a clip
+          {editFirst ? "Edit a clip" : "Post a clip"}
         </h3>
         <p className="mb-4 font-body text-sm text-muted">
           {USER_CLIP_MAX_DURATION_SECONDS} seconds max. Landed tricks only — the feed is for skating.
