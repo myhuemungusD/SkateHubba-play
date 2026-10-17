@@ -5,6 +5,7 @@ import { FilmIcon, FisheyeIcon, FlipCameraIcon } from "./icons";
 import { RecorderControls } from "./RecorderControls";
 import { hasGrantedCameraAndMic } from "./mediaPermissions";
 import { FisheyeRenderer } from "./FisheyeRenderer";
+import { NativeCameraControls } from "./NativeCameraControls";
 import { useMediaRecorder, isIOSSafari } from "../hooks/useMediaRecorder";
 import { MAX_VIDEO_DURATION_SECONDS } from "../constants/video";
 import { CLIP_POSTER } from "../lib/clipPoster";
@@ -119,13 +120,21 @@ export function VideoRecorder({
   const showChromeToggles = state === "preview";
   const showFisheyeOverlay = fisheyeOn && (state === "preview" || state === "recording");
   const secondsLeft = maxDurationSeconds - seconds;
+  // Native capture draws the camera BEHIND the web view, so the viewfinder and
+  // every ancestor must be see-through while it runs (see .sh-native-cam).
+  const nativeLive = isNative && state === "recording";
+  useEffect(() => {
+    if (!nativeLive) return;
+    document.documentElement.classList.add("sh-native-cam");
+    return () => document.documentElement.classList.remove("sh-native-cam");
+  }, [nativeLive]);
 
   return (
     <div className="w-full flex flex-col items-center gap-4">
       {/* Viewfinder */}
       <div
         data-testid="trick-viewfinder"
-        className={`trick-frame bg-black rounded-2xl overflow-hidden relative transition-all duration-300
+        className={`trick-frame ${nativeLive ? "bg-transparent" : "bg-black"} rounded-2xl overflow-hidden relative transition-all duration-300
           ${state === "recording" ? "border-2 border-brand-red shadow-[0_0_30px_rgba(255,61,0,0.15)]" : "border border-border"}`}
       >
         {state === "done" && blobUrl ? (
@@ -203,6 +212,8 @@ export function VideoRecorder({
             )}
           </div>
         )}
+
+        <NativeCameraControls active={nativeLive} />
 
         {state !== "done" && (
           <div className="absolute top-4 right-4 flex items-center gap-2">

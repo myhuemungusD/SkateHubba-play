@@ -109,11 +109,7 @@ function countLoc(source) {
         const lineStart = line.indexOf("//", i);
         // Pick whichever comment marker comes first (if any).
         const nextComment =
-          blockStart === -1
-            ? lineStart
-            : lineStart === -1
-              ? blockStart
-              : Math.min(blockStart, lineStart);
+          blockStart === -1 ? lineStart : lineStart === -1 ? blockStart : Math.min(blockStart, lineStart);
         if (nextComment === -1) {
           code += line.slice(i);
           i = line.length;
@@ -157,16 +153,8 @@ function scanCategory(category) {
 function formatTable(rows) {
   if (rows.length === 0) return "All files within budget.";
   const headers = ["Category", "File", "LOC", "Budget", "Overage"];
-  const data = rows.map((r) => [
-    r.category,
-    r.file,
-    String(r.loc),
-    String(r.budget),
-    "+" + r.overage,
-  ]);
-  const widths = headers.map((h, i) =>
-    Math.max(h.length, ...data.map((row) => row[i].length)),
-  );
+  const data = rows.map((r) => [r.category, r.file, String(r.loc), String(r.budget), "+" + r.overage]);
+  const widths = headers.map((h, i) => Math.max(h.length, ...data.map((row) => row[i].length)));
   const fmt = (row) => row.map((c, i) => c.padEnd(widths[i])).join("  ");
   return [fmt(headers), fmt(widths.map((w) => "-".repeat(w))), ...data.map(fmt)].join("\n");
 }
@@ -175,18 +163,10 @@ function main() {
   const opts = parseArgs(process.argv.slice(2));
   const allRows = [];
   for (const cat of BUDGETS) allRows.push(...scanCategory(cat));
-  const overBudget = allRows
-    .filter((r) => r.overage > 0)
-    .sort((a, b) => b.overage - a.overage);
+  const overBudget = allRows.filter((r) => r.overage > 0).sort((a, b) => b.overage - a.overage);
 
   if (opts.json) {
-    console.log(
-      JSON.stringify(
-        { budgets: BUDGETS, all: allRows, overBudget, strict: opts.strict },
-        null,
-        2,
-      ),
-    );
+    console.log(JSON.stringify({ budgets: BUDGETS, all: allRows, overBudget, strict: opts.strict }, null, 2));
   } else {
     console.log("File length soft budget report");
     for (const b of BUDGETS) console.log(`  ${b.label.padEnd(12)} ${b.root.padEnd(20)} ${b.budget} LOC`);

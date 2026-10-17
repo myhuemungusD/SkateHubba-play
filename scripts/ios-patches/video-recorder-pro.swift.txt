@@ -1,0 +1,116 @@
+    // ── SkateHubba pro capture (scripts/patch-ios-spm.mjs Fix 3) ──
+    // Lens: the back camera is the virtual triple / dual-wide device when the
+    // phone has an ultra-wide, so 0.5x <-> 1x <-> 2x is a smooth zoom ramp that
+    // also works mid-recording (iOS hands over between physical lenses).
+    func shZoomBase(_ dev: AVCaptureDevice) -> CGFloat {
+        if dev.deviceType == .builtInTripleCamera || dev.deviceType == .builtInDualWideCamera,
+           let first = dev.virtualDeviceSwitchOverVideoZoomFactors.first {
+            return CGFloat(truncating: first)
+        }
+        return 1.0
+    }
+
+    func shTune() {
+        guard let dev = self.cameraInput?.device else { return }
+        do {
+            try dev.lockForConfiguration()
+            // 1080p at 60fps: the lowest-max-fps 1920x1080 format that reaches
+            // 60 (the 120/240 binned formats look softer), keeping full sensor quality.
+            let candidates = dev.formats.filter { f in
+                let d = CMVideoFormatDescriptionGetDimensions(f.formatDescription)
+                return d.width == 1920 && d.height == 1080
+                    && f.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= 60 }
+            }
+            if let best = candidates.min(by: { a, b in
+                (a.videoSupportedFrameRateRanges.map { $0.maxFrameRate }.max() ?? 0)
+                    < (b.videoSupportedFrameRateRanges.map { $0.maxFrameRate }.max() ?? 0)
+            }) {
+                dev.activeFormat = best
+                dev.activeVideoMinFrameDuration = CMTime(value: 1, timescale: 60)
+                dev.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: 60)
+            }
+            if dev.isFocusModeSupported(.continuousAutoFocus) { dev.focusMode = .continuousAutoFocus }
+            if dev.isExposureModeSupported(.continuousAutoExposure) { dev.exposureMode = .continuousAutoExposure }
+            dev.isSubjectAreaChangeMonitoringEnabled = true
+            // Start on the 1x lens, like the native Camera app.
+            let base = shZoomBase(dev)
+            dev.videoZoomFactor = max(dev.minAvailableVideoZoomFactor, min(base, dev.maxAvailableVideoZoomFactor))
+            dev.unlockForConfiguration()
+        } catch {
+            print("shTune failed: \(error)")
+        }
+    }
+
+    func shStabilize(_ connection: AVCaptureConnection) {
+        guard connection.isVideoStabilizationSupported, let dev = self.cameraInput?.device else { return }
+        if dev.activeFormat.isVideoStabilizationModeSupported(.cinematicExtended) {
+            connection.preferredVideoStabilizationMode = .cinematicExtended
+        } else if dev.activeFormat.isVideoStabilizationModeSupported(.cinematic) {
+            connection.preferredVideoStabilizationMode = .cinematic
+        } else {
+            connection.preferredVideoStabilizationMode = .auto
+        }
+    }
+
+    /** { lens: number } in display units (0.5, 1, 2, 3). Smooth ramp, safe while recording. */
+    @objc func setZoom(_ call: CAPPluginCall) {
+        let lens = CGFloat(call.getDouble("lens", 1.0))
+        DispatchQueue.main.async {
+            guard let dev = self.cameraInput?.device else { call.reject("Camera not ready"); return }
+            do {
+                try dev.lockForConfiguration()
+                let target = max(dev.minAvailableVideoZoomFactor, min(lens * self.shZoomBase(dev), dev.maxAvailableVideoZoomFactor))
+                dev.ramp(toVideoZoomFactor: target, withRate: 12.0)
+                dev.unlockForConfiguration()
+                call.resolve(["lens": Double(target / self.shZoomBase(dev))])
+            } catch {
+                call.reject("Zoom failed")
+            }
+        }
+    }
+
+    /** Which lenses this phone offers, in display units. */
+    @objc func getLensInfo(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard let dev = self.cameraInput?.device else { call.resolve(["ultraWide": false, "maxLens": 1.0]); return }
+            let base = self.shZoomBase(dev)
+            call.resolve([
+                "ultraWide": base > 1.0,
+                "maxLens": Double(min(dev.maxAvailableVideoZoomFactor, 15.0 * base) / base),
+            ])
+        }
+    }
+
+    /** { x, y } as 0..1 screen fractions, { lock } holds focus + exposure there. */
+    @objc func focusAt(_ call: CAPPluginCall) {
+        let x = CGFloat(call.getDouble("x", 0.5))
+        let y = CGFloat(call.getDouble("y", 0.5))
+        let lock = call.getBool("lock", false)
+        DispatchQueue.main.async {
+            guard let dev = self.cameraInput?.device else { call.reject("Camera not ready"); return }
+            var point = CGPoint(x: y, y: 1 - x)
+            if let layer = self.cameraView?.videoPreviewLayer {
+                point = layer.captureDevicePointConverted(fromLayerPoint: CGPoint(x: x * layer.bounds.width, y: y * layer.bounds.height))
+            }
+            do {
+                try dev.lockForConfiguration()
+                if dev.isFocusPointOfInterestSupported {
+                    dev.focusPointOfInterest = point
+                    let mode: AVCaptureDevice.FocusMode = lock ? .autoFocus : .continuousAutoFocus
+                    if dev.isFocusModeSupported(mode) { dev.focusMode = mode }
+                }
+                if dev.isExposurePointOfInterestSupported {
+                    dev.exposurePointOfInterest = point
+                    let mode: AVCaptureDevice.ExposureMode = lock ? .autoExpose : .continuousAutoExposure
+                    if dev.isExposureModeSupported(mode) { dev.exposureMode = mode }
+                }
+                dev.isSubjectAreaChangeMonitoringEnabled = !lock
+                dev.unlockForConfiguration()
+                call.resolve(["locked": lock])
+            } catch {
+                call.reject("Focus failed")
+            }
+        }
+    }
+    // ── end SkateHubba pro capture ──
+

@@ -177,7 +177,14 @@ export async function recordNativeVideo(
       }),
     );
 
+    const tInit = typeof performance !== "undefined" ? performance.now() : 0;
     await raceAbort(VideoRecorder.startRecording());
+    // Record-start latency, measured on device (Sentry breadcrumb) so camera lag is a number, not a feeling.
+    addBreadcrumb({
+      category: "camera",
+      message: "native_record_start_ms",
+      data: { ms: Math.round((typeof performance !== "undefined" ? performance.now() : 0) - tInit) },
+    });
 
     // Frames are now being captured. From here an abort means "stop and keep
     // what we have" rather than "cancel", so retire the warm-up handler and
@@ -263,5 +270,52 @@ export async function recordNativeVideo(
         });
       }
     }
+  }
+}
+
+/**
+ * Pro-capture extras added to the iOS plugin by scripts/patch-ios-spm.mjs
+ * (Fix 3). They are not in the plugin's TypeScript types, so they go through
+ * the same Capacitor proxy untyped. Every call is best-effort: on Android or
+ * an unpatched build the method is missing and we fall back silently.
+ */
+type ProRecorder = {
+  setZoom?: (o: { lens: number }) => Promise<{ lens: number }>;
+  getLensInfo?: () => Promise<{ ultraWide: boolean; maxLens: number }>;
+  focusAt?: (o: { x: number; y: number; lock: boolean }) => Promise<{ locked: boolean }>;
+};
+const pro = VideoRecorder as unknown as ProRecorder;
+
+/** Lenses the native camera offers, in display units ([0.5, 1, 2] on an ultra-wide phone). */
+export async function getNativeLenses(): Promise<number[]> {
+  try {
+    const info = await pro.getLensInfo?.();
+    if (!info) return [];
+    return [...(info.ultraWide ? [0.5] : []), 1, ...(info.maxLens >= 2 ? [2] : [])];
+  } catch {
+    return [];
+  }
+}
+
+/** Ramp to a lens (0.5 = ultra-wide). Safe mid-recording. Resolves false if unsupported. */
+export async function setNativeLens(lens: number): Promise<boolean> {
+  try {
+    if (!pro.setZoom) return false;
+    await pro.setZoom({ lens });
+    addBreadcrumb({ category: "camera", message: `native lens ${lens}x` });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Tap to focus + expose at a 0..1 screen point; `lock` holds AE/AF there. */
+export async function focusNativeAt(x: number, y: number, lock: boolean): Promise<boolean> {
+  try {
+    if (!pro.focusAt) return false;
+    await pro.focusAt({ x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)), lock });
+    return true;
+  } catch {
+    return false;
   }
 }

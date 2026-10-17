@@ -829,3 +829,13 @@ input:-webkit-autofill {
 .animate-dice-tumble {
   animation: dice-tumble 0.6s ease-in-out;
 }
+
+/* Native (Capacitor) capture renders the camera behind the web view. While a
+   take runs, clear the page backgrounds on the viewfinder's ancestors so the
+   live picture shows through the viewfinder. */
+.sh-native-cam,
+.sh-native-cam body,
+.sh-native-cam #root,
+.sh-native-cam *:has([data-testid="trick-viewfinder"]) {
+  background: transparent !important;
+}

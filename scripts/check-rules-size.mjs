@@ -18,7 +18,9 @@ const pct = ((bytes / LIMIT_BYTES) * 100).toFixed(1);
 const msg = `${file}: ${bytes.toLocaleString("en-US")} bytes = ${pct}% of the ${LIMIT_BYTES.toLocaleString("en-US")}-byte Firebase limit (warn > ${WARN_BYTES.toLocaleString("en-US")}, fail > ${FAIL_BYTES.toLocaleString("en-US")})`;
 
 if (bytes > FAIL_BYTES) {
-  console.log(`::error file=${file}::${msg}. Extract shared predicates or move long comments to docs/FIRESTORE_RULES_NOTES.md.`);
+  console.log(
+    `::error file=${file}::${msg}. Extract shared predicates or move long comments to docs/FIRESTORE_RULES_NOTES.md.`,
+  );
   process.exit(1);
 } else if (bytes > WARN_BYTES) {
   console.log(`::warning file=${file}::${msg}`);

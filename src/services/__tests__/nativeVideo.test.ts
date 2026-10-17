@@ -10,6 +10,8 @@ vi.mock("@capacitor/core", () => ({
   Capacitor: { isNativePlatform: mockIsNativePlatform },
 }));
 
+const { mockPro } = vi.hoisted(() => ({ mockPro: vi.fn() }));
+
 /* ── mock @capacitor-community/video-recorder ──────────────── */
 
 const { mockInitialize, mockDestroy, mockStartRecording, mockStopRecording } = vi.hoisted(() => ({
@@ -25,6 +27,9 @@ vi.mock("@capacitor-community/video-recorder", () => ({
     destroy: mockDestroy,
     startRecording: mockStartRecording,
     stopRecording: mockStopRecording,
+    setZoom: (o: { lens: number }) => mockPro("setZoom", o),
+    getLensInfo: () => mockPro("getLensInfo"),
+    focusAt: (o: unknown) => mockPro("focusAt", o),
   },
   VideoRecorderCamera: { FRONT: 0, BACK: 1 },
   VideoRecorderQuality: {
@@ -427,5 +432,35 @@ describe("nativeVideo service", () => {
         data: { error: "teardown failed" },
       });
     });
+  });
+});
+
+describe("native pro-capture extras", () => {
+  beforeEach(() => mockPro.mockReset());
+
+  it("lists 0.5x/1x/2x on an ultra-wide phone and 1x only otherwise", async () => {
+    const { getNativeLenses } = await import("../nativeVideo");
+    mockPro.mockResolvedValueOnce({ ultraWide: true, maxLens: 15 });
+    expect(await getNativeLenses()).toEqual([0.5, 1, 2]);
+    mockPro.mockResolvedValueOnce({ ultraWide: false, maxLens: 1 });
+    expect(await getNativeLenses()).toEqual([1]);
+    const unimpl = Promise.reject(new Error("UNIMPLEMENTED"));
+    unimpl.catch(() => {});
+    mockPro.mockReturnValueOnce(unimpl);
+    expect(await getNativeLenses()).toEqual([]);
+  });
+
+  it("ramps the lens and clamps focus points, returning false when unsupported", async () => {
+    const { setNativeLens, focusNativeAt } = await import("../nativeVideo");
+    mockPro.mockResolvedValue({});
+    expect(await setNativeLens(0.5)).toBe(true);
+    expect(mockPro).toHaveBeenCalledWith("setZoom", { lens: 0.5 });
+    expect(await focusNativeAt(1.4, -0.2, true)).toBe(true);
+    expect(mockPro).toHaveBeenCalledWith("focusAt", { x: 1, y: 0, lock: true });
+    mockPro.mockReset();
+    mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
+    mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
+    expect(await setNativeLens(2)).toBe(false);
+    expect(await focusNativeAt(0.5, 0.5, false)).toBe(false);
   });
 });
