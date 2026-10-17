@@ -156,3 +156,8 @@ export function isSms2faEnabled(): boolean {
 export function isProCameraEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_PRO_CAMERA);
 }
+
+/** Profile banner (background) photo on the profile screen. Literal "true" only; off by default. */
+export function isProfileBannerEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_PROFILE_BANNER);
+}

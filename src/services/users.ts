@@ -22,6 +22,7 @@ import { deleteGameVideos } from "./storage";
 import { deleteUserClips, deleteUserClipVotes } from "./clips";
 import { deleteUserDisputeVotes, deleteUserDisputes } from "./disputes";
 import { deleteAvatar } from "./avatars";
+import { deleteBannerObject } from "./banners";
 import { deleteUserNotifications } from "./notifications";
 import { PUSH_TARGETS_COLLECTION } from "./pushDispatch";
 import { analytics } from "./analytics";
@@ -155,6 +156,8 @@ export interface UserProfile {
    * first via `deleteAvatar`).
    */
   profileImageUrl?: string | null;
+  /** Profile banner URL, pinned to `users/{uid}/banner.webp` (see banners.ts). */
+  bannerImageUrl?: string | null;
 }
 
 /**
@@ -578,6 +581,12 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
       error: err instanceof Error ? err.message : String(err),
     });
   }
+
+  // Banner object too. deleteBannerObject never throws on a missing object;
+  // the catch covers a Storage boot failure.
+  await deleteBannerObject(uid).catch((err: unknown) => {
+    logger.warn("banner_delete_failed", { uid, error: err instanceof Error ? err.message : String(err) });
+  });
 
   analytics.accountDeleted(uid, achievementsSnap.docs.length, avatarRemoved);
 }
