@@ -482,6 +482,10 @@ describe("native pro-capture extras", () => {
     expect(await getNativeLenses()).toEqual([0.5, 1, 2]);
     mockPro.mockResolvedValueOnce({ ultraWide: false, maxLens: 1 });
     expect(await getNativeLenses()).toEqual([1]);
+    // Test when getLensInfo returns null/undefined
+    mockPro.mockResolvedValueOnce(null);
+    expect(await getNativeLenses()).toEqual([]);
+    // Test error case
     const unimpl = Promise.reject(new Error("UNIMPLEMENTED"));
     unimpl.catch(() => {});
     mockPro.mockReturnValueOnce(unimpl);
