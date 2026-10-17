@@ -30,6 +30,9 @@ vi.mock("@capacitor-community/video-recorder", () => ({
     setZoom: (o: { lens: number }) => mockPro("setZoom", o),
     getLensInfo: () => mockPro("getLensInfo"),
     focusAt: (o: unknown) => mockPro("focusAt", o),
+    setQuality: (o: unknown) => mockPro("setQuality", o),
+    getQualityModes: () => mockPro("getQualityModes"),
+    getPerformanceMetrics: () => mockPro("getPerformanceMetrics"),
   },
   VideoRecorderCamera: { FRONT: 0, BACK: 1 },
   VideoRecorderQuality: {

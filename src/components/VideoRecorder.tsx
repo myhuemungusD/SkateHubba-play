@@ -11,13 +11,6 @@ import { MAX_VIDEO_DURATION_SECONDS } from "../constants/video";
 import { CLIP_POSTER } from "../lib/clipPoster";
 
 /**
- * Seconds of lead-in for the "Auto-stop in Ns" warning. The old 60s cap warned
- * 10s out; at the shared 20s cap that same absolute lead-in would nag for half
- * the take, so it scales down with the cap.
- */
-const AUTO_STOP_WARNING_SECONDS = 5;
-
-/**
  * Full recorded frame, centered in the 9:16 viewfinder. The crosshair is
  * centered on this same box, so it stays on the middle of the picture when
  * a non-9:16 stream letterboxes.

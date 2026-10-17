@@ -1,15 +1,18 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { lenses, setLens, focus } = vi.hoisted(() => ({
+const { lenses, setLens, focus, qualityModes } = vi.hoisted(() => ({
   lenses: vi.fn(),
   setLens: vi.fn(async () => true),
   focus: vi.fn(async () => true),
+  qualityModes: vi.fn(async () => ({ modes: [], current: "standard1080p60" })),
 }));
 vi.mock("../../services/nativeVideo", () => ({
   getNativeLenses: lenses,
   setNativeLens: setLens,
   focusNativeAt: focus,
+  getNativeQualityModes: qualityModes,
+  setNativeQuality: vi.fn(async () => true),
 }));
 
 import { NativeCameraControls } from "../NativeCameraControls";
