@@ -54,6 +54,16 @@ vi.mock("@capacitor-community/video-recorder", () => ({
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
+/* ── mock performance.now ──────────────────────────────────── */
+
+const mockPerformanceNow = vi.fn(() => 0);
+const mockPerformance = {
+  now: mockPerformanceNow,
+  timeOrigin: 0,
+  toJSON: () => ({}),
+};
+vi.stubGlobal("performance", mockPerformance);
+
 /* ── mock sentry breadcrumb ─────────────────────────────── */
 
 const { mockAddBreadcrumb } = vi.hoisted(() => ({
@@ -418,6 +428,51 @@ describe("nativeVideo service", () => {
       expect(onRecordingStarted).not.toHaveBeenCalled();
 
       releaseInitialize();
+    });
+  });
+
+  describe("recordNativeVideo — performance API coverage", () => {
+    it("measures record-start latency when performance API is available", async () => {
+      mockIsNativePlatform.mockReturnValue(true);
+      let callTime = 0;
+      mockPerformanceNow.mockImplementation(() => {
+        callTime += 50;
+        return callTime;
+      });
+      mockStopRecording.mockResolvedValueOnce({ videoUrl: "file:///tmp/v.mp4" });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        blob: async () => new Blob(["x"], { type: "video/mp4" }),
+      });
+      const pending = recordNativeVideo();
+      await flushAutoStop();
+      await pending;
+      expect(mockAddBreadcrumb).toHaveBeenCalledWith(
+        expect.objectContaining({
+          category: "camera",
+          message: "native_record_start_ms",
+          data: expect.objectContaining({ ms: expect.any(Number) }),
+        }),
+      );
+    });
+
+    it("handles missing performance API gracefully (both branches)", async () => {
+      mockIsNativePlatform.mockReturnValue(true);
+      const originalPerf = global.performance;
+      // Temporarily remove performance to test the fallback branch
+      // @ts-expect-error - testing undefined performance
+      delete global.performance;
+      mockStopRecording.mockResolvedValueOnce({ videoUrl: "file:///tmp/v.mp4" });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        blob: async () => new Blob(["x"], { type: "video/mp4" }),
+      });
+      const pending = recordNativeVideo();
+      await flushAutoStop();
+      const result = await pending;
+      expect(result.mimeType).toBe("video/mp4");
+      // Restore performance
+      global.performance = originalPerf;
     });
   });
 
