@@ -95,6 +95,31 @@ export function isProProfilesEnabled(): boolean {
 }
 
 /**
+ * What's That Trick (WTT) — Name It mode in the clips feed. Off until
+ * option generation and vote tallying are tested. Literal "true" only.
+ * Server switch: WTT_ENABLED / WTT_TESTER_UIDS.
+ */
+export function isWttEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_WTT_ENABLED);
+}
+
+/**
+ * Post your makes from GameOver screen. Off until consent flow is tested.
+ * Literal "true" only.
+ */
+export function isPostMakesEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_POST_MAKES_ENABLED);
+}
+
+/**
+ * Feed mode switcher (Scroll / Name It / Vote / Judge). Off until modes
+ * are implemented and tested. Literal "true" only.
+ */
+export function isFeedModesEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_FEED_MODES_ENABLED);
+}
+
+/**
  * Pro blessing: a verified pro turns another skater pro (the only non-admin
  * way to get the badge). Off by default; the proBlessing callable has its own
  * server switch (PRO_BLESSING_ENABLED / PRO_BLESSING_TESTER_UIDS), which is
@@ -134,4 +159,28 @@ export function isClosetBucksPurchaseEnabled(): boolean {
  */
 export function isClipEditorEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_CLIP_EDITOR);
+}
+
+/**
+ * SMS 2FA enrollment. Off by default; when on, email/password users can enroll
+ * SMS as a second factor in Settings (via phone number). Never shown to
+ * Google/Apple users (they already have 2-step from their IdP). Literal "true" only.
+ */
+export function isSms2faEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_SMS_2FA_ENABLED);
+}
+
+/**
+ * Pro camera features: 4K60, 120/240fps slow-mo, lens switching (0.5x/1x/2x),
+ * tap-to-focus with AE/AF lock, quality selector, cinematic stabilization,
+ * thermal management, 2.5s pre-roll buffer, native AVFoundation fisheye,
+ * and performance metrics. Literal "true" only; off by default.
+ */
+export function isProCameraEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_PRO_CAMERA);
+}
+
+/** Profile banner (background) photo on the profile screen. Literal "true" only; off by default. */
+export function isProfileBannerEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_PROFILE_BANNER);
 }

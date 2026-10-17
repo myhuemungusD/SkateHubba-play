@@ -3,20 +3,23 @@ import type { ClipDoc } from "../../services/clips";
 import type { UserProfile } from "../../services/users";
 import type { Dispute } from "../../types/dispute";
 import { isFirebaseStorageUrl } from "../../utils/helpers";
+import { isClipEditorEnabled, isFeedModesEnabled, isWttEnabled } from "../../lib/featureFlags";
+import { useFeedMode } from "../../hooks/useFeedMode";
 
-const ReportModal = lazy(() => import("../ReportModal").then((m) => ({ default: m.ReportModal })));
-const UserClipUploadModal = lazy(() => import("../UserClipUpload").then((m) => ({ default: m.UserClipUploadModal })));
-const ClipComments = lazy(() => import("./ClipComments").then((m) => ({ default: m.ClipComments })));
+const FeedModeToggle = lazy(() => import("../FeedModeToggle").then((m) => ({ default: m.FeedModeToggle })));
 import { ClipsFeedEmpty, ClipsFeedError, ClipsFeedExhausted, ClipsFeedSkeleton } from "./ClipsFeedStates";
 import { OwnClipModeration } from "./OwnClipModeration";
 import { ClipsFeedHeader } from "./ClipsFeedHeader";
 import { DisputeSlides, disputeSlideCount } from "./DisputeLane";
+import { FeedModals } from "./FeedModals";
 import { isNearSlide } from "./feedLayout";
 import { NextClipPrefetcher } from "./NextClipPrefetcher";
 import { SpotlightCard } from "./SpotlightCard";
+import { WttNameItOverlay } from "./WttNameItOverlay";
 import { useClipsFeedController } from "./useClipsFeedController";
 import { useDisputeLaneController } from "./useDisputeLaneController";
 import { useVerticalFeed } from "./useVerticalFeed";
+import { useWttFeed } from "../../hooks/useWttFeed";
 
 export interface ClipsFeedProps {
   profile: UserProfile;
@@ -31,16 +34,32 @@ export interface ClipsFeedProps {
  * with a decision on them — then community clips in the active Top/New order.
  * One scroller, CSS scroll-snap, arrow keys on desktop. A vote updates the
  * page in place and never advances it.
+ *
+ * When feed modes are enabled, shows a mode switcher (Scroll · Name It · Vote · Judge).
+ * Name It mode shows WTT quiz cards; Vote mode emphasizes voting; Judge shows disputes.
  */
 export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedProps) {
+  const feedModesEnabled = isFeedModesEnabled();
+  const wttEnabled = isWttEnabled();
+  const { mode, setMode } = useFeedMode();
+
   const clips = useClipsFeedController(profile.uid);
   const disputes = useDisputeLaneController(profile.uid);
+
   const [muted, setMuted] = useState(true);
   const [reportTarget, setReportTarget] = useState<ClipDoc | null>(null);
   const [disputeReport, setDisputeReport] = useState<Dispute | null>(null);
   const [commentsTarget, setCommentsTarget] = useState<ClipDoc | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [editFirst, setEditFirst] = useState(false);
   const [moderationRefresh, setModerationRefresh] = useState(0);
+
+  // Only use feed mode and WTT when features are enabled
+  const activeMode = feedModesEnabled ? mode : ("scroll" as const);
+  // The WTT queue only loads once Name It is actually open, so the flag-off
+  // feed never touches the wtt collections.
+  const nameItOpen = wttEnabled && activeMode === "name-it";
+  const wtt = useWttFeed(profile.uid, nameItOpen);
 
   const pendingTarget = useRef<number | null>(null);
   const wasLoadingMore = useRef(false);
@@ -98,8 +117,35 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         onSortChange={clips.handleSortChange}
         disabled={clips.loading || clips.loadingMore}
         position={showSlides && slideCount > 0 ? { index: activeIndex, total: slideCount } : undefined}
-        onPostClip={() => setUploadOpen(true)}
+        onPostClip={() => {
+          setEditFirst(false);
+          setUploadOpen(true);
+        }}
+        onEditClip={
+          isClipEditorEnabled()
+            ? () => {
+                setEditFirst(true);
+                setUploadOpen(true);
+              }
+            : undefined
+        }
       />
+
+      {feedModesEnabled && (
+        <Suspense fallback={null}>
+          <div className="absolute inset-x-0 top-16 z-20">
+            <FeedModeToggle
+              mode={activeMode}
+              onChange={setMode}
+              disabled={clips.loading || disputes.loading}
+              showJudge={disputes.disputes.length > 0}
+              showNameIt={wttEnabled}
+              disputesPending={disputes.disputes.length > 0}
+              streakDue={nameItOpen && wtt.dailyCount === 0 && wtt.reliability?.streakDays === 0}
+            />
+          </div>
+        </Suspense>
+      )}
 
       <OwnClipModeration uid={profile.uid} refreshKey={moderationRefresh} />
 
@@ -167,68 +213,45 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         </div>
       )}
 
-      {commentsTarget && (
-        <Suspense fallback={null}>
-          <ClipComments
-            key={commentsTarget.id}
-            clip={commentsTarget}
-            viewerUid={profile.uid}
-            viewerUsername={profile.username}
-            blockedUids={clips.blockedUids}
-            onClose={() => setCommentsTarget(null)}
-            onReport={() => {
-              setCommentsTarget(null);
-              setReportTarget(commentsTarget);
-            }}
-          />
-        </Suspense>
+      {nameItOpen && (
+        <WttNameItOverlay
+          currentItem={wtt.currentItem}
+          dailyCount={wtt.dailyCount}
+          dailyLimit={wtt.dailyLimit}
+          loading={wtt.loading}
+          onAnswer={wtt.submitAnswer}
+          onSkipCurrent={wtt.skipCurrent}
+          onBackToScroll={() => setMode("scroll")}
+        />
       )}
 
-      {uploadOpen && (
-        <Suspense fallback={null}>
-          <UserClipUploadModal
-            uid={profile.uid}
-            username={profile.username}
-            onClose={() => setUploadOpen(false)}
-            onPosted={() => {
-              setUploadOpen(false);
-              setModerationRefresh((key) => key + 1);
-              void clips.loadPool();
-            }}
-          />
-        </Suspense>
-      )}
-
-      {disputeReport && (
-        <Suspense fallback={null}>
-          <ReportModal
-            reporterUid={profile.uid}
-            reportedUid={disputeReport.matcherUid}
-            reportedUsername={disputeReport.matcherUsername}
-            gameId={disputeReport.gameId}
-            disputeId={disputeReport.id}
-            onClose={() => setDisputeReport(null)}
-            onSubmitted={() => setDisputeReport(null)}
-          />
-        </Suspense>
-      )}
-
-      {reportTarget && (
-        <Suspense fallback={null}>
-          <ReportModal
-            reporterUid={profile.uid}
-            reportedUid={reportTarget.playerUid}
-            reportedUsername={reportTarget.playerUsername}
-            gameId={reportTarget.gameId}
-            clipId={reportTarget.id}
-            onClose={() => setReportTarget(null)}
-            onSubmitted={() => {
-              clips.dismissClip(reportTarget.id);
-              setReportTarget(null);
-            }}
-          />
-        </Suspense>
-      )}
+      <FeedModals
+        uid={profile.uid}
+        username={profile.username}
+        blockedUids={clips.blockedUids}
+        commentsTarget={commentsTarget}
+        onCloseComments={() => setCommentsTarget(null)}
+        onReportFromComments={(clip) => {
+          setCommentsTarget(null);
+          setReportTarget(clip);
+        }}
+        uploadOpen={uploadOpen}
+        editFirst={editFirst}
+        onCloseUpload={() => setUploadOpen(false)}
+        onPosted={() => {
+          setUploadOpen(false);
+          setModerationRefresh((key) => key + 1);
+          void clips.loadPool();
+        }}
+        disputeReport={disputeReport}
+        onCloseDisputeReport={() => setDisputeReport(null)}
+        reportTarget={reportTarget}
+        onCloseClipReport={() => setReportTarget(null)}
+        onClipReportSubmitted={(clip) => {
+          clips.dismissClip(clip.id);
+          setReportTarget(null);
+        }}
+      />
     </section>
   );
 }

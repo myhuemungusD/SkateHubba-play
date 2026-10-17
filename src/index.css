@@ -829,3 +829,11 @@ input:-webkit-autofill {
 .animate-dice-tumble {
   animation: dice-tumble 0.6s ease-in-out;
 }
+
+/* Native (Capacitor) capture renders the camera behind the web view. While a
+   take runs, VideoRecorder tags the viewfinder's ancestors (up to <html>) with
+   .sh-native-cam so the live picture shows through. No :has() here — a global
+   :has() rule costs style-recalc time on every DOM change (Lighthouse TBT). */
+.sh-native-cam {
+  background: transparent !important;
+}

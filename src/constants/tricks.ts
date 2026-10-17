@@ -237,6 +237,111 @@ function byName(a: CatalogTrick, b: CatalogTrick): number {
 }
 
 /**
+ * Trick confusion map for WTT quiz option generation.
+ * Maps each trick to commonly confused alternatives for meaningful distractors.
+ * Based on Reddit r/NewSkaters analysis and skater input.
+ */
+export const TRICK_CONFUSION_MAP: Record<string, string[]> = {
+  // Flip tricks: kickflip ↔ heelflip ↔ varial variants
+  kickflip: ["heelflip", "varial-kickflip", "hardflip", "inward-heelflip"],
+  heelflip: ["kickflip", "varial-heelflip", "inward-heelflip", "hardflip"],
+  "varial-kickflip": ["kickflip", "hardflip", "varial-heelflip", "tre-flip"],
+  "varial-heelflip": ["heelflip", "inward-heelflip", "varial-kickflip", "laser-flip"],
+  hardflip: ["kickflip", "varial-kickflip", "inward-heelflip", "tre-flip"],
+  "inward-heelflip": ["pressure-flip", "heelflip", "varial-heelflip", "hardflip"],
+  "pressure-flip": ["inward-heelflip", "pop-shove-it", "impossible", "heelflip"],
+
+  // Hospital vs. Casper (notorious pair)
+  "hospital-flip": ["kickflip", "impossible", "forward-flip"],
+  "forward-flip": ["hospital-flip", "kickflip", "impossible"],
+
+  // Tre flip vs. 360 variants
+  "tre-flip": ["360-shove-it", "laser-flip", "varial-kickflip", "hardflip"],
+  "laser-flip": ["tre-flip", "360-shove-it", "varial-heelflip", "fs-360-shove-it"],
+
+  // Shuvs: 360 shuv ↔ 360 flip
+  "pop-shove-it": ["fs-pop-shove-it", "360-shove-it", "pressure-flip", "ollie"],
+  "fs-pop-shove-it": ["pop-shove-it", "fs-360-shove-it", "bigspin", "fs-180"],
+  "360-shove-it": ["tre-flip", "fs-360-shove-it", "pop-shove-it", "bigspin"],
+  "fs-360-shove-it": ["360-shove-it", "laser-flip", "fs-pop-shove-it", "fs-bigspin"],
+  bigspin: ["360-shove-it", "bs-180", "fs-bigspin", "bigger-spin"],
+  "fs-bigspin": ["bigspin", "fs-360", "fs-360-shove-it", "bigger-spin"],
+
+  // Spins: 180s and 360s
+  "bs-180": ["fs-180", "half-cab", "bigspin", "ollie"],
+  "fs-180": ["bs-180", "fs-pop-shove-it", "fs-360", "ollie"],
+  "bs-360": ["fs-360", "full-cab", "bs-540", "bs-180"],
+  "fs-360": ["bs-360", "fs-bigspin", "fs-540", "fs-180"],
+  "half-cab": ["full-cab", "bs-180", "fakie-ollie", "bs-360"],
+  "full-cab": ["half-cab", "bs-360", "bs-540", "fakie-ollie"],
+
+  // Grinds: 50-50 ↔ 5-0 ↔ nosegrind ↔ crooked
+  "50-50": ["5-0", "nosegrind", "overcrook", "feeble"],
+  "5-0": ["50-50", "nosegrind", "tailslide", "smith"],
+  nosegrind: ["50-50", "5-0", "overcrook", "crooked-grind"],
+  "crooked-grind": ["nosegrind", "overcrook", "k-grind", "noseslide"],
+  "k-grind": ["crooked-grind", "nosegrind", "overcrook", "noseslide"],
+  overcrook: ["crooked-grind", "nosegrind", "k-grind", "50-50"],
+  smith: ["feeble", "5-0", "tailslide", "salad-grind"],
+  feeble: ["smith", "50-50", "tailslide", "salad-grind"],
+  "salad-grind": ["smith", "feeble", "hurricane", "suski"],
+  suski: ["salad-grind", "feeble", "hurricane", "smith"],
+  hurricane: ["salad-grind", "suski", "willy", "feeble"],
+  willy: ["hurricane", "feeble", "smith", "salad-grind"],
+
+  // Slides: boardslide ↔ lipslide ↔ bluntslide
+  boardslide: ["lipslide", "tailslide", "noseslide", "50-50"],
+  lipslide: ["boardslide", "bluntslide", "tailslide", "noseslide"],
+  tailslide: ["noseslide", "boardslide", "lipslide", "5-0"],
+  noseslide: ["tailslide", "boardslide", "lipslide", "nosegrind"],
+  bluntslide: ["lipslide", "nollie-blunt", "tailslide", "noseslide"],
+  "nollie-blunt": ["bluntslide", "noseslide", "nollie", "lipslide"],
+
+  // Manuals
+  manual: ["nose-manual", "5-0", "tailslide", "ollie"],
+  "nose-manual": ["manual", "nosegrind", "noseslide", "ollie"],
+
+  // Airs
+  indy: ["melon", "mute", "stalefish", "method"],
+  melon: ["indy", "mute", "method", "stalefish"],
+  mute: ["indy", "melon", "method", "crail"],
+  method: ["indy", "melon", "mute", "stalefish"],
+  stalefish: ["indy", "method", "melon", "tailgrab"],
+  tailgrab: ["stalefish", "method", "indy", "rocket-air"],
+
+  // Base ollie
+  ollie: ["nollie", "fakie-ollie", "pop-shove-it", "bs-180"],
+  nollie: ["ollie", "fakie-ollie", "nollie-blunt", "switch-ollie"],
+  "fakie-ollie": ["ollie", "nollie", "half-cab", "switch-ollie"],
+  "switch-ollie": ["ollie", "nollie", "fakie-ollie", "switch-kickflip"],
+};
+
+/**
+ * Get confusable tricks for WTT option generation.
+ * Returns up to `count` confusable trick IDs.
+ */
+export function getConfusableTricks(trickId: string, count: number = 2): string[] {
+  const confusables = TRICK_CONFUSION_MAP[trickId] ?? [];
+  return confusables.slice(0, count);
+}
+
+/**
+ * Generate random distractor from the same category.
+ * Used as the 4th option when confusables don't fill all slots.
+ */
+export function getRandomDistractor(trickId: string, exclude: Set<string>): string | null {
+  const trick = trickById(trickId);
+  if (!trick) return null;
+
+  const sameCategoryTricks = TRICKS.filter(
+    (t) => t.category === trick.category && !exclude.has(t.id) && t.id !== trickId,
+  );
+
+  if (sameCategoryTricks.length === 0) return null;
+  return sameCategoryTricks[Math.floor(Math.random() * sameCategoryTricks.length)].id;
+}
+
+/**
  * Rows for the picker. An empty query leads with recent, then popular,
  * then the rest grouped by category so the common tricks are one tap away.
  * A query is a flat list with recent and popular matches first.

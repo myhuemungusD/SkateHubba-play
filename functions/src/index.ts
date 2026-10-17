@@ -4,7 +4,11 @@ import { setGlobalOptions, type GlobalOptions } from "firebase-functions/v2";
 import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onCall } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { defineBoolean, defineInt, defineString } from "firebase-functions/params";
+import { defineBoolean, defineInt, defineSecret, defineString } from "firebase-functions/params";
+import { getMessaging } from "firebase-admin/messaging";
+import { deliverDispatch, drainQueue } from "./push/drain.js";
+import { refereesDue, runReferees } from "./push/referees.js";
+import { adminDrainDeps, readQueue, toQueuedDoc } from "./push/store.js";
 import { applyGameStats } from "./applyGameStats.js";
 import { handleDiceCall } from "./dice/callable.js";
 import { sweepExpiredDiceGames } from "./dice/handlers.js";
@@ -280,3 +284,42 @@ export const runDraw = onSchedule({ schedule: "every 15 minutes", region: "us-ce
 export const releaseTradeHolds = onSchedule({ schedule: "every 60 minutes", region: "us-central1" }, async () => {
   await sweepTradeHolds(adminClosetDb(getFirestore(DATABASE_ID)), Date.now());
 });
+
+/**
+ * Push courier (replaces the GitHub Actions "Drain Push Dispatch" cron,
+ * approved 2026-10-17). Sends a push the moment its /push_dispatch doc is
+ * created. No platform retry: a failed send stays queued and the scheduled
+ * pass below picks it up. See functions/src/push/drain.ts.
+ */
+export const pushDispatchOnCreate = onDocumentCreated(
+  { document: "push_dispatch/{dispatchId}", database: DATABASE_ID, region: "us-central1", timeoutSeconds: 60 },
+  async (event): Promise<void> => {
+    if (!event.data) return;
+    const db = getFirestore(DATABASE_ID);
+    await deliverDispatch(toQueuedDoc(event.data), adminDrainDeps(db, getMessaging(), Date.now()));
+  },
+);
+
+/** CRON_SECRET shared with the Vercel referee endpoints (Secret Manager). */
+const cronSecret = defineSecret("CRON_SECRET");
+
+/**
+ * Every 5 minutes: retry anything still queued (older than 2 minutes, so it
+ * never races the create trigger), and every 15 minutes call the turn and
+ * dispute referee endpoints on Vercel.
+ */
+export const pushDispatchSweep = onSchedule(
+  { schedule: "every 5 minutes", region: "us-central1", timeoutSeconds: 540, secrets: [cronSecret] },
+  async (): Promise<void> => {
+    const nowMs = Date.now();
+    const db = getFirestore(DATABASE_ID);
+    const summary = await drainQueue(await readQueue(db), adminDrainDeps(db, getMessaging(), nowMs));
+    console.log(JSON.stringify({ event: "push_sweep", ...summary }));
+    if (refereesDue(nowMs)) {
+      const results = await runReferees(cronSecret.value(), fetch, (e, f) =>
+        console.warn(JSON.stringify({ event: e, ...f })),
+      );
+      console.log(JSON.stringify({ event: "referees", results }));
+    }
+  },
+);

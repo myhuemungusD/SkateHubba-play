@@ -3,6 +3,14 @@ import { MAX_VIDEO_DURATION_SECONDS, MIN_UPLOAD_BYTES, VIDEO_BITS_PER_SECOND } f
 import { isNativePlatform, recordNativeVideo } from "../services/nativeVideo";
 import { logger } from "../services/logger";
 import { parseFirebaseError } from "../utils/helpers";
+import {
+  AUDIO_CONSTRAINTS,
+  recorderMimeCandidates,
+  selectIosCamera,
+  tuneVideoTrack,
+  videoConstraints,
+  type FacingMode,
+} from "./cameraCapture";
 
 /* ────────────────────────────────────────────
  * Capture controller for <VideoRecorder>.
@@ -20,24 +28,7 @@ import { parseFirebaseError } from "../utils/helpers";
 /** Lifecycle of a single take. Shared by the web and native capture paths. */
 export type CaptureState = "idle" | "preview" | "recording" | "done";
 
-/** Which physical camera to request. */
-export type FacingMode = "environment" | "user";
-
-/**
- * MediaRecorder container/codec candidates, most-preferred first.
- *
- * Order matters and the MP4 entries are load-bearing: Safari's MediaRecorder
- * supports NEITHER `video/webm;codecs=vp9` NOR `video/webm`, so probing only
- * those two left `mimeType` empty and handed Safari its H.264/MP4 default —
- * which we then mislabelled as WebM (see `recordedBlobType`).
- */
-const MIME_CANDIDATES = [
-  "video/webm;codecs=vp9,opus",
-  "video/webm;codecs=vp8,opus",
-  "video/webm",
-  "video/mp4;codecs=h264",
-  "video/mp4",
-] as const;
+export type { FacingMode };
 
 /** Canvas capture rate used when the camera track won't report its own fps. */
 const FALLBACK_CAPTURE_FPS = 30;
@@ -71,37 +62,17 @@ export function isIOSSafari(): boolean {
 }
 
 /**
- * Mic constraints. Voice-call DSP is tuned for speech and is destructive to
- * skate audio: echoCancellation ducks the ambient street bed, noiseSuppression
- * eats board pop and grind transients as "noise", and autoGainControl pumps the
- * level between silence and impact. Record the raw mic instead.
+ * First supported candidate, or "" to let the browser pick its default.
+ *
+ * Order matters and the MP4 entries are load-bearing: Safari's MediaRecorder
+ * supports NEITHER `video/webm;codecs=vp9` NOR `video/webm`, so probing only
+ * those two left `mimeType` empty and handed Safari its H.264/MP4 default —
+ * which we then mislabelled as WebM (see `recordedBlobType`). On WebKit the
+ * MP4 candidates are tried first; Chrome on Android only encodes VP8/VP9, so
+ * it still prefers WebM. See `recorderMimeCandidates`.
  */
-const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
-  echoCancellation: false,
-  noiseSuppression: false,
-  autoGainControl: false,
-};
-
-/**
- * Portrait HD to match the 9/16 viewfinder. Every field is `ideal`, never
- * `exact`/`min`/`max` — those are hard constraints, and one the hardware can't
- * satisfy throws OverconstrainedError, leaving the user with no camera at all.
- * `ideal` degrades to the closest supported mode instead. Browsers otherwise
- * commonly default to 640×480. Skating reads far better at 60fps, hence the
- * high `ideal` rate, but a 30fps sensor must still be allowed to open.
- */
-function videoConstraints(facingMode: FacingMode): MediaTrackConstraints {
-  return {
-    facingMode: { ideal: facingMode },
-    width: { ideal: 1080 },
-    height: { ideal: 1920 },
-    frameRate: { ideal: 60 },
-  };
-}
-
-/** First supported candidate, or "" to let the browser pick its default. */
 function pickRecorderMimeType(): string {
-  for (const candidate of MIME_CANDIDATES) {
+  for (const candidate of recorderMimeCandidates()) {
     if (MediaRecorder.isTypeSupported(candidate)) return candidate;
   }
   return "";
@@ -439,12 +410,29 @@ export function useMediaRecorder(
     // acquiring a new stream — also the re-acquire path used by flipCamera.
     stopTracks();
     const generation = ++acquireGenerationRef.current;
+    const facingMode = facingModeRef.current;
+    const isStale = (): boolean => generation !== acquireGenerationRef.current || !mountedRef.current;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: videoConstraints(facingModeRef.current),
+      let stream = await navigator.mediaDevices.getUserMedia({
+        video: videoConstraints(facingMode),
         audio: AUDIO_CONSTRAINTS,
       });
-      if (generation !== acquireGenerationRef.current || !mountedRef.current) {
+      if (isStale()) {
+        stopOrphanStream(stream);
+        return;
+      }
+      // iOS 16.4+ gives the ultra-wide lens to facingMode "environment".
+      // Swap to the enumerated 1× camera before the preview attaches. Other
+      // platforms keep this stream — the same swap picks the wrong lens on
+      // Android Chrome.
+      stream = await selectIosCamera(stream, facingMode, isStale);
+      if (isStale()) {
+        stopOrphanStream(stream);
+        return;
+      }
+      const videoTrack = firstVideoTrack(stream);
+      if (videoTrack) await tuneVideoTrack(videoTrack);
+      if (isStale()) {
         stopOrphanStream(stream);
         return;
       }
@@ -531,6 +519,10 @@ export function useMediaRecorder(
     /* v8 ignore stop */
 
     const mimeType = pickRecorderMimeType();
+    // 8 Mbps (VIDEO_BITS_PER_SECOND). Chrome/Firefox default to ~2.5 Mbps,
+    // which is grainy at 1080p; Safari defaults to ~10. Chrome on Android
+    // often ignores this hint and stays near 2.5 — a device check, not a
+    // higher number, and 12 Mbps would push a 30s user clip into the 50 MB cap.
     const options: MediaRecorderOptions = { videoBitsPerSecond: VIDEO_BITS_PER_SECOND };
     if (mimeType) options.mimeType = mimeType;
     const mr = new MediaRecorder(recordStream, options);
