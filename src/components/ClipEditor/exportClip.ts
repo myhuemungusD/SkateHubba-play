@@ -2,6 +2,7 @@ import type { EditProject } from "../../lib/clipEditor/types";
 import { planExport, NATIVE_CAPABILITIES, WEB_CAPABILITIES } from "../../lib/clipEditor/exportPlan";
 import { getSound } from "../../lib/clipEditor/sfxLibrary";
 import { getTrack } from "../../lib/clipEditor/musicLibrary";
+import { COLOR_PRESETS } from "../../lib/clipEditor/looks";
 import type { EditorEngine } from "../../lib/clipEditor/engine";
 import { getNativeEditorSupport, renderNative, stageSource } from "../../services/clipEditorNative";
 
@@ -51,7 +52,7 @@ export async function exportClip(
   const staged: Record<string, string> = {};
   for (const [id, blob] of Object.entries(sources)) staged[id] = await stageSource(id, blob);
   const audio = audioUrls(project);
-  const base = { sources: staged, project, audio };
+  const base = { sources: staged, project, audio, colorMatrix: COLOR_PRESETS[project.color].matrix };
   const full = await renderNative(
     {
       ...base,

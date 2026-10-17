@@ -19,6 +19,8 @@ export interface NativeRenderRequest {
   plan: Pick<ExportPlan, "width" | "height" | "fps" | "bitrate">;
   /** Absolute URLs for the music track and each SFX used. */
   audio: Record<string, string>;
+  /** 4x5 color matrix for the chosen preset (looks.ts COLOR_PRESETS), so native and web grade identically. */
+  colorMatrix: readonly number[];
   /** Also save the result to the Photos library. */
   saveToPhotos: boolean;
 }
