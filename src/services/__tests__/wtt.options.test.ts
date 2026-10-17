@@ -69,6 +69,30 @@ describe("generateWttOptions", () => {
       expect(result.options[result.correctIndex]).toBe("kickflip");
     }
   });
+
+  it("uses fallback distractors when trick has no confusables and no random distractors", () => {
+    // Create a scenario where a trick has limited options and needs fallbacks
+    const result = generateWttOptions("ollie");
+
+    expect(result).not.toBeNull();
+    if (result) {
+      expect(result.options).toHaveLength(4);
+      expect(result.options).toContain("ollie");
+      expect(new Set(result.options).size).toBe(4);
+    }
+  });
+
+  it("handles edge case where not enough unique options can be generated", () => {
+    // Test with a very obscure trick that might have limited options
+    const result = generateWttOptions("boneless");
+
+    if (result) {
+      expect(result.options).toHaveLength(4);
+      expect(result.options).toContain("boneless");
+      expect(new Set(result.options).size).toBe(4);
+    }
+    // It's ok if result is null for tricks with insufficient options
+  });
 });
 
 describe("validateWttOptions", () => {

@@ -291,6 +291,29 @@ describe("subscribeToWttReliability", () => {
     expect(typeof unsubscribe).toBe("function");
     expect(unsubscribe).toBe(unsubscribeMock);
   });
+
+  it("handles data with all fields missing and uses defaults", () => {
+    const callback = vi.fn();
+    mockOnSnapshot.mockImplementation((_docRef, onNext) => {
+      onNext({
+        exists: () => true,
+        data: () => ({}),
+      });
+      return vi.fn();
+    });
+
+    subscribeToWttReliability("user123", callback);
+
+    expect(callback).toHaveBeenCalledWith({
+      reliability: {},
+      goldSeen: 0,
+      goldCorrect: 0,
+      trickIq: 0,
+      streakDays: 0,
+      lastAnsweredDay: null,
+      freezesLeft: 1,
+    });
+  });
 });
 
 describe("submitProReview", () => {
