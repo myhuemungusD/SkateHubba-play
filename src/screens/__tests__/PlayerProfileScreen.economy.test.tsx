@@ -75,20 +75,20 @@ describe("PlayerProfileScreen — Economy Phase A fetch failures", () => {
 
     expect(await screen.findByTestId("badges-row")).toBeInTheDocument();
     expect(screen.getByText("CENTURY")).toBeInTheDocument();
-    // Own empty locker still shows its hint card — the failure reads as
+    // Own empty closet still shows its hint card — the failure reads as
     // "nothing earned yet", not as a broken section.
-    expect(screen.getByTestId("locker-empty-hint")).toBeInTheDocument();
+    expect(screen.getByTestId("closet-empty-hint")).toBeInTheDocument();
     expect(loggerMock.warn).toHaveBeenCalledWith("profile_locker_load_failed", { error: "Missing permissions" });
     expect(loggerMock.warn).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the locker when only the achievements read is rejected", async () => {
+  it("keeps the closet when only the achievements read is rejected", async () => {
     mockFetchAchievements.mockRejectedValue(new Error("backend unavailable"));
     mockFetchLockerItems.mockResolvedValue([deck]);
 
     render(<PlayerProfileScreen {...ownProfileProps} />);
 
-    expect(await screen.findByTestId("locker-item-d1")).toBeInTheDocument();
+    expect(await screen.findByTestId("closet-item-d1")).toBeInTheDocument();
     expect(screen.getByText("Ledge Deck")).toBeInTheDocument();
     expect(screen.queryByTestId("badges-row")).not.toBeInTheDocument();
     expect(loggerMock.warn).toHaveBeenCalledWith("profile_achievements_load_failed", { error: "backend unavailable" });
@@ -110,7 +110,7 @@ describe("PlayerProfileScreen — Economy Phase A fetch failures", () => {
 
     await waitFor(() => expect(loggerMock.warn).toHaveBeenCalledTimes(2));
     expect(screen.queryByTestId("badges-row")).not.toBeInTheDocument();
-    expect(screen.getByTestId("locker-empty-hint")).toBeInTheDocument();
+    expect(screen.getByTestId("closet-empty-hint")).toBeInTheDocument();
   });
 
   it("logs nothing and renders both sections when the reads succeed", async () => {
@@ -120,7 +120,7 @@ describe("PlayerProfileScreen — Economy Phase A fetch failures", () => {
     render(<PlayerProfileScreen {...ownProfileProps} />);
 
     expect(await screen.findByTestId("badges-row")).toBeInTheDocument();
-    expect(screen.getByTestId("locker-item-d1")).toBeInTheDocument();
+    expect(screen.getByTestId("closet-item-d1")).toBeInTheDocument();
     expect(loggerMock.warn).not.toHaveBeenCalled();
   });
 

@@ -25,27 +25,43 @@ import { fetchCatalogItem, fetchCatalog, fetchShopItems } from "../closet.catalo
 
 const ITEM_DEF_ID = "limited-og-deck";
 
+function toTimestamp(date: Date) {
+  return {
+    toDate: () => date,
+  };
+}
+
 function catalogDoc(itemDefId: string, overrides: Record<string, unknown> = {}) {
+  const defaults = {
+    name: "OG Deck",
+    type: "deck",
+    slot: "deck",
+    rarity: "limited",
+    artUrl: "https://cdn.example.com/og-deck.png",
+    layerUrls: { front: "https://cdn.example.com/og-deck-front.png", back: null },
+    model3dUrl: null,
+    edition: { kind: "limited", supply: 250, minted: 37, soldOut: false },
+    source: "drop",
+    priceBucks: null,
+    dropId: "drop-2024-w42",
+    licensed: { brand: "Hubba", licenseRef: null },
+    releasedAt: toTimestamp(new Date("2024-10-01T00:00:00Z")),
+    retiredAt: null,
+  };
+
+  const merged = { ...defaults, ...overrides };
+
+  if (merged.releasedAt instanceof Date) {
+    merged.releasedAt = toTimestamp(merged.releasedAt);
+  }
+  if (merged.retiredAt instanceof Date) {
+    merged.retiredAt = toTimestamp(merged.retiredAt);
+  }
+
   return {
     id: itemDefId,
     exists: () => true,
-    data: () => ({
-      name: "OG Deck",
-      type: "deck",
-      slot: "deck",
-      rarity: "limited",
-      artUrl: "https://cdn.example.com/og-deck.png",
-      layerUrls: { front: "https://cdn.example.com/og-deck-front.png", back: null },
-      model3dUrl: null,
-      edition: { kind: "limited", supply: 250, minted: 37, soldOut: false },
-      source: "drop",
-      priceBucks: null,
-      dropId: "drop-2024-w42",
-      licensed: { brand: "Hubba", licenseRef: null },
-      releasedAt: new Date("2024-10-01T00:00:00Z"),
-      retiredAt: null,
-      ...overrides,
-    }),
+    data: () => merged,
   };
 }
 
