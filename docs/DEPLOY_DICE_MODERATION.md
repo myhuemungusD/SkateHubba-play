@@ -2,7 +2,7 @@
 
 This document provides step-by-step deployment instructions for Roll Dice and Public Clip Moderation. Both features are built, tested, and ready to deploy.
 
-**Important:** These features remain **OFF** in production until explicitly enabled. Do not deploy to production until tester approval is complete.
+**Important:** ALL flags stay **OFF**. Both `DICE_ENABLED` and `MODERATION_ENABLED` remain `false`. Features are deployed but inactive. Client flags (`VITE_FEATURE_*`) also stay unset in production.
 
 ---
 
@@ -97,7 +97,7 @@ firebase deploy --only functions:moderateNewClip,functions:moderateClipReport,fu
 When prompted for params:
 
 ```text
-MODERATION_ENABLED=true
+MODERATION_ENABLED=false
 SENTRY_DSN=<your_sentry_dsn>
 ```
 
@@ -138,7 +138,7 @@ Rebuild the preview. Production remains unset.
 
 Set `VITE_FEATURE_CLIP_MODERATION_ENABLED=true` in Vercel Production and redeploy.
 
-**Note:** Keep `MODERATION_ENABLED=true` from initial deploy.
+**Note:** `MODERATION_ENABLED` stays `false`. The functions remain in tester mode.
 
 ---
 
@@ -165,7 +165,7 @@ firebase deploy --only functions:moderateNewClip,functions:moderateClipReport,fu
 
 Unset `VITE_FEATURE_CLIP_MODERATION_ENABLED` in Vercel and redeploy.
 
-**Note:** `decideClipModeration` still works with `MODERATION_ENABLED=false`, so admins can clear the review queue.
+**Note:** `decideClipModeration` always works (functions have `MODERATION_ENABLED=false`), so admins can clear the review queue.
 
 ---
 
