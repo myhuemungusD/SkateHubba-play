@@ -14,11 +14,13 @@ import { AvatarPicker } from "../components/AvatarPicker";
 import { InstallAppCard } from "../components/InstallAppCard";
 import { AccountActions } from "../components/AccountActions";
 import { TwoFactorSection } from "../components/TwoFactorSection";
+import { SmsTwoFactorSection } from "../components/SmsTwoFactorSection";
 import { SOCIAL_LINKS } from "../constants/socialLinks";
 import { SafetyReportsSection } from "../components/SafetyReportsSection";
 import { usePushPermission } from "./settings/usePushPermission";
 import { PrefRow, SectionHeader } from "./settings/SettingsPrimitives";
 import { BlockedPlayersList } from "./settings/BlockedPlayersList";
+import { isSms2faEnabled } from "../lib/featureFlags";
 
 /* ── Main Settings screen ───────────────────────────────── */
 
@@ -146,6 +148,11 @@ export function Settings({
 
         <SectionHeader title="SECURITY" />
         <TwoFactorSection />
+        {isSms2faEnabled() && (
+          <div className="mt-3">
+            <SmsTwoFactorSection />
+          </div>
+        )}
 
         {/* Notifications */}
         <SectionHeader title="NOTIFICATIONS" />

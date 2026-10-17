@@ -58,6 +58,9 @@ interface ImportMetaEnv {
   readonly VITE_FEATURE_CLIP_MODERATION_ENABLED?: string;
   /** Skate clip editor. Literal "true" only; off by default. */
   readonly VITE_FEATURE_CLIP_EDITOR?: string;
+  /** SMS 2FA enrollment. "true" shows SMS enrollment in Settings for email/password
+   *  users. Unset (default) hides it. Read via isSms2faEnabled(). */
+  readonly VITE_FEATURE_SMS_2FA_ENABLED?: string;
   readonly VITE_MAPBOX_TOKEN?: string;
   /** Optional Mapbox Studio style URL. Falls back to mapbox://styles/mapbox/dark-v11. */
   readonly VITE_MAPBOX_STYLE_URL?: string;

@@ -103,3 +103,12 @@ export function isProBlessingEnabled(): boolean {
 export function isClipEditorEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_CLIP_EDITOR);
 }
+
+/**
+ * SMS 2FA enrollment. Off by default; when on, email/password users can enroll
+ * SMS as a second factor in Settings (via phone number). Never shown to
+ * Google/Apple users (they already have 2-step from their IdP). Literal "true" only.
+ */
+export function isSms2faEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_SMS_2FA_ENABLED);
+}
