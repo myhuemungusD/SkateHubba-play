@@ -29,6 +29,7 @@ export function buildLockerItem(overrides?: Partial<LockerItem>): LockerItem {
     rarity: "common",
     acquiredAt: null,
     provenanceReason: null,
+    equipped: false,
     ...overrides,
   };
 }
