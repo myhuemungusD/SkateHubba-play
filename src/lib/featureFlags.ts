@@ -94,3 +94,13 @@ export function isProProfilesEnabled(): boolean {
 export function isProBlessingEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_PRO_BLESSING);
 }
+
+/**
+ * Spot group chats (per-spot chat rooms with moderation). Off by default and
+ * independent of the extras switch: the rules ship with the service layer,
+ * but no UI may surface chats until this is the literal "true".
+ * See docs/SPOT_CHATS.md.
+ */
+export function isSpotChatsEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_SPOT_CHATS_ENABLED);
+}

@@ -103,6 +103,12 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Spot group chats. DEFAULTS TO OFF. Read via isSpotChatsEnabled().
+  VITE_FEATURE_SPOT_CHATS_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // ── Optional: third-party integrations ──────────────────────────────
   VITE_MAPBOX_TOKEN: z.string().optional(),
   // Format validation (mapbox://styles/ prefix or https URL) deliberately

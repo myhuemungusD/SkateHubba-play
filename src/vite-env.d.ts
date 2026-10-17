@@ -56,6 +56,9 @@ interface ImportMetaEnv {
   /** Public-clip moderation. "true" starts user uploads as pending.
    *  Unset (default) leaves uploads visible immediately. */
   readonly VITE_FEATURE_CLIP_MODERATION_ENABLED?: string;
+  /** Spot group chats. "true" lets the UI surface per-spot chat rooms.
+   *  Unset (default) hides them. Read via isSpotChatsEnabled(). */
+  readonly VITE_FEATURE_SPOT_CHATS_ENABLED?: string;
   readonly VITE_MAPBOX_TOKEN?: string;
   /** Optional Mapbox Studio style URL. Falls back to mapbox://styles/mapbox/dark-v11. */
   readonly VITE_MAPBOX_STYLE_URL?: string;
