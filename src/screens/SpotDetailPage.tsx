@@ -7,6 +7,8 @@ import { useAuthContext } from "../context/AuthContext";
 import { useNavigationContext } from "../context/NavigationContext";
 import { GnarRating } from "../components/map/GnarRating";
 import { BustRisk } from "../components/map/BustRisk";
+import { SpotChat } from "../components/SpotChat/SpotChat";
+import { isSpotChatsEnabled } from "../lib/featureFlags";
 
 export function SpotDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -201,6 +203,19 @@ export function SpotDetailPage() {
         >
           Challenge to S.K.A.T.E. here
         </button>
+
+        {/* Spot Chat (feature flagged) */}
+        {isSpotChatsEnabled() && (
+          <div>
+            <h3 className="text-sm font-semibold mb-3">Group Chat</h3>
+            <SpotChat
+              spotId={spot.id}
+              spotName={spot.name}
+              currentUserId={user?.uid ?? null}
+              onError={(msg) => setCommentError(msg)}
+            />
+          </div>
+        )}
 
         {/* Comments */}
         <div>
