@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { CylinderGeometry, DoubleSide, Mesh, MeshBasicMaterial, type Group } from "three";
+import { CylinderGeometry, DoubleSide, Mesh, MeshBasicMaterial, type Group as ThreeGroup } from "three";
 import { mikeWhiteBoardUrl } from "../artSlots";
 import type { RunnerController } from "../controller";
 import type { RunnerQuality } from "../quality";
@@ -81,7 +81,7 @@ export function Board({ controller, quality }: { controller: RunnerController; q
   const wheelAt = (index: number, x: number, z: number) => (
     <group
       key={`${x}:${z}`}
-      ref={(node) => {
+      ref={(node: ThreeGroup | null) => {
         wheels.current[index] = node;
       }}
       position={[x, 0.15, z]}

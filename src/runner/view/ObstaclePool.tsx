@@ -85,7 +85,7 @@ export function ObstaclePool({ controller, quality }: { controller: RunnerContro
       {Array.from({ length: POOL }, (_, index) => (
         <group
           key={index}
-          ref={(node) => {
+          ref={(node: ThreeGroup | null) => {
             slots.current[index] = node;
           }}
           visible={false}

@@ -82,6 +82,13 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Skate Runner (board-only grind game at /play/runner). DEFAULTS TO OFF.
+  // Read via isRunnerEnabled() in featureFlags.ts.
+  VITE_FEATURE_RUNNER_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // Sign in with Apple button. DEFAULTS TO OFF until the Firebase Apple
   // provider is enabled. Read via isAppleSignInEnabled() in featureFlags.ts.
   VITE_FEATURE_APPLE_SIGNIN_ENABLED: z

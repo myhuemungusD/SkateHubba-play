@@ -230,7 +230,7 @@ function loadMaps(gl: WebGLRenderer): Promise<void> {
     loadSet(loader, concreteColorUrl, concreteNormalUrl, concreteRoughnessUrl),
     loadSet(loader, metalColorUrl, metalNormalUrl, metalRoughnessUrl, metalMetalnessUrl),
     loadSet(loader, brickColorUrl, brickNormalUrl, brickRoughnessUrl),
-    loader.loadAsync(alleyPaletteUrl).then((texture) => preparePalette(texture)),
+    loader.loadAsync(alleyPaletteUrl).then((texture: Texture) => preparePalette(texture)),
   ])
     .then(([nextAsphalt, nextConcrete, nextMetal, nextBrick, palette]) => {
       asphalt = nextAsphalt;
@@ -288,7 +288,7 @@ export function mountRunnerEnvironment(gl: WebGLRenderer, scene: Scene): () => v
       scene.environment = env;
     } catch (error: unknown) {
       console.warn("Runner environment failed to load", error);
-      void hdrPromise.then((texture) => texture.dispose()).catch(() => undefined);
+      void hdrPromise.then((texture: Texture) => texture.dispose()).catch(() => undefined);
     }
   })();
 

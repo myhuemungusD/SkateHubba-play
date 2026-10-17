@@ -63,6 +63,8 @@
     "@capacitor/share": "^8.0.3",
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.4",
+    "@react-three/drei": "^9.122.0",
+    "@react-three/fiber": "^8.18.0",
     "@sentry/capacitor": "4.4.0",
     "@sentry/node": "10.69.0",
     "@sentry/react": "10.69.0",
@@ -78,6 +80,7 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-router": "^8.4.0",
+    "three": "^0.170.0",
     "zod": "^4.6.6"
   },
   "overrides": {
