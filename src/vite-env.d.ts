@@ -74,6 +74,9 @@ interface ImportMetaEnv {
   readonly VITE_FEATURE_CLIP_MODERATION_ENABLED?: string;
   /** Skate clip editor. Literal "true" only; off by default. */
   readonly VITE_FEATURE_CLIP_EDITOR?: string;
+  /** Pro camera features (4K60, 120/240fps, lens switching, pre-roll, thermal mgmt).
+   *  Literal "true" only; off by default. Read via isProCameraEnabled(). */
+  readonly VITE_FEATURE_PRO_CAMERA?: string;
   readonly VITE_MAPBOX_TOKEN?: string;
   /** Optional Mapbox Studio style URL. Falls back to mapbox://styles/mapbox/dark-v11. */
   readonly VITE_MAPBOX_STYLE_URL?: string;

@@ -212,7 +212,9 @@ async function run(db) {
     if (page.size < PAGE_SIZE) break;
   }
 
-  console.log(`migrate-users-private: done total=${total} processed=${processed} skipped=${skipped} failed=${failed}`);
+  console.log(
+    `migrate-users-private: done total=${total} processed=${processed} skipped=${skipped} failed=${failed}`,
+  );
   process.exit(failed === 0 ? 0 : 1);
 }
 

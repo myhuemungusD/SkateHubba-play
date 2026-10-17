@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { focusNativeAt, getNativeLenses, setNativeLens } from "../services/nativeVideo";
+import { isProCameraEnabled } from "../lib/featureFlags";
 import { CameraQualitySelector } from "./CameraQualitySelector";
 
 const LONG_PRESS_MS = 500;
@@ -9,7 +10,8 @@ const LONG_PRESS_MS = 500;
  * lens bar (works mid-take, like the iPhone Camera app) and tap-to-focus,
  * press-and-hold to lock focus + exposure. Rendered under the crosshair layer
  * and never moves or restyles it. Renders nothing when the native camera
- * reports no lens info (Android / unpatched builds).
+ * reports no lens info (Android / unpatched builds) OR when the pro camera
+ * feature flag is off.
  */
 export function NativeCameraControls({ active }: { active: boolean }) {
   const [lenses, setLenses] = useState<number[]>([]);
@@ -20,7 +22,7 @@ export function NativeCameraControls({ active }: { active: boolean }) {
   const longPressed = useRef(false);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active || !isProCameraEnabled()) return;
     let cancelled = false;
     // The camera finishes warming up just after "recording" flips on; one retry covers it.
     const load = async (tries: number) => {
@@ -42,7 +44,8 @@ export function NativeCameraControls({ active }: { active: boolean }) {
     [],
   );
 
-  if (!active || lenses.length === 0) return null;
+  // Pro camera feature flag guard - when off, all lens/quality controls are hidden
+  if (!isProCameraEnabled() || !active || lenses.length === 0) return null;
 
   const point = (e: PointerEvent) => ({ x: e.clientX / window.innerWidth, y: e.clientY / window.innerHeight });
 

@@ -112,3 +112,13 @@ export function isProBlessingEnabled(): boolean {
 export function isClipEditorEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_CLIP_EDITOR);
 }
+
+/**
+ * Pro camera features: 4K60, 120/240fps slow-mo, lens switching (0.5x/1x/2x),
+ * tap-to-focus with AE/AF lock, quality selector, cinematic stabilization,
+ * thermal management, 2.5s pre-roll buffer, native AVFoundation fisheye,
+ * and performance metrics. Literal "true" only; off by default.
+ */
+export function isProCameraEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_PRO_CAMERA);
+}
