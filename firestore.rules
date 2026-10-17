@@ -3112,5 +3112,65 @@ service cloud.firestore {
           || isAdmin()));
       allow create, update, delete: if false;
     }
+
+    // ── Trick Library ──
+    // Community-curated trick index with video proof.
+    // Submissions go to "pending" status. Moderators approve/reject.
+    // Users can upvote/downvote approved entries.
+    match /trickLibrary/{trickId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && notBanned()
+        && request.auth.token.email_verified == true
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 100
+        && (!('description' in request.resource.data)
+          || (request.resource.data.description is string
+            && request.resource.data.description.size() <= 500))
+        && request.resource.data.difficulty in ['beginner', 'intermediate', 'advanced', 'expert']
+        && videoUrlBucketPinned(request.resource.data.videoUrl)
+        && (!('videoThumbnailUrl' in request.resource.data)
+          || videoUrlBucketPinned(request.resource.data.videoThumbnailUrl))
+        && request.resource.data.submittedBy == request.auth.uid
+        && request.resource.data.submittedAt == request.time
+        && request.resource.data.upvotes == 0
+        && request.resource.data.downvotes == 0
+        && request.resource.data.status == 'pending'
+        && !('moderatedBy' in request.resource.data)
+        && !('moderatedAt' in request.resource.data);
+
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'moderatedBy', 'moderatedAt'])
+        && request.resource.data.status in ['approved', 'rejected']
+        && request.resource.data.moderatedBy == request.auth.uid
+        && request.resource.data.moderatedAt == request.time;
+
+      allow delete: if false;
+    }
+
+    match /trickVotes/{voteId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && notBanned()
+        && request.auth.token.email_verified == true
+        && voteId == (request.auth.uid + '_' + request.resource.data.trickId)
+        && request.resource.data.trickId is string
+        && request.resource.data.trickId.size() > 0
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.vote in ['up', 'down']
+        && request.resource.data.createdAt == request.time
+        && fsExists('trickLibrary', request.resource.data.trickId)
+        && fsGet('trickLibrary', request.resource.data.trickId).data.status == 'approved';
+
+      allow update: if isOwner(resource.data.userId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['vote', 'createdAt'])
+        && request.resource.data.vote in ['up', 'down']
+        && request.resource.data.createdAt == request.time;
+
+      allow delete: if isOwner(resource.data.userId);
+    }
   }
 }

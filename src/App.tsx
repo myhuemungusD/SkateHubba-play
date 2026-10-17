@@ -79,6 +79,9 @@ const AdminScreen = lazy(() => import("./screens/AdminScreen").then((m) => ({ de
 const DiceHub = lazy(() => import("./screens/Dice/DiceHub").then((m) => ({ default: m.DiceHub })));
 const DiceNew = lazy(() => import("./screens/Dice/DiceNew").then((m) => ({ default: m.DiceNew })));
 const DiceTable = lazy(() => import("./screens/Dice/DiceTable").then((m) => ({ default: m.DiceTable })));
+const TrickLibraryPage = lazy(() =>
+  import("./screens/TrickLibraryPage").then((m) => ({ default: m.TrickLibraryPage })),
+);
 // Spotlight/onboarding is not on the first-paint path. Keeping it out of the
 // App graph drops that chunk from /auth and /feed.
 const TutorialOverlay = lazy(() =>
@@ -806,6 +809,8 @@ function AppRoutes() {
                 stashes the spot id before bouncing and restores it post-login. */}
                 <Route path="/spots/:id" element={auth.user ? <SpotDetailPage /> : <Navigate to="/" replace />} />
 
+                <Route path="/tricks" element={auth.user ? <TrickLibraryPage /> : <Navigate to="/auth" replace />} />
+
                 {/* Clips is its own tab again. Same auth guard as /lobby — the feed
                 reads clips as a signed-in viewer (upvotes, disputes, comments),
                 so a signed-out render has nothing to show. That replace sends
@@ -832,6 +837,7 @@ function AppRoutes() {
               <>
                 <Route path="/map" element={<Navigate to={frozenRedirect} replace />} />
                 <Route path="/spots/:id" element={<Navigate to={frozenRedirect} replace />} />
+                <Route path="/tricks" element={<Navigate to={frozenRedirect} replace />} />
                 <Route path="/feed" element={<Navigate to={frozenRedirect} replace />} />
               </>
             )}

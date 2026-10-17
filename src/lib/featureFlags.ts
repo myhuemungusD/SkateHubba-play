@@ -103,3 +103,11 @@ export function isProBlessingEnabled(): boolean {
 export function isClipEditorEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_CLIP_EDITOR);
 }
+
+/**
+ * Trick library. Off by default; when on, shows a community trick index with
+ * video proof submissions. Literal "true" only.
+ */
+export function isTrickLibraryEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_TRICK_LIBRARY_ENABLED);
+}
