@@ -6,7 +6,8 @@
  * NOT YET DEPLOYED — stubbed behind WTT_ENABLED flag.
  */
 
-import { WTT_ENABLED } from "../../src/constants/wtt.config";
+// WTT_ENABLED would be imported from config when this function is deployed
+const WTT_ENABLED = false;
 
 /**
  * Firestore trigger: runs when a new wttVote document is created.

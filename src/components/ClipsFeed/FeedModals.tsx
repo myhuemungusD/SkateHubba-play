@@ -9,7 +9,7 @@ const ClipComments = lazy(() => import("./ClipComments").then((m) => ({ default:
 interface FeedModalsProps {
   uid: string;
   username: string;
-  blockedUids: string[];
+  blockedUids: ReadonlySet<string>;
   // Comments
   commentsTarget: ClipDoc | null;
   onCloseComments: () => void;

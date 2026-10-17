@@ -6,7 +6,8 @@
  * NOT YET DEPLOYED — stubbed behind WTT_ENABLED flag.
  */
 
-import { WTT_ENABLED } from "../../src/constants/wtt.config";
+// WTT_ENABLED would be imported from config when this is deployed
+const WTT_ENABLED = false;
 
 /**
  * Cron endpoint: nightly Dawid-Skene reliability update.
