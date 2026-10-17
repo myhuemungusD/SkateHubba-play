@@ -32,7 +32,7 @@ function toTimestamp(date: Date) {
 }
 
 function catalogDoc(itemDefId: string, overrides: Record<string, unknown> = {}) {
-  const defaults = {
+  const defaults: Record<string, unknown> = {
     name: "OG Deck",
     type: "deck",
     slot: "deck",
@@ -51,10 +51,10 @@ function catalogDoc(itemDefId: string, overrides: Record<string, unknown> = {}) 
 
   const merged = { ...defaults, ...overrides };
 
-  if (merged.releasedAt instanceof Date) {
+  if (merged.releasedAt != null && merged.releasedAt instanceof Date) {
     merged.releasedAt = toTimestamp(merged.releasedAt);
   }
-  if (merged.retiredAt instanceof Date) {
+  if (merged.retiredAt != null && merged.retiredAt instanceof Date) {
     merged.retiredAt = toTimestamp(merged.retiredAt);
   }
 
