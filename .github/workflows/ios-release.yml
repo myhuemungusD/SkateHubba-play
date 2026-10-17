@@ -12,6 +12,31 @@ on:
         required: false
         type: string
         default: ""
+      clip_editor:
+        description: "Tester build: show the clip editor (VITE_FEATURE_CLIP_EDITOR). Leave off for App Store builds."
+        required: false
+        type: boolean
+        default: false
+      dice:
+        description: "Tester build: show Roll Dice (VITE_FEATURE_DICE_ENABLED). Server stays gated by DICE_ENABLED / DICE_TESTER_UIDS. Leave off for App Store builds."
+        required: false
+        type: boolean
+        default: false
+      pro_camera:
+        description: "Tester build: new pro camera (VITE_FEATURE_PRO_CAMERA). Leave off for App Store builds."
+        required: false
+        type: boolean
+        default: false
+      wtt:
+        description: "Tester build: What's That Trick (VITE_FEATURE_WTT_ENABLED + VITE_FEATURE_FEED_MODES_ENABLED). Server stays gated by WTT_ENABLED / WTT_TESTER_UIDS. Leave off for App Store builds."
+        required: false
+        type: boolean
+        default: false
+      profile_banner:
+        description: "Tester build: profile background picture (VITE_FEATURE_PROFILE_BANNER). Leave off for App Store builds."
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -101,12 +126,23 @@ jobs:
           # first (docs/IOS_RELEASE.md). The website and Android stay off until
           # VITE_FEATURE_APPLE_SIGNIN_ENABLED is the literal "true" in Vercel.
           VITE_FEATURE_APPLE_SIGNIN_ENABLED: "true"
-          # Roll Dice stays off. Do not turn this into a secret that can flip it on.
-          VITE_FEATURE_DICE_ENABLED: "false"
+          # Roll Dice is off unless the person dispatching ticks the "dice"
+          # input for a tester build. Do not turn this into a secret.
+          VITE_FEATURE_DICE_ENABLED: ${{ inputs.dice && 'true' || 'false' }}
+          # Clip editor: off unless the "clip_editor" input is ticked.
+          VITE_FEATURE_CLIP_EDITOR: ${{ inputs.clip_editor && 'true' || 'false' }}
+          # Wave 1 tester inputs: each off unless its box is ticked.
+          VITE_FEATURE_PRO_CAMERA: ${{ inputs.pro_camera && 'true' || 'false' }}
+          # Name It lives inside the feed-mode toggle, so wtt turns both on.
+          VITE_FEATURE_WTT_ENABLED: ${{ inputs.wtt && 'true' || 'false' }}
+          VITE_FEATURE_FEED_MODES_ENABLED: ${{ inputs.wtt && 'true' || 'false' }}
+          VITE_FEATURE_PROFILE_BANNER: ${{ inputs.profile_banner && 'true' || 'false' }}
           VITE_FEATURE_EXTRAS_ENABLED: "false"
           # Pro blessing UI. The proBlessing function still gates who can act
           # (PRO_BLESSING_ENABLED / PRO_BLESSING_TESTER_UIDS, docs/PRO_BLESSING.md).
           VITE_FEATURE_PRO_BLESSING: "true"
+          # Pro showcase on for everyone (Bryan + Mike granted 2026-10-16).
+          VITE_FEATURE_PRO_PROFILES: "true"
           # Store builds must fail when the service worker would ship with
           # unreplaced Firebase placeholders (see vite.config.ts).
           REQUIRE_SW_CONFIG: "1"

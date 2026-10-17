@@ -72,8 +72,16 @@ describe("fetchLockerItems — reads", () => {
         rarity: "rare",
         acquiredAt: new Date("2026-05-20T18:00:00Z"),
         provenanceReason: "Won the Hollenbeck bracket",
+        equipped: false,
+        itemDefId: null,
       },
     ]);
+  });
+
+  it("keeps the catalog itemDefId so designer credit follows the copy", async () => {
+    nextSnapshot([itemDoc("copy-7", { itemDefId: "mike_white_teeth_fire" })]);
+    const [item] = await fetchLockerItems(UID);
+    expect(item.itemDefId).toBe("mike_white_teeth_fire");
   });
 
   it("returns an empty array for an empty locker", async () => {
@@ -98,8 +106,10 @@ describe("fetchLockerItems — reads", () => {
     expect(Object.keys(item).sort()).toEqual([
       "acquiredAt",
       "brand",
+      "equipped",
       "id",
       "imageUrl",
+      "itemDefId",
       "name",
       "provenanceReason",
       "rarity",

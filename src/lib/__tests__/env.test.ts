@@ -115,6 +115,15 @@ describe("safeParseEnv", () => {
   );
 
   it.each(flagCases)(
+    "parses VITE_FEATURE_TRICK_PICKER_ENABLED=%j as %s (trick picker, default off)",
+    (raw, expected) => {
+      const result = safeParseEnv({ ...validEnv, VITE_FEATURE_TRICK_PICKER_ENABLED: raw });
+      expect(result).not.toBeNull();
+      expect(result?.VITE_FEATURE_TRICK_PICKER_ENABLED).toBe(expected);
+    },
+  );
+
+  it.each(flagCases)(
     "parses VITE_FEATURE_REFEREE_ENABLED=%j as %s (referee on new games, default off)",
     (raw, expected) => {
       const result = safeParseEnv({ ...validEnv, VITE_FEATURE_REFEREE_ENABLED: raw });
@@ -131,6 +140,12 @@ describe("safeParseEnv", () => {
       expect(result?.VITE_FEATURE_CLIP_MODERATION_ENABLED).toBe(expected);
     },
   );
+
+  it.each(flagCases)("parses VITE_FEATURE_CLIP_EDITOR=%j as %s (clip editor, default off)", (raw, expected) => {
+    const result = safeParseEnv({ ...validEnv, VITE_FEATURE_CLIP_EDITOR: raw });
+    expect(result).not.toBeNull();
+    expect(result?.VITE_FEATURE_CLIP_EDITOR).toBe(expected);
+  });
 
   it("accepts every optional var when provided with a valid string", () => {
     const result = safeParseEnv({

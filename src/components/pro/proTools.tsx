@@ -43,7 +43,7 @@ export const PRO_TOOLS: readonly ProTool[] = [
     icon: <UserCog size={16} />,
     title: "Pro profile editor",
     description:
-      "Write your own bio and pick up to 3 signature tricks right on your profile. Sponsors and hometown editing come next.",
+      "Write your own tagline, hometown, sponsors and bio, and pick up to 3 signature tricks. Open Edit pro profile below.",
     status: "LIVE ON YOUR PROFILE",
   },
   {

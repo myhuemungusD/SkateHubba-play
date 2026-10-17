@@ -30,6 +30,8 @@ import type { UserProfile } from "../services/users";
 // shared smoke harness factory provisions the rest as no-ops.
 const mocks = await vi.hoisted(async () => (await import("./harness/mockServices")).createAllSmokeMocks());
 vi.mock("../firebase", () => mocks.firebase.module);
+// The WebGL scene can't start in jsdom; the smoke test only checks routing.
+vi.mock("../runner/view/RunnerWorld", () => ({ RunnerWorld: () => null }));
 vi.mock("../hooks/useAuth", () => mocks.auth.module);
 vi.mock("../services/auth", () => mocks.authSvc.module);
 vi.mock("@sentry/react", () => mocks.sentry.module);
@@ -171,8 +173,7 @@ describe("Smoke: /play/runner when VITE_FEATURE_RUNNER_ENABLED is true", () => {
     vi.unstubAllEnvs();
   });
 
-  // Skip runner tests - Three.js canvas initialization times out in jsdom
-  it.skip("loads the runner for a signed-in player and does not bounce to the lobby", async () => {
+  it("loads the runner for a signed-in player and does not bounce to the lobby", async () => {
     vi.stubEnv("VITE_FEATURE_RUNNER_ENABLED", "true");
     await mountApp("/play/runner");
     expect(await screen.findByRole("heading", { name: "Skate Runner" }, { timeout: 15_000 })).toBeInTheDocument();
@@ -180,7 +181,7 @@ describe("Smoke: /play/runner when VITE_FEATURE_RUNNER_ENABLED is true", () => {
     expect(screen.queryByRole("navigation", { name: "Primary navigation" })).not.toBeInTheDocument();
   });
 
-  it.skip("lets a signed-out visitor stay on the runner", async () => {
+  it("lets a signed-out visitor stay on the runner", async () => {
     vi.stubEnv("VITE_FEATURE_RUNNER_ENABLED", "true");
     mocks.auth.refs.useAuth.mockReturnValue({
       loading: false,

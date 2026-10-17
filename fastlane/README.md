@@ -19,19 +19,19 @@ Fastlane reads every credential from environment variables. In CI these
 come from GitHub Actions secrets; locally export them in your shell or use
 `.env` with `direnv` (never commit the file).
 
-| Variable                              | Purpose                                                                      | Where to get it                                                                 |
-| ------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `ASC_KEY_ID`                          | App Store Connect API key id                                                 | App Store Connect → Users and Access → Integrations → Team Keys                |
-| `ASC_ISSUER_ID`                       | Issuer UUID on that page                                                     | Same page                                                                       |
-| `ASC_KEY_P8`                          | The `.p8` file, or its base64                                                | Same page — download once                                                      |
-| `APPLE_TEAM_ID`                       | 10-character Team ID                                                         | Apple Developer → Membership                                                    |
-| `MATCH_PASSWORD`                      | Passphrase that encrypts the cert repo                                       | You choose it. Store it in a password manager. It cannot be recovered.         |
-| `MATCH_GIT_BASIC_AUTHORIZATION`       | Base64 of `myhuemungusD:token` that can write the cert repo                  | Fine-grained personal access token on `myhuemungusD/skatehubba-certs`          |
-| `MATCH_GIT_URL`                       | Optional. Defaults to `https://github.com/myhuemungusD/skatehubba-certs.git` | Set only if the cert repo URL is different                                      |
-| `GOOGLE_SERVICE_INFO_PLIST_BASE64`    | Raw `GoogleService-Info.plist` or its base64                                 | Firebase → Project settings → iOS app `com.skatehubba.app`                     |
-| `MATCH_READONLY`                      | `false` only in the signing-bootstrap workflow                               | TestFlight runs set `true`                                                      |
-| `IOS_MARKETING_VERSION`               | Optional store version. Blank uses `package.json`                            | The TestFlight workflow input                                                   |
-| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`    | Google Play Console service-account JSON (pasted)                            | Play Console → API access → create svc acct → download JSON                    |
+| Variable                           | Purpose                                                                      | Where to get it                                                        |
+| ---------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `ASC_KEY_ID`                       | App Store Connect API key id                                                 | App Store Connect → Users and Access → Integrations → Team Keys        |
+| `ASC_ISSUER_ID`                    | Issuer UUID on that page                                                     | Same page                                                              |
+| `ASC_KEY_P8`                       | The `.p8` file, or its base64                                                | Same page — download once                                              |
+| `APPLE_TEAM_ID`                    | 10-character Team ID                                                         | Apple Developer → Membership                                           |
+| `MATCH_PASSWORD`                   | Passphrase that encrypts the cert repo                                       | You choose it. Store it in a password manager. It cannot be recovered. |
+| `MATCH_GIT_BASIC_AUTHORIZATION`    | Base64 of `myhuemungusD:token` that can write the cert repo                  | Fine-grained personal access token on `myhuemungusD/skatehubba-certs`  |
+| `MATCH_GIT_URL`                    | Optional. Defaults to `https://github.com/myhuemungusD/skatehubba-certs.git` | Set only if the cert repo URL is different                             |
+| `GOOGLE_SERVICE_INFO_PLIST_BASE64` | Raw `GoogleService-Info.plist` or its base64                                 | Firebase → Project settings → iOS app `com.skatehubba.app`             |
+| `MATCH_READONLY`                   | `false` only in the signing-bootstrap workflow                               | TestFlight runs set `true`                                             |
+| `IOS_MARKETING_VERSION`            | Optional store version. Blank uses `package.json`                            | The TestFlight workflow input                                          |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Google Play Console service-account JSON (pasted)                            | Play Console → API access → create svc acct → download JSON            |
 
 ## Lanes
 

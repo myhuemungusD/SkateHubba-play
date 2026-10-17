@@ -1,45 +1,27 @@
 /**
- * Pro profile showcase content, keyed by lowercase username.
+ * Pro profile showcase config, keyed by lowercase username.
  *
- * REVIEW DATA. Every field with `placeholder: true` is a stand-in that Jason
- * must replace with copy the pro has approved. Nothing biographical here is
- * a fact about the person: taglines, sponsors and hometowns are
- * placeholders until confirmed. Stance is NOT here: it is real data read
- * from the pro's own user doc (`users/{uid}.stance`). Bios and signature
- * tricks are pro-written (`proBio`, `proSignatureTricks`); the only default
- * here is a trick Jason confirmed, shown until the pro picks their own. The UI tags placeholder fields visibly.
+ * Only what is confirmed lives here: the display name and any signature trick
+ * Jason confirmed. Everything biographical (tagline, hometown, sponsors, bio,
+ * signature tricks) is written by the pro themself on their own profile and
+ * stored on their user doc (`proTagline`, `proHometown`, `proSponsors`,
+ * `proBio`, `proSignatureTricks`). Empty fields render nothing, never
+ * placeholder copy. Stance is real data from `users/{uid}.stance`.
  */
-export interface ProField {
-  value: string;
-  /** True until the pro (or Jason on their behalf) confirms the copy. */
-  placeholder: boolean;
-}
-
 export interface ProProfileContent {
   displayName: string;
-  tagline: ProField;
-  hometown: ProField;
-  sponsors: ProField[];
   /** Confirmed defaults only (never invented). Empty = show nothing. */
   signatureTricks: string[];
 }
 
-const ph = (value: string): ProField => ({ value, placeholder: true });
-
 export const PRO_PROFILES: Readonly<Record<string, ProProfileContent>> = {
   bryanherman: {
     displayName: "Bryan Herman",
-    tagline: ph("Tagline — one line in Bryan's own words"),
-    hometown: ph("Hometown"),
-    sponsors: [ph("Sponsor 1"), ph("Sponsor 2"), ph("Sponsor 3")],
     // Hardflip confirmed by Jason, 2026-10-16. Replaced once Bryan picks his own.
     signatureTricks: ["Hardflip"],
   },
   mikewhite: {
     displayName: "Mike White",
-    tagline: ph("Tagline — one line in Mike's own words"),
-    hometown: ph("Hometown"),
-    sponsors: [ph("Shake Junt (confirm)"), ph("Sponsor 2"), ph("Sponsor 3")],
     signatureTricks: [],
   },
 };

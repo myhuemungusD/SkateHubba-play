@@ -4,7 +4,11 @@ import { setGlobalOptions, type GlobalOptions } from "firebase-functions/v2";
 import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onCall } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { defineBoolean, defineInt, defineString } from "firebase-functions/params";
+import { defineBoolean, defineInt, defineSecret, defineString } from "firebase-functions/params";
+import { getMessaging } from "firebase-admin/messaging";
+import { deliverDispatch, drainQueue } from "./push/drain.js";
+import { refereesDue, runReferees } from "./push/referees.js";
+import { adminDrainDeps, readQueue, toQueuedDoc } from "./push/store.js";
 import { applyGameStats } from "./applyGameStats.js";
 import { handleDiceCall } from "./dice/callable.js";
 import { sweepExpiredDiceGames } from "./dice/handlers.js";
@@ -12,6 +16,24 @@ import { adminDiceDb } from "./dice/store.js";
 import { handleBlessingCall } from "./pro/callable.js";
 import { handleClipCreated, handleClipReport, handleDecideClip } from "./moderation/handlers.js";
 import { adminClipStore } from "./moderation/publish.js";
+import type { ClosetFlags } from "./closet/access.js";
+import { runDueDraws } from "./closet/draws.js";
+import {
+  handleAwardEarn,
+  handleBuyShopItem,
+  handleClaimDrop,
+  handleClosetAdmin,
+  handleConfirmTrade,
+  handleEnterDraw,
+  handleEquipItem,
+  handleGameEarn,
+  handleIapVerify,
+  handleProposeTrade,
+  handleRespondTrade,
+  type ClosetDeps,
+} from "./closet/handlers.js";
+import { adminClosetDb } from "./closet/store.js";
+import { releaseTradeHolds as sweepTradeHolds } from "./closet/trading.holds.js";
 
 /**
  * Shared defaults for every v2 function in this file.
@@ -59,6 +81,32 @@ const xpEnabled = defineBoolean("XP_ENABLED", { default: false });
 const xpTesterUids = defineString("XP_TESTER_UIDS", { default: "" });
 
 /**
+ * Closet kill switches. All default off. CLOSET_ENABLED is the master
+ * switch; drops, trading and buying Bucks each need their own flag on top.
+ * Uids in CLOSET_TESTER_UIDS get every closet feature while flags are off.
+ * See functions/src/closet/access.ts.
+ */
+const closetEnabled = defineBoolean("CLOSET_ENABLED", { default: false });
+const closetDropsEnabled = defineBoolean("CLOSET_DROPS_ENABLED", { default: false });
+const closetTradingEnabled = defineBoolean("CLOSET_TRADING_ENABLED", { default: false });
+const closetBucksPurchaseEnabled = defineBoolean("CLOSET_BUCKS_PURCHASE_ENABLED", { default: false });
+const closetTesterUids = defineString("CLOSET_TESTER_UIDS", { default: "" });
+
+function closetFlags(): ClosetFlags {
+  return {
+    enabled: closetEnabled.value(),
+    drops: closetDropsEnabled.value(),
+    trading: closetTradingEnabled.value(),
+    bucksPurchase: closetBucksPurchaseEnabled.value(),
+    testers: closetTesterUids.value(),
+  };
+}
+
+function closetDeps(): ClosetDeps {
+  return { flags: closetFlags(), nowMs: Date.now(), db: adminClosetDb(getFirestore(DATABASE_ID)) };
+}
+
+/**
  * Reconcile win/loss counters when a game reaches a terminal state.
  *
  * Fires on every games/{gameId} update but fast-returns unless the doc is a
@@ -90,6 +138,13 @@ export const onGameCompleted = onDocumentUpdated(
       enabled: xpEnabled.value(),
       testers: xpTesterUids.value(),
     });
+    await handleGameEarn(
+      adminClosetDb(getFirestore(DATABASE_ID)),
+      closetFlags(),
+      event.params.gameId,
+      after,
+      Date.now(),
+    );
   },
 );
 
@@ -199,4 +254,72 @@ export const moderateClipReport = onDocumentCreated(
  */
 export const decideClipModeration = onCall({ region: "us-central1", enforceAppCheck: false }, (request) =>
   handleDecideClip(request, getFirestore(DATABASE_ID), adminClipStore()),
+);
+
+/**
+ * Closet callables. App Check is enforced on every one (plan §9): unlike the
+ * older callables these launch dark, so there is no legacy client to keep
+ * working without a token. Nothing here writes from the client; every mint,
+ * spend and swap is a server transaction.
+ */
+const closetCallable = { region: "us-central1", enforceAppCheck: true } as const;
+
+export const claimDrop = onCall(closetCallable, (request) => handleClaimDrop(request, closetDeps()));
+export const enterDraw = onCall(closetCallable, (request) => handleEnterDraw(request, closetDeps()));
+export const buyShopItem = onCall(closetCallable, (request) => handleBuyShopItem(request, closetDeps()));
+export const awardEarn = onCall(closetCallable, (request) => handleAwardEarn(request, closetDeps()));
+export const proposeTrade = onCall(closetCallable, (request) => handleProposeTrade(request, closetDeps()));
+export const respondTrade = onCall(closetCallable, (request) => handleRespondTrade(request, closetDeps()));
+export const confirmTrade = onCall(closetCallable, (request) => handleConfirmTrade(request, closetDeps()));
+export const equipItem = onCall(closetCallable, (request) => handleEquipItem(request, closetDeps()));
+export const iapVerify = onCall(closetCallable, (request) => handleIapVerify(request, closetDeps()));
+export const closetAdmin = onCall(closetCallable, (request) => handleClosetAdmin(request, closetDeps()));
+
+/** Close Grail draws whose entry window ended. No-op while no draw drops exist. */
+export const runDraw = onSchedule({ schedule: "every 15 minutes", region: "us-central1" }, async () => {
+  await runDueDraws(adminClosetDb(getFirestore(DATABASE_ID)), Date.now());
+});
+
+/** Deliver trades whose 3-day hold has passed. No-op while trading is off. */
+export const releaseTradeHolds = onSchedule({ schedule: "every 60 minutes", region: "us-central1" }, async () => {
+  await sweepTradeHolds(adminClosetDb(getFirestore(DATABASE_ID)), Date.now());
+});
+
+/**
+ * Push courier (replaces the GitHub Actions "Drain Push Dispatch" cron,
+ * approved 2026-10-17). Sends a push the moment its /push_dispatch doc is
+ * created. No platform retry: a failed send stays queued and the scheduled
+ * pass below picks it up. See functions/src/push/drain.ts.
+ */
+export const pushDispatchOnCreate = onDocumentCreated(
+  { document: "push_dispatch/{dispatchId}", database: DATABASE_ID, region: "us-central1", timeoutSeconds: 60 },
+  async (event): Promise<void> => {
+    if (!event.data) return;
+    const db = getFirestore(DATABASE_ID);
+    await deliverDispatch(toQueuedDoc(event.data), adminDrainDeps(db, getMessaging(), Date.now()));
+  },
+);
+
+/** CRON_SECRET shared with the Vercel referee endpoints (Secret Manager). */
+const cronSecret = defineSecret("CRON_SECRET");
+
+/**
+ * Every 5 minutes: retry anything still queued (older than 2 minutes, so it
+ * never races the create trigger), and every 15 minutes call the turn and
+ * dispute referee endpoints on Vercel.
+ */
+export const pushDispatchSweep = onSchedule(
+  { schedule: "every 5 minutes", region: "us-central1", timeoutSeconds: 540, secrets: [cronSecret] },
+  async (): Promise<void> => {
+    const nowMs = Date.now();
+    const db = getFirestore(DATABASE_ID);
+    const summary = await drainQueue(await readQueue(db), adminDrainDeps(db, getMessaging(), nowMs));
+    console.log(JSON.stringify({ event: "push_sweep", ...summary }));
+    if (refereesDue(nowMs)) {
+      const results = await runReferees(cronSecret.value(), fetch, (e, f) =>
+        console.warn(JSON.stringify({ event: e, ...f })),
+      );
+      console.log(JSON.stringify({ event: "referees", results }));
+    }
+  },
 );

@@ -10,6 +10,8 @@ vi.mock("@capacitor/core", () => ({
   Capacitor: { isNativePlatform: mockIsNativePlatform },
 }));
 
+const { mockPro } = vi.hoisted(() => ({ mockPro: vi.fn() }));
+
 /* ── mock @capacitor-community/video-recorder ──────────────── */
 
 const { mockInitialize, mockDestroy, mockStartRecording, mockStopRecording } = vi.hoisted(() => ({
@@ -25,6 +27,15 @@ vi.mock("@capacitor-community/video-recorder", () => ({
     destroy: mockDestroy,
     startRecording: mockStartRecording,
     stopRecording: mockStopRecording,
+    setZoom: (o: { lens: number }) => mockPro("setZoom", o),
+    getLensInfo: () => mockPro("getLensInfo"),
+    focusAt: (o: unknown) => mockPro("focusAt", o),
+    setQuality: (o: unknown) => mockPro("setQuality", o),
+    getQualityModes: () => mockPro("getQualityModes"),
+    getPerformanceMetrics: () => mockPro("getPerformanceMetrics"),
+    setPreRoll: (o: unknown) => mockPro("setPreRoll", o),
+    getPreRollStatus: () => mockPro("getPreRollStatus"),
+    setNativeFisheye: (o: unknown) => mockPro("setNativeFisheye", o),
   },
   VideoRecorderCamera: { FRONT: 0, BACK: 1 },
   VideoRecorderQuality: {
@@ -42,6 +53,16 @@ vi.mock("@capacitor-community/video-recorder", () => ({
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
+
+/* ── mock performance.now ──────────────────────────────────── */
+
+const mockPerformanceNow = vi.fn(() => 0);
+const mockPerformance = {
+  now: mockPerformanceNow,
+  timeOrigin: 0,
+  toJSON: () => ({}),
+};
+vi.stubGlobal("performance", mockPerformance);
 
 /* ── mock sentry breadcrumb ─────────────────────────────── */
 
@@ -410,6 +431,50 @@ describe("nativeVideo service", () => {
     });
   });
 
+  describe("recordNativeVideo — performance API coverage", () => {
+    async function setupPerformanceTest() {
+      mockIsNativePlatform.mockReturnValue(true);
+      mockStopRecording.mockResolvedValueOnce({ videoUrl: "file:///tmp/v.mp4" });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        blob: async () => new Blob(["x"], { type: "video/mp4" }),
+      });
+    }
+
+    it("measures record-start latency when performance API is available", async () => {
+      let callTime = 0;
+      mockPerformanceNow.mockImplementation(() => {
+        callTime += 50;
+        return callTime;
+      });
+      await setupPerformanceTest();
+      const pending = recordNativeVideo();
+      await flushAutoStop();
+      await pending;
+      expect(mockAddBreadcrumb).toHaveBeenCalledWith(
+        expect.objectContaining({
+          category: "camera",
+          message: "native_record_start_ms",
+          data: expect.objectContaining({ ms: expect.any(Number) }),
+        }),
+      );
+    });
+
+    it("handles missing performance API gracefully (both branches)", async () => {
+      const originalPerf = global.performance;
+      // Temporarily remove performance to test the fallback branch
+      // @ts-expect-error - testing undefined performance
+      delete global.performance;
+      await setupPerformanceTest();
+      const pending = recordNativeVideo();
+      await flushAutoStop();
+      const result = await pending;
+      expect(result.mimeType).toBe("video/mp4");
+      // Restore performance
+      global.performance = originalPerf;
+    });
+  });
+
   describe("recordNativeVideo — destroy() breadcrumb", () => {
     it("breadcrumbs when destroy() throws on the happy-path teardown", async () => {
       const fakeBlob = new Blob(["data"], { type: "video/mp4" });
@@ -427,5 +492,197 @@ describe("nativeVideo service", () => {
         data: { error: "teardown failed" },
       });
     });
+  });
+});
+
+describe("native pro-capture extras", () => {
+  beforeEach(() => {
+    mockPro.mockReset();
+    // Enable pro camera flag for all pro-capture tests
+    vi.stubEnv("VITE_FEATURE_PRO_CAMERA", "true");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("returns safe defaults when pro camera flag is off", async () => {
+    vi.stubEnv("VITE_FEATURE_PRO_CAMERA", "false");
+    const {
+      getNativeLenses,
+      setNativeLens,
+      focusNativeAt,
+      setNativeQuality,
+      getNativeQualityModes,
+      getNativeMetrics,
+      setNativePreRoll,
+      getNativePreRollStatus,
+      setNativeFisheye,
+    } = await import("../nativeVideo");
+    expect(await getNativeLenses()).toEqual([]);
+    expect(await setNativeLens(0.5)).toBe(false);
+    expect(await focusNativeAt(0.5, 0.5, true)).toBe(false);
+    expect(await setNativeQuality("pro4k60")).toBe(false);
+    expect(await getNativeQualityModes()).toEqual({ modes: ["standard1080p60"], current: "standard1080p60" });
+    expect(await getNativeMetrics()).toBeNull();
+    expect(await setNativePreRoll(true)).toBe(false);
+    expect(await getNativePreRollStatus()).toBeNull();
+    expect(await setNativeFisheye(true)).toBe(false);
+  });
+
+  it("lists 0.5x/1x/2x on an ultra-wide phone and 1x only otherwise", async () => {
+    const { getNativeLenses } = await import("../nativeVideo");
+    mockPro.mockResolvedValueOnce({ ultraWide: true, maxLens: 15 });
+    expect(await getNativeLenses()).toEqual([0.5, 1, 2]);
+    mockPro.mockResolvedValueOnce({ ultraWide: false, maxLens: 1 });
+    expect(await getNativeLenses()).toEqual([1]);
+    // Test when getLensInfo returns null/undefined
+    mockPro.mockResolvedValueOnce(null);
+    expect(await getNativeLenses()).toEqual([]);
+    // Test error case
+    const unimpl = Promise.reject(new Error("UNIMPLEMENTED"));
+    unimpl.catch(() => {});
+    mockPro.mockReturnValueOnce(unimpl);
+    expect(await getNativeLenses()).toEqual([]);
+  });
+
+  it("ramps the lens and clamps focus points, returning false when unsupported", async () => {
+    const { setNativeLens, focusNativeAt } = await import("../nativeVideo");
+    mockPro.mockResolvedValue({});
+    expect(await setNativeLens(0.5)).toBe(true);
+    expect(mockPro).toHaveBeenCalledWith("setZoom", { lens: 0.5 });
+    expect(await focusNativeAt(1.4, -0.2, true)).toBe(true);
+    expect(mockPro).toHaveBeenCalledWith("focusAt", { x: 1, y: 0, lock: true });
+    mockPro.mockReset();
+    mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
+    mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
+    expect(await setNativeLens(2)).toBe(false);
+    expect(await focusNativeAt(0.5, 0.5, false)).toBe(false);
+  });
+
+  it("sets and queries quality modes", async () => {
+    const { setNativeQuality, getNativeQualityModes } = await import("../nativeVideo");
+    mockPro.mockResolvedValueOnce({ quality: "pro4k60" });
+    expect(await setNativeQuality("pro4k60")).toBe(true);
+    expect(mockPro).toHaveBeenCalledWith("setQuality", { quality: "pro4k60" });
+    mockPro.mockResolvedValueOnce({ modes: ["standard1080p60", "pro4k60", "slomo120"], current: "pro4k60" });
+    const modes = await getNativeQualityModes();
+    expect(modes.modes).toEqual(["standard1080p60", "pro4k60", "slomo120"]);
+    expect(modes.current).toBe("pro4k60");
+    mockPro.mockReset();
+    mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
+    expect(await setNativeQuality("slomo240")).toBe(false);
+    mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
+    const fallback = await getNativeQualityModes();
+    expect(fallback.modes).toEqual(["standard1080p60"]);
+    expect(fallback.current).toBe("standard1080p60");
+  });
+
+  it("fetches performance metrics", async () => {
+    const { getNativeMetrics } = await import("../nativeVideo");
+    mockPro.mockResolvedValueOnce({
+      previewFps: 59.8,
+      droppedFrames: 2,
+      thermalState: "nominal",
+      quality: "standard1080p60",
+    });
+    const metrics = await getNativeMetrics();
+    expect(metrics).toEqual({
+      previewFps: 59.8,
+      droppedFrames: 2,
+      thermalState: "nominal",
+      quality: "standard1080p60",
+    });
+    // Test the || null branch (when getPerformanceMetrics returns undefined)
+    mockPro.mockResolvedValueOnce(undefined);
+    expect(await getNativeMetrics()).toBeNull();
+    // Test error case
+    mockPro.mockReset();
+    mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
+    expect(await getNativeMetrics()).toBeNull();
+  });
+
+  it("enables and checks pre-roll buffer status", async () => {
+    const { setNativePreRoll, getNativePreRollStatus } = await import("../nativeVideo");
+    // Test enabling
+    mockPro.mockResolvedValueOnce({ enabled: true });
+    expect(await setNativePreRoll(true)).toBe(true);
+    expect(mockPro).toHaveBeenCalledWith("setPreRoll", { enabled: true });
+    // Test disabling
+    mockPro.mockResolvedValueOnce({ enabled: false });
+    expect(await setNativePreRoll(false)).toBe(true);
+    expect(mockPro).toHaveBeenCalledWith("setPreRoll", { enabled: false });
+    // Test status check
+    mockPro.mockResolvedValueOnce({ enabled: true, bufferedSeconds: 2.3, bufferCount: 138 });
+    const status = await getNativePreRollStatus();
+    expect(status).toEqual({ enabled: true, bufferedSeconds: 2.3, bufferCount: 138 });
+    // Test the || null branch (when getPreRollStatus returns undefined)
+    mockPro.mockResolvedValueOnce(undefined);
+    expect(await getNativePreRollStatus()).toBeNull();
+    mockPro.mockReset();
+    // Test error cases
+    mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
+    expect(await setNativePreRoll(false)).toBe(false);
+    mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
+    expect(await getNativePreRollStatus()).toBeNull();
+  });
+
+  it("enables native AVFoundation fisheye effect", async () => {
+    const { setNativeFisheye } = await import("../nativeVideo");
+    // Test enabling with strength
+    mockPro.mockResolvedValueOnce({ enabled: true, strength: 2.0 });
+    expect(await setNativeFisheye(true, 2.0)).toBe(true);
+    expect(mockPro).toHaveBeenCalledWith("setNativeFisheye", { enabled: true, strength: 2.0 });
+    // Test disabling (hits the "off" branch in breadcrumb)
+    mockPro.mockResolvedValueOnce({ enabled: false, strength: 0 });
+    expect(await setNativeFisheye(false, 0)).toBe(true);
+    expect(mockPro).toHaveBeenCalledWith("setNativeFisheye", { enabled: false, strength: 0 });
+    // Test error case
+    mockPro.mockReset();
+    mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
+    expect(await setNativeFisheye(true, 3.0)).toBe(false);
+  });
+
+  it("returns false when native functions are not available", async () => {
+    // Test the defensive !pro.xxx checks by temporarily removing those methods
+    const VideoRecorder = await import("@capacitor-community/video-recorder").then((m) => m.VideoRecorder);
+    const vr = VideoRecorder as unknown as Record<string, unknown>;
+    const originalSetZoom = vr.setZoom;
+    const originalFocusAt = vr.focusAt;
+    const originalSetQuality = vr.setQuality;
+    const originalGetQualityModes = vr.getQualityModes;
+    const originalSetPreRoll = vr.setPreRoll;
+    const originalSetNativeFisheye = vr.setNativeFisheye;
+
+    // Temporarily remove the methods
+    delete vr.setZoom;
+    delete vr.focusAt;
+    delete vr.setQuality;
+    delete vr.getQualityModes;
+    delete vr.setPreRoll;
+    delete vr.setNativeFisheye;
+
+    const {
+      setNativeLens,
+      focusNativeAt,
+      setNativeQuality,
+      getNativeQualityModes,
+      setNativePreRoll,
+      setNativeFisheye,
+    } = await import("../nativeVideo");
+    expect(await setNativeLens(1)).toBe(false);
+    expect(await focusNativeAt(0.5, 0.5, false)).toBe(false);
+    expect(await setNativeQuality("pro4k60")).toBe(false);
+    expect(await getNativeQualityModes()).toEqual({ modes: ["standard1080p60"], current: "standard1080p60" });
+    expect(await setNativePreRoll(true)).toBe(false);
+    expect(await setNativeFisheye(true)).toBe(false);
+
+    // Restore the methods
+    vr.setZoom = originalSetZoom;
+    vr.focusAt = originalFocusAt;
+    vr.setQuality = originalSetQuality;
+    vr.getQualityModes = originalGetQualityModes;
+    vr.setPreRoll = originalSetPreRoll;
+    vr.setNativeFisheye = originalSetNativeFisheye;
   });
 });

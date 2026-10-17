@@ -6,24 +6,15 @@ name: Build iOS App
 # (`bundle exec fastlane ios beta`), which needs match + App Store Connect
 # secrets and is run deliberately, not on every push.
 on:
+  # Cost: macOS minutes bill at 10x. No PR trigger (removed 2026-10-17,
+  # approved by Jason). Runs on manual dispatch, a published release, or a
+  # v* tag. Signed TestFlight builds go through ios-release.yml (manual).
   workflow_dispatch:
+  release:
+    types: [published]
   push:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'ios/**'
-      - 'package.json'
-      - 'capacitor.config.ts'
-      - '.github/workflows/ios-build.yml'
-      - '.github/scripts/ios-simulator-screenshots.sh'
-  # PRs pay macOS minutes only when they touch the native shell itself —
-  # src/** changes are covered by the push-to-main run instead.
-  pull_request:
-    paths:
-      - 'ios/**'
-      - 'capacitor.config.ts'
-      - '.github/workflows/ios-build.yml'
-      - '.github/scripts/ios-simulator-screenshots.sh'
+    tags:
+      - 'v*'
 
 permissions:
   contents: read

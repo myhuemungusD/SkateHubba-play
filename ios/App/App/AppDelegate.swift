@@ -2,6 +2,7 @@ import UIKit
 import WebKit
 import Capacitor
 import SkatehubbaFcm
+import SkatehubbaClipEditor
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -12,6 +13,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // No-ops when GoogleService-Info.plist is absent, so unsigned
         // simulator builds still launch. See ios/App/SkatehubbaFcm.
         SkatehubbaFcm.configureIfPossible()
+        // Root VC registers the clip editor plugin; keep it linked.
+        SkatehubbaClipEditor.ensureLinked()
         enableEdgeSwipeBack()
         deliverScreenshotRoute()
         return true

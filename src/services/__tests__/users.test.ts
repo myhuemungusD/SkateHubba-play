@@ -86,6 +86,11 @@ vi.mock("../avatars", () => ({
   deleteAvatar: (...args: unknown[]) => mockDeleteAvatar(...args),
 }));
 
+const mockDeleteBannerObject = vi.fn().mockResolvedValue(true);
+vi.mock("../banners", () => ({
+  deleteBannerObject: (...args: unknown[]) => mockDeleteBannerObject(...args),
+}));
+
 const mockDeleteGameVideos = vi.fn().mockResolvedValue(0);
 vi.mock("../storage", () => ({
   deleteGameVideos: (...args: unknown[]) => mockDeleteGameVideos(...args),
@@ -606,6 +611,25 @@ describe("users service", () => {
       const batch = mockWriteBatch();
       batch.commit.mockRejectedValueOnce(new Error("Batch commit failed"));
       await expect(deleteUserData("u1", "sk8r")).rejects.toThrow("Batch commit failed");
+    });
+
+    it("deletes the banner object and survives a banner delete failure", async () => {
+      stubEmptyCascade();
+      await deleteUserData("u1", "sk8r");
+      expect(mockDeleteBannerObject).toHaveBeenCalledWith("u1");
+
+      stubEmptyCascade();
+      mockDeleteBannerObject.mockRejectedValueOnce(new Error("storage down"));
+      await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        "banner_delete_failed",
+        expect.objectContaining({ uid: "u1", error: "storage down" }),
+      );
+
+      stubEmptyCascade();
+      mockDeleteBannerObject.mockRejectedValueOnce("odd");
+      await deleteUserData("u1", "sk8r");
+      expect(mockLoggerWarn).toHaveBeenCalledWith("banner_delete_failed", expect.objectContaining({ error: "odd" }));
     });
 
     it("scrubs the pushTargets mirror and received notifications in Phase 3b", async () => {

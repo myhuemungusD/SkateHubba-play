@@ -22,6 +22,7 @@ import { deleteGameVideos } from "./storage";
 import { deleteUserClips, deleteUserClipVotes } from "./clips";
 import { deleteUserDisputeVotes, deleteUserDisputes } from "./disputes";
 import { deleteAvatar } from "./avatars";
+import { deleteBannerObject } from "./banners";
 import { deleteUserNotifications } from "./notifications";
 import { PUSH_TARGETS_COLLECTION } from "./pushDispatch";
 import { analytics } from "./analytics";
@@ -141,6 +142,12 @@ export interface UserProfile {
   proBio?: string;
   /** Pro-picked signature tricks from TRICK_CATALOG (verified pros only, <= 3). */
   proSignatureTricks?: string[];
+  /** Pro-written one-liner (verified pros only, <= 80 chars). */
+  proTagline?: string;
+  /** Pro-written hometown (verified pros only, <= 60 chars). */
+  proHometown?: string;
+  /** Pro-written sponsors (verified pros only, <= 3, each <= 40 chars). */
+  proSponsors?: string[];
   /**
    * Custom avatar URL — Firebase Storage download URL pinned to this
    * project's bucket and the calling UID by both client-side guard
@@ -149,6 +156,8 @@ export interface UserProfile {
    * first via `deleteAvatar`).
    */
   profileImageUrl?: string | null;
+  /** Profile banner URL, pinned to `users/{uid}/banner.webp` (see banners.ts). */
+  bannerImageUrl?: string | null;
 }
 
 /**
@@ -187,6 +196,18 @@ interface UserPrivateProfile {
    * every pre-existing account opted in without a migration.
    */
   pushEnabled?: boolean;
+  /**
+   * Opt-in for a future trick recognizer. Absent means off. Written by
+   * `setTrainingConsent`. Players under 18 are rejected in that service.
+   */
+  trainingConsentOptedIn?: boolean;
+  /** Policy version the skater agreed to, e.g. "2026-10-10". */
+  trainingConsentPolicyVersion?: string;
+  trainingConsentUpdatedAt?: FieldValue;
+  /** Set when they turn the opt-in off. The cron uses this via the revocation doc. */
+  trainingConsentRevokedAt?: FieldValue | null;
+  /** Set the first time the post-game prompt is dismissed, so it stays one-time. */
+  trainingConsentPromptSeenAt?: FieldValue;
 }
 
 /** Document id of the canonical private profile doc. */
@@ -560,6 +581,12 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
       error: err instanceof Error ? err.message : String(err),
     });
   }
+
+  // Banner object too. deleteBannerObject never throws on a missing object;
+  // the catch covers a Storage boot failure.
+  await deleteBannerObject(uid).catch((err: unknown) => {
+    logger.warn("banner_delete_failed", { uid, error: err instanceof Error ? err.message : String(err) });
+  });
 
   analytics.accountDeleted(uid, achievementsSnap.docs.length, avatarRemoved);
 }

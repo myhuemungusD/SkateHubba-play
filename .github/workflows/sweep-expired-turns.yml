@@ -27,8 +27,7 @@
 name: Sweep Expired Turns (cron referee)
 
 on:
-  schedule:
-    - cron: '*/15 * * * *'
+  # Schedule moved to the pushDispatchSweep Cloud Function (every 15 min, approved 2026-10-17); manual only.
   workflow_dispatch:
 
 permissions:

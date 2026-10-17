@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-15T05:15:35.368Z",
+  "generatedAt": "2026-10-17T17:52:18.514Z",
   "note": "Files under the per-file UI coverage floor when the gate was introduced. Each entry is the minimum coverage that file may have; the list only shrinks. Do not add files by hand — fix their coverage instead. Prune graduated entries with `node scripts/check-coverage-per-file.mjs --update-baseline`.",
   "floors": {
     "src/components/**": {
@@ -57,12 +57,6 @@
       "functions": 100,
       "branches": 50,
       "statements": 100
-    },
-    "src/components/UserClipUpload/index.tsx": {
-      "lines": 87.5,
-      "functions": 75,
-      "branches": 81.48,
-      "statements": 77.77
     },
     "src/components/map/AddSpotSheet.tsx": {
       "lines": 76.47,

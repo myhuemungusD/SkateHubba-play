@@ -15,6 +15,19 @@ interface Navigator {
   contacts?: ContactsManager;
 }
 
+/** Optical zoom. Not in the DOM lib this project typechecks against. */
+interface MediaTrackCapabilities {
+  zoom?: DoubleRange;
+}
+
+interface MediaTrackConstraintSet {
+  zoom?: ConstrainDouble;
+}
+
+interface MediaTrackSettings {
+  zoom?: number;
+}
+
 interface Window {
   /** Set by public/lcp-shell.js when a pre-JS shell is on screen. */
   __skatehubbaLcpShell?: "home" | "auth" | "feed";
@@ -49,9 +62,31 @@ interface ImportMetaEnv {
   /** Skate Runner switch: "true" shows /play/runner and the lobby card.
    *  Unset (default) hides them. Read via isRunnerEnabled(). */
   readonly VITE_FEATURE_RUNNER_ENABLED?: string;
+
+  /**
+   * Closet (earned + purchased items, drops, trading) flag.
+   * DEFAULTS TO OFF; literal "true" only. Server switch is CLOSET_ENABLED.
+   * Plan: ../uploads/closet-drops-plan.md.
+   */
+  readonly VITE_FEATURE_CLOSET_ENABLED?: string;
+  readonly VITE_FEATURE_CLOSET_DROPS_ENABLED?: string;
+  readonly VITE_FEATURE_CLOSET_TRADING_ENABLED?: string;
+  readonly VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED?: string;
   /** Sign in with Apple switch: "true" shows the button. Unset (default)
    *  hides it. Read via isAppleSignInEnabled(). */
   readonly VITE_FEATURE_APPLE_SIGNIN_ENABLED?: string;
+  /** Trick picker switch: "true" replaces the free-text trick name. Unset
+   *  (default) keeps the text field. Read via isTrickPickerEnabled(). */
+  readonly VITE_FEATURE_TRICK_PICKER_ENABLED?: string;
+  /** WTT (What's That Trick) switch: "true" enables Name It mode. Unset
+   *  (default) hides it. Read via isWttEnabled(). */
+  readonly VITE_FEATURE_WTT_ENABLED?: string;
+  /** Feed modes switch: "true" shows Scroll / Name It / Vote / Judge toggle.
+   *  Unset (default) keeps today's feed. Read via isFeedModesEnabled(). */
+  readonly VITE_FEATURE_FEED_MODES_ENABLED?: string;
+  /** Post your makes switch: "true" shows GameOver post flow. Unset (default)
+   *  hides it. Read via isPostMakesEnabled(). */
+  readonly VITE_FEATURE_POST_MAKES_ENABLED?: string;
   /** Referee nomination on new games: "true" shows the picker and lets
    *  createGame stamp a judge. Unset (default) forces the honor system.
    *  Read via isRefereeEnabled(). Does not affect games that already have one. */
@@ -59,6 +94,15 @@ interface ImportMetaEnv {
   /** Public-clip moderation. "true" starts user uploads as pending.
    *  Unset (default) leaves uploads visible immediately. */
   readonly VITE_FEATURE_CLIP_MODERATION_ENABLED?: string;
+  /** Skate clip editor. Literal "true" only; off by default. */
+  readonly VITE_FEATURE_CLIP_EDITOR?: string;
+  /** SMS 2FA enrollment. "true" shows SMS enrollment in Settings for email/password
+   *  users. Unset (default) hides it. Read via isSms2faEnabled(). */
+  readonly VITE_FEATURE_SMS_2FA_ENABLED?: string;
+  /** Pro camera features (4K60, 120/240fps, lens switching, pre-roll, thermal mgmt).
+   *  Literal "true" only; off by default. Read via isProCameraEnabled(). */
+  readonly VITE_FEATURE_PRO_CAMERA?: string;
+  readonly VITE_FEATURE_PROFILE_BANNER?: string;
   readonly VITE_MAPBOX_TOKEN?: string;
   /** Optional Mapbox Studio style URL. Falls back to mapbox://styles/mapbox/dark-v11. */
   readonly VITE_MAPBOX_STYLE_URL?: string;

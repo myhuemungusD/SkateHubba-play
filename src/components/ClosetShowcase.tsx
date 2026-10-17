@@ -1,6 +1,8 @@
 import { Boxes, CircleDot, Footprints, HardHat, Layers, Shirt, Sticker, Wrench } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { LockerItem } from "../services/locker";
+import { designerCreditFor } from "../lib/closet/mikeWhiteCollection";
+import { DesignerCredit } from "./DesignerCredit";
 
 /**
  * "Hubba Locker" — the gear a player has earned (Economy Phase A).
@@ -39,43 +41,49 @@ const TYPE_ICONS: Readonly<Partial<Record<string, LucideIcon>>> = {
 
 /**
  * Rarity accent classes. Tailwind cannot see dynamically-built class names, so
- * each tier spells its utilities out in full. Uncommon and limited reuse the
- * theme's brand green / orange so the locker sits inside the app's existing
- * palette instead of introducing a second set of accent hues.
+ * each tier spells its utilities out in full. Grail tier added for the closet.
  */
 const RARITY_STYLES: Readonly<Record<string, { card: string; tag: string }>> = {
   common: { card: "border-zinc-700/70", tag: "bg-zinc-500/15 text-zinc-300" },
   uncommon: { card: "border-brand-green/50", tag: "bg-brand-green/15 text-brand-green" },
   rare: { card: "border-blue-500/50", tag: "bg-blue-500/15 text-blue-400" },
   limited: { card: "border-brand-orange/60", tag: "bg-brand-orange/15 text-brand-orange" },
+  grail: { card: "border-red-500/70", tag: "bg-red-500/15 text-red-400" },
 };
 
 function stylesForRarity(rarity: string): { card: string; tag: string } {
   return Object.hasOwn(RARITY_STYLES, rarity) ? RARITY_STYLES[rarity] : RARITY_STYLES.common;
 }
 
-export function LockerShowcase({ items, isOwnProfile }: Props) {
-  if (items.length === 0) {
+export function ClosetShowcase({ items, isOwnProfile }: Props) {
+  // Sort items by acquisition date (newest first)
+  const sortedItems = [...items].sort((a, b) => {
+    const aTime = a.acquiredAt?.getTime() ?? 0;
+    const bTime = b.acquiredAt?.getTime() ?? 0;
+    return bTime - aTime;
+  });
+
+  if (sortedItems.length === 0) {
     if (!isOwnProfile) return null;
     return (
-      <section aria-label="Hubba Locker" data-testid="locker-showcase" className="mb-8 animate-fade-in">
+      <section aria-label="Closet" data-testid="closet-showcase" className="mb-8 animate-fade-in">
         <SectionHeading />
         <p
-          data-testid="locker-empty-hint"
+          data-testid="closet-empty-hint"
           className="rounded-2xl border border-dashed border-border px-4 py-6 text-center font-body text-xs text-subtle"
         >
-          Your locker is empty — earned gear will show up here
+          Your closet is empty — earned gear will show up here
         </p>
       </section>
     );
   }
 
   return (
-    <section aria-label="Hubba Locker" data-testid="locker-showcase" className="mb-8 animate-fade-in">
+    <section aria-label="Closet" data-testid="closet-showcase" className="mb-8 animate-fade-in">
       <SectionHeading />
       <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
-        {items.map((item) => (
-          <LockerCard key={item.id} item={item} />
+        {sortedItems.map((item) => (
+          <ClosetCard key={item.id} item={item} />
         ))}
       </ul>
     </section>
@@ -83,10 +91,10 @@ export function LockerShowcase({ items, isOwnProfile }: Props) {
 }
 
 function SectionHeading() {
-  return <h2 className="font-display text-[10px] tracking-[0.2em] text-brand-orange mb-3">HUBBA LOCKER</h2>;
+  return <h2 className="font-display text-[10px] tracking-[0.2em] text-brand-orange mb-3">CLOSET</h2>;
 }
 
-function LockerCard({ item }: { item: LockerItem }) {
+function ClosetCard({ item }: { item: LockerItem }) {
   const rarity = stylesForRarity(item.rarity);
   const Icon = TYPE_ICONS[item.type] ?? Boxes;
   // `brand` and `provenanceReason` are both optional in practice — the service
@@ -94,11 +102,13 @@ function LockerCard({ item }: { item: LockerItem }) {
   // as "Ledge Deck by , common".
   const byBrand = item.brand ? ` by ${item.brand}` : "";
   const detail = item.provenanceReason ? `. ${item.provenanceReason}` : "";
+  const credit = designerCreditFor(item.itemDefId);
+  const creditLabel = credit ? `. ${credit.credit}` : "";
 
   return (
     <li
-      data-testid={`locker-item-${item.id}`}
-      aria-label={`${item.name}${byBrand}, ${item.rarity}${detail}`}
+      data-testid={`closet-item-${item.id}`}
+      aria-label={`${item.name}${byBrand}, ${item.rarity}${creditLabel}${detail}`}
       title={item.provenanceReason ?? undefined}
       className={`overflow-hidden rounded-2xl border bg-surface ${rarity.card}`}
     >
@@ -110,7 +120,7 @@ function LockerCard({ item }: { item: LockerItem }) {
             loading="lazy"
             aria-hidden="true"
             className="h-full w-full object-cover"
-            data-testid={`locker-image-${item.id}`}
+            data-testid={`closet-image-${item.id}`}
           />
         ) : (
           <Icon
@@ -118,14 +128,18 @@ function LockerCard({ item }: { item: LockerItem }) {
             strokeWidth={1.5}
             className="text-faint"
             aria-hidden="true"
-            data-testid={`locker-icon-${item.id}`}
+            data-testid={`closet-icon-${item.id}`}
           />
         )}
       </div>
       <div className="p-2.5">
         <p className="font-display text-sm leading-tight text-white truncate">{item.name}</p>
-        {item.brand && (
-          <p className="font-body text-[10px] uppercase tracking-wider text-subtle mt-0.5 truncate">{item.brand}</p>
+        {credit ? (
+          <DesignerCredit credit={credit} compact />
+        ) : (
+          item.brand && (
+            <p className="font-body text-[10px] uppercase tracking-wider text-subtle mt-0.5 truncate">{item.brand}</p>
+          )
         )}
         <span
           className={`mt-1.5 inline-block rounded px-1.5 py-0.5 font-display text-[9px] tracking-wider leading-none ${rarity.tag}`}

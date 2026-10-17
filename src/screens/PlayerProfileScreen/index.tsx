@@ -7,12 +7,19 @@ import type { StatTileName } from "./components/ProfileStatsGrid";
 import { usePullToRefresh } from "../../hooks/usePullToRefresh";
 import { PullToRefreshIndicator } from "../../components/PullToRefreshIndicator";
 import { BadgesRow } from "../../components/BadgesRow";
-import { LockerShowcase } from "../../components/LockerShowcase";
+import { ClosetShowcase } from "../../components/ClosetShowcase";
+import { ProfileShowcase } from "../../components/ProfileShowcase";
 import { usePlayerProfileController } from "./usePlayerProfileController";
 import { BlockControls } from "./components/BlockControls";
 import { ChallengeButton } from "./components/ChallengeButton";
 import { RollDiceButton } from "./components/RollDiceButton";
-import { isDiceEnabled, isExtrasEnabled, isProBlessingEnabled, isXpEnabled } from "../../lib/featureFlags";
+import {
+  isDiceEnabled,
+  isExtrasEnabled,
+  isProBlessingEnabled,
+  isProfileBannerEnabled,
+  isXpEnabled,
+} from "../../lib/featureFlags";
 import { BlessProButton } from "../../components/pro/BlessProButton";
 import { BlessedByLine } from "../../components/pro/BlessedByLine";
 import { AchievementsRibbon } from "./components/AchievementsRibbon";
@@ -21,6 +28,7 @@ import { OpponentList } from "./components/OpponentList";
 import { PlayerProfileError } from "./components/PlayerProfileError";
 import { ProfileHeader } from "./components/ProfileHeader";
 import { ProfileIdentityCard } from "./components/ProfileIdentityCard";
+import { ProfileBanner } from "./components/ProfileBanner";
 import { ProfileSkeleton } from "./components/ProfileSkeleton";
 import { ProfileStatsGrid } from "./components/ProfileStatsGrid";
 import { SignUpToChallengeCta } from "./components/SignUpToChallengeCta";
@@ -257,6 +265,9 @@ export function PlayerProfileScreen({
       <ProfileHeader onBack={onBack} backLabel={backLabel} />
 
       <div className="px-5 pt-7 max-w-[430px] mx-auto">
+        {isProfileBannerEnabled() && (
+          <ProfileBanner uid={profile.uid} bannerImageUrl={profile.bannerImageUrl} isOwnProfile={isOwnProfile} />
+        )}
         <ProfileIdentityCard
           username={profile.username}
           isVerifiedPro={profile.isVerifiedPro}
@@ -276,6 +287,9 @@ export function PlayerProfileScreen({
           stance={profile.stance ?? ""}
           bio={profile.proBio}
           signatureTricks={profile.proSignatureTricks}
+          tagline={profile.proTagline}
+          hometown={profile.proHometown}
+          sponsors={profile.proSponsors}
           canEdit={isOwnProfile && profile.isVerifiedPro === true}
           wins={profile.wins ?? 0}
           losses={profile.losses ?? 0}
@@ -365,6 +379,8 @@ export function PlayerProfileScreen({
 
         <BadgesRow achievements={c.achievements} />
 
+        <ProfileShowcase equippedItems={c.equippedItems} pinnedItems={c.pinnedItems} isOwnProfile={isOwnProfile} />
+
         {isXpEnabled() && <AchievementsRibbon achievements={c.achievements} clipsPosted={profile.clipsPosted} />}
 
         {/* The VS-YOU row this flag unlocks is head-to-head against the
@@ -376,7 +392,7 @@ export function PlayerProfileScreen({
           onTileTap={handleTileTap}
         />
 
-        <LockerShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} />
+        <ClosetShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} />
 
         {/* Owner-only: advertising an unbuilt feature on someone else's public
             profile is noise to every visitor but the owner. */}

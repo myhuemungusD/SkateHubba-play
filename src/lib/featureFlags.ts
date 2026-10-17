@@ -76,6 +76,15 @@ export function isRefereeEnabled(): boolean {
 }
 
 /**
+ * Searchable trick picker. Off until the catalog has been tried on a phone.
+ * Literal "true" only. While off, setters still type a trick name and no
+ * structured trick fields are required.
+ */
+export function isTrickPickerEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_TRICK_PICKER_ENABLED);
+}
+
+/**
  * Public-clip moderation. Off until the Video Intelligence function is
  * deployed. Anything except the literal string "true" keeps uploads
  * visible immediately, which is today's behavior.
@@ -94,6 +103,31 @@ export function isProProfilesEnabled(): boolean {
 }
 
 /**
+ * What's That Trick (WTT) — Name It mode in the clips feed. Off until
+ * option generation and vote tallying are tested. Literal "true" only.
+ * Server switch: WTT_ENABLED / WTT_TESTER_UIDS.
+ */
+export function isWttEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_WTT_ENABLED);
+}
+
+/**
+ * Post your makes from GameOver screen. Off until consent flow is tested.
+ * Literal "true" only.
+ */
+export function isPostMakesEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_POST_MAKES_ENABLED);
+}
+
+/**
+ * Feed mode switcher (Scroll / Name It / Vote / Judge). Off until modes
+ * are implemented and tested. Literal "true" only.
+ */
+export function isFeedModesEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_FEED_MODES_ENABLED);
+}
+
+/**
  * Pro blessing: a verified pro turns another skater pro (the only non-admin
  * way to get the badge). Off by default; the proBlessing callable has its own
  * server switch (PRO_BLESSING_ENABLED / PRO_BLESSING_TESTER_UIDS), which is
@@ -101,4 +135,60 @@ export function isProProfilesEnabled(): boolean {
  */
 export function isProBlessingEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_PRO_BLESSING);
+}
+
+/**
+ * Closet: earned + purchased items, limited drops, trading, Hubba Bucks.
+ * Off by default; the server switches (CLOSET_ENABLED, CLOSET_DROPS_ENABLED,
+ * CLOSET_TRADING_ENABLED, CLOSET_BUCKS_PURCHASE_ENABLED) are the real gates.
+ * Traction gate: 100 finished games before public launch (plan §13).
+ * Literal "true" only.
+ */
+export function isClosetEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_CLOSET_ENABLED);
+}
+
+export function isClosetDropsEnabled(): boolean {
+  return isClosetEnabled() && parseFlag(import.meta.env.VITE_FEATURE_CLOSET_DROPS_ENABLED);
+}
+
+export function isClosetTradingEnabled(): boolean {
+  return isClosetEnabled() && parseFlag(import.meta.env.VITE_FEATURE_CLOSET_TRADING_ENABLED);
+}
+
+export function isClosetBucksPurchaseEnabled(): boolean {
+  return isClosetEnabled() && parseFlag(import.meta.env.VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED);
+}
+
+/**
+ * Skate clip editor: speed ramps, landing-marker trim, VX/VHS looks, color
+ * presets, line cuts, trick captions, beat-synced music, skate SFX and
+ * full-quality export (native AVFoundation on iOS). Literal "true" only.
+ */
+export function isClipEditorEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_CLIP_EDITOR);
+}
+
+/**
+ * SMS 2FA enrollment. Off by default; when on, email/password users can enroll
+ * SMS as a second factor in Settings (via phone number). Never shown to
+ * Google/Apple users (they already have 2-step from their IdP). Literal "true" only.
+ */
+export function isSms2faEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_SMS_2FA_ENABLED);
+}
+
+/**
+ * Pro camera features: 4K60, 120/240fps slow-mo, lens switching (0.5x/1x/2x),
+ * tap-to-focus with AE/AF lock, quality selector, cinematic stabilization,
+ * thermal management, 2.5s pre-roll buffer, native AVFoundation fisheye,
+ * and performance metrics. Literal "true" only; off by default.
+ */
+export function isProCameraEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_PRO_CAMERA);
+}
+
+/** Profile banner (background) photo on the profile screen. Literal "true" only; off by default. */
+export function isProfileBannerEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_PROFILE_BANNER);
 }

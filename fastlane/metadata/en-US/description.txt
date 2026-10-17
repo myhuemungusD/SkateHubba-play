@@ -1,4 +1,4 @@
-SkateHubba is real-time multiplayer S.K.A.T.E. — the classic trick-matching game, played against real skaters wherever they are.
+SkateHubba is S.K.A.T.E. on your phone — the classic trick-matching game, played turn by turn against real skaters wherever they are. No need to be at the same spot or online at the same time.
 
 HOW IT WORKS
 • Challenge another skater to a game of S.K.A.T.E.
@@ -10,13 +10,16 @@ FILM EVERYTHING
 Record your set and match attempts right in the app. Clips are the proof — no arguing about whether the trick was landed.
 
 DISPUTES, SETTLED
-Think a match attempt was sketchy? Flag it and let a judge make the call.
+Think a match attempt was sketchy? Add an optional referee when you start a game, or let the community vote on a disputed landing.
 
 FIND SPOTS
 Browse the spot map, check out where people are skating, and add your own spots.
 
 TRACK YOUR RECORD
 Wins, losses, letters taken and given — your stats follow your profile.
+
+CLIPS FEED
+Landed tricks from every game roll into one feed. Upvote the best ones, and report anything that crosses the line.
 
 STAY IN THE GAME
 Turn-based means no waiting around: get a push notification when it's your move, tap it, and you're back in the game.

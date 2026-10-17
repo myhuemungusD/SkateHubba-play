@@ -48,6 +48,7 @@ describe("SpotlightVideo reduced motion", () => {
     const { container } = render(<SpotlightVideo src="clip.webm" />);
     const video = container.querySelector("video") as HTMLVideoElement;
     expect(video.autoplay).toBe(true);
+    expect(video).toHaveClass("object-contain");
     expect(video.getAttribute("poster")).toBe("/sh-video-poster.webp");
     expect(video.getAttribute("preload")).toBe("auto");
     fireIntersect(video, true);

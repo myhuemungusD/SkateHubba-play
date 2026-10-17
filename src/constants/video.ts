@@ -52,8 +52,13 @@ export const USER_CLIP_MAX_DURATION_MS = USER_CLIP_MAX_DURATION_SECONDS * 1000;
  * ~0.3 MB of audio. Firebase Storage rejects anything ≥ 50 MB
  * (`MAX_UPLOAD_BYTES` in src/services/storage.ts, mirroring storage.rules), so
  * a full-length clip keeps ~2.4× headroom for container overhead and encoders
- * that overshoot. 8 Mbps is the floor for clean 1080p at speed — below it fast
- * board movement smears into mush, which is the whole subject of the footage.
+ * that overshoot. 8 Mbps is the bottom of the 8–12 Mbps band that keeps
+ * 1080p60 skate footage from smearing. It is not raised to 12: a 30 s user
+ * clip at 12 Mbps is ~45 MB before audio and can hit the 50 MB Storage cap.
+ * Chrome and Firefox default to about 2.5 Mbps when this is omitted (grainy);
+ * Safari defaults to about 10. Chrome on Android often ignores the hint and
+ * stays near 2.5 Mbps anyway — a real-device check, not a reason to raise
+ * the number.
  *
  * The 30 s case ({@link USER_CLIP_MAX_DURATION_SECONDS}, user-uploaded feed
  * clips) is tighter: 8 Mbit/s × 30 s = 240 Mbit = 30 MB, plus ~0.5 MB of audio.
