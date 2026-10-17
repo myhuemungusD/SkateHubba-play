@@ -1,6 +1,22 @@
 # Clip editor audio credits
 
-Every sound effect and music loop in `public/editor/` is an **original work
+## Recorded sound effects — SoundBiterSFX (CC BY 4.0)
+
+Seven sound effects are real skateboard recordings edited from
+**"Skateboarding Tricks" by SoundBiterSFX** (recorded/produced by VoiceBosch),
+https://freesound.org/s/746602/, licensed under **Creative Commons Attribution
+4.0** (https://creativecommons.org/licenses/by/4.0/). Changes: cut into single
+hits, high-pass filtered, lightly denoised, loudness-normalized to about
+−14 LUFS, faded, transcoded to AAC (.m4a) and Ogg Vorbis (.ogg). The editor's
+Skate Sounds panel shows this credit in the app. Made by
+`scripts/process-recorded-sfx.sh`.
+
+| File | Sound | Cut from source (s) |
+| ---- | ----- | ------------------- |
+
+## Synthesized sounds (CC0)
+
+Every other sound effect and music loop in `public/editor/` is an **original work
 synthesized from scratch** by `scripts/generate-skate-sfx.mjs` (oscillators,
 filtered noise and envelopes — no recordings, no samples, no third-party
 audio). The SkateHubba project dedicates them to the public domain under
@@ -12,21 +28,14 @@ licensing obligations.
 
 ## Sound effects (`sfx/`)
 
-| File               | Sound                           | Source             | License |
-| ------------------ | ------------------------------- | ------------------ | ------- |
-| ollie-pop.m4a      | Ollie pop (tail strike)         | Original synthesis | CC0 1.0 |
-| flick.m4a          | Flick (griptape scrape)         | Original synthesis | CC0 1.0 |
-| landing.m4a        | Landing (bolts)                 | Original synthesis | CC0 1.0 |
-| grind-5050.m4a     | 50-50 grind                     | Original synthesis | CC0 1.0 |
-| grind-crooked.m4a  | Crooked grind                   | Original synthesis | CC0 1.0 |
-| grind-smith.m4a    | Smith grind                     | Original synthesis | CC0 1.0 |
-| slide-wood.m4a     | Board slide on wood             | Original synthesis | CC0 1.0 |
-| slide-concrete.m4a | Slide on concrete/ledge         | Original synthesis | CC0 1.0 |
-| slide-metal.m4a    | Slide on metal rail             | Original synthesis | CC0 1.0 |
-| wheel-roll.m4a     | Wheel roll with sidewalk cracks | Original synthesis | CC0 1.0 |
-| powerslide.m4a     | Powerslide                      | Original synthesis | CC0 1.0 |
-| bail.m4a           | Bail (board clatter)            | Original synthesis | CC0 1.0 |
-| crowd-hype.m4a     | Crowd hype                      | Original synthesis | CC0 1.0 |
+| File              | Sound                | Source             | License |
+| ----------------- | -------------------- | ------------------ | ------- |
+| grind-crooked.m4a | Crooked grind        | Original synthesis | CC0 1.0 |
+| grind-smith.m4a   | Smith grind          | Original synthesis | CC0 1.0 |
+| slide-wood.m4a    | Board slide on wood  | Original synthesis | CC0 1.0 |
+| slide-metal.m4a   | Slide on metal rail  | Original synthesis | CC0 1.0 |
+| bail.m4a          | Bail (board clatter) | Original synthesis | CC0 1.0 |
+| crowd-hype.m4a    | Crowd hype           | Original synthesis | CC0 1.0 |
 
 ## Music (`music/`)
 
@@ -40,7 +49,9 @@ licensing obligations.
 ## Adding third-party audio
 
 Only add a file here if it is CC0 or we hold a written commercial license that
-covers in-app use **and** re-posting to social platforms. Add a row with the
+covers in-app use **and** re-posting to social platforms, or it is CC BY and
+we credit the author both here and in the app (Skate Sounds panel, via the
+`credit` field in `src/lib/clipEditor/sfxLibrary.ts`). Add a row with the
 author, source URL, license and (for paid licenses) where the license
-document is stored. CC-BY, CC-NC and "royalty free for personal use" sounds
-are **not** acceptable.
+document is stored. CC-NC, Sampling+ and "royalty free for personal use"
+sounds are **not** acceptable.

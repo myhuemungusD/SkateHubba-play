@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import type { EditProject } from "../../lib/clipEditor/types";
 import { MUSIC_TRACKS } from "../../lib/clipEditor/musicLibrary";
-import { SKATE_SOUNDS } from "../../lib/clipEditor/sfxLibrary";
+import { SKATE_SOUNDS, soundCredits } from "../../lib/clipEditor/sfxLibrary";
 import { alignMusicToLanding } from "../../lib/clipEditor/beats";
 import { placeSfx } from "../../lib/clipEditor/overlays";
 import { sourceToOutput } from "../../lib/clipEditor/speed";
@@ -93,7 +93,9 @@ export function SoundsPanel({ project, onChange, outputTime }: PanelProps) {
             onContextMenu={(e) => {
               e.preventDefault();
               preview.current?.pause();
-              preview.current = new Audio(s.src);
+              const a = new Audio();
+              a.src = s.oggSrc && !a.canPlayType("audio/mp4") ? s.oggSrc : s.src;
+              preview.current = a;
               void preview.current.play().catch(() => undefined);
             }}
             aria-label={`Add ${s.label} at ${outputTime.toFixed(1)} seconds`}
@@ -103,6 +105,19 @@ export function SoundsPanel({ project, onChange, outputTime }: PanelProps) {
           </button>
         ))}
       </div>
+      <p className="font-body text-[11px] text-faint" data-testid="sfx-credits">
+        Sound credits:{" "}
+        {soundCredits().map((c, i) => (
+          <span key={c.url}>
+            {i > 0 && "; "}
+            <a href={c.url} target="_blank" rel="noopener noreferrer" className="underline">
+              “{c.title}” by {c.author}
+            </a>{" "}
+            ({c.license}, edited)
+          </span>
+        ))}
+        . Other sounds are original SkateHubba synth sounds (CC0).
+      </p>
     </div>
   );
 }
