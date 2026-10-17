@@ -194,13 +194,7 @@ export function SpotChat({ spotId, spotName, currentUserId, onError }: SpotChatP
             disabled={sending}
             className="flex-1 rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-sm text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none disabled:opacity-50"
           />
-          <Btn
-            onClick={handleSend}
-            disabled={!input.trim() || sending}
-            variant="primary"
-            size="sm"
-            aria-label="Send message"
-          >
+          <Btn onClick={handleSend} disabled={!input.trim() || sending} variant="primary" aria-label="Send message">
             <Send className="h-4 w-4" />
           </Btn>
         </div>

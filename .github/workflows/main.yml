@@ -5,10 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  schedule:
-    # Daily drift audit (see audit-nightly below). 06:13 UTC — off the
-    # top-of-hour spike so the run isn't queued behind everyone else's crons.
-    - cron: "13 6 * * *"
+    # ready_for_review re-runs the gated jobs when a draft PR is marked ready.
+    types: [opened, synchronize, reopened, ready_for_review]
+  # Nightly schedule removed 2026-10-17 (Actions cost, approved by Jason).
+  # audit-nightly now runs only on manual dispatch; Dependabot alerts still
+  # cover new advisories against main's lockfiles.
   # Manual smoke-test hook for audit-nightly: schedule-triggered jobs only
   # fire from the workflow file on the default branch, so this is the only
   # way to exercise that job before (or without) waiting for the cron.
@@ -36,10 +37,54 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Cost gate (Actions budget). Required checks can't use workflow-level
+  # paths-ignore — a workflow that never starts leaves build-and-test / e2e
+  # "pending" forever and blocks merge. Instead this cheap job decides, and the
+  # heavy jobs are *skipped* (a skipped required check counts as passing).
+  # Skips: draft PRs, and changes that only touch docs / markdown.
+  changes:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Detect non-docs changes
+        id: diff
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = "pull_request" ] && [ "$DRAFT" = "true" ]; then
+            echo "Draft PR — skipping heavy jobs until ready_for_review."
+            echo "code=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          files=$(git diff --name-only "$BASE...$HEAD" 2>/dev/null || git diff --name-only "$BASE" "$HEAD")
+          # functions/ is skipped here too: pr-gate.yml's "Build and test Cloud
+          # Functions" job covers it, and the web build never imports it.
+          if [ -z "$files" ] || echo "$files" | grep -qvE '(\.md$|^docs/|^design/|^functions/|^LICENSE|^\.github/ISSUE_TEMPLATE/)'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Docs-only change — skipping heavy jobs."
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build-and-test:
     # Scheduled + manually dispatched runs are audit-only — skipping this job
-    # also skips e2e and lighthouse via their `needs` edges.
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    # also skips e2e and lighthouse via their `needs` edges. Draft and
+    # docs-only changes are skipped too (see `changes`).
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -56,6 +101,19 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # Restored after `npm ci` (which wipes node_modules). Holds the tsc -b
+      # incremental .tsBuildInfo files and Vite/Vitest caches so warm runs
+      # only re-check what changed.
+      - name: Cache TypeScript / Vite build state
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            node_modules/.tmp
+            node_modules/.vite
+          key: build-state-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: |
+            build-state-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
 
       # ── Dependency audit, scoped to what this change can control ──
       # History: the audit used to run unconditionally as a hard gate, which
@@ -180,8 +238,26 @@ jobs:
 
       - run: npm ci
 
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Cache Firebase emulator binaries
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       - name: Install Playwright browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps (browser cached)
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
 
       - name: Run E2E tests
         id: e2e_run

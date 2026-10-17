@@ -12,7 +12,6 @@ vi.mock("../../../../services/proProfile", () => ({
 }));
 
 import { ProShowcaseGate } from "../ProShowcaseGate";
-import { ProFieldText } from "../../../../components/pro/ProFieldText";
 import { getProProfileContent } from "../../../../constants/proProfiles";
 
 describe("ProShowcaseGate", () => {
@@ -35,13 +34,15 @@ describe("ProShowcaseGate", () => {
     expect(mockIsAdmin).toHaveBeenCalledWith("v");
   });
 
-  it("shows admins a review-mode showcase with tagged placeholders", () => {
+  it("shows admins a review-mode showcase with no placeholder copy", () => {
     mockIsAdmin.mockReturnValue({ isAdmin: true, loading: false });
     render(<ProShowcaseGate stance="regular" username="BryanHerman" wins={0} losses={0} viewerUid="v" uid="u1" />);
     expect(screen.getByTestId("pro-showcase")).toBeInTheDocument();
     expect(screen.getByRole("note")).toHaveTextContent("Review mode");
     expect(screen.getByText("No games yet. Be the first to play a pro.")).toBeInTheDocument();
-    expect(screen.getAllByText("PLACEHOLDER").length).toBeGreaterThan(3);
+    expect(screen.queryByText(/PLACEHOLDER|Sponsor 1|Tagline/)).toBeNull();
+    expect(screen.queryByRole("region", { name: "Sponsors" })).toBeNull();
+    expect(screen.queryByText("Hometown")).toBeNull();
     expect(screen.queryByRole("button", { name: /PLAY A PRO/ })).toBeNull();
   });
 
@@ -139,7 +140,7 @@ describe("ProShowcaseGate", () => {
     await userEvent.click(screen.getByTestId("pro-profile-prompt"));
     expect(screen.getByTestId("pro-profile-editor")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "CANCEL" }));
-    expect(screen.getByText("Add your bio")).toBeInTheDocument();
+    expect(screen.getByText("Add your tagline")).toBeInTheDocument();
   });
 
   it("saves the pro's bio in place and then offers Edit", async () => {
@@ -148,8 +149,14 @@ describe("ProShowcaseGate", () => {
       <ProShowcaseGate username="bryanherman" stance="regular" canEdit wins={0} losses={0} viewerUid="u1" uid="u1" />,
     );
     await userEvent.click(screen.getByTestId("pro-profile-prompt"));
+    await userEvent.type(screen.getByLabelText("TAGLINE"), "Lines all day");
+    await userEvent.type(screen.getByLabelText("HOMETOWN"), "Los Angeles");
+    await userEvent.type(screen.getByLabelText("Sponsor 1"), "Brand A");
     await userEvent.type(screen.getByLabelText("BIO"), "Skating LA.");
     await userEvent.click(screen.getByRole("button", { name: "SAVE" }));
+    expect(await screen.findByTestId("pro-tagline")).toHaveTextContent("Lines all day");
+    expect(screen.getByTestId("pro-hometown")).toHaveTextContent("Los Angeles");
+    expect(screen.getByRole("region", { name: "Sponsors" })).toHaveTextContent("Brand A");
     expect(await screen.findByRole("region", { name: "Bio" })).toHaveTextContent("Skating LA.");
     expect(screen.getByRole("region", { name: "Signature tricks" })).toHaveTextContent("Hardflip");
     await userEvent.click(screen.getByTestId("edit-pro-profile"));
@@ -162,10 +169,27 @@ describe("ProShowcaseGate", () => {
   });
 });
 
-describe("ProFieldText", () => {
-  it("renders confirmed copy without the placeholder tag", () => {
-    render(<ProFieldText field={{ value: "Confirmed", placeholder: false }} />);
-    expect(screen.getByText("Confirmed")).toBeInTheDocument();
-    expect(screen.queryByText("PLACEHOLDER")).toBeNull();
+describe("pro-written details", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it("renders the pro's own tagline, hometown and sponsors and skips blanks", () => {
+    vi.stubEnv("VITE_FEATURE_PRO_PROFILES", "true");
+    mockIsAdmin.mockReturnValue({ isAdmin: false, loading: false });
+    render(
+      <ProShowcaseGate
+        username="mikewhite"
+        stance="goofy"
+        tagline="Shake Junt for life"
+        hometown=""
+        sponsors={["Shake Junt", "  "]}
+        wins={0}
+        losses={0}
+        viewerUid="v"
+        uid="u1"
+      />,
+    );
+    expect(screen.getByTestId("pro-tagline")).toHaveTextContent("Shake Junt for life");
+    expect(screen.queryByTestId("pro-hometown")).toBeNull();
+    expect(screen.getAllByRole("listitem").map((l) => l.textContent)).toContain("Shake Junt");
+    expect(screen.getByTestId("pro-stance")).toHaveTextContent("Goofy");
   });
 });

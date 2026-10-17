@@ -51,6 +51,49 @@ describe("games service", () => {
       await expect(setTrick("g1", "   ", null)).rejects.toThrow("Trick name cannot be empty");
     });
 
+    it("stores catalog fields and builds the display name from the picker", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
+
+      await setTrick("g1", "typed name", "https://vid.url", {
+        trickId: "kickflip",
+        stance: "switch",
+        obstacle: "ledge",
+        trickNameCustom: null,
+      });
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.currentTrickName).toBe("Switch Kickflip");
+      expect(updates.currentTrickId).toBe("kickflip");
+      expect(updates.currentTrickStance).toBe("switch");
+      expect(updates.currentTrickObstacle).toBe("ledge");
+      expect(updates.currentTrickNameCustom).toBeNull();
+    });
+
+    it("clears structured fields on a free-text set", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
+
+      await setTrick("g-free", "Kickflip", null);
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.currentTrickName).toBe("Kickflip");
+      expect(updates.currentTrickId).toBeNull();
+      expect(updates.currentTrickStance).toBeNull();
+      expect(updates.currentTrickObstacle).toBeNull();
+      expect(updates.currentTrickNameCustom).toBeNull();
+    });
+
+    it("rejects an unknown trick id before opening a transaction", async () => {
+      await expect(
+        setTrick("g1", "Nope", null, {
+          trickId: "not-a-trick",
+          stance: "regular",
+          obstacle: null,
+          trickNameCustom: null,
+        }),
+      ).rejects.toThrow("Pick a trick from the list");
+      expect(mockTxGet).not.toHaveBeenCalled();
+    });
+
     it("throws when game is not in setting phase", async () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "matching" }));
       await expect(setTrick("g1", "Kickflip", null)).rejects.toThrow("Not in setting phase");

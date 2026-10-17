@@ -60,14 +60,8 @@ on:
         required: false
         default: ""
         type: string
-  # Freshness guard. firebase-tools v15 has no reliable "fetch live deployed
-  # rules" command to diff against HEAD, so instead we re-run the full deploy
-  # daily. The deploy is idempotent (re-uploading identical rules is a no-op),
-  # and any drift between `main` and production can therefore never exceed 24h.
-  # If this scheduled deploy fails, the `Alert on deploy failure` step files an
-  # issue exactly as it does for push-triggered deploys.
-  schedule:
-    - cron: "0 7 * * *" # 07:00 UTC daily
+  # Daily freshness re-deploy removed 2026-10-17 (Actions cost, approved by
+  # Jason). Deploys run on rules-file pushes to main or manual dispatch.
 
 concurrency:
   group: firebase-rules-deploy

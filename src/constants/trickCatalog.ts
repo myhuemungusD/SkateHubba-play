@@ -47,3 +47,7 @@ export const TRICK_CATALOG: readonly string[] = [
 
 export const PRO_BIO_MAX = 280;
 export const PRO_TRICKS_MAX = 3;
+export const PRO_TAGLINE_MAX = 80;
+export const PRO_HOMETOWN_MAX = 60;
+export const PRO_SPONSORS_MAX = 3;
+export const PRO_SPONSOR_MAX = 40;

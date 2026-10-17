@@ -141,6 +141,12 @@ export interface UserProfile {
   proBio?: string;
   /** Pro-picked signature tricks from TRICK_CATALOG (verified pros only, <= 3). */
   proSignatureTricks?: string[];
+  /** Pro-written one-liner (verified pros only, <= 80 chars). */
+  proTagline?: string;
+  /** Pro-written hometown (verified pros only, <= 60 chars). */
+  proHometown?: string;
+  /** Pro-written sponsors (verified pros only, <= 3, each <= 40 chars). */
+  proSponsors?: string[];
   /**
    * Custom avatar URL — Firebase Storage download URL pinned to this
    * project's bucket and the calling UID by both client-side guard
@@ -187,6 +193,18 @@ interface UserPrivateProfile {
    * every pre-existing account opted in without a migration.
    */
   pushEnabled?: boolean;
+  /**
+   * Opt-in for a future trick recognizer. Absent means off. Written by
+   * `setTrainingConsent`. Players under 18 are rejected in that service.
+   */
+  trainingConsentOptedIn?: boolean;
+  /** Policy version the skater agreed to, e.g. "2026-10-10". */
+  trainingConsentPolicyVersion?: string;
+  trainingConsentUpdatedAt?: FieldValue;
+  /** Set when they turn the opt-in off. The cron uses this via the revocation doc. */
+  trainingConsentRevokedAt?: FieldValue | null;
+  /** Set the first time the post-game prompt is dismissed, so it stays one-time. */
+  trainingConsentPromptSeenAt?: FieldValue;
 }
 
 /** Document id of the canonical private profile doc. */

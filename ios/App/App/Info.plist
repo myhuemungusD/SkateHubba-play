@@ -31,7 +31,7 @@
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>SkateHubba lets you choose a profile photo from your photo library.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>SkateHubba can save a profile photo you choose to keep. Trick clips are uploaded to your account and are not saved to your camera roll.</string>
+	<string>SkateHubba can save a profile photo you choose to keep, and save full-quality clips you export from the clip editor to your camera roll.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>SkateHubba uses your location while you are using the app to show skate spots near you. Your location is not saved on your profile.</string>
 	<key>CFBundleURLTypes</key>

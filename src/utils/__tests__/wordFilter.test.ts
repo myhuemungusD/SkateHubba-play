@@ -40,7 +40,7 @@ describe("wordFilter", () => {
     });
 
     it("returns false when blocked word detected", () => {
-      expect(isContentClean("contains blocked word")).toBe(false);
+      expect(isContentClean("click here to win")).toBe(false);
     });
   });
 });

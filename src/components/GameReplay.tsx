@@ -127,7 +127,7 @@ export function GameReplay({ turns }: GameReplayProps) {
             preload="metadata"
             onEnded={handleClipEnded}
             aria-label={currentClip.label}
-            className="trick-frame rounded-2xl bg-black object-cover border border-border"
+            className="trick-frame rounded-2xl bg-black object-contain border border-border"
           />
 
           {/* Progress indicator */}

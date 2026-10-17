@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   isAppleSignInEnabled,
+  isClipEditorEnabled,
   isClipModerationEnabled,
   isDiceEnabled,
   isExtrasEnabled,
+  isProCameraEnabled,
   isRefereeEnabled,
   isSpotChatsEnabled,
+  isTrickPickerEnabled,
   isXpEnabled,
   parseFlag,
 } from "../featureFlags";
@@ -185,5 +188,67 @@ describe("isClipModerationEnabled (VITE_FEATURE_CLIP_MODERATION_ENABLED)", () =>
     expect(isClipModerationEnabled()).toBe(false);
     vi.stubEnv("VITE_FEATURE_CLIP_MODERATION_ENABLED", "true");
     expect(isClipModerationEnabled()).toBe(true);
+  });
+});
+
+describe("isTrickPickerEnabled (VITE_FEATURE_TRICK_PICKER_ENABLED)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is OFF when the env var is unset — the production default", () => {
+    expect(import.meta.env.VITE_FEATURE_TRICK_PICKER_ENABLED).toBeUndefined();
+    expect(isTrickPickerEnabled()).toBe(false);
+  });
+
+  it("stays off for anything other than the literal string true", () => {
+    vi.stubEnv("VITE_FEATURE_TRICK_PICKER_ENABLED", "TRUE");
+    expect(isTrickPickerEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_TRICK_PICKER_ENABLED", "true");
+    expect(isTrickPickerEnabled()).toBe(true);
+  });
+
+  it("does not follow the other feature flags", () => {
+    vi.stubEnv("VITE_FEATURE_EXTRAS_ENABLED", "true");
+    vi.stubEnv("VITE_FEATURE_REFEREE_ENABLED", "true");
+    expect(isTrickPickerEnabled()).toBe(false);
+  });
+});
+
+describe("isClipEditorEnabled (VITE_FEATURE_CLIP_EDITOR)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is OFF when the env var is unset", () => {
+    expect(import.meta.env.VITE_FEATURE_CLIP_EDITOR).toBeUndefined();
+    expect(isClipEditorEnabled()).toBe(false);
+  });
+
+  it("stays off for anything other than the literal string true", () => {
+    vi.stubEnv("VITE_FEATURE_CLIP_EDITOR", "1");
+    expect(isClipEditorEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_CLIP_EDITOR", "true");
+    expect(isClipEditorEnabled()).toBe(true);
+  });
+});
+
+describe("isProCameraEnabled (VITE_FEATURE_PRO_CAMERA)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is OFF when the env var is unset", () => {
+    expect(import.meta.env.VITE_FEATURE_PRO_CAMERA).toBeUndefined();
+    expect(isProCameraEnabled()).toBe(false);
+  });
+
+  it("stays off for anything other than the literal string true", () => {
+    vi.stubEnv("VITE_FEATURE_PRO_CAMERA", "TRUE");
+    expect(isProCameraEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_PRO_CAMERA", "enabled");
+    expect(isProCameraEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_PRO_CAMERA", "true");
+    expect(isProCameraEnabled()).toBe(true);
   });
 });

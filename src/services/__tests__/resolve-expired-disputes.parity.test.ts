@@ -56,6 +56,7 @@ import {
   decidePendingReviewExpiry,
   type DisputeGameUpdate,
 } from "../dispute.resolution.shared";
+import { applyTrainingLabelPending } from "../trainingLabels.materialize";
 import { TURN_DURATION_MS } from "../turnDuration";
 import { DISPUTE_NOW as NOW, makeDisputeGame as baseGame } from "./dispute.resolution.test-helpers";
 
@@ -83,6 +84,7 @@ function toWebDisputeUpdate(update: DisputeGameUpdate): Record<string, unknown> 
   out.reviewFor = update.reviewFor;
   out.reviewDeadline = update.reviewDeadline;
   if (update.appendTurnRecord !== undefined) out.turnHistory = webArrayUnion(update.appendTurnRecord);
+  applyTrainingLabelPending(out, update.appendTurnRecord);
   return out;
 }
 

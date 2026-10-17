@@ -11,6 +11,7 @@
 		AA11BB22CC33DD44EE55FF01 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF02 /* PrivacyInfo.xcprivacy */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
 		A1B2C3D4E5F60718293A4B01 /* SkatehubbaFcm in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B02 /* SkatehubbaFcm */; };
+		B7C1E0D2F3A4051627384C01 /* SkatehubbaClipEditor in Frameworks */ = {isa = PBXBuildFile; productRef = B7C1E0D2F3A4051627384C02 /* SkatehubbaClipEditor */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
@@ -42,6 +43,7 @@
 			files = (
 				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
 				A1B2C3D4E5F60718293A4B01 /* SkatehubbaFcm in Frameworks */,
+				B7C1E0D2F3A4051627384C01 /* SkatehubbaClipEditor in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -102,6 +104,7 @@
 			packageProductDependencies = (
 				4D22ABE82AF431CB00220026 /* CapApp-SPM */,
 				A1B2C3D4E5F60718293A4B02 /* SkatehubbaFcm */,
+				B7C1E0D2F3A4051627384C02 /* SkatehubbaClipEditor */,
 			);
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
@@ -135,6 +138,7 @@
 			packageReferences = (
 				D4C12C0A2AAA248700AAC8A2 /* XCLocalSwiftPackageReference "CapApp-SPM" */,
 				A1B2C3D4E5F60718293A4B03 /* XCLocalSwiftPackageReference "SkatehubbaFcm" */,
+				B7C1E0D2F3A4051627384C03 /* XCLocalSwiftPackageReference "SkatehubbaClipEditor" */,
 			);
 			productRefGroup = 504EC3051FED79650016851F /* Products */;
 			projectDirPath = "";
@@ -383,6 +387,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = "SkatehubbaFcm";
 		};
+		B7C1E0D2F3A4051627384C03 /* XCLocalSwiftPackageReference "SkatehubbaClipEditor" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "SkatehubbaClipEditor";
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -395,6 +403,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A1B2C3D4E5F60718293A4B03 /* XCLocalSwiftPackageReference "SkatehubbaFcm" */;
 			productName = "SkatehubbaFcm";
+		};
+		B7C1E0D2F3A4051627384C02 /* SkatehubbaClipEditor */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B7C1E0D2F3A4051627384C03 /* XCLocalSwiftPackageReference "SkatehubbaClipEditor" */;
+			productName = "SkatehubbaClipEditor";
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

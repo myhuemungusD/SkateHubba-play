@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import type { GameDoc } from "../../services/games";
 import type { UserProfile } from "../../services/users";
 import { ErrorBanner } from "../../components/ui/ErrorBanner";
@@ -19,6 +20,8 @@ import { SetterDecisionPanel } from "./components/SetterDecisionPanel";
 import { MatcherDecisionPanel } from "./components/MatcherDecisionPanel";
 import { PendingReviewPanel } from "./components/PendingReviewPanel";
 import { ReviewStatusPanel } from "./components/ReviewStatusPanel";
+
+const TrickPicker = lazy(() => import("../../components/TrickPicker").then((m) => ({ default: m.TrickPicker })));
 
 export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profile: UserProfile; onBack: () => void }) {
   const c = useGamePlayController(game, profile);
@@ -71,7 +74,18 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
           isMatcher={c.isMatcher}
         />
 
-        {!c.isJudge && c.isSetter && (
+        {!c.isJudge && c.isSetter && c.trickPickerEnabled && (
+          <Suspense fallback={<div className="h-14" />}>
+            <TrickPicker
+              selection={c.trickSelection}
+              onChange={c.setTrickSelection}
+              disabled={c.videoRecorded}
+              trickCategory={game.trickCategory}
+              customRules={game.customRules}
+            />
+          </Suspense>
+        )}
+        {!c.isJudge && c.isSetter && !c.trickPickerEnabled && (
           <SetterTrickInput
             trickName={c.trickName}
             setTrickName={c.setTrickName}
