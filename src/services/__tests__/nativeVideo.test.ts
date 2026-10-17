@@ -589,18 +589,41 @@ describe("native pro-capture extras", () => {
     // Test the defensive !pro.xxx checks by temporarily removing those methods
     const VideoRecorder = await import("@capacitor-community/video-recorder").then((m) => m.VideoRecorder);
     const vr = VideoRecorder as unknown as Record<string, unknown>;
+    const originalSetZoom = vr.setZoom;
+    const originalFocusAt = vr.focusAt;
+    const originalSetQuality = vr.setQuality;
+    const originalGetQualityModes = vr.getQualityModes;
     const originalSetPreRoll = vr.setPreRoll;
     const originalSetNativeFisheye = vr.setNativeFisheye;
 
     // Temporarily remove the methods
+    delete vr.setZoom;
+    delete vr.focusAt;
+    delete vr.setQuality;
+    delete vr.getQualityModes;
     delete vr.setPreRoll;
     delete vr.setNativeFisheye;
 
-    const { setNativePreRoll, setNativeFisheye } = await import("../nativeVideo");
+    const {
+      setNativeLens,
+      focusNativeAt,
+      setNativeQuality,
+      getNativeQualityModes,
+      setNativePreRoll,
+      setNativeFisheye,
+    } = await import("../nativeVideo");
+    expect(await setNativeLens(1)).toBe(false);
+    expect(await focusNativeAt(0.5, 0.5, false)).toBe(false);
+    expect(await setNativeQuality("pro4k60")).toBe(false);
+    expect(await getNativeQualityModes()).toEqual({ modes: ["standard1080p60"], current: "standard1080p60" });
     expect(await setNativePreRoll(true)).toBe(false);
     expect(await setNativeFisheye(true)).toBe(false);
 
     // Restore the methods
+    vr.setZoom = originalSetZoom;
+    vr.focusAt = originalFocusAt;
+    vr.setQuality = originalSetQuality;
+    vr.getQualityModes = originalGetQualityModes;
     vr.setPreRoll = originalSetPreRoll;
     vr.setNativeFisheye = originalSetNativeFisheye;
   });
