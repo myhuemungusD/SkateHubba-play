@@ -59,6 +59,9 @@ interface ImportMetaEnv {
   /** XP and levels switch: "true" shows the chip, bar, level-up, and ribbon.
    *  Unset (default) hides them. Read via isXpEnabled() — not the extras flag. */
   readonly VITE_FEATURE_XP_ENABLED?: string;
+  /** Skate Runner switch: "true" shows /play/runner and the lobby card.
+   *  Unset (default) hides them. Read via isRunnerEnabled(). */
+  readonly VITE_FEATURE_RUNNER_ENABLED?: string;
 
   /**
    * Closet (earned + purchased items, drops, trading) flag.

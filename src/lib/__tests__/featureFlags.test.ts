@@ -8,6 +8,7 @@ import {
   isProCameraEnabled,
   isProfileBannerEnabled,
   isRefereeEnabled,
+  isRunnerEnabled,
   isTrickPickerEnabled,
   isXpEnabled,
   parseFlag,
@@ -73,6 +74,30 @@ describe("isDiceEnabled (VITE_FEATURE_DICE_ENABLED)", () => {
   it("does not follow the extras flag", () => {
     vi.stubEnv("VITE_FEATURE_EXTRAS_ENABLED", "true");
     expect(isDiceEnabled()).toBe(false);
+  });
+});
+
+describe("isRunnerEnabled (VITE_FEATURE_RUNNER_ENABLED)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is OFF when the env var is unset — the production default", () => {
+    expect(import.meta.env.VITE_FEATURE_RUNNER_ENABLED).toBeUndefined();
+    expect(isRunnerEnabled()).toBe(false);
+  });
+
+  it("stays off for anything other than the literal string true", () => {
+    vi.stubEnv("VITE_FEATURE_RUNNER_ENABLED", "TRUE");
+    expect(isRunnerEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_RUNNER_ENABLED", "true");
+    expect(isRunnerEnabled()).toBe(true);
+  });
+
+  it("does not follow the extras or dice flags", () => {
+    vi.stubEnv("VITE_FEATURE_EXTRAS_ENABLED", "true");
+    vi.stubEnv("VITE_FEATURE_DICE_ENABLED", "true");
+    expect(isRunnerEnabled()).toBe(false);
   });
 });
 

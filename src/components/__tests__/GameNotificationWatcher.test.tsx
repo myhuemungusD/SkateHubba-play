@@ -645,6 +645,14 @@ describe("native universal-link bridge", () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
+  it("navigates a skate runner universal link and ignores other /play paths", () => {
+    deliver("/play/runner");
+    expect(mockNavigate).toHaveBeenCalledWith("/play/runner");
+    mockNavigate.mockClear();
+    deliver("/play/old");
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   it("navigates a Roll Dice universal link", () => {
     deliver("/dice/g-dice");
     expect(mockNavigate).toHaveBeenCalledWith("/dice/g-dice");

@@ -82,6 +82,12 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Skate Runner (board-only grind game at /play/runner). DEFAULTS TO OFF.
+  // Read via isRunnerEnabled() in featureFlags.ts.
+  VITE_FEATURE_RUNNER_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
   // Closet: earned + purchased items, limited drops, trading. DEFAULTS TO OFF.
   // Read via isClosetEnabled() in featureFlags.ts. Traction gate: 100 finished
   // games (plan §13). Server switches: CLOSET_ENABLED, CLOSET_DROPS_ENABLED,

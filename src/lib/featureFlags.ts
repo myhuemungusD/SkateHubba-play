@@ -40,6 +40,14 @@ export function isDiceEnabled(): boolean {
 }
 
 /**
+ * Skate Runner (/play/runner). Separate from the extras switch and from
+ * S.K.A.T.E. scores. Literal "true" only — a missing env var cannot ship it.
+ */
+export function isRunnerEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_RUNNER_ENABLED);
+}
+
+/**
  * XP, levels, and the achievements ribbon. Separate from the extras switch:
  * extras are already on in production, and turning them on must not surface
  * levels. Literal "true" only. The server switch is XP_ENABLED.

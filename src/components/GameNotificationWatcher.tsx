@@ -292,6 +292,10 @@ function routeNativePath(path: string, navigate: (to: string) => void): void {
     navigate("/");
     return;
   }
+  if (segment === "play" && rest.length === 1 && rest[0] === "runner") {
+    navigate(path);
+    return;
+  }
   if (segment === "game" && rest[0]) {
     window.dispatchEvent(new CustomEvent(OPEN_GAME_EVENT, { detail: { gameId: rest[0] } }));
     return;

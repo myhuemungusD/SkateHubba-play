@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/check-bundle-budget.mjs
  */
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 
@@ -78,6 +78,47 @@ if (dedupedInitial.length === 0) {
   } else {
     console.log(`bundle budget: initial JS ${kib} KiB gzip (limit 150.0 KiB)`);
   }
+}
+
+/**
+ * three / react-three-fiber / drei must stay in the lazy runner chunk.
+ * The main entry and anything it static-imports are the Lighthouse path.
+ * Sourcemaps list the original modules; a string scan covers a chunk whose
+ * map was stripped.
+ */
+const THREE_SOURCE = /node_modules[/\\](?:three|@react-three|three-stdlib)[/\\]/;
+const THREE_TEXT = ["@react-three/fiber", "@react-three/drei", "THREE.WebGLRenderer", "react-three-fiber"];
+
+function chunkUsesThree(name) {
+  const mapPath = join(assetsDir, `${name}.map`);
+  if (existsSync(mapPath)) {
+    try {
+      const sources = JSON.parse(readFileSync(mapPath, "utf8")).sources ?? [];
+      if (sources.some((source) => THREE_SOURCE.test(String(source)))) return true;
+    } catch (err) {
+      console.error(`bundle budget: could not read sourcemap for ${name}: ${err.message}`);
+      failed = true;
+    }
+  }
+  const js = readFileSync(join(assetsDir, name), "utf8");
+  return THREE_TEXT.some((marker) => js.includes(marker));
+}
+
+const initialThree = [];
+const lazyThree = [];
+for (const name of files) {
+  if (!chunkUsesThree(name)) continue;
+  if (dedupedInitial.includes(name)) initialThree.push(name);
+  else lazyThree.push(name);
+}
+if (initialThree.length > 0) {
+  console.error(`bundle budget: three/r3f landed in the initial JS [${initialThree.join(", ")}]`);
+  failed = true;
+} else if (lazyThree.length === 0) {
+  console.error("bundle budget: expected three/r3f in a lazy chunk (runner route)");
+  failed = true;
+} else {
+  console.log(`bundle budget: three/r3f is lazy only [${lazyThree.join(", ")}]`);
 }
 
 if (failed) process.exit(1);
