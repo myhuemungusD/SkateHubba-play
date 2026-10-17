@@ -145,9 +145,23 @@ final class ClipRenderer {
             let len = try await asset.load(.duration)
             let at = CMTime(seconds: s.outAtSec, preferredTimescale: ts)
             guard at < duration else { continue }
-            try track.insertTimeRange(CMTimeRange(start: .zero, duration: CMTimeMinimum(len, duration - at)), of: src, at: at)
+            // Trim in/out (file seconds), mirroring sfxSpan() in overlays.ts.
+            let full = len.seconds
+            let minLen = 0.05
+            let startSec = min(max(s.trimStartSec ?? 0, 0), max(0, full - minLen))
+            let endSec = min(max(s.trimEndSec ?? full, min(full, startSec + minLen)), full)
+            let playLen = min(endSec - startSec, (duration - at).seconds)
+            guard playLen > 0 else { continue }
+            let start = CMTime(seconds: startSec, preferredTimescale: ts)
+            let span = CMTime(seconds: playLen, preferredTimescale: ts)
+            try track.insertTimeRange(CMTimeRange(start: start, duration: span), of: src, at: at)
             let p = AVMutableAudioMixInputParameters(track: track)
-            p.setVolume(Float(s.gain), at: .zero)
+            // 12 ms fades at both cut points so trims never click (SFX_FADE_SEC).
+            let gain = Float(s.gain)
+            let fade = CMTime(seconds: min(0.012, playLen / 2), preferredTimescale: ts)
+            p.setVolume(0, at: .zero)
+            p.setVolumeRamp(fromStartVolume: 0, toEndVolume: gain, timeRange: CMTimeRange(start: at, duration: fade))
+            p.setVolumeRamp(fromStartVolume: gain, toEndVolume: 0, timeRange: CMTimeRange(start: at + span - fade, duration: fade))
             params.append(p)
         }
 

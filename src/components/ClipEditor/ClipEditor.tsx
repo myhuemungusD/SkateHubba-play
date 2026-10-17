@@ -12,6 +12,8 @@ import { useFocusTrap } from "../../hooks/useFocusTrap";
 import { Timeline } from "./Timeline";
 import { TrimSpeedPanel, LookPanel, TextPanel } from "./EditPanels";
 import { MusicPanel, SoundsPanel } from "./AudioPanels";
+import { SfxInspector } from "./SfxInspector";
+import { ToolTabs } from "./Chip";
 import { AnglesPanel, ExportPanel } from "./AnglesExportPanels";
 import { exportClip, audioUrls } from "./exportClip";
 import { readAngle } from "./readAngle";
@@ -37,6 +39,7 @@ export function ClipEditor({ blob, onDone, onCancel }: ClipEditorProps) {
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [tab, setTab] = useState<Tab>("Trim");
+  const [selectedSfx, setSelectedSfx] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [caps, setCaps] = useState<ExportCapabilities>(WEB_CAPABILITIES);
   const [exporting, setExporting] = useState(false);
@@ -219,45 +222,46 @@ export function ClipEditor({ blob, onDone, onCancel }: ClipEditorProps) {
                 onSeek={(t) => void engineRef.current?.seek(t)}
                 onDropSfx={(id, t) => setProject(placeSfx(project, id, t))}
                 onMoveSfx={(id, t) => setProject(moveSfx(project, id, t))}
-                onRemoveSfx={(id) => setProject(removeSfx(project, id))}
+                onRemoveSfx={(id) => {
+                  setProject(removeSfx(project, id));
+                  if (id === selectedSfx) setSelectedSfx(null);
+                }}
+                selectedSfxId={selectedSfx}
+                onSelectSfx={setSelectedSfx}
               />
             </div>
           </div>
 
-          <div role="tablist" aria-label="Editor tools" className="flex gap-1 overflow-x-auto">
-            {TABS.map((t) => (
-              <button
-                key={t}
-                role="tab"
-                type="button"
-                aria-selected={tab === t}
-                onClick={() => setTab(t)}
-                className={`min-h-[44px] shrink-0 rounded-lg px-3 font-body text-sm ${tab === t ? "bg-white/10 text-white" : "text-faint"}`}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
+          <ToolTabs tabs={TABS} tab={tab} onTab={setTab} />
 
-          <div role="tabpanel" aria-label={tab}>
-            {tab === "Trim" && <TrimSpeedPanel {...panelProps} />}
-            {tab === "Look" && <LookPanel {...panelProps} />}
-            {tab === "Text" && <TextPanel {...panelProps} />}
-            {tab === "Music" && <MusicPanel {...panelProps} />}
-            {tab === "Sounds" && <SoundsPanel {...panelProps} />}
-            {tab === "Angles" && (
-              <AnglesPanel {...panelProps} beats={beats} onAddAngle={() => fileRef.current?.click()} />
-            )}
-            {tab === "Export" && (
-              <ExportPanel
-                {...panelProps}
-                caps={caps}
-                exporting={exporting}
-                progress={progress}
-                onExport={() => void doExport()}
-              />
-            )}
-          </div>
+          {selectedSfx && project.sfx.some((x) => x.id === selectedSfx) ? (
+            <SfxInspector
+              project={project}
+              sfxId={selectedSfx}
+              onChange={setProject}
+              onClose={() => setSelectedSfx(null)}
+            />
+          ) : (
+            <div role="tabpanel" aria-label={tab}>
+              {tab === "Trim" && <TrimSpeedPanel {...panelProps} />}
+              {tab === "Look" && <LookPanel {...panelProps} />}
+              {tab === "Text" && <TextPanel {...panelProps} />}
+              {tab === "Music" && <MusicPanel {...panelProps} />}
+              {tab === "Sounds" && <SoundsPanel {...panelProps} onAdded={setSelectedSfx} />}
+              {tab === "Angles" && (
+                <AnglesPanel {...panelProps} beats={beats} onAddAngle={() => fileRef.current?.click()} />
+              )}
+              {tab === "Export" && (
+                <ExportPanel
+                  {...panelProps}
+                  caps={caps}
+                  exporting={exporting}
+                  progress={progress}
+                  onExport={() => void doExport()}
+                />
+              )}
+            </div>
+          )}
         </div>
       )}
       <input

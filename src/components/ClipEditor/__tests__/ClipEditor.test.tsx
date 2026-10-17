@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { within, render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 
 const engine = vi.hoisted(() => ({
   instances: [] as unknown[],
@@ -79,13 +79,24 @@ describe("ClipEditor", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Music" }));
     fireEvent.click(screen.getByText("Rail Ride"));
     fireEvent.click(screen.getByRole("tab", { name: "Sounds" }));
-    fireEvent.click(screen.getByLabelText(/Add Bail/));
-    const sfx = screen.getByLabelText(/^Bail at/);
-    fireEvent.keyDown(sfx, { key: "ArrowRight" });
-    fireEvent.keyDown(screen.getByLabelText(/^Bail at/), { key: "Delete" });
+    fireEvent.click(screen.getByLabelText("Hear Bail"));
+    fireEvent.click(screen.getByRole("button", { name: /^ADD BAIL AT/ }));
+    // Adding opens the sound for trimming.
+    expect(screen.getByTestId("sfx-inspector")).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Sound end" }), { key: "ArrowLeft", shiftKey: true });
+    expect(screen.getByRole("slider", { name: "Sound end" })).toHaveAttribute("aria-valuenow", "0.8");
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(screen.queryByTestId("sfx-inspector")).toBeNull();
+    expect(screen.queryByLabelText(/^Bail at/)).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Sounds" }));
     fireEvent.drop(screen.getByTestId("sfx-lane"), {
       dataTransfer: { getData: (t: string) => (t === "application/x-skatehubba-sfx" ? "flick" : "") },
     });
+    const sfx = screen.getByLabelText(/^Flick at/);
+    fireEvent.keyDown(sfx, { key: "ArrowRight" });
+    fireEvent.keyDown(screen.getByLabelText(/^Flick at/), { key: "Enter" });
+    fireEvent.click(within(screen.getByTestId("sfx-inspector")).getByText("Done"));
+    expect(screen.queryByTestId("sfx-inspector")).toBeNull();
     fireEvent.keyDown(screen.getByRole("slider", { name: "Playhead" }), { key: "End" });
 
     fireEvent.click(screen.getByText("Done"));

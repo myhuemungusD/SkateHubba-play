@@ -50,6 +50,10 @@ export interface SfxPlacement {
   /** Output-timeline seconds. */
   outAtSec: number;
   gain: number;
+  /** Seconds into the sound file where playback starts (default 0). */
+  trimStartSec?: number;
+  /** Seconds into the sound file where playback stops (default: end of file). */
+  trimEndSec?: number;
 }
 
 export interface MusicChoice {

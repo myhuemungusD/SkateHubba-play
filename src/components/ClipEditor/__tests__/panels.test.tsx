@@ -112,7 +112,7 @@ describe("MusicPanel", () => {
 });
 
 describe("SoundsPanel", () => {
-  it("taps to place, drags with the sfx type, long-press previews", () => {
+  it("tap previews and picks, one-tap Add drops at the playhead, drag keeps the sfx type", () => {
     const play = vi.fn().mockResolvedValue(undefined);
     const pause = vi.fn();
     vi.stubGlobal(
@@ -122,17 +122,25 @@ describe("SoundsPanel", () => {
       }),
     );
     const p = props();
-    render(<SoundsPanel {...p} />);
-    const btn = screen.getByLabelText(/Add Ollie pop/);
+    const onAdded = vi.fn();
+    render(<SoundsPanel {...p} onAdded={onAdded} />);
+    const add = screen.getByRole("button", { name: "TAP A SOUND TO HEAR IT" });
+    expect(add).toBeDisabled();
+    fireEvent.click(add);
+    expect(p.onChange).not.toHaveBeenCalled();
+    const btn = screen.getByLabelText("Hear Ollie pop");
     fireEvent.click(btn);
+    fireEvent.click(btn);
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(pause).toHaveBeenCalled();
+    expect(btn).toHaveAttribute("aria-selected", "true");
+    expect(p.onChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /^ADD OLLIE POP AT/ }));
     expect(last(p.onChange).sfx[0].soundId).toBe("ollie-pop");
+    expect(onAdded).toHaveBeenCalledWith(last(p.onChange).sfx[0].id);
     const setData = vi.fn();
     fireEvent.dragStart(btn, { dataTransfer: { setData, effectAllowed: "" } });
     expect(setData).toHaveBeenCalledWith(SFX_DRAG_TYPE, "ollie-pop");
-    fireEvent.contextMenu(btn);
-    fireEvent.contextMenu(btn);
-    expect(play).toHaveBeenCalledTimes(2);
-    expect(pause).toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 });
@@ -234,8 +242,50 @@ describe("Timeline", () => {
     fireEvent.keyDown(chip, { key: "Delete" });
     expect(h.onRemoveSfx).toHaveBeenCalled();
     fireEvent.keyDown(chip, { key: "x" });
-    const setData = vi.fn();
-    fireEvent.dragStart(chip, { dataTransfer: { setData } });
-    expect(setData).toHaveBeenCalledWith("text/sfx-placement", p.sfx[0].id);
+  });
+
+  it("drags a sound along the lane and taps to select it", () => {
+    const p = placeSfx(base(), "landing", 5);
+    const onSelectSfx = vi.fn();
+    const h = { onSeek: vi.fn(), onDropSfx: vi.fn(), onMoveSfx: vi.fn(), onRemoveSfx: vi.fn() };
+    render(
+      <Timeline project={p} playhead={0} beats={[]} {...h} selectedSfxId={p.sfx[0].id} onSelectSfx={onSelectSfx} />,
+    );
+    const lane = screen.getByTestId("sfx-lane");
+    (lane.parentElement as HTMLElement).getBoundingClientRect = () => ({
+      left: 0,
+      width: 100,
+      top: 0,
+      height: 10,
+      right: 100,
+      bottom: 10,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    const clip = screen.getByTestId("sfx-clip");
+    expect(clip).toHaveAttribute("aria-pressed", "true");
+    // Tap: no travel -> select.
+    fireEvent.pointerDown(clip, { clientX: 50, pointerId: 1 });
+    fireEvent.pointerUp(clip, { clientX: 50, pointerId: 1 });
+    expect(onSelectSfx).toHaveBeenCalledWith(p.sfx[0].id);
+    expect(h.onMoveSfx).not.toHaveBeenCalled();
+    // Drag 20% of a 10s lane -> +2s, and no select.
+    onSelectSfx.mockClear();
+    fireEvent.pointerDown(clip, { clientX: 50, pointerId: 1 });
+    fireEvent.pointerMove(clip, { clientX: 52, pointerId: 1 });
+    expect(h.onMoveSfx).not.toHaveBeenCalled();
+    fireEvent.pointerMove(clip, { clientX: 70, pointerId: 1 });
+    fireEvent.pointerUp(clip, { clientX: 70, pointerId: 1 });
+    expect(h.onMoveSfx).toHaveBeenLastCalledWith(p.sfx[0].id, 7);
+    expect(onSelectSfx).not.toHaveBeenCalled();
+    fireEvent.pointerMove(clip, { clientX: 90, pointerId: 1 });
+    expect(h.onMoveSfx).toHaveBeenCalledTimes(1);
+    fireEvent.pointerDown(clip, { clientX: 50, pointerId: 1 });
+    fireEvent.pointerCancel(clip);
+    fireEvent.pointerUp(clip);
+    expect(onSelectSfx).not.toHaveBeenCalled();
+    fireEvent.keyDown(clip, { key: "Enter" });
+    expect(onSelectSfx).toHaveBeenCalled();
   });
 });

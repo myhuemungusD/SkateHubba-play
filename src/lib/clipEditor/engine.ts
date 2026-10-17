@@ -18,7 +18,7 @@ import { lookParams, COLOR_PRESETS } from "./looks";
 import { VERTEX_SRC, FRAGMENT_SRC, colorMatrixUniforms, pillarFor } from "./shader";
 import { angleAt } from "./project";
 import { outputToSource, sourceToOutput, outputDuration, speedAt } from "./speed";
-import { overlaysAt } from "./overlays";
+import { overlaysAt, sfxSchedule } from "./overlays";
 import { getSound } from "./sfxLibrary";
 import { getTrack } from "./musicLibrary";
 
@@ -254,14 +254,20 @@ export class EditorEngine {
     for (const s of p.sfx) {
       const sound = getSound(s.soundId);
       const b = sound && this.buffers.get(sound.src);
-      if (!b || s.outAtSec + b.duration < fromOut) continue;
+      if (!b) continue;
+      const plan = sfxSchedule(s, b.duration, fromOut);
+      if (!plan) continue;
       const node = ctx.createBufferSource();
       node.buffer = b;
       const g = ctx.createGain();
-      g.gain.value = s.gain;
       node.connect(g).connect(target);
-      const delay = s.outAtSec - fromOut;
-      node.start(now + Math.max(0, delay), Math.max(0, -delay));
+      const when = now + plan.delay;
+      // Short fades at both trim points so cuts never click.
+      g.gain.setValueAtTime(plan.fadeIn > 0 ? 0 : s.gain, when);
+      if (plan.fadeIn > 0) g.gain.linearRampToValueAtTime(s.gain, when + plan.fadeIn);
+      g.gain.setValueAtTime(s.gain, when + plan.length - plan.fadeOut);
+      g.gain.linearRampToValueAtTime(0, when + plan.length);
+      node.start(when, plan.offset, plan.length);
       this.scheduled.push(node);
     }
   }
