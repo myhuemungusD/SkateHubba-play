@@ -1,0 +1,32 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+
+/**
+ * App Store 5.1.1: PrivacyInfo.xcprivacy must declare every data type the app
+ * collects. This pins the declarations to features that exist in code so a
+ * removal (or a new feature without a declaration) is caught in review.
+ */
+const manifest = readFileSync(resolve(__dirname, "../../ios/App/App/PrivacyInfo.xcprivacy"), "utf8");
+
+describe("iOS privacy manifest", () => {
+  it.each([
+    ["EmailAddress", "email sign-in"],
+    ["PhoneNumber", "SMS two-step verification (src/services/mfa.ts)"],
+    ["OtherUserContent", "clip comments, spot names and bios"],
+    ["PhotosorVideos", "trick clips and avatars"],
+    ["AudioData", "trick clip sound"],
+    ["PreciseLocation", "spots map"],
+    ["UserID", "account uid"],
+    ["DeviceID", "push tokens"],
+    ["CrashData", "Sentry"],
+  ])("declares %s (%s)", (type) => {
+    expect(manifest).toContain(`<string>NSPrivacyCollectedDataType${type}</string>`);
+  });
+
+  it("declares no tracking and no tracking domains", () => {
+    expect(manifest).toMatch(/<key>NSPrivacyTracking<\/key>\s*<false\/>/);
+    expect(manifest).toMatch(/<key>NSPrivacyTrackingDomains<\/key>\s*<array\/>/);
+    expect(manifest).not.toMatch(/<string>NSPrivacyCollectedDataTypeTracking<\/string>|Tracking<\/key>\s*<true\/>/);
+  });
+});
