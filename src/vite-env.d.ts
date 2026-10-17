@@ -52,6 +52,15 @@ interface ImportMetaEnv {
   /** Trick picker switch: "true" replaces the free-text trick name. Unset
    *  (default) keeps the text field. Read via isTrickPickerEnabled(). */
   readonly VITE_FEATURE_TRICK_PICKER_ENABLED?: string;
+  /** WTT (What's That Trick) switch: "true" enables Name It mode. Unset
+   *  (default) hides it. Read via isWttEnabled(). */
+  readonly VITE_FEATURE_WTT_ENABLED?: string;
+  /** Feed modes switch: "true" shows Scroll / Name It / Vote / Judge toggle.
+   *  Unset (default) keeps today's feed. Read via isFeedModesEnabled(). */
+  readonly VITE_FEATURE_FEED_MODES_ENABLED?: string;
+  /** Post your makes switch: "true" shows GameOver post flow. Unset (default)
+   *  hides it. Read via isPostMakesEnabled(). */
+  readonly VITE_FEATURE_POST_MAKES_ENABLED?: string;
   /** Referee nomination on new games: "true" shows the picker and lets
    *  createGame stamp a judge. Unset (default) forces the honor system.
    *  Read via isRefereeEnabled(). Does not affect games that already have one. */

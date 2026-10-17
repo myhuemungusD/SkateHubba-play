@@ -3209,5 +3209,52 @@ service cloud.firestore {
           || isAdmin()));
       allow create, update, delete: if false;
     }
+
+    // ── What's That Trick (WTT) collections ──
+    // wttItems: server-only write, public read when status=='open'
+    // wttGold: admin/server-only (gold answers never client-readable)
+    // wttVotes: client create-only, one per user per clip
+    // users/{uid}/private/wtt: server-only write, owner read
+    // proReviews: verified-pro create; admin read
+
+    match /wttItems/{clipId} {
+      allow read: if isSignedIn() && resource.data.status == 'open';
+      allow write: if false;
+    }
+
+    match /wttGold/{clipId} {
+      allow read, write: if false;
+    }
+
+    match /wttVotes/{voteId} {
+      allow create: if isSignedIn()
+        && notBanned()
+        && emailVerified()
+        && voteId == request.resource.data.clipId + '_' + request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['clipId','uid','choice','createdAt'])
+        && request.resource.data.choice is string
+        && request.resource.data.choice.size() <= 48
+        && request.resource.data.createdAt == request.time
+        && fsGet('clips', request.resource.data.clipId).data.playerUid != request.auth.uid;
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /users/{uid}/private/wtt {
+      allow read: if isOwner(uid);
+      allow write: if false;
+    }
+
+    match /proReviews/{reviewId} {
+      allow create: if isSignedIn()
+        && isVerifiedPro()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['clipId','uid','answerTrickId','note','createdAt'])
+        && request.resource.data.answerTrickId is string
+        && request.resource.data.answerTrickId.size() <= 48
+        && request.resource.data.createdAt == request.time;
+      allow read, update, delete: if false;
+    }
   }
 }
