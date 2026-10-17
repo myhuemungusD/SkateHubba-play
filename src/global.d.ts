@@ -1,2 +1,24 @@
 // Global augmentation for Three.js JSX elements in React Three Fiber
-import "@react-three/fiber";
+// Manually defined to avoid import/augmentation issues with skipLibCheck
+
+declare namespace JSX {
+  interface IntrinsicElements {
+    // Three.js object types used in runner
+    group: any;
+    mesh: any;
+    instancedMesh: any;
+    // Geometry
+    planeGeometry: any;
+    boxGeometry: any;
+    circleGeometry: any;
+    // Materials
+    meshStandardMaterial: any;
+    meshBasicMaterial: any;
+    // Lights
+    ambientLight: any;
+    directionalLight: any;
+    hemisphereLight: any;
+    // Effects
+    fog: any;
+  }
+}

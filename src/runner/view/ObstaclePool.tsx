@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import type { Group, Object3D } from "three";
+import type { Group as ThreeGroup, Object3D } from "three";
 import { BOX_LENGTH, LANE_X, RAIL_LENGTH } from "../constants";
 import type { RunnerController } from "../controller";
 import type { RunnerQuality } from "../quality";
@@ -45,7 +45,7 @@ function stretch(group: Object3D, name: string, length: number, base: number): v
 /** Fixed pool of rails and waxed ledges. Slots are hidden and reused. */
 export function ObstaclePool({ controller, quality }: { controller: RunnerController; quality: RunnerQuality }) {
   const high = quality === "high";
-  const slots = useRef<(Group | null)[]>([]);
+  const slots = useRef<(ThreeGroup | null)[]>([]);
   const gl = useThree((state) => state.gl);
   useLowRail(slots, gl);
   useSkateparkLedges(slots, gl);

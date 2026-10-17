@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { CylinderGeometry, DoubleSide, Mesh, MeshBasicMaterial, type Group as ThreeGroup } from "three";
+import { CylinderGeometry, DoubleSide, Mesh, MeshBasicMaterial, Object3D, type Group as ThreeGroup } from "three";
 import { mikeWhiteBoardUrl } from "../artSlots";
 import type { RunnerController } from "../controller";
 import type { RunnerQuality } from "../quality";
@@ -34,9 +34,9 @@ axleGeo.rotateZ(Math.PI / 2);
  * Poses come from the interpolated sim frame. This component only applies them.
  */
 export function Board({ controller, quality }: { controller: RunnerController; quality: RunnerQuality }) {
-  const root = useRef<Group>(null);
+  const root = useRef<ThreeGroup>(null);
   const shadow = useRef<Mesh>(null);
-  const wheels = useRef<(Group | null)[]>([]);
+  const wheels = useRef<(ThreeGroup | null)[]>([]);
   const gl = useThree((state) => state.gl);
   useSkateboardModel(root, gl, controller);
   useCustomBoardArt(root);
@@ -44,7 +44,7 @@ export function Board({ controller, quality }: { controller: RunnerController; q
   useLayoutEffect(() => {
     const group = root.current;
     if (!group || quality !== "high") return;
-    group.traverse((obj) => {
+    group.traverse((obj: Object3D) => {
       if (obj instanceof Mesh) {
         obj.castShadow = true;
         obj.receiveShadow = true;
