@@ -40,6 +40,14 @@ export function isDiceEnabled(): boolean {
 }
 
 /**
+ * Skate Runner (/play/runner). Separate from the extras switch and from
+ * S.K.A.T.E. scores. Literal "true" only — a missing env var cannot ship it.
+ */
+export function isRunnerEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_RUNNER_ENABLED);
+}
+
+/**
  * XP, levels, and the achievements ribbon. Separate from the extras switch:
  * extras are already on in production, and turning them on must not surface
  * levels. Literal "true" only. The server switch is XP_ENABLED.
@@ -130,6 +138,29 @@ export function isProBlessingEnabled(): boolean {
 }
 
 /**
+ * Closet: earned + purchased items, limited drops, trading, Hubba Bucks.
+ * Off by default; the server switches (CLOSET_ENABLED, CLOSET_DROPS_ENABLED,
+ * CLOSET_TRADING_ENABLED, CLOSET_BUCKS_PURCHASE_ENABLED) are the real gates.
+ * Traction gate: 100 finished games before public launch (plan §13).
+ * Literal "true" only.
+ */
+export function isClosetEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_CLOSET_ENABLED);
+}
+
+export function isClosetDropsEnabled(): boolean {
+  return isClosetEnabled() && parseFlag(import.meta.env.VITE_FEATURE_CLOSET_DROPS_ENABLED);
+}
+
+export function isClosetTradingEnabled(): boolean {
+  return isClosetEnabled() && parseFlag(import.meta.env.VITE_FEATURE_CLOSET_TRADING_ENABLED);
+}
+
+export function isClosetBucksPurchaseEnabled(): boolean {
+  return isClosetEnabled() && parseFlag(import.meta.env.VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED);
+}
+
+/**
  * Skate clip editor: speed ramps, landing-marker trim, VX/VHS looks, color
  * presets, line cuts, trick captions, beat-synced music, skate SFX and
  * full-quality export (native AVFoundation on iOS). Literal "true" only.
@@ -163,4 +194,9 @@ export function isProCameraEnabled(): boolean {
  */
 export function isSpotChatsEnabled(): boolean {
   return parseFlag(import.meta.env.VITE_FEATURE_SPOT_CHATS_ENABLED);
+}
+
+/** Profile banner (background) photo on the profile screen. Literal "true" only; off by default. */
+export function isProfileBannerEnabled(): boolean {
+  return parseFlag(import.meta.env.VITE_FEATURE_PROFILE_BANNER);
 }

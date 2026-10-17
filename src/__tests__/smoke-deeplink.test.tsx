@@ -15,7 +15,7 @@
  * `App.tsx` hands the own-profile route — a different bug class, but one only
  * observable by rendering the real route table.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, render, screen, waitFor, type RenderResult } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router";
 import userEvent from "@testing-library/user-event";
@@ -30,6 +30,8 @@ import type { UserProfile } from "../services/users";
 // shared smoke harness factory provisions the rest as no-ops.
 const mocks = await vi.hoisted(async () => (await import("./harness/mockServices")).createAllSmokeMocks());
 vi.mock("../firebase", () => mocks.firebase.module);
+// The WebGL scene can't start in jsdom; the smoke test only checks routing.
+vi.mock("../runner/view/RunnerWorld", () => ({ RunnerWorld: () => null }));
 vi.mock("../hooks/useAuth", () => mocks.auth.module);
 vi.mock("../services/auth", () => mocks.authSvc.module);
 vi.mock("@sentry/react", () => mocks.sentry.module);
@@ -128,6 +130,11 @@ describe("Smoke: direct-URL deep-linking", () => {
     expect(screen.getByTestId("location").textContent).toBe("/me");
   });
 
+  it("redirects /play/runner to the lobby while the runner flag is off", async () => {
+    await renderAt("/play/runner");
+    expect(screen.getByTestId("location").textContent).toBe("/lobby");
+  });
+
   it.each(["/play", "/play/anything/deeper"])("redirects the legacy %s deep-link to /lobby", async (path) => {
     await renderAt(path);
     expect(screen.getByTestId("location").textContent).toBe("/lobby");
@@ -158,6 +165,33 @@ describe("Smoke: direct-URL deep-linking", () => {
     // Nothing is subscribed into the games list here, so the lobby's empty
     // state is the proof the Lobby screen itself rendered.
     expect(await screen.findByText(/Ready to S\.K\.A\.T\.E\.\?/i)).toBeInTheDocument();
+  });
+});
+
+describe("Smoke: /play/runner when VITE_FEATURE_RUNNER_ENABLED is true", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("loads the runner for a signed-in player and does not bounce to the lobby", async () => {
+    vi.stubEnv("VITE_FEATURE_RUNNER_ENABLED", "true");
+    await mountApp("/play/runner");
+    expect(await screen.findByRole("heading", { name: "Skate Runner" }, { timeout: 15_000 })).toBeInTheDocument();
+    expect(screen.getByTestId("location").textContent).toBe("/play/runner");
+    expect(screen.queryByRole("navigation", { name: "Primary navigation" })).not.toBeInTheDocument();
+  });
+
+  it("lets a signed-out visitor stay on the runner", async () => {
+    vi.stubEnv("VITE_FEATURE_RUNNER_ENABLED", "true");
+    mocks.auth.refs.useAuth.mockReturnValue({
+      loading: false,
+      user: null,
+      profile: null,
+      refreshProfile: vi.fn(),
+    });
+    await mountApp("/play/runner");
+    expect(await screen.findByRole("heading", { name: "Skate Runner" }, { timeout: 15_000 })).toBeInTheDocument();
+    expect(screen.getByTestId("location").textContent).toBe("/play/runner");
   });
 });
 

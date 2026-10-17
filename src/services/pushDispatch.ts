@@ -52,7 +52,6 @@ import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import type { NotificationDocType } from "./notifications";
-import { CHAT_PUSH_LIMITS_SUBCOLLECTION, SPOT_CHATS_COLLECTION } from "./spotChats.types";
 
 /**
  * Types that may be pushed to a device.
@@ -155,14 +154,6 @@ function truncate(value: string, max: number): string {
 }
 
 /**
- * De-duplicate then cap. A user with a stale token list (>10 from before
- * a rules tighten or a manual cleanup) should still get a push.
- */
-function dedupeAndCapTokens(tokens: string[]): string[] {
-  return Array.from(new Set(tokens)).slice(0, MAX_TOKENS_PER_DISPATCH);
-}
-
-/**
  * Build the dispatch doc shape consumed by the drain endpoint. It reads
  * `tokens`, `notification.{title,body}`, and `data` — everything else
  * (senderUid, recipientUid, gameId, type) is metadata used by firestore.rules
@@ -222,7 +213,11 @@ function dispatchLimitKey(params: PushDispatchParams): string {
 export async function dispatchPushNotification(params: PushDispatchParams): Promise<void> {
   const allTokens = await getRecipientPushTokens(params.recipientUid);
   if (allTokens.length === 0) return;
-  const tokens = dedupeAndCapTokens(allTokens);
+
+  // De-duplicate then cap. A user with a stale token list (>10 from before
+  // a rules tighten or a manual cleanup) should still get a push.
+  const unique = Array.from(new Set(allTokens));
+  const tokens = unique.slice(0, MAX_TOKENS_PER_DISPATCH);
 
   try {
     const db = requireDb();
@@ -248,79 +243,6 @@ export async function dispatchPushNotification(params: PushDispatchParams): Prom
       type: params.type,
       error: parseFirebaseError(err),
     });
-  }
-}
-
-/* ────────────────────────────────────────────
- * Spot chat dispatch
- * ──────────────────────────────────────────── */
-
-/**
- * Push type for spot chat messages. Not part of {@link PushDispatchType}:
- * it has its own /push_dispatch create branch in firestore.rules, keyed on
- * spotId rather than gameId.
- */
-export const CHAT_PUSH_TYPE = "spot_chat_message" as const;
-
-/** One push per recipient per chat per minute. Mirrored in firestore.rules (pushLimits). */
-export const CHAT_PUSH_COOLDOWN_MS = 60_000;
-
-export interface ChatPushDispatchParams {
-  senderUid: string;
-  recipientUid: string;
-  spotId: string;
-  title: string;
-  body: string;
-}
-
-/**
- * Queue one chat push for `recipientUid`, co-committing the per-recipient
- * cooldown anchor at spotChats/{spotId}/pushLimits/{recipientUid} that the
- * rules require. Resolves true when a dispatch doc was written.
- *
- * Best-effort like {@link dispatchPushNotification}: a cooldown rejection
- * (another member pushed this recipient in the last minute) is the batching
- * working as designed and resolves false.
- */
-export async function dispatchChatPushNotification(params: ChatPushDispatchParams): Promise<boolean> {
-  const allTokens = await getRecipientPushTokens(params.recipientUid);
-  if (allTokens.length === 0) return false;
-  const tokens = dedupeAndCapTokens(allTokens);
-
-  try {
-    const db = requireDb();
-    const batch = writeBatch(db);
-    batch.set(doc(collection(db, PUSH_DISPATCH_COLLECTION)), {
-      tokens,
-      notification: {
-        title: truncate(params.title, MAX_TITLE_LEN),
-        body: truncate(params.body, MAX_BODY_LEN),
-      },
-      data: {
-        spotId: params.spotId,
-        type: CHAT_PUSH_TYPE,
-        click_action: `/spots/${params.spotId}`,
-      },
-      senderUid: params.senderUid,
-      recipientUid: params.recipientUid,
-      spotId: params.spotId,
-      type: CHAT_PUSH_TYPE,
-      createdAt: serverTimestamp(),
-    });
-    batch.set(doc(db, SPOT_CHATS_COLLECTION, params.spotId, CHAT_PUSH_LIMITS_SUBCOLLECTION, params.recipientUid), {
-      recipientUid: params.recipientUid,
-      lastSenderUid: params.senderUid,
-      lastSentAt: serverTimestamp(),
-    });
-    await batch.commit();
-    return true;
-  } catch (err) {
-    logger.warn("chat_push_dispatch_write_failed", {
-      recipientUid: params.recipientUid,
-      spotId: params.spotId,
-      error: parseFirebaseError(err),
-    });
-    return false;
   }
 }
 

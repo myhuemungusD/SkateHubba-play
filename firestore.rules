@@ -470,6 +470,19 @@ service cloud.firestore {
               '/o/users%2F' + uid + '%2Favatar\\.(webp|jpeg|png)(\\?.*)?$'
             )
           )
+        )
+        // ── bannerImageUrl bucket + UID pinning (profile banner) ──
+        // Same anti-phishing pin as profileImageUrl, for users/{uid}/banner.webp.
+        && (
+          !('bannerImageUrl' in request.resource.data.keys())
+          || request.resource.data.bannerImageUrl == null
+          || (
+            request.resource.data.bannerImageUrl is string
+            && request.resource.data.bannerImageUrl.matches(
+              '^https://firebasestorage\\.googleapis\\.com/v0/b/' + FIREBASE_BUCKET() +
+              '/o/users%2F' + uid + '%2Fbanner\\.webp(\\?.*)?$'
+            )
+          )
         );
       allow update: if isOwner(uid)
         // ── Privileged-field self-modify guard (F2 — defense in depth) ──
@@ -636,6 +649,19 @@ service cloud.firestore {
             && request.resource.data.profileImageUrl.matches(
               '^https://firebasestorage\\.googleapis\\.com/v0/b/' + FIREBASE_BUCKET() +
               '/o/users%2F' + uid + '%2Favatar\\.(webp|jpeg|png)(\\?.*)?$'
+            )
+          )
+        )
+        // ── bannerImageUrl bucket + UID pinning (profile banner) ──
+        // Same anti-phishing pin as profileImageUrl, for users/{uid}/banner.webp.
+        && (
+          !('bannerImageUrl' in request.resource.data.keys())
+          || request.resource.data.bannerImageUrl == null
+          || (
+            request.resource.data.bannerImageUrl is string
+            && request.resource.data.bannerImageUrl.matches(
+              '^https://firebasestorage\\.googleapis\\.com/v0/b/' + FIREBASE_BUCKET() +
+              '/o/users%2F' + uid + '%2Fbanner\\.webp(\\?.*)?$'
             )
           )
         );
@@ -832,19 +858,18 @@ service cloud.firestore {
       }
 
       // ── Locker (subcollection) ──
-      // Owned economy items (gear/cosmetics). Same posture as /achievements:
-      // minted by the Admin SDK award pipeline or by an `admin: true` console
-      // operator, deletable by the owner so the account-deletion batch stays
-      // atomic.
-      match /locker/{itemId} {
-        // Equipped gear is public reputation, shown on /player/:uid. Ordinary
-        // client create/update is denied outright — a client that can mint
-        // gear has no economy.
+      // Each doc is one owned closet copy. Copies are minted, moved by
+      // trades and equipped only by the closet callables (Admin SDK, see
+      // functions/src/closet/), which keep the copy, serials/{id} and the
+      // Bucks ledger consistent in one transaction. A client-side write here
+      // would desync the copy from its serial, so no client writes at all.
+      // Deletable by the owner so the account-deletion batch stays atomic.
+      match /locker/{copyId} {
+        // Closet items are public reputation, shown on /player/:uid.
         allow read: if isSignedIn();
-        // Exact item shape. Every listed key is required in practice: the
-        // per-field checks below read each one, so a create that omits any of
-        // them fails closed. Strings are length-capped (an award is metadata,
-        // not a payload channel) and acquiredAt is server-stamped.
+        // Closet copies are minted by the callables (Admin SDK). The one
+        // client path kept from main is the admin award panel: exact shape,
+        // bounded strings, server-stamped acquiredAt.
         allow create: if isAdmin()
           && request.resource.data.keys().hasOnly(
                ['type', 'brand', 'name', 'imageUrl', 'rarity', 'acquiredAt', 'provenance'])
@@ -859,16 +884,29 @@ service cloud.firestore {
           && request.resource.data.rarity.size() <= 100
           && (request.resource.data.imageUrl == null || request.resource.data.imageUrl is string)
           && request.resource.data.acquiredAt == request.time
-          // provenance is the award's audit note; only a bounded `reason`.
           && request.resource.data.provenance is map
           && request.resource.data.provenance.keys().hasOnly(['reason'])
           && request.resource.data.provenance.reason is string
           && request.resource.data.provenance.reason.size() <= 200;
-        // Items are immutable once awarded — re-award instead of editing, so
-        // acquiredAt and provenance stay truthful.
         allow update: if false;
         // Owner: GDPR erasure batch. Admin: revoke wrongly-awarded gear.
         allow delete: if isOwner(uid) || isAdmin();
+      }
+
+      // ── Closet Bucks wallet + ledger (subcollections) ──
+      // wallet/main holds balance, earnedBal and boughtBal; ledger/{txId} is
+      // the append-only transaction log whose sum must equal the balance
+      // (nightly audit). Only the closet callables write either, so a
+      // client can never credit itself. Private to the owner: the balance
+      // and spending history are hidden from profile visitors.
+      match /wallet/{walletId} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+
+      match /ledger/{txId} {
+        allow read: if isOwner(uid);
+        allow write: if false;
       }
     }
 
@@ -2393,39 +2431,6 @@ service cloud.firestore {
         // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r32
         && fsGetAfter('push_dispatch_limits', request.auth.uid + '_' + request.resource.data.recipientUid + '_' + request.resource.data.gameId + '_' + request.resource.data.type).data.lastSentAt == request.time;
 
-      // Spot chat messages (src/services/pushDispatch.ts
-      // dispatchChatPushNotification). Separate allow so the game branch
-      // above is untouched. Both ends must be chat members, the sender must
-      // not be chat-blocked, and the per-recipient 60s cooldown anchor at
-      // spotChats/{spotId}/pushLimits/{recipientUid} must advance in the
-      // same batch.
-      allow create: if isSignedIn()
-        && request.resource.data.type == 'spot_chat_message'
-        && request.resource.data.keys().hasOnly(
-          ['tokens', 'notification', 'data', 'senderUid', 'recipientUid', 'spotId', 'type', 'createdAt'])
-        && request.resource.data.senderUid == request.auth.uid
-        && request.resource.data.recipientUid is string
-        && request.resource.data.recipientUid != request.auth.uid
-        && request.resource.data.spotId is string
-        && request.resource.data.notification is map
-        && request.resource.data.notification.title is string
-        && request.resource.data.notification.title.size() <= 80
-        && request.resource.data.notification.body is string
-        && request.resource.data.notification.body.size() <= 200
-        && request.resource.data.data is map
-        && request.resource.data.data.spotId == request.resource.data.spotId
-        && request.resource.data.tokens is list
-        && request.resource.data.tokens.size() >= 1
-        && request.resource.data.tokens.size() <= 10
-        && request.resource.data.createdAt == request.time
-        && isChatMember(request.resource.data.spotId)
-        && exists(chatMemberPath(request.resource.data.spotId, request.resource.data.recipientUid))
-        && !isChatBlocked(request.resource.data.spotId, request.auth.uid)
-        && request.resource.data.tokens.hasOnly(
-          fsGet('pushTargets', request.resource.data.recipientUid).data.tokens
-        )
-        && getAfter(/databases/$(database)/documents/spotChats/$(request.resource.data.spotId)/pushLimits/$(request.resource.data.recipientUid)).data.lastSentAt == request.time;
-
       // Dispatch docs are immutable once created — the Extension writes its
       // delivery results to a sibling collection (configured by the
       // Extension), so clients never need to update or delete here. The
@@ -3267,334 +3272,6 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
-    // ── Spot group chats ──
-    // Design + threat model: docs/SPOT_CHATS.md. Writers live in
-    // src/services/spotChats.*.ts. Every limit below (1 msg/sec, 50 joined
-    // chats, 5 reports/day, 1 push/min per recipient) uses the companion-
-    // write idiom: the anchor doc changes in the SAME batch as the guarded
-    // write, and the anchor names the guarded doc (lastMessageId,
-    // lastSpotId, lastReportId) so one anchor bump cannot authorize a batch
-    // of N guarded writes.
-
-    function chatMemberPath(spotId, uid) {
-      return /databases/$(database)/documents/spotChats/$(spotId)/members/$(uid);
-    }
-
-    function isSpotCreator(spotId) {
-      return fsGet('spots', spotId).data.createdBy == request.auth.uid;
-    }
-
-    function isChatMember(spotId) {
-      return isSignedIn() && exists(chatMemberPath(spotId, request.auth.uid));
-    }
-
-    // The spot creator is a moderator whether or not they hold a member doc.
-    function isChatModerator(spotId) {
-      return isSignedIn() && (
-        isSpotCreator(spotId)
-        || (exists(chatMemberPath(spotId, request.auth.uid))
-            && get(chatMemberPath(spotId, request.auth.uid)).data.role == 'moderator')
-      );
-    }
-
-    function isChatBlocked(spotId, uid) {
-      return fsExists('chatBlocks', spotId + '_' + uid);
-    }
-
-    // Server-side half of the word filter. MUST stay a subset of the
-    // auto-hide terms and suffixes in src/services/chatWordFilter.ts — a
-    // term flagged here but not there makes every send containing it fail.
-    // chatWordFilter.test.ts parses this string and enforces the subset.
-    function chatBannedWordsRe() {
-      return '(?s).*(^|[^a-z])(nigger|nigga|faggot|fag|kike|spic|chink|wetback|tranny|retard|kys)(s|ed|er|ers|ing)?([^a-z]|$).*';
-    }
-
-    // Has the caller posted in this chat within the last 30s? Gates the
-    // push cooldown anchor so a lurker cannot keep bumping it to mute
-    // notifications for everyone else.
-    function postedRecently(spotId) {
-      return get(chatMemberPath(spotId, request.auth.uid)).data.get('lastMessageAt', null) != null
-        && request.time < get(chatMemberPath(spotId, request.auth.uid)).data.lastMessageAt + duration.value(30, 's');
-    }
-
-    match /spotChats/{spotId} {
-      // No parent doc: the chat is addressed by spotId alone.
-      allow read, write: if false;
-
-      match /messages/{messageId} {
-        // A single-doc read hides senders the reader has blocked. List
-        // queries cannot evaluate a per-doc exists(), so the client filters
-        // blocked senders with useBlockedUsers instead.
-        allow get: if isSignedIn()
-          && !exists(/databases/$(database)/documents/users/$(request.auth.uid)/blocked_users/$(resource.data.userId));
-        allow list: if isSignedIn();
-
-        allow create: if isSignedIn()
-          && notBanned()
-          && request.auth.token.email_verified == true
-          && request.resource.data.keys().hasOnly(
-            ['userId', 'content', 'createdAt', 'isDeleted', 'moderatedBy', 'isHidden', 'hiddenReason'])
-          && request.resource.data.keys().hasAll(
-            ['userId', 'content', 'createdAt', 'isDeleted', 'moderatedBy', 'isHidden', 'hiddenReason'])
-          && request.resource.data.userId == request.auth.uid
-          && request.resource.data.content is string
-          && request.resource.data.content.size() >= 1
-          && request.resource.data.content.size() <= 1000
-          && request.resource.data.createdAt == request.time
-          && request.resource.data.isDeleted == false
-          && request.resource.data.moderatedBy == null
-          && (
-            (request.resource.data.isHidden == false && request.resource.data.hiddenReason == null)
-            || (request.resource.data.isHidden == true && request.resource.data.hiddenReason == 'word_filter')
-          )
-          // Word filter: a banned term may only be posted pre-hidden.
-          && (request.resource.data.isHidden == true
-              || !request.resource.data.content.lower().matches(chatBannedWordsRe()))
-          && isChatMember(spotId)
-          && !isChatBlocked(spotId, request.auth.uid)
-          // 1 msg/sec per user per spot. The pre-state proves the cooldown
-          // elapsed; the post-state proves the anchor moved to now AND names
-          // this message, so a batch carrying two messages is denied.
-          && (
-            get(chatMemberPath(spotId, request.auth.uid)).data.get('lastMessageAt', null) == null
-            || request.time > get(chatMemberPath(spotId, request.auth.uid)).data.lastMessageAt + duration.value(1, 's')
-          )
-          && getAfter(chatMemberPath(spotId, request.auth.uid)).data.lastMessageAt == request.time
-          && getAfter(chatMemberPath(spotId, request.auth.uid)).data.lastMessageId == messageId;
-
-        // Deletion is a soft delete that blanks the content. The author may
-        // delete their own message; a moderator (or the spot creator) may
-        // remove anyone's and is stamped as moderatedBy.
-        allow update: if isSignedIn()
-          && resource.data.isDeleted == false
-          && request.resource.data.isDeleted == true
-          && request.resource.data.content == ''
-          && (
-            (resource.data.userId == request.auth.uid
-              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isDeleted', 'content']))
-            || (isChatModerator(spotId)
-              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isDeleted', 'content', 'moderatedBy'])
-              && request.resource.data.moderatedBy == request.auth.uid)
-          );
-
-        // Hard deletes would erase report evidence.
-        allow delete: if false;
-      }
-
-      match /members/{memberUid} {
-        allow read: if isSignedIn();
-
-        // Self-join only. Role is 'member', or 'moderator' for the spot
-        // creator (auto-moderator). The chatMemberships counter must move
-        // +1 in the same batch and name this spot (50-chat cap lives there).
-        allow create: if isOwner(memberUid)
-          && notBanned()
-          && request.resource.data.keys().hasOnly(['joinedAt', 'lastRead', 'role'])
-          && request.resource.data.keys().hasAll(['joinedAt', 'lastRead', 'role'])
-          && request.resource.data.joinedAt == request.time
-          && request.resource.data.lastRead == request.time
-          && (
-            request.resource.data.role == 'member'
-            || (request.resource.data.role == 'moderator' && isSpotCreator(spotId))
-          )
-          && fsGet('spots', spotId).data.isActive == true
-          && !isChatBlocked(spotId, memberUid)
-          && fsGetAfter('chatMemberships', memberUid).data.lastSpotId == spotId
-          && (
-            (!fsExists('chatMemberships', memberUid)
-              && fsGetAfter('chatMemberships', memberUid).data.count == 1)
-            || (fsExists('chatMemberships', memberUid)
-              && fsGetAfter('chatMemberships', memberUid).data.count == fsGet('chatMemberships', memberUid).data.count + 1)
-          );
-
-        // Self: read receipts (lastRead), presence (viewingAt) and the send
-        // cooldown anchor (lastMessageAt + lastMessageId). Every timestamp
-        // is pinned to request.time so none can be back-dated.
-        allow update: if isOwner(memberUid)
-          && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['lastRead', 'viewingAt', 'lastMessageAt', 'lastMessageId'])
-          && (!('lastRead' in request.resource.data.diff(resource.data).affectedKeys())
-              || request.resource.data.lastRead == request.time)
-          && (!('viewingAt' in request.resource.data.diff(resource.data).affectedKeys())
-              || request.resource.data.viewingAt == null
-              || request.resource.data.viewingAt == request.time)
-          && (!('lastMessageAt' in request.resource.data.diff(resource.data).affectedKeys())
-              || request.resource.data.lastMessageAt == request.time)
-          && (!('lastMessageId' in request.resource.data.diff(resource.data).affectedKeys())
-              || (request.resource.data.lastMessageId is string
-                  && request.resource.data.lastMessageId.size() <= 128));
-
-        // Spot creator promotes or demotes another member.
-        allow update: if isSignedIn()
-          && memberUid != request.auth.uid
-          && isSpotCreator(spotId)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
-          && request.resource.data.role in ['member', 'moderator'];
-
-        // Self-leave only, with the counter moving -1 in the same batch.
-        allow delete: if isOwner(memberUid)
-          && fsGetAfter('chatMemberships', memberUid).data.lastSpotId == spotId
-          && fsGetAfter('chatMemberships', memberUid).data.count == fsGet('chatMemberships', memberUid).data.count - 1;
-      }
-
-      // Per-recipient push cooldown (1 push/min per user per chat). Any
-      // member who just posted may advance it; the /push_dispatch chat
-      // branch requires it via getAfter().
-      match /pushLimits/{recipientUid} {
-        allow read: if isChatMember(spotId);
-
-        function pushLimitWriteOk() {
-          return isChatMember(spotId)
-            && recipientUid != request.auth.uid
-            && exists(chatMemberPath(spotId, recipientUid))
-            && postedRecently(spotId)
-            && request.resource.data.keys().hasOnly(['recipientUid', 'lastSenderUid', 'lastSentAt'])
-            && request.resource.data.recipientUid == recipientUid
-            && request.resource.data.lastSenderUid == request.auth.uid
-            && request.resource.data.lastSentAt == request.time;
-        }
-
-        allow create: if pushLimitWriteOk();
-        allow update: if pushLimitWriteOk()
-          && request.time > resource.data.lastSentAt + duration.value(60, 's');
-        allow delete: if false;
-      }
-    }
-
-    // Join counter: one doc per user. Every change is exactly ±1 and must
-    // coincide with the named member doc appearing or disappearing.
-    match /chatMemberships/{uid} {
-      allow read: if isOwner(uid);
-
-      function membershipShapeOk() {
-        return request.resource.data.keys().hasOnly(['count', 'lastSpotId'])
-          && request.resource.data.count is int
-          && request.resource.data.lastSpotId is string;
-      }
-
-      function memberAppears() {
-        return existsAfter(chatMemberPath(request.resource.data.lastSpotId, uid))
-          && !exists(chatMemberPath(request.resource.data.lastSpotId, uid));
-      }
-
-      function memberDisappears() {
-        return !existsAfter(chatMemberPath(request.resource.data.lastSpotId, uid))
-          && exists(chatMemberPath(request.resource.data.lastSpotId, uid));
-      }
-
-      allow create: if isOwner(uid)
-        && membershipShapeOk()
-        && request.resource.data.count == 1
-        && memberAppears();
-      allow update: if isOwner(uid)
-        && membershipShapeOk()
-        && (
-          (request.resource.data.count == resource.data.count + 1
-            && request.resource.data.count <= 50
-            && memberAppears())
-          || (request.resource.data.count == resource.data.count - 1
-            && request.resource.data.count >= 0
-            && memberDisappears())
-        );
-      allow delete: if false;
-    }
-
-    // Message reports. Doc id is {spotId}_{messageId}_{reporterUid}, so a
-    // user can report a given message once. reportedUid and messageContent
-    // are proven against the live message, so the evidence is genuine.
-    match /chatReports/{reportId} {
-      allow read: if isAdmin()
-        || (isSignedIn() && resource.data.reportedBy == request.auth.uid);
-      // By id, so the reporter's duplicate check can read a doc that does
-      // not exist yet. The id suffix is bound to reportedBy on create.
-      allow get: if isSignedIn() && reportId.matches('.+_' + request.auth.uid);
-
-      allow create: if isSignedIn()
-        && notBanned()
-        && request.resource.data.keys().hasOnly(
-          ['spotId', 'messageId', 'reportedBy', 'reportedUid', 'messageContent', 'reason', 'details', 'status', 'createdAt'])
-        && request.resource.data.spotId is string
-        && request.resource.data.messageId is string
-        && reportId == request.resource.data.spotId + '_' + request.resource.data.messageId + '_' + request.auth.uid
-        && request.resource.data.reportedBy == request.auth.uid
-        && request.resource.data.reason in ['spam', 'harassment', 'inappropriate_content', 'other']
-        && request.resource.data.details is string
-        && request.resource.data.details.size() <= 500
-        && request.resource.data.status == 'pending'
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.reportedUid == get(/databases/$(database)/documents/spotChats/$(request.resource.data.spotId)/messages/$(request.resource.data.messageId)).data.userId
-        && request.resource.data.reportedUid != request.auth.uid
-        && request.resource.data.messageContent == get(/databases/$(database)/documents/spotChats/$(request.resource.data.spotId)/messages/$(request.resource.data.messageId)).data.content
-        // 5 reports/day: enforced on the limit doc, which must name this report.
-        && fsGetAfter('chatReportLimits', request.auth.uid).data.lastReportId == reportId;
-
-      allow update: if isAdmin()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
-        && request.resource.data.status in ['pending', 'reviewed', 'actioned', 'dismissed'];
-      allow delete: if false;
-    }
-
-    // Report quota: a rolling 24h window with at most 5 reports. The window
-    // resets only after it has fully elapsed, and every change must name a
-    // report being created in the same batch.
-    match /chatReportLimits/{uid} {
-      allow read: if isOwner(uid);
-
-      function reportLimitShapeOk() {
-        return request.resource.data.keys().hasOnly(['windowStart', 'count', 'lastReportId'])
-          && request.resource.data.count is int
-          && request.resource.data.lastReportId is string
-          && fsExistsAfter('chatReports', request.resource.data.lastReportId)
-          && !fsExists('chatReports', request.resource.data.lastReportId);
-      }
-
-      allow create: if isOwner(uid)
-        && reportLimitShapeOk()
-        && request.resource.data.windowStart == request.time
-        && request.resource.data.count == 1;
-      allow update: if isOwner(uid)
-        && reportLimitShapeOk()
-        && (
-          (request.time > resource.data.windowStart + duration.value(1, 'd')
-            && request.resource.data.windowStart == request.time
-            && request.resource.data.count == 1)
-          || (request.resource.data.windowStart == resource.data.windowStart
-            && request.resource.data.count == resource.data.count + 1
-            && request.resource.data.count <= 5)
-        );
-      allow delete: if false;
-    }
-
-    // Per-chat blocks (distinct from the global users/{uid}/blocked_users).
-    // Doc id is {spotId}_{blockedUid}. Moderator-only on every verb; only
-    // the spot creator may block another moderator, and nobody may block
-    // the spot creator.
-    match /chatBlocks/{blockId} {
-      allow read: if isChatModerator(resource.data.spotId);
-      // By id, so a moderator can check a block that does not exist yet.
-      // Spot ids (auto-ids / legacy UUIDs) and uids never contain '_'.
-      allow get: if isChatModerator(blockId.split('_')[0]);
-
-      allow create: if isSignedIn()
-        && notBanned()
-        && request.resource.data.keys().hasOnly(['spotId', 'blockedUid', 'blockedBy', 'createdAt'])
-        && request.resource.data.spotId is string
-        && request.resource.data.blockedUid is string
-        && blockId == request.resource.data.spotId + '_' + request.resource.data.blockedUid
-        && request.resource.data.blockedBy == request.auth.uid
-        && request.resource.data.blockedUid != request.auth.uid
-        && request.resource.data.createdAt == request.time
-        && isChatModerator(request.resource.data.spotId)
-        && fsGet('spots', request.resource.data.spotId).data.createdBy != request.resource.data.blockedUid
-        && (
-          isSpotCreator(request.resource.data.spotId)
-          || !(exists(chatMemberPath(request.resource.data.spotId, request.resource.data.blockedUid))
-               && get(chatMemberPath(request.resource.data.spotId, request.resource.data.blockedUid)).data.role == 'moderator')
-        );
-      allow update: if false;
-      allow delete: if isChatModerator(resource.data.spotId);
-    }
-
     // ── Spot group messages (spots/{spotId}/messages/{messageId}) ──
     // Real-time group chat per spot. All signed-in users can read and post.
     // Word filter blocks known slurs/spam. Rate limit: 1 message per 3 seconds
@@ -3612,6 +3289,7 @@ service cloud.firestore {
           || lower.matches('.*tranny.*')
           || lower.matches('.*chink.*')
           || lower.matches('.*kike.*')
+          || lower.matches('.*wetback.*')
           || lower.matches('.*bitcoin.*')
           || lower.matches('.*crypto.*')
           || lower.matches('.*buy now.*')
@@ -3675,6 +3353,61 @@ service cloud.firestore {
         && request.resource.data.status in ['pending', 'reviewed', 'dismissed'];
 
       allow delete: if false;
+    }
+
+    // ── Closet: catalog (item definitions) ──
+    // Public read, server-only writes. The closet callables and admin tools
+    // mint copies from catalog/{itemDefId} and keep serials/{id} consistent.
+    // Plan: functions/src/closet/, ../uploads/closet-drops-plan.md §9.
+    match /catalog/{itemDefId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // ── Closet: serial ledger (ownership source of truth) ──
+    // Public provenance — every Limited/Grail copy shows who owned it and
+    // when. Server-only writes: a client write here would desync the serial
+    // from the user's locker/{copyId} or bypass the Bucks debit.
+    match /serials/{serialId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // ── Closet: drops (weekly limited releases) ──
+    // Drop docs are public; claims/{uid} and entries/{uid} subcollections
+    // are private to the user. Only the closet callables write.
+    match /drops/{dropId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+
+      match /claims/{uid} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+
+      match /entries/{uid} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+    }
+
+    // ── Closet: trades (item-for-item swaps) ──
+    // Both parties can read the trade; only the closet callables write.
+    // Public history would reveal who's trading what and leak inventory.
+    match /trades/{tradeId} {
+      allow read: if isSignedIn()
+        && (request.auth.uid == resource.data.proposerUid
+          || request.auth.uid == resource.data.recipientUid);
+      allow write: if false;
+    }
+
+    // ── Closet: audit log (admin actions) ──
+    // Admin-only read. A mint, grant or trade reversal goes here so Jason
+    // can audit custody. Not readable by regular users — item provenance
+    // shows on the copy itself; this is the operator audit trail.
+    match /closetAudit/{autoId} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     // ── What's That Trick (WTT) collections ──

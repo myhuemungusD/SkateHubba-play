@@ -2,7 +2,8 @@
  * Word filter tests.
  */
 import { describe, it, expect } from "vitest";
-import { checkWordFilter, isContentClean } from "../wordFilter";
+import { readFileSync } from "node:fs";
+import { BLOCKED_WORDS, checkWordFilter, isContentClean } from "../wordFilter";
 
 describe("wordFilter", () => {
   describe("checkWordFilter", () => {
@@ -42,5 +43,17 @@ describe("wordFilter", () => {
     it("returns false when blocked word detected", () => {
       expect(isContentClean("click here to win")).toBe(false);
     });
+  });
+
+  it("matches the containsBlockedWord list in firestore.rules exactly", () => {
+    const rules = readFileSync("firestore.rules", "utf8");
+    const fn = rules.slice(rules.indexOf("function containsBlockedWord"));
+    const body = fn.slice(0, fn.indexOf("}"));
+    const ruleWords = [...body.matchAll(/matches\('\.\*(.+?)\.\*'\)/g)].map((m) => m[1]);
+    expect([...ruleWords].sort()).toEqual([...BLOCKED_WORDS].sort());
+  });
+
+  it("flags the folded-in slur", () => {
+    expect(checkWordFilter("WETBACK")).toBe("wetback");
   });
 });

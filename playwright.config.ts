@@ -6,6 +6,12 @@ if (process.env.VITE_FEATURE_EXTRAS_ENABLED !== "false") {
   process.env.VITE_FEATURE_EXTRAS_ENABLED = "true";
 }
 
+// The runner route is lazy and off in production. The e2e smoke test needs the
+// flag on. Set VITE_FEATURE_RUNNER_ENABLED=false to run the suite without it.
+if (process.env.VITE_FEATURE_RUNNER_ENABLED !== "false") {
+  process.env.VITE_FEATURE_RUNNER_ENABLED = "true";
+}
+
 /**
  * E2E tests run against Firebase Emulators (Auth :9099, Firestore :8080, Storage :9199).
  *
@@ -87,6 +93,7 @@ export default defineConfig({
       VITE_FIREBASE_APP_ID: "1:000000000000:web:demo",
       VITE_USE_EMULATORS: "true",
       VITE_FEATURE_EXTRAS_ENABLED: process.env.VITE_FEATURE_EXTRAS_ENABLED ?? "true",
+      VITE_FEATURE_RUNNER_ENABLED: process.env.VITE_FEATURE_RUNNER_ENABLED ?? "true",
       // Dummy Mapbox token so the map component initializes. Tests that
       // need the map stub mapbox.com requests via page.route and never
       // actually hit the Mapbox API.

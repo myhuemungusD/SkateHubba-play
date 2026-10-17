@@ -87,7 +87,10 @@ service firebase.storage {
     // uses a single wildcard `{filename}` and a regex match on the filename
     // — same effect (uid pinning + ext allowlist), syntactically valid.
     match /users/{uid}/{filename} {
-      allow read: if request.auth != null && filename.matches('avatar\\.(webp|jpeg|png)');
+      // banner.webp is the profile banner (VITE_FEATURE_PROFILE_BANNER):
+      // same owner-only create/delete, webp only, same size bounds.
+      allow read: if request.auth != null
+        && (filename.matches('avatar\\.(webp|jpeg|png)') || filename == 'banner.webp');
 
       allow create: if request.auth != null
         && request.auth.uid == uid
@@ -100,6 +103,7 @@ service firebase.storage {
           (filename == 'avatar.webp' && request.resource.contentType == 'image/webp')
           || (filename == 'avatar.jpeg' && request.resource.contentType == 'image/jpeg')
           || (filename == 'avatar.png' && request.resource.contentType == 'image/png')
+          || (filename == 'banner.webp' && request.resource.contentType == 'image/webp')
         )
         && request.resource.size > 1024
         && request.resource.size <= 2 * 1024 * 1024;
@@ -107,7 +111,7 @@ service firebase.storage {
       allow update: if false;
       allow delete: if request.auth != null
         && request.auth.uid == uid
-        && filename.matches('avatar\\.(webp|jpeg|png)');
+        && (filename.matches('avatar\\.(webp|jpeg|png)') || filename == 'banner.webp');
     }
 
     // ── User-uploaded clips (feed uploads with no backing game) ──

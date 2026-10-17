@@ -67,6 +67,7 @@ export type Screen =
   | "terms"
   | "datadeletion"
   | "dice"
+  | "runner"
   | "notfound";
 
 /** Map screen names to URL paths. */
@@ -87,6 +88,7 @@ const SCREEN_TO_PATH: Record<Screen, string> = {
   terms: "/terms",
   datadeletion: "/data-deletion",
   dice: "/dice",
+  runner: "/play/runner",
   notfound: "/404",
 };
 
@@ -98,6 +100,7 @@ const PATH_TO_SCREEN: Record<string, Screen> = Object.fromEntries(
 export function pathToScreen(pathname: string): Screen {
   // Handle dynamic /player/:uid route
   if (pathname === "/dice" || pathname.startsWith("/dice/")) return "dice";
+  if (pathname === "/play/runner") return "runner";
   if (pathname.startsWith("/player/")) return "player";
   // Handle dynamic /spots/:id route
   if (pathname.startsWith(SPOT_DETAIL_PREFIX)) return "spotdetail";
@@ -139,6 +142,7 @@ const PUBLIC_SCREENS: ReadonlySet<Screen> = new Set([
   "terms",
   "datadeletion",
   "notfound",
+  "runner",
 ]);
 
 export interface NavigationContextValue {

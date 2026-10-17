@@ -11,7 +11,12 @@
  * legitimate messages to trip the filter.
  */
 
-const BLOCKED_WORDS = [
+/**
+ * MUST match containsBlockedWord() in firestore.rules exactly: the create rule
+ * requires isHidden == containsBlockedWord(content), so any drift rejects
+ * sends. wordFilter.test.ts parses the rules and enforces this.
+ */
+export const BLOCKED_WORDS = [
   // Slurs and harassment
   "nigger",
   "nigga",
@@ -20,6 +25,7 @@ const BLOCKED_WORDS = [
   "tranny",
   "chink",
   "kike",
+  "wetback",
   // Spam patterns
   "bitcoin",
   "crypto",

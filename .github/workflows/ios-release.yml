@@ -22,6 +22,21 @@ on:
         required: false
         type: boolean
         default: false
+      pro_camera:
+        description: "Tester build: new pro camera (VITE_FEATURE_PRO_CAMERA). Leave off for App Store builds."
+        required: false
+        type: boolean
+        default: false
+      wtt:
+        description: "Tester build: What's That Trick (VITE_FEATURE_WTT_ENABLED + VITE_FEATURE_FEED_MODES_ENABLED). Server stays gated by WTT_ENABLED / WTT_TESTER_UIDS. Leave off for App Store builds."
+        required: false
+        type: boolean
+        default: false
+      profile_banner:
+        description: "Tester build: profile background picture (VITE_FEATURE_PROFILE_BANNER). Leave off for App Store builds."
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -116,6 +131,12 @@ jobs:
           VITE_FEATURE_DICE_ENABLED: ${{ inputs.dice && 'true' || 'false' }}
           # Clip editor: off unless the "clip_editor" input is ticked.
           VITE_FEATURE_CLIP_EDITOR: ${{ inputs.clip_editor && 'true' || 'false' }}
+          # Wave 1 tester inputs: each off unless its box is ticked.
+          VITE_FEATURE_PRO_CAMERA: ${{ inputs.pro_camera && 'true' || 'false' }}
+          # Name It lives inside the feed-mode toggle, so wtt turns both on.
+          VITE_FEATURE_WTT_ENABLED: ${{ inputs.wtt && 'true' || 'false' }}
+          VITE_FEATURE_FEED_MODES_ENABLED: ${{ inputs.wtt && 'true' || 'false' }}
+          VITE_FEATURE_PROFILE_BANNER: ${{ inputs.profile_banner && 'true' || 'false' }}
           VITE_FEATURE_EXTRAS_ENABLED: "false"
           # Pro blessing UI. The proBlessing function still gates who can act
           # (PRO_BLESSING_ENABLED / PRO_BLESSING_TESTER_UIDS, docs/PRO_BLESSING.md).

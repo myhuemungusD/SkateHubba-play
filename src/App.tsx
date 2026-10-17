@@ -24,7 +24,7 @@ import { KeyboardInset } from "./components/KeyboardInset";
 import { ScrollToTop } from "./components/ScrollToTop";
 import { DeleteAccountRetryBanner } from "./components/DeleteAccountRetryBanner";
 import { useAnalyticsConsent } from "./hooks/useAnalyticsConsent";
-import { isDiceEnabled, isExtrasEnabled, isProBlessingEnabled } from "./lib/featureFlags";
+import { isDiceEnabled, isExtrasEnabled, isProBlessingEnabled, isRunnerEnabled } from "./lib/featureFlags";
 import { prefetchLikelyRoutes } from "./lib/routePrefetch";
 import { registerCacheWorker } from "./lib/registerCacheSw";
 import {
@@ -76,6 +76,7 @@ const SpotDetailPage = lazy(() => import("./screens/SpotDetailPage").then((m) =>
 const Settings = lazy(() => import("./screens/Settings").then((m) => ({ default: m.Settings })));
 const MyStatsScreen = lazy(() => import("./screens/MyStatsScreen").then((m) => ({ default: m.MyStatsScreen })));
 const AdminScreen = lazy(() => import("./screens/AdminScreen").then((m) => ({ default: m.AdminScreen })));
+const RunnerScreen = lazy(() => import("./screens/Runner/RunnerScreen").then((m) => ({ default: m.RunnerScreen })));
 const DiceHub = lazy(() => import("./screens/Dice/DiceHub").then((m) => ({ default: m.DiceHub })));
 const DiceNew = lazy(() => import("./screens/Dice/DiceNew").then((m) => ({ default: m.DiceNew })));
 const DiceTable = lazy(() => import("./screens/Dice/DiceTable").then((m) => ({ default: m.DiceTable })));
@@ -689,6 +690,8 @@ function AppRoutes() {
                 the bundle locally and never hit Vercel, so the SPA needs the
                 same redirect. Signed-out visitors then fall through /lobby's
                 own guard to the landing page — no second auth check here. */}
+            {/* Skate Runner: public, flag-gated (VITE_FEATURE_RUNNER_ENABLED). */}
+            {isRunnerEnabled() && <Route path="/play/runner" element={<RunnerScreen />} />}
             <Route path="/play" element={<Navigate to="/lobby" replace />} />
             <Route path="/play/*" element={<Navigate to="/lobby" replace />} />
 
