@@ -482,6 +482,10 @@ describe("native pro-capture extras", () => {
     mockPro.mockReset();
     mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
     expect(await setNativeQuality("slomo240")).toBe(false);
+    mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
+    const fallback = await getNativeQualityModes();
+    expect(fallback.modes).toEqual(["standard1080p60"]);
+    expect(fallback.current).toBe("standard1080p60");
   });
 
   it("fetches performance metrics", async () => {
@@ -515,6 +519,8 @@ describe("native pro-capture extras", () => {
     mockPro.mockReset();
     mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
     expect(await setNativePreRoll(false)).toBe(false);
+    mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
+    expect(await getNativePreRollStatus()).toBeNull();
   });
 
   it("enables native AVFoundation fisheye effect", async () => {
