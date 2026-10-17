@@ -535,6 +535,10 @@ describe("native pro-capture extras", () => {
       thermalState: "nominal",
       quality: "standard1080p60",
     });
+    // Test the || null branch (when getPerformanceMetrics returns undefined)
+    mockPro.mockResolvedValueOnce(undefined);
+    expect(await getNativeMetrics()).toBeNull();
+    // Test error case
     mockPro.mockReset();
     mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
     expect(await getNativeMetrics()).toBeNull();
@@ -554,6 +558,9 @@ describe("native pro-capture extras", () => {
     mockPro.mockResolvedValueOnce({ enabled: true, bufferedSeconds: 2.3, bufferCount: 138 });
     const status = await getNativePreRollStatus();
     expect(status).toEqual({ enabled: true, bufferedSeconds: 2.3, bufferCount: 138 });
+    // Test the || null branch (when getPreRollStatus returns undefined)
+    mockPro.mockResolvedValueOnce(undefined);
+    expect(await getNativePreRollStatus()).toBeNull();
     mockPro.mockReset();
     // Test error cases
     mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
