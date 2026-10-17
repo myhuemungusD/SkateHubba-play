@@ -6,7 +6,7 @@ import {
 } from "@firebase/rules-unit-testing";
 import { doc, setDoc, updateDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 import { readFileSync } from "fs";
-import { beforeAll, afterAll, describe, it, expect } from "vitest";
+import { beforeAll, afterAll, afterEach, describe, it, expect } from "vitest";
 
 const PROJECT_ID = "demo-skatehubba-wtt-rules";
 
