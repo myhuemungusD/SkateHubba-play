@@ -837,3 +837,51 @@ input:-webkit-autofill {
 .sh-native-cam {
   background: transparent !important;
 }
+
+/* ── HubbaIcons micro-motion ─────────────────────────────────
+ * Tap: quick press-in on any control wrapping an icon (.hb-press).
+ * Active: a 220ms pop when an icon switches to its filled form; the Clips
+ * wheel adds a quarter spin. All of it is off under reduced motion. */
+@keyframes hb-pop {
+  0% {
+    transform: scale(0.82);
+  }
+  60% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes hb-spin-quarter {
+  from {
+    transform: rotate(-90deg) scale(0.9);
+  }
+  to {
+    transform: rotate(0deg) scale(1);
+  }
+}
+.hb-icon {
+  transform-origin: 50% 50%;
+  transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.hb-icon-active {
+  animation: hb-pop 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.hb-icon-clips.hb-icon-active {
+  animation: hb-spin-quarter 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.hb-press:active .hb-icon {
+  transform: scale(0.88);
+}
+@media (prefers-reduced-motion: reduce) {
+  .hb-icon,
+  .hb-icon-active,
+  .hb-icon-clips.hb-icon-active {
+    animation: none !important;
+    transition: none !important;
+  }
+  .hb-press:active .hb-icon {
+    transform: none;
+  }
+}

@@ -1,8 +1,7 @@
-import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { useNavigationContext, screenToPath, type Screen } from "../context/NavigationContext";
 import { useNotifications } from "../context/NotificationContext";
-import { FilmIcon, HomeIcon, MapPinIcon, SkateboardIcon, UserIcon } from "./icons";
+import { HubbaIcon, type GlyphName } from "./hubbaIcons";
 import { isExtrasEnabled } from "../lib/featureFlags";
 
 /** Screens where the persistent bottom nav is rendered. */
@@ -16,7 +15,8 @@ export function isBottomNavScreen(screen: Screen): boolean {
 interface NavItem {
   screen: Screen;
   label: string;
-  Icon: (props: { size?: number; className?: string }) => ReactNode;
+  /** HubbaIcons glyph: outline when idle, filled when this tab is active. */
+  icon: GlyphName;
   /**
    * Anchor id for the onboarding tour. Two steps point at tabs now that the
    * lobby no longer carries its own challenge CTA — the tour auto-skips a
@@ -46,11 +46,11 @@ interface NavItem {
 // else's profile — a pushed detail screen, not a tab destination — so no tab
 // claims it.
 const NAV_ITEMS: readonly NavItem[] = [
-  { screen: "lobby", label: "Home", Icon: HomeIcon },
-  { screen: "feed", label: "Clips", Icon: FilmIcon, extra: true },
-  { screen: "challenge", label: "Challenge", Icon: SkateboardIcon, primary: true, tutorialId: "challenge-cta" },
-  { screen: "map", label: "Map", Icon: MapPinIcon, extra: true },
-  { screen: "me", label: "Me", Icon: UserIcon, tutorialId: "record-button" },
+  { screen: "lobby", label: "Home", icon: "home" },
+  { screen: "feed", label: "Clips", icon: "clips", extra: true },
+  { screen: "challenge", label: "Challenge", icon: "challenge", primary: true, tutorialId: "challenge-cta" },
+  { screen: "map", label: "Map", icon: "spot", extra: true },
+  { screen: "me", label: "Me", icon: "me", tutorialId: "record-button" },
 ];
 
 /**
@@ -91,7 +91,7 @@ export function BottomNav() {
                   aria-current={active ? "page" : undefined}
                   aria-label={badgeCount > 0 ? `${item.label} (${badgeCount} unread)` : item.label}
                   data-tutorial={item.tutorialId}
-                  className={`group relative w-full min-h-[44px] flex flex-col items-center justify-center gap-1 px-0.5 py-2 rounded-xl transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${
+                  className={`hb-press group relative w-full min-h-[44px] flex flex-col items-center justify-center gap-1 px-0.5 py-2 rounded-xl transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${
                     active
                       ? "text-brand-orange"
                       : "text-faint hover:text-white hover:bg-white/[0.03] active:scale-[0.97]"
@@ -107,9 +107,12 @@ export function BottomNav() {
                         : "relative inline-flex"
                     }
                   >
-                    <item.Icon
-                      size={22}
-                      className={`transition-transform duration-300 ${active ? "scale-110" : "group-hover:-translate-y-0.5"}`}
+                    <HubbaIcon
+                      name={item.icon}
+                      // The raised Challenge disc is always solid, so its
+                      // deck always uses the filled form for contrast.
+                      active={active || item.primary === true}
+                      size={item.primary ? 24 : 22}
                     />
                     {badgeCount > 0 && (
                       <span
