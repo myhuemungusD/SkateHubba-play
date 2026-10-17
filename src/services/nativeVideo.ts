@@ -305,6 +305,8 @@ const pro = VideoRecorder as unknown as ProRecorder;
 
 /** Lenses the native camera offers, in display units ([0.5, 1, 2] on an ultra-wide phone). */
 export async function getNativeLenses(): Promise<number[]> {
+  // Pro camera feature guard - return empty when flag is off
+  if (import.meta.env.VITE_FEATURE_PRO_CAMERA !== "true") return [];
   try {
     const info = await pro.getLensInfo?.();
     if (!info) return [];
@@ -316,6 +318,7 @@ export async function getNativeLenses(): Promise<number[]> {
 
 /** Ramp to a lens (0.5 = ultra-wide). Safe mid-recording. Resolves false if unsupported. */
 export async function setNativeLens(lens: number): Promise<boolean> {
+  if (import.meta.env.VITE_FEATURE_PRO_CAMERA !== "true") return false;
   try {
     if (!pro.setZoom) return false;
     await pro.setZoom({ lens });
@@ -328,6 +331,7 @@ export async function setNativeLens(lens: number): Promise<boolean> {
 
 /** Tap to focus + expose at a 0..1 screen point; `lock` holds AE/AF there. */
 export async function focusNativeAt(x: number, y: number, lock: boolean): Promise<boolean> {
+  if (import.meta.env.VITE_FEATURE_PRO_CAMERA !== "true") return false;
   try {
     if (!pro.focusAt) return false;
     await pro.focusAt({ x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)), lock });
@@ -339,6 +343,7 @@ export async function focusNativeAt(x: number, y: number, lock: boolean): Promis
 
 /** Set capture quality mode (4K60, 1080p60, slow-mo, etc.). */
 export async function setNativeQuality(quality: CaptureQuality): Promise<boolean> {
+  if (import.meta.env.VITE_FEATURE_PRO_CAMERA !== "true") return false;
   try {
     if (!pro.setQuality) return false;
     await pro.setQuality({ quality });
@@ -351,6 +356,8 @@ export async function setNativeQuality(quality: CaptureQuality): Promise<boolean
 
 /** Get available quality modes and current setting. */
 export async function getNativeQualityModes(): Promise<{ modes: CaptureQuality[]; current: CaptureQuality }> {
+  if (import.meta.env.VITE_FEATURE_PRO_CAMERA !== "true")
+    return { modes: ["standard1080p60"], current: "standard1080p60" };
   try {
     const result = await pro.getQualityModes?.();
     return result || { modes: ["standard1080p60"], current: "standard1080p60" };
@@ -366,6 +373,7 @@ export async function getNativeMetrics(): Promise<{
   thermalState: "nominal" | "fair" | "serious" | "critical" | "unknown";
   quality: CaptureQuality;
 } | null> {
+  if (import.meta.env.VITE_FEATURE_PRO_CAMERA !== "true") return null;
   try {
     return (await pro.getPerformanceMetrics?.()) || null;
   } catch {
@@ -375,6 +383,7 @@ export async function getNativeMetrics(): Promise<{
 
 /** Enable/disable pre-roll buffer (captures 2.5s before record button is pressed). */
 export async function setNativePreRoll(enabled: boolean): Promise<boolean> {
+  if (import.meta.env.VITE_FEATURE_PRO_CAMERA !== "true") return false;
   try {
     if (!pro.setPreRoll) return false;
     await pro.setPreRoll({ enabled });
@@ -391,6 +400,7 @@ export async function getNativePreRollStatus(): Promise<{
   bufferedSeconds: number;
   bufferCount: number;
 } | null> {
+  if (import.meta.env.VITE_FEATURE_PRO_CAMERA !== "true") return null;
   try {
     return (await pro.getPreRollStatus?.()) || null;
   } catch {
@@ -400,6 +410,7 @@ export async function getNativePreRollStatus(): Promise<{
 
 /** Enable native AVFoundation fisheye effect (alternative to web GPU shader). */
 export async function setNativeFisheye(enabled: boolean, strength: number = 2.0): Promise<boolean> {
+  if (import.meta.env.VITE_FEATURE_PRO_CAMERA !== "true") return false;
   try {
     if (!pro.setNativeFisheye) return false;
     await pro.setNativeFisheye({ enabled, strength });
