@@ -408,9 +408,40 @@ GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json \
 
 ## Summary
 
-**What's done:** Data model, services, UI components, feature flags. Everything behind default-off switches.  
+**What's done:** Data model, services, UI components, confusion map, option generation, 33 tests, ClipsFeed integration. Everything behind default-off switches.  
 **What blocks:** PR #646 (CodeQL config issue).  
-**What's next:** Server functions, ClipsFeed integration, GameOver post flow.  
+**What's next:** Server functions (vote tallying, item generation, EM nightly), GameOver post flow.  
 **What Jason decides:** Pro list, synonym policy, game-clips flow, CodeQL enforcement, launch timing.
 
-This is production-ready foundation code. The remaining work is integration (wiring up components) and server-side logic (vote tallying, EM nightly). Estimated 40–60 more function calls to complete, depending on test coverage rigor.
+This is production-ready foundation code. Core client-side features complete and tested. Server functions remain (separate PR after #646 merges).
+
+---
+
+## Latest Progress (Oct 17, 2026 8:30 AM)
+
+### Commits since initial push:
+
+1. **WTT foundation** (c65ca4e) — Data model, services, types, flags
+2. **ClipsFeed integration** (74282bc) — Mode switcher wired up, Name It overlay
+3. **Confusion map** (5ac84e4) — 80+ trick pairs, option generation module
+4. **Test coverage** (8ff6931) — 33 tests across 3 files, all passing
+
+### Test Coverage Added:
+
+- `wtt.options.test.ts` — 13 tests for quiz generation, shuffle, validation
+- `tricks.confusion.test.ts` — 12 tests for confusion map and distractors
+- `FeedModeToggle.test.tsx` — 8 tests for UI behavior
+
+### Ready for Review:
+
+- All TypeScript clean
+- All ESLint clean
+- All tests passing
+- Rules under 256 KB limit (181 KB = 69%)
+- Everything behind default-off flags
+
+### Still TODO:
+
+- Server functions (next PR after #646 merges)
+- GameOver post flow UI integration
+- Firestore rules tests for WTT collections
