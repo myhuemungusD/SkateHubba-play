@@ -36,7 +36,7 @@ export interface DiceDb {
   runTransaction<T>(fn: (tx: DiceTx) => Promise<T>): Promise<T>;
 }
 
-function refFromPath(db: Firestore, path: string): DocumentReference {
+export function refFromPath(db: Firestore, path: string): DocumentReference {
   const parts = path.split("/").filter((part) => part.length > 0);
   if (parts.length < 2 || parts.length % 2 !== 0) {
     throw new Error("BAD_PATH");
@@ -48,7 +48,7 @@ function refFromPath(db: Firestore, path: string): DocumentReference {
   return ref;
 }
 
-function buildQuery(db: Firestore, q: DiceQuery): Query {
+export function buildQuery(db: Firestore, q: DiceQuery): Query {
   let query: Query = db.collection(q.collection);
   for (const filter of q.filters) {
     query = query.where(filter.field, filter.op, filter.value);

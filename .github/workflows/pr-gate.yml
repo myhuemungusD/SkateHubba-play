@@ -68,6 +68,8 @@ jobs:
           #     Intelligence plus the report auto-hide and admin decision.
           #   • Pro blessing — proBlessing (requested by Jason 2026-10-16).
           #     The only non-admin writer of isVerifiedPro.
+          #   • Closet — server-authoritative economy (approved 2026-10-17).
+          #     Mint, drops, trading, Bucks ledger. Plan: closet-drops-plan.md.
           #   • Push courier — pushDispatchOnCreate + pushDispatchSweep
           #     (approved by Jason 2026-10-17). Replaces the Actions cron.
           # Any other changed file under functions/src/ hard-fails.
@@ -75,7 +77,7 @@ jobs:
           while IFS= read -r file; do
             [ -z "$file" ] && continue
             case "$file" in
-              functions/src/index.ts|functions/src/index.test.ts|functions/src/applyGameStats.ts|functions/src/applyGameStats.test.ts|functions/src/dice/*.ts|functions/src/moderation/*.ts|functions/src/pro/*.ts|functions/src/push/*.ts) ;;
+              functions/src/index.ts|functions/src/index.test.ts|functions/src/applyGameStats.ts|functions/src/applyGameStats.test.ts|functions/src/dice/*.ts|functions/src/moderation/*.ts|functions/src/pro/*.ts|functions/src/closet/*.ts|functions/src/push/*.ts) ;;
               *) VIOLATIONS="${VIOLATIONS}${file}"$'\n' ;;
             esac
           done < <(git diff origin/main...HEAD --name-only | grep -E '^functions/src/' || true)
@@ -91,6 +93,7 @@ jobs:
             echo "  functions/src/dice/*.ts  (Roll Dice, approved 2026-10)"
             echo "  functions/src/moderation/*.ts  (public clip moderation, approved 2026-10-10)"
             echo "  functions/src/pro/*.ts  (pro blessing, 2026-10-16)"
+            echo "  functions/src/closet/*.ts  (Closet economy, approved 2026-10-17)"
             echo "  functions/src/push/*.ts  (push courier, 2026-10-17)"
             echo "Any other functions/src/ code requires explicit maintainer approval."
             echo "See .github/BRANCH_PROTECTION.md for details."

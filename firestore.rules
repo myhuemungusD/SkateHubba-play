@@ -844,19 +844,18 @@ service cloud.firestore {
       }
 
       // ── Locker (subcollection) ──
-      // Owned economy items (gear/cosmetics). Same posture as /achievements:
-      // minted by the Admin SDK award pipeline or by an `admin: true` console
-      // operator, deletable by the owner so the account-deletion batch stays
-      // atomic.
-      match /locker/{itemId} {
-        // Equipped gear is public reputation, shown on /player/:uid. Ordinary
-        // client create/update is denied outright — a client that can mint
-        // gear has no economy.
+      // Each doc is one owned closet copy. Copies are minted, moved by
+      // trades and equipped only by the closet callables (Admin SDK, see
+      // functions/src/closet/), which keep the copy, serials/{id} and the
+      // Bucks ledger consistent in one transaction. A client-side write here
+      // would desync the copy from its serial, so no client writes at all.
+      // Deletable by the owner so the account-deletion batch stays atomic.
+      match /locker/{copyId} {
+        // Closet items are public reputation, shown on /player/:uid.
         allow read: if isSignedIn();
-        // Exact item shape. Every listed key is required in practice: the
-        // per-field checks below read each one, so a create that omits any of
-        // them fails closed. Strings are length-capped (an award is metadata,
-        // not a payload channel) and acquiredAt is server-stamped.
+        // Closet copies are minted by the callables (Admin SDK). The one
+        // client path kept from main is the admin award panel: exact shape,
+        // bounded strings, server-stamped acquiredAt.
         allow create: if isAdmin()
           && request.resource.data.keys().hasOnly(
                ['type', 'brand', 'name', 'imageUrl', 'rarity', 'acquiredAt', 'provenance'])
@@ -871,16 +870,29 @@ service cloud.firestore {
           && request.resource.data.rarity.size() <= 100
           && (request.resource.data.imageUrl == null || request.resource.data.imageUrl is string)
           && request.resource.data.acquiredAt == request.time
-          // provenance is the award's audit note; only a bounded `reason`.
           && request.resource.data.provenance is map
           && request.resource.data.provenance.keys().hasOnly(['reason'])
           && request.resource.data.provenance.reason is string
           && request.resource.data.provenance.reason.size() <= 200;
-        // Items are immutable once awarded — re-award instead of editing, so
-        // acquiredAt and provenance stay truthful.
         allow update: if false;
         // Owner: GDPR erasure batch. Admin: revoke wrongly-awarded gear.
         allow delete: if isOwner(uid) || isAdmin();
+      }
+
+      // ── Closet Bucks wallet + ledger (subcollections) ──
+      // wallet/main holds balance, earnedBal and boughtBal; ledger/{txId} is
+      // the append-only transaction log whose sum must equal the balance
+      // (nightly audit). Only the closet callables write either, so a
+      // client can never credit itself. Private to the owner: the balance
+      // and spending history are hidden from profile visitors.
+      match /wallet/{walletId} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+
+      match /ledger/{txId} {
+        allow read: if isOwner(uid);
+        allow write: if false;
       }
     }
 
@@ -3244,6 +3256,61 @@ service cloud.firestore {
           || request.auth.uid == resource.data.targetUid
           || isAdmin()));
       allow create, update, delete: if false;
+    }
+
+    // ── Closet: catalog (item definitions) ──
+    // Public read, server-only writes. The closet callables and admin tools
+    // mint copies from catalog/{itemDefId} and keep serials/{id} consistent.
+    // Plan: functions/src/closet/, ../uploads/closet-drops-plan.md §9.
+    match /catalog/{itemDefId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // ── Closet: serial ledger (ownership source of truth) ──
+    // Public provenance — every Limited/Grail copy shows who owned it and
+    // when. Server-only writes: a client write here would desync the serial
+    // from the user's locker/{copyId} or bypass the Bucks debit.
+    match /serials/{serialId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // ── Closet: drops (weekly limited releases) ──
+    // Drop docs are public; claims/{uid} and entries/{uid} subcollections
+    // are private to the user. Only the closet callables write.
+    match /drops/{dropId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+
+      match /claims/{uid} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+
+      match /entries/{uid} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+    }
+
+    // ── Closet: trades (item-for-item swaps) ──
+    // Both parties can read the trade; only the closet callables write.
+    // Public history would reveal who's trading what and leak inventory.
+    match /trades/{tradeId} {
+      allow read: if isSignedIn()
+        && (request.auth.uid == resource.data.proposerUid
+          || request.auth.uid == resource.data.recipientUid);
+      allow write: if false;
+    }
+
+    // ── Closet: audit log (admin actions) ──
+    // Admin-only read. A mint, grant or trade reversal goes here so Jason
+    // can audit custody. Not readable by regular users — item provenance
+    // shows on the copy itself; this is the operator audit trail.
+    match /closetAudit/{autoId} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     // ── What's That Trick (WTT) collections ──
