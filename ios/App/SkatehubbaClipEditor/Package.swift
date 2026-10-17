@@ -14,7 +14,9 @@ let package = Package(
             targets: ["SkatehubbaClipEditor"])
     ],
     dependencies: [
-        .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.5.0")
+        // Range, not exact: `cap sync` pins CapApp-SPM to the installed
+        // @capacitor/ios version and SwiftPM needs one version for both.
+        .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", .upToNextMajor(from: "8.0.0"))
     ],
     targets: [
         .target(
