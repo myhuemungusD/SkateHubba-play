@@ -125,6 +125,10 @@ export interface PlayerProfileController {
   achievements: Achievement[];
   /** Earned locker gear. Empty until the parallel fetch resolves, and on failure. */
   lockerItems: LockerItem[];
+  /** Equipped items for the avatar (filtered from lockerItems). */
+  equippedItems: LockerItem[];
+  /** Top 6 items for the showcase shelf (highest rarity first). */
+  pinnedItems: LockerItem[];
 
   expandedGameId: string | null;
   toggleExpanded: (id: string) => void;
@@ -324,6 +328,21 @@ export function usePlayerProfileController({
     }
   }, [viewerUid, profile]);
 
+  /**
+   * Equipped items for the 2D avatar (plan §7).
+   * Filters lockerItems where equipped === true.
+   */
+  const equippedItems = useMemo(() => lockerItems.filter((item) => item.equipped), [lockerItems]);
+
+  /**
+   * Pinned items for the showcase shelf (plan §7).
+   * Takes the top 6 items, highest rarity first. Rarity order: grail > limited > rare > uncommon > common.
+   */
+  const pinnedItems = useMemo(() => {
+    const rarityOrder: Record<string, number> = { grail: 5, limited: 4, rare: 3, uncommon: 2, common: 1 };
+    return [...lockerItems].sort((a, b) => (rarityOrder[b.rarity] ?? 0) - (rarityOrder[a.rarity] ?? 0)).slice(0, 6);
+  }, [lockerItems]);
+
   return {
     profile,
     loading,
@@ -333,6 +352,8 @@ export function usePlayerProfileController({
     opponents,
     achievements,
     lockerItems,
+    equippedItems,
+    pinnedItems,
     expandedGameId,
     toggleExpanded,
     isBlocked,

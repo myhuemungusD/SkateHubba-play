@@ -12,6 +12,7 @@ function item(overrides?: Partial<Parameters<typeof ClosetShowcase>[0]["items"][
     rarity: "common",
     acquiredAt: new Date(),
     provenanceReason: null,
+    equipped: false,
     ...overrides,
   };
 }

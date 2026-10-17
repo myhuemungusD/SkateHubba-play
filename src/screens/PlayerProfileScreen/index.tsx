@@ -8,6 +8,7 @@ import { usePullToRefresh } from "../../hooks/usePullToRefresh";
 import { PullToRefreshIndicator } from "../../components/PullToRefreshIndicator";
 import { BadgesRow } from "../../components/BadgesRow";
 import { ClosetShowcase } from "../../components/ClosetShowcase";
+import { ProfileShowcase } from "../../components/ProfileShowcase";
 import { usePlayerProfileController } from "./usePlayerProfileController";
 import { BlockControls } from "./components/BlockControls";
 import { ChallengeButton } from "./components/ChallengeButton";
@@ -364,6 +365,8 @@ export function PlayerProfileScreen({
         )}
 
         <BadgesRow achievements={c.achievements} />
+
+        <ProfileShowcase equippedItems={c.equippedItems} pinnedItems={c.pinnedItems} isOwnProfile={isOwnProfile} />
 
         {isXpEnabled() && <AchievementsRibbon achievements={c.achievements} clipsPosted={profile.clipsPosted} />}
 
