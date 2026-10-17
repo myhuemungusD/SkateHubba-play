@@ -542,13 +542,20 @@ describe("native pro-capture extras", () => {
 
   it("enables and checks pre-roll buffer status", async () => {
     const { setNativePreRoll, getNativePreRollStatus } = await import("../nativeVideo");
+    // Test enabling
     mockPro.mockResolvedValueOnce({ enabled: true });
     expect(await setNativePreRoll(true)).toBe(true);
     expect(mockPro).toHaveBeenCalledWith("setPreRoll", { enabled: true });
+    // Test disabling
+    mockPro.mockResolvedValueOnce({ enabled: false });
+    expect(await setNativePreRoll(false)).toBe(true);
+    expect(mockPro).toHaveBeenCalledWith("setPreRoll", { enabled: false });
+    // Test status check
     mockPro.mockResolvedValueOnce({ enabled: true, bufferedSeconds: 2.3, bufferCount: 138 });
     const status = await getNativePreRollStatus();
     expect(status).toEqual({ enabled: true, bufferedSeconds: 2.3, bufferCount: 138 });
     mockPro.mockReset();
+    // Test error cases
     mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
     expect(await setNativePreRoll(false)).toBe(false);
     mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
@@ -557,11 +564,15 @@ describe("native pro-capture extras", () => {
 
   it("enables native AVFoundation fisheye effect", async () => {
     const { setNativeFisheye } = await import("../nativeVideo");
+    // Test enabling with strength
     mockPro.mockResolvedValueOnce({ enabled: true, strength: 2.0 });
     expect(await setNativeFisheye(true, 2.0)).toBe(true);
     expect(mockPro).toHaveBeenCalledWith("setNativeFisheye", { enabled: true, strength: 2.0 });
+    // Test disabling (hits the "off" branch in breadcrumb)
     mockPro.mockResolvedValueOnce({ enabled: false, strength: 0 });
-    expect(await setNativeFisheye(false)).toBe(true);
+    expect(await setNativeFisheye(false, 0)).toBe(true);
+    expect(mockPro).toHaveBeenCalledWith("setNativeFisheye", { enabled: false, strength: 0 });
+    // Test error case
     mockPro.mockReset();
     mockPro.mockImplementationOnce(() => Promise.reject(new Error("no")));
     expect(await setNativeFisheye(true, 3.0)).toBe(false);
