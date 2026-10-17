@@ -432,18 +432,22 @@ describe("nativeVideo service", () => {
   });
 
   describe("recordNativeVideo — performance API coverage", () => {
-    it("measures record-start latency when performance API is available", async () => {
+    async function setupPerformanceTest() {
       mockIsNativePlatform.mockReturnValue(true);
-      let callTime = 0;
-      mockPerformanceNow.mockImplementation(() => {
-        callTime += 50;
-        return callTime;
-      });
       mockStopRecording.mockResolvedValueOnce({ videoUrl: "file:///tmp/v.mp4" });
       mockFetch.mockResolvedValueOnce({
         ok: true,
         blob: async () => new Blob(["x"], { type: "video/mp4" }),
       });
+    }
+
+    it("measures record-start latency when performance API is available", async () => {
+      let callTime = 0;
+      mockPerformanceNow.mockImplementation(() => {
+        callTime += 50;
+        return callTime;
+      });
+      await setupPerformanceTest();
       const pending = recordNativeVideo();
       await flushAutoStop();
       await pending;
@@ -457,16 +461,11 @@ describe("nativeVideo service", () => {
     });
 
     it("handles missing performance API gracefully (both branches)", async () => {
-      mockIsNativePlatform.mockReturnValue(true);
       const originalPerf = global.performance;
       // Temporarily remove performance to test the fallback branch
       // @ts-expect-error - testing undefined performance
       delete global.performance;
-      mockStopRecording.mockResolvedValueOnce({ videoUrl: "file:///tmp/v.mp4" });
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        blob: async () => new Blob(["x"], { type: "video/mp4" }),
-      });
+      await setupPerformanceTest();
       const pending = recordNativeVideo();
       await flushAutoStop();
       const result = await pending;
