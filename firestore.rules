@@ -470,6 +470,19 @@ service cloud.firestore {
               '/o/users%2F' + uid + '%2Favatar\\.(webp|jpeg|png)(\\?.*)?$'
             )
           )
+        )
+        // ── bannerImageUrl bucket + UID pinning (profile banner) ──
+        // Same anti-phishing pin as profileImageUrl, for users/{uid}/banner.webp.
+        && (
+          !('bannerImageUrl' in request.resource.data.keys())
+          || request.resource.data.bannerImageUrl == null
+          || (
+            request.resource.data.bannerImageUrl is string
+            && request.resource.data.bannerImageUrl.matches(
+              '^https://firebasestorage\\.googleapis\\.com/v0/b/' + FIREBASE_BUCKET() +
+              '/o/users%2F' + uid + '%2Fbanner\\.webp(\\?.*)?$'
+            )
+          )
         );
       allow update: if isOwner(uid)
         // ── Privileged-field self-modify guard (F2 — defense in depth) ──
@@ -622,6 +635,19 @@ service cloud.firestore {
             && request.resource.data.profileImageUrl.matches(
               '^https://firebasestorage\\.googleapis\\.com/v0/b/' + FIREBASE_BUCKET() +
               '/o/users%2F' + uid + '%2Favatar\\.(webp|jpeg|png)(\\?.*)?$'
+            )
+          )
+        )
+        // ── bannerImageUrl bucket + UID pinning (profile banner) ──
+        // Same anti-phishing pin as profileImageUrl, for users/{uid}/banner.webp.
+        && (
+          !('bannerImageUrl' in request.resource.data.keys())
+          || request.resource.data.bannerImageUrl == null
+          || (
+            request.resource.data.bannerImageUrl is string
+            && request.resource.data.bannerImageUrl.matches(
+              '^https://firebasestorage\\.googleapis\\.com/v0/b/' + FIREBASE_BUCKET() +
+              '/o/users%2F' + uid + '%2Fbanner\\.webp(\\?.*)?$'
             )
           )
         );
