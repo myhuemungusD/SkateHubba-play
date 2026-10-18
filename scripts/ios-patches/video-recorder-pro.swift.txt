@@ -207,7 +207,7 @@
     /** Returns available quality modes and current selection */
     @objc func getQualityModes(_ call: CAPPluginCall) {
         guard let dev = self.cameraInput?.device else {
-            call.resolve(["modes": [], "current": "standard1080p60"])
+            call.resolve(["modes": [String](), "current": "standard1080p60"])
             return
         }
         
