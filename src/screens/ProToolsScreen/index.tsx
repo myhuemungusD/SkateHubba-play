@@ -3,13 +3,26 @@ import { ComingSoonCard } from "../../components/pro/ComingSoonCard";
 import { PRO_TOOLS } from "../../components/pro/proTools";
 import { BlessingHero } from "../../components/pro/BlessingHero";
 import { useIsAdmin } from "../../hooks/useIsAdmin";
-import { isProBlessingEnabled, isProCallsEnabled, isProProfilesEnabled } from "../../lib/featureFlags";
+import {
+  isProBlessingEnabled,
+  isProCallsEnabled,
+  isProCommunityEnabled,
+  isProProfilesEnabled,
+} from "../../lib/featureFlags";
+import { FeaturedClipsTool, ProChallengesTool, ProPropsTool } from "../../components/pro/ProCommunityTools";
+import { useMyUsername } from "./useMyUsername";
 import { GoldClipAuthoring, ProReviewQueue } from "../../components/pro/ProCallsTools";
 import type { ProToolId } from "../../components/pro/proTools";
 import type { ReactNode } from "react";
 
 /** Built pro tools, keyed by id. Only for a real pro (not admin review mode). */
-function liveTool(id: ProToolId, uid: string): ReactNode | null {
+function liveTool(id: ProToolId, uid: string, username: string): ReactNode | null {
+  if (isProCommunityEnabled() && username) {
+    const pro = { uid, username };
+    if (id === "challenges") return <ProChallengesTool pro={pro} />;
+    if (id === "props") return <ProPropsTool pro={pro} />;
+    if (id === "featured") return <FeaturedClipsTool pro={pro} />;
+  }
   if ((id === "review" || id === "gold") && isProCallsEnabled()) {
     return id === "review" ? <ProReviewQueue uid={uid} /> : <GoldClipAuthoring uid={uid} />;
   }
@@ -31,6 +44,7 @@ interface ScreenProps {
  * ban, report, moderation, verify-pro or award control can render here.
  */
 export function ProToolsScreen({ uid = null, reviewMode, onBack }: ScreenProps) {
+  const username = useMyUsername(!reviewMode && isProCommunityEnabled() ? uid : null);
   return (
     <div className="mx-auto min-h-dvh max-w-lg px-5 pb-24 pt-6" data-testid="pro-tools-screen">
       <button
@@ -57,7 +71,7 @@ export function ProToolsScreen({ uid = null, reviewMode, onBack }: ScreenProps) 
       <BlessingHero uid={uid} live={!reviewMode && isProBlessingEnabled()} />
       <div className="space-y-3">
         {PRO_TOOLS.map((t) => {
-          const live = !reviewMode && uid ? liveTool(t.id, uid) : null;
+          const live = !reviewMode && uid ? liveTool(t.id, uid, username) : null;
           return live ? (
             <div key={t.title}>{live}</div>
           ) : (

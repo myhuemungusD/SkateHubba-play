@@ -1,5 +1,7 @@
 import type { UserProfile } from "../services/users";
 import { ClipsFeed } from "../components/ClipsFeed";
+import { ProPicks } from "../components/pro/ProPicks";
+import { isProCommunityEnabled } from "../lib/featureFlags";
 
 interface Props {
   profile: UserProfile;
@@ -18,6 +20,7 @@ export function FeedScreen({ profile, onViewPlayer, onChallengeUser }: Props) {
   return (
     <div className="relative h-dvh bg-black">
       <h1 className="sr-only">Clips</h1>
+      {isProCommunityEnabled() && <ProPicks player={{ uid: profile.uid, username: profile.username }} />}
       <ClipsFeed profile={profile} onViewPlayer={onViewPlayer} onChallengeUser={onChallengeUser} />
     </div>
   );
