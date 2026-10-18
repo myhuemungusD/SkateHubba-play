@@ -133,6 +133,12 @@ describe("shareText on native", () => {
     expect(mockShare).toHaveBeenCalledWith({ text: "hello" });
   });
 
+  it("never downloads lazy files on native", async () => {
+    const loadFiles = vi.fn();
+    await expect(shareText({ text: "clip", loadFiles })).resolves.toBe("native_share_text");
+    expect(loadFiles).not.toHaveBeenCalled();
+  });
+
   it("propagates a cancelled/failed share", async () => {
     mockShare.mockRejectedValueOnce(new Error("Share canceled"));
     await expect(shareText({ text: "hello" })).rejects.toThrow("Share canceled");
@@ -181,6 +187,31 @@ describe("shareText on web", () => {
     const share = stubWebShare();
     await expect(shareText(CLIP)).resolves.toBe("native_share_text");
     expect(share).toHaveBeenCalledWith({ title: "SkateHubba — kickflip", text: "clip\nhttps://a" });
+  });
+
+  it("loads lazy files only when Web Share Level 2 exists", async () => {
+    const share = stubWebShare(() => true);
+    const loadFiles = vi.fn().mockResolvedValue([FILE]);
+    await expect(shareText({ text: "clip", loadFiles })).resolves.toBe("native_share");
+    expect(loadFiles).toHaveBeenCalledOnce();
+    expect(share).toHaveBeenCalledWith({ text: "clip", files: [FILE] });
+  });
+
+  it("degrades to a text share when lazy files fail to load", async () => {
+    const share = stubWebShare(() => true);
+    const loadFiles = vi.fn().mockRejectedValue(new Error("cors"));
+    await expect(shareText({ text: "clip", textWithoutFiles: "clip link", loadFiles })).resolves.toBe(
+      "native_share_text",
+    );
+    expect(mockWarn).toHaveBeenCalledWith("share_files_unavailable", expect.any(Object));
+    expect(share).toHaveBeenCalledWith({ text: "clip link" });
+  });
+
+  it("never loads lazy files without canShare", async () => {
+    stubWebShare();
+    const loadFiles = vi.fn();
+    await expect(shareText({ text: "clip", loadFiles })).resolves.toBe("native_share_text");
+    expect(loadFiles).not.toHaveBeenCalled();
   });
 
   it("copies to the clipboard when Web Share is unsupported", async () => {

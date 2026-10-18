@@ -38,6 +38,13 @@ export interface ShareTextOptions {
   /** Web Share Level 2 attachments. Web-only — the native sheet takes text. */
   files?: File[];
   /**
+   * Lazily build the attachments. Only called on the web path when Web Share
+   * Level 2 exists, so the native shell never downloads the clip (a
+   * cross-origin fetch from capacitor://localhost fails on iOS and used to
+   * break Share entirely). A failed load degrades to a text share.
+   */
+  loadFiles?: () => Promise<File[]>;
+  /**
    * Message used when the attachments cannot be shared (no Web Share Level 2,
    * or the native path, which shares text only). Defaults to `text`.
    */
@@ -64,7 +71,8 @@ export function isShareAvailable(): boolean {
  * Rejects when the user cancels or the sheet fails, same as `navigator.share`.
  */
 export async function shareText(options: ShareTextOptions): Promise<ShareMethod> {
-  const { title, text, url, files, textWithoutFiles } = options;
+  const { title, text, url, loadFiles, textWithoutFiles } = options;
+  let { files } = options;
   const plainText = textWithoutFiles ?? text;
 
   if (Capacitor.isNativePlatform()) {
@@ -74,6 +82,14 @@ export async function shareText(options: ShareTextOptions): Promise<ShareMethod>
       return "native_share_text";
     }
     // Plugin unavailable — fall through to the web chain below.
+  }
+
+  if (!files && loadFiles && typeof navigator.share === "function" && typeof navigator.canShare === "function") {
+    try {
+      files = await loadFiles();
+    } catch (err) {
+      logger.warn("share_files_unavailable", { error: parseFirebaseError(err) });
+    }
   }
 
   if (files && typeof navigator.share === "function" && navigator.canShare?.({ files })) {

@@ -378,7 +378,7 @@
     // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
     
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        guard isCapturingPreRoll, !self.isRecording else { return }
+        guard isCapturingPreRoll, self.videoOutput?.isRecording != true else { return }
         
         // Create a copy of the sample buffer (required because the buffer is reused by the system)
         guard let copy = copySampleBuffer(sampleBuffer) else { return }

@@ -13,6 +13,7 @@ import { ReportModal } from "../components/ReportModal";
 import { ProUsername } from "../components/ProUsername";
 import { DisputeResultCard } from "../components/DisputeResultCard";
 import { fetchResolvedDispute, type Dispute } from "../services/disputes";
+import { copyText, shareText } from "../services/nativeBridge";
 import { TrainingConsentPrompt } from "../components/TrainingConsentPrompt";
 import { LevelChip } from "../components/LevelChip";
 import { isXpEnabled } from "../lib/featureFlags";
@@ -130,17 +131,17 @@ export function GameOverScreen({
 
     const text = lines.join("\n");
 
-    if (navigator.share) {
-      try {
-        await navigator.share({ text });
+    try {
+      const method = await shareText({ text });
+      if (method !== "clipboard") {
         return;
-      } catch {
-        // User cancelled or share failed — fall through to clipboard
       }
+    } catch {
+      // User cancelled or the sheet failed — fall through to a clipboard copy
     }
 
     try {
-      await navigator.clipboard.writeText(text);
+      await copyText(text);
       setShareLabel("Copied!");
       shareLabelTimerRef.current = setTimeout(() => setShareLabel("Share Game Recap"), 2000);
     } catch {

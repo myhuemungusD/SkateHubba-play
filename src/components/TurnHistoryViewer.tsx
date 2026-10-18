@@ -206,17 +206,19 @@ function ShareBtn({ url, trickName, context }: { url: string; trickName: string;
   const handleShare = useCallback(async () => {
     setStatus("sharing");
     try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("Fetch failed");
-      const blob = await res.blob();
-      const file = new File([blob], `skatehubba-${trickName.replace(/\s+/g, "-").toLowerCase()}.webm`, {
-        type: "video/webm",
-      });
+      const loadFiles = async () => {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("Fetch failed");
+        const blob = await res.blob();
+        return [
+          new File([blob], `skatehubba-${trickName.replace(/\s+/g, "-").toLowerCase()}.webm`, { type: "video/webm" }),
+        ];
+      };
       const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
       const method = await shareText({
         title: `SkateHubba — ${trickName}`,
         text: `Check out my ${trickName} on SkateHubba!`,
-        files: [file],
+        loadFiles,
         textWithoutFiles: `Check out my ${trickName} on SkateHubba!\n${appUrl}`,
       });
       trackEvent("clip_shared", { method, context });

@@ -457,11 +457,20 @@ describe("WaitingScreen", () => {
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Kickflip"));
     });
 
-    it("Share Clip shows 'Share failed' when fetch fails", async () => {
+    it("Share Clip still shares the text when the clip download fails", async () => {
       vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, blob: vi.fn() }));
-      render(<WaitingScreen game={makeGame()} profile={profile} onBack={onBack} />);
-      await userEvent.click(screen.getByText("Share Clip"));
-      await waitFor(() => expect(screen.getByText("Share failed")).toBeInTheDocument());
+      const share = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "share", { value: share, configurable: true, writable: true });
+      Object.defineProperty(navigator, "canShare", { value: () => true, configurable: true, writable: true });
+      try {
+        render(<WaitingScreen game={makeGame()} profile={profile} onBack={onBack} />);
+        await userEvent.click(screen.getByText("Share Clip"));
+        await waitFor(() => expect(screen.getByText("Shared!")).toBeInTheDocument());
+        expect(share).toHaveBeenCalledWith(expect.not.objectContaining({ files: expect.anything() }));
+      } finally {
+        delete (navigator as { share?: unknown }).share;
+        delete (navigator as { canShare?: unknown }).canShare;
+      }
     });
   });
 

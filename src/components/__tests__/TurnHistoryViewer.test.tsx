@@ -26,6 +26,25 @@ const makeTurn = (n: number, overrides?: Partial<TurnRecord>): TurnRecord => ({
   ...overrides,
 });
 
+function stubLevel2Share() {
+  const share = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "share", { value: share, configurable: true, writable: true });
+  Object.defineProperty(navigator, "canShare", { value: () => true, configurable: true, writable: true });
+  return share;
+}
+
+function unstubLevel2Share() {
+  delete (navigator as { share?: unknown }).share;
+  delete (navigator as { canShare?: unknown }).canShare;
+  vi.restoreAllMocks();
+}
+
+async function clickShareAndWait() {
+  render(<TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showShare />);
+  await userEvent.click(screen.getAllByText("Share clip")[0]);
+  await waitFor(() => expect(screen.getByText("Shared!")).toBeInTheDocument());
+}
+
 describe("TurnHistoryViewer", () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -180,6 +199,29 @@ describe("TurnHistoryViewer", () => {
 
     Object.defineProperty(navigator, "share", { value: origShare, configurable: true, writable: true });
     vi.restoreAllMocks();
+  });
+
+  it("share button attaches the downloaded clip when Web Share Level 2 is available", async () => {
+    const share = stubLevel2Share();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      blob: () => Promise.resolve(new Blob(["vid"])),
+    } as Response);
+
+    await clickShareAndWait();
+    expect(share).toHaveBeenCalledWith(expect.objectContaining({ files: [expect.any(File)] }));
+
+    unstubLevel2Share();
+  });
+
+  it("share button falls back to text when the clip download fails", async () => {
+    const share = stubLevel2Share();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: false } as Response);
+
+    await clickShareAndWait();
+    expect(share).toHaveBeenCalledWith(expect.not.objectContaining({ files: expect.anything() }));
+
+    unstubLevel2Share();
   });
 
   it("shows letter recipient as setter when letterTo is setterUid (not matcherUid)", () => {
