@@ -235,6 +235,15 @@ export function isProfileCustomEnabled(): boolean {
 }
 
 /**
+ * Pro profile Clip Reel (the pro's pinned clips) and Pro Spots (spots they
+ * skate, linked to the map with their clips from each). Replaces the old
+ * COMING SOON cards. Literal "true" only; off by default.
+ */
+export function isProShowcaseEnabled(): boolean {
+  return flagOn(import.meta.env.VITE_FEATURE_PRO_SHOWCASE);
+}
+
+/**
  * Closet Studio: paint-style clothes editor for the avatar (fill, brush,
  * eraser, layers, symmetry, stickers, text, import). Mike White designs are
  * the starter templates. Literal "true" only; off by default. See

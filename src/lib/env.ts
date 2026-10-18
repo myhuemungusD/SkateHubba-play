@@ -152,6 +152,12 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Pro Clip Reel + Pro Spots. DEFAULTS TO OFF. Read via isProShowcaseEnabled().
+  VITE_FEATURE_PRO_SHOWCASE: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // Closet Studio clothes editor. DEFAULTS TO OFF. Read via isClosetStudioEnabled().
   VITE_FEATURE_CLOSET_STUDIO: z
     .string()
