@@ -349,8 +349,8 @@ DICE.md, DISPUTE_BINDING_DESIGN.md, DSA_COMPLIANCE.md, ECONOMY.md, EMAIL_VERIFIC
 FIRESTORE_RULES_NOTES.md, GAME_MECHANICS.md, GAME_STATE_MACHINE.md, GAPS.md, IOS_RELEASE.md,
 MAPBOX_STYLE.md, MFA_TOTP.md, mobile-phone-layout.md, NOTIFICATION_AUDIT.md,
 PERMISSION_DENIED_RUNBOOK.md, SENTRY_ALERTS.md, STATS.md, STATUS_REPORT.md,
-STORE_PRIVACY_ANSWERS.md, TESTING.md, XP_LEVELS.md
-(31 files)
+STORE_PRIVACY_ANSWERS.md, TESTING.md, XCODE_CLOUD.md, XP_LEVELS.md
+(32 files)
 
 archive/   — superseded audits and plans; history only, never a current
              risk register:
