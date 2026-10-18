@@ -108,6 +108,8 @@ interface ImportMetaEnv {
   readonly VITE_FEATURE_PRO_CAMERA?: string;
   readonly VITE_FEATURE_PROFILE_BANNER?: string;
   readonly VITE_FEATURE_PROFILE_CUSTOM?: string;
+  /** Admin ops: disputes queue with final ruling + admin audit log (admin claim only). Literal "true" only; off by default. */
+  readonly VITE_FEATURE_ADMIN_OPS?: string;
   /** Admin console: bans list, user search, feature switches viewer (admin claim only). Literal "true" only; off by default. */
   readonly VITE_FEATURE_ADMIN_CONSOLE?: string;
   /** Pro Clip Reel + Pro Spots. Literal "true" only; off by default. */

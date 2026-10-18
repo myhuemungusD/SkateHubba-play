@@ -94,7 +94,7 @@ export function DropDayScreen() {
   if (!isClosetDropsEnabled() || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface">
-        <p className="text-subtle">Drop Day is coming soon.</p>
+        <p className="text-subtle">Drop Day is in testing and not open to everyone yet.</p>
       </div>
     );
   }

@@ -1,6 +1,7 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 
+vi.mock("../AdminOpsPanel", () => ({ AdminOpsPanel: () => <div data-testid="ops" /> }));
 vi.mock("../AdminConsolePanel", () => ({ AdminConsolePanel: () => <div data-testid="console" /> }));
 import { AdminRoadmapPanel } from "../AdminRoadmapPanel";
 
@@ -18,5 +19,12 @@ describe("AdminRoadmapPanel", () => {
     expect(screen.getByTestId("console")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Bans list (coming soon)" })).toBeNull();
     expect(screen.getByRole("region", { name: "Audit log (coming soon)" })).toBeInTheDocument();
+  });
+  it("swaps disputes queue and audit log for the ops panel", () => {
+    vi.stubEnv("VITE_FEATURE_ADMIN_OPS", "true");
+    render(<AdminRoadmapPanel />);
+    expect(screen.getByTestId("ops")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Audit log (coming soon)" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Bans list (coming soon)" })).toBeInTheDocument();
   });
 });

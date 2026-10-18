@@ -1031,6 +1031,25 @@ service cloud.firestore {
       }
     }
 
+    // ── Admin audit log ──
+    // Append-only record of admin console actions. Admin claim only, stamped
+    // with the acting uid and server time; never edited or deleted.
+    match /adminAudit/{entryId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['adminUid', 'action', 'targetId', 'detail', 'at'])
+        && request.resource.data.adminUid == request.auth.uid
+        && request.resource.data.action is string
+        && request.resource.data.action.size() > 0
+        && request.resource.data.action.size() <= 40
+        && request.resource.data.targetId is string
+        && request.resource.data.targetId.size() <= 128
+        && request.resource.data.detail is string
+        && request.resource.data.detail.size() <= 300
+        && request.resource.data.at == request.time;
+      allow update, delete: if false;
+    }
+
     // ── Bans (moderation tombstones) ──
     // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r16
     match /bans/{uid} {
@@ -3214,6 +3233,18 @@ service cloud.firestore {
         && resource.data.moderationStatus == 'active'
         && request.resource.data.moderationStatus == 'hidden'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['moderationStatus']);
+
+      // Disputes queue final ruling (admin claim only, never pros). Stamps
+      // the call once on an open dispute; the referee cron applies it in
+      // place of the crowd tally at close-out. Tallies/content untouched.
+      allow update: if isAdmin()
+        && resource.data.status == 'open'
+        && !('adminRuling' in resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['adminRuling', 'adminRuledBy', 'adminRuledAt'])
+        && request.resource.data.adminRuling in ['land', 'bail']
+        && request.resource.data.adminRuledBy == request.auth.uid
+        && request.resource.data.adminRuledAt == request.time;
 
       // Vote tallies.
       // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r43

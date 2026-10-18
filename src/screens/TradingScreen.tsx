@@ -47,7 +47,7 @@ export function TradingScreen() {
   if (!isClosetTradingEnabled() || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface">
-        <p className="text-subtle">Trading is coming soon.</p>
+        <p className="text-subtle">Trading is in testing and not open to everyone yet.</p>
       </div>
     );
   }

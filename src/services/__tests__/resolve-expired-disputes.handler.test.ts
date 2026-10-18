@@ -500,6 +500,27 @@ describe("resolve handler — communityReview verdicts (binding + stats + close-
     expect(disputeWrite(txSet)).toMatchObject({ verdict: "bail" });
   });
 
+  it("an admin's final ruling overrides the crowd tally", async () => {
+    for (const [ruling, verdict] of [
+      ["bail", "bail"],
+      ["land", "land"],
+    ] as const) {
+      const { db, txSet } = makeDb({
+        game: rawGame({ phase: "communityReview", p2Letters: 1 }),
+        dispute: {
+          status: "open",
+          landVotes: ruling === "bail" ? 9 : 0,
+          bailVotes: ruling === "land" ? 9 : 0,
+          adminRuling: ruling,
+        },
+      });
+      getFirestoreMock.mockReturnValue(db);
+      const { res } = makeRes();
+      await handler(authedGet(), res);
+      expect(disputeWrite(txSet)).toMatchObject({ verdict, resolutionApplied: true });
+    }
+  });
+
   it("bail completing the game (matcher hits 5) → complete, winner=setter, no notification", async () => {
     const { db, txUpdate, txSet, dispatchAdd } = makeDb({
       game: rawGame({ phase: "communityReview", p2Letters: 4 }),

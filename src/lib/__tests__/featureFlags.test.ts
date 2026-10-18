@@ -9,6 +9,7 @@ import {
   isProCameraEnabled,
   isProfileBannerEnabled,
   isProfileCustomEnabled,
+  isAdminOpsEnabled,
   isAdminConsoleEnabled,
   isProShowcaseEnabled,
   FEATURE_TESTER_STORAGE_KEY,
@@ -401,5 +402,23 @@ describe("isAdminConsoleEnabled (VITE_FEATURE_ADMIN_CONSOLE)", () => {
   it("turns on for a feature tester", () => {
     localStorage.setItem(FEATURE_TESTER_STORAGE_KEY, "u1");
     expect(isAdminConsoleEnabled()).toBe(true);
+  });
+});
+
+describe("isAdminOpsEnabled (VITE_FEATURE_ADMIN_OPS)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    localStorage.removeItem(FEATURE_TESTER_STORAGE_KEY);
+  });
+  it("is off by default and on only for literal true", () => {
+    expect(isAdminOpsEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_ADMIN_OPS", "1");
+    expect(isAdminOpsEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_ADMIN_OPS", "true");
+    expect(isAdminOpsEnabled()).toBe(true);
+  });
+  it("turns on for a feature tester", () => {
+    localStorage.setItem(FEATURE_TESTER_STORAGE_KEY, "u1");
+    expect(isAdminOpsEnabled()).toBe(true);
   });
 });

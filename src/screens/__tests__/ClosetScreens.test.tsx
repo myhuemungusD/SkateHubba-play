@@ -166,7 +166,7 @@ describe("DropDayScreen", () => {
   it("stays dark while the drops flag is off", () => {
     flags.drops = false;
     render(<DropDayScreen />);
-    expect(screen.getByText(/drop day is coming soon/i)).toBeInTheDocument();
+    expect(screen.getByText(/drop day is in testing/i)).toBeInTheDocument();
     expect(svc.fetchActiveDrops).not.toHaveBeenCalled();
   });
 
@@ -237,11 +237,11 @@ describe("TradingScreen", () => {
   it("stays dark while the trading flag is off or signed out", () => {
     flags.trading = false;
     const { rerender } = render(<TradingScreen />);
-    expect(screen.getByText(/trading is coming soon/i)).toBeInTheDocument();
+    expect(screen.getByText(/trading is in testing/i)).toBeInTheDocument();
     flags.trading = true;
     auth.user = null;
     rerender(<TradingScreen />);
-    expect(screen.getByText(/trading is coming soon/i)).toBeInTheDocument();
+    expect(screen.getByText(/trading is in testing/i)).toBeInTheDocument();
   });
 
   it("accepts an incoming offer and refetches", async () => {
