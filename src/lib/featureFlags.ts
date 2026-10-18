@@ -277,3 +277,8 @@ export function isMapCheckinsEnabled(): boolean {
 export function isAdminConsoleEnabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_ADMIN_CONSOLE);
 }
+
+/** Admin ops: disputes queue with final ruling + admin audit log (admin claim only). Literal "true" only; off by default; tester override turns it on. */
+export function isAdminOpsEnabled(): boolean {
+  return flagOn(import.meta.env.VITE_FEATURE_ADMIN_OPS);
+}

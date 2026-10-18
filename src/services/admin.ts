@@ -57,6 +57,7 @@ import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { parseFirebaseError } from "../utils/helpers";
 import { logger } from "./logger";
+import { recordAdminAction } from "./admin.audit";
 
 /** One row of the moderation queue, read from `reports/{reportId}`. */
 export interface AdminReport {
@@ -243,12 +244,14 @@ async function setVerifiedPro(adminUid: string, targetUid: string, isVerifiedPro
 
 /** Grant verified-pro status to `targetUid`, stamped with the acting admin. */
 export async function grantVerifiedPro(adminUid: string, targetUid: string): Promise<void> {
-  return setVerifiedPro(adminUid, targetUid, true);
+  await setVerifiedPro(adminUid, targetUid, true);
+  recordAdminAction("grant_pro", targetUid);
 }
 
 /** Revoke verified-pro status from `targetUid`, stamped with the acting admin. */
 export async function revokeVerifiedPro(adminUid: string, targetUid: string): Promise<void> {
-  return setVerifiedPro(adminUid, targetUid, false);
+  await setVerifiedPro(adminUid, targetUid, false);
+  recordAdminAction("revoke_pro", targetUid);
 }
 
 /**
@@ -272,6 +275,7 @@ export async function awardAchievement(targetUid: string, badgeId: string, reaso
       earnedAt: serverTimestamp(),
       reason: trimmedReason,
     });
+    recordAdminAction("award_badge", targetUid, badgeId);
   } catch (err) {
     logger.warn("admin_achievement_award_failed", { targetUid, badgeId, error: parseFirebaseError(err) });
     throw err;
@@ -285,6 +289,7 @@ export async function revokeAchievement(targetUid: string, badgeId: string): Pro
 
   try {
     await deleteDoc(doc(requireDb(), "users", targetUid, "achievements", badgeId));
+    recordAdminAction("revoke_badge", targetUid, badgeId);
   } catch (err) {
     logger.warn("admin_achievement_revoke_failed", { targetUid, badgeId, error: parseFirebaseError(err) });
     throw err;
@@ -326,6 +331,7 @@ export async function awardLockerItem(targetUid: string, item: AdminLockerItemIn
       acquiredAt: serverTimestamp(),
       provenance: { reason: provenanceReason },
     });
+    recordAdminAction("award_item", targetUid, name);
     return ref.id;
   } catch (err) {
     logger.warn("admin_locker_award_failed", { targetUid, type, error: parseFirebaseError(err) });
@@ -340,6 +346,7 @@ export async function removeLockerItem(targetUid: string, itemId: string): Promi
 
   try {
     await deleteDoc(doc(requireDb(), "users", targetUid, "locker", itemId));
+    recordAdminAction("remove_item", targetUid, itemId);
   } catch (err) {
     logger.warn("admin_locker_remove_failed", { targetUid, itemId, error: parseFirebaseError(err) });
     throw err;
@@ -446,6 +453,7 @@ export async function hideDispute(disputeId: string): Promise<void> {
   requireId(disputeId, "dispute id");
   try {
     await updateDoc(doc(requireDb(), "disputes", disputeId), { moderationStatus: "hidden" });
+    recordAdminAction("hide_dispute", disputeId);
   } catch (err) {
     logger.warn("dispute_hide_failed", { disputeId, error: parseFirebaseError(err) });
     throw new Error("Couldn't hide that dispute.");
@@ -479,6 +487,7 @@ export async function resolveReport(
   try {
     if (status === "dismissed") {
       await updateDoc(doc(requireDb(), "reports", reportId), closeOut);
+      recordAdminAction("resolve_report", reportId, status);
       return;
     }
 
@@ -503,6 +512,7 @@ export async function resolveReport(
       createdAt: serverTimestamp(),
     });
     await batch.commit();
+    recordAdminAction("resolve_report", reportId, status);
   } catch (err) {
     logger.warn("admin_report_resolve_failed", { adminUid, reportId, status, error: parseFirebaseError(err) });
     throw err;

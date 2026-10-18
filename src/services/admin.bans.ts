@@ -46,6 +46,7 @@
  * legible message instead of an opaque rejection.
  */
 
+import { recordAdminAction } from "./admin.audit";
 import { deleteDoc, doc, serverTimestamp, updateDoc, writeBatch } from "firebase/firestore";
 import { requireAuth, requireDb } from "../firebase";
 import { parseFirebaseError } from "../utils/helpers";
@@ -172,6 +173,7 @@ export async function banUser(uid: string, reason?: string): Promise<void> {
     },
     "admin_ban_write_failed",
   );
+  recordAdminAction("ban", uid, trimmedReason);
 }
 
 /**
@@ -209,6 +211,7 @@ export async function unbanUser(uid: string): Promise<void> {
     },
     "admin_unban_write_failed",
   );
+  recordAdminAction("unban", uid);
 }
 
 /**
