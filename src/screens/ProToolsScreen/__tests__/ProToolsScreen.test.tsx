@@ -9,6 +9,13 @@ vi.mock("../../../hooks/useIsAdmin", () => ({
   useIsAdmin: (uid: string) => mockIsAdmin(uid),
 }));
 vi.mock("../../NotFound", () => ({ NotFound: () => <p>not-found</p> }));
+vi.mock("../useMyUsername", () => ({ useMyUsername: (uid: string | null) => (uid ? "mike" : "") }));
+vi.mock("../../../services/proCommunity", () => ({
+  MAX_FEATURED_PER_PRO: 3,
+  PROP_STICKERS: ["fire"],
+  listChallenges: async () => [],
+  listFeaturedClips: async () => [],
+}));
 vi.mock("../../../services/proCalls", () => ({
   fetchProQueue: async () => [],
   fetchGoldCandidates: async () => [],
@@ -122,5 +129,16 @@ describe("ProToolsScreen live pro calls", () => {
     vi.stubEnv("VITE_FEATURE_PRO_CALLS", "true");
     render(<ProToolsScreen uid="a" reviewMode onBack={() => {}} />);
     expect(screen.getByRole("region", { name: "Pro review queue (coming soon)" })).toBeInTheDocument();
+  });
+});
+
+describe("ProToolsScreen live pro community", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it("swaps challenges, props and featured cards for live tools for a real pro", () => {
+    vi.stubEnv("VITE_FEATURE_PRO_COMMUNITY", "true");
+    render(<ProToolsScreen uid="p" reviewMode={false} onBack={() => {}} />);
+    expect(screen.getByRole("region", { name: "Pro challenges" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Pro props" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Featured clips" })).toBeInTheDocument();
   });
 });
