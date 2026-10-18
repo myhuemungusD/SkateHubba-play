@@ -377,7 +377,7 @@
     
     // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
     
-    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+    public func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard isCapturingPreRoll, self.videoOutput?.isRecording != true else { return }
         
         // Create a copy of the sample buffer (required because the buffer is reused by the system)
@@ -395,7 +395,7 @@
         }
     }
     
-    func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+    public func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         droppedFrameCount += 1
     }
     
