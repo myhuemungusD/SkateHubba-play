@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route, useNavigate } from "react-router";
@@ -29,9 +29,14 @@ vi.mock("../../context/NavigationContext", () => ({
 }));
 
 const chatFlag = vi.hoisted(() => ({ on: false }));
+const mapFlag = vi.hoisted(() => ({ on: false }));
 vi.mock("../../lib/featureFlags", async (orig) => ({
   ...(await orig<typeof import("../../lib/featureFlags")>()),
   isSpotChatsEnabled: () => chatFlag.on,
+  isMapCheckinsEnabled: () => mapFlag.on,
+}));
+vi.mock("../../components/map/CheckInButton", () => ({
+  CheckInButton: ({ spot }: { spot: { id: string } }) => <p>check in at {spot.id}</p>,
 }));
 vi.mock("../../components/SpotChat/SpotChat", () => ({
   SpotChat: ({ onError }: { onError: (m: string) => void }) => (
@@ -229,5 +234,21 @@ describe("SpotDetailPage", () => {
     renderPage();
     await screen.findByRole("heading", { name: "Test Hubba" });
     expect(screen.queryByText("mock chat")).toBeNull();
+  });
+});
+
+describe("SpotDetailPage check-in", () => {
+  afterEach(() => {
+    mapFlag.on = false;
+  });
+  it("offers Check in on the spot page when map check-ins are on", async () => {
+    mapFlag.on = true;
+    renderPage();
+    expect(await screen.findByText(`check in at ${FIXTURE_SPOT.id}`)).toBeInTheDocument();
+  });
+  it("hides Check in while the flag is off", async () => {
+    renderPage();
+    await screen.findByText("Test Hubba");
+    expect(screen.queryByText(/check in at/)).toBeNull();
   });
 });

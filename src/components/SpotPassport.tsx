@@ -76,7 +76,9 @@ export function SpotPassport({ uid, isOwner }: Props) {
                 {s.scope === "private" && <span className="text-xs text-subtle">(private)</span>}
               </span>
               <span className="text-xs text-subtle shrink-0">
-                {s.firstAt ? s.firstAt.toLocaleDateString("en-US", { month: "short", year: "numeric" }) : ""}
+                {s.firstAt
+                  ? s.firstAt.toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" })
+                  : ""}
                 {s.count > 1 ? ` · ${s.count}×` : ""}
               </span>
             </li>
