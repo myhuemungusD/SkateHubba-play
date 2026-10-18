@@ -1,45 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
-import { Award, Sparkles, Swords } from "lucide-react";
+import { Award, Swords } from "lucide-react";
 import {
-  MAX_FEATURED_PER_PRO,
   PROP_STICKERS,
   createChallenge,
-  featureClip,
   giveProps,
   listChallenges,
   listEntries,
-  listFeaturedClips,
   setEntryFeatured,
-  unfeatureClip,
   type ChallengeEntry,
-  type FeaturedClip,
   type PropSticker,
   type ProChallenge,
 } from "../../services/proCommunity";
+import { BTN, CARD, H3, INPUT, msg, type Pro } from "./proToolStyles";
+import { Status } from "./ProToolStatus";
 
-const CARD = "rounded-2xl border border-amber-300/20 bg-surface p-4 shadow-card";
-const H3 = "mb-1 flex items-center gap-2 font-display text-xs tracking-[0.15em] text-white";
-const BTN =
-  "min-h-[36px] rounded-lg border border-white/[0.1] px-3 font-body text-xs text-white/90 hover:bg-surface-alt disabled:opacity-50";
-const INPUT =
-  "min-h-[36px] w-full rounded-lg border border-white/[0.1] bg-surface-alt px-3 font-body text-sm text-white";
-
-interface Pro {
-  uid: string;
-  username: string;
-}
-
-function Status({ error, ok }: { error: string; ok: string }) {
-  if (error)
-    return (
-      <p role="alert" className="mt-2 font-body text-xs text-red-300">
-        {error}
-      </p>
-    );
-  return ok ? <p className="mt-2 font-body text-xs text-emerald-300">{ok}</p> : null;
-}
-
-const msg = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
+export { FeaturedClipsTool } from "./FeaturedClipsTool";
 
 function EntriesList({ challengeId }: { challengeId: string }) {
   const [entries, setEntries] = useState<ChallengeEntry[] | null>(null);
@@ -216,77 +191,6 @@ export function ProPropsTool({ pro }: { pro: Pro }) {
         </button>
       </form>
       <Status error={error} ok={ok} />
-    </section>
-  );
-}
-
-export function FeaturedClipsTool({ pro }: { pro: Pro }) {
-  const [clipId, setClipId] = useState("");
-  const [mine, setMine] = useState<FeaturedClip[] | null>(null);
-  const [error, setError] = useState("");
-  const load = useCallback(
-    () => listFeaturedClips().then((all) => setMine(all.filter((f) => f.proUid === pro.uid))),
-    [pro.uid],
-  );
-  useEffect(() => {
-    void load();
-  }, [load]);
-  const run = async (fn: () => Promise<void>, fallback: string) => {
-    setError("");
-    try {
-      await fn();
-      await load();
-    } catch (e) {
-      setError(msg(e, fallback));
-    }
-  };
-  return (
-    <section aria-label="Featured clips" className={CARD}>
-      <h3 className={H3}>
-        <Sparkles size={14} aria-hidden="true" /> FEATURED CLIPS
-      </h3>
-      <p className="mb-3 font-body text-xs text-white/70">
-        Pin up to {MAX_FEATURED_PER_PRO} clips to the top of the feed under Pro picks. Your profile reel uses your
-        pinned clips.
-      </p>
-      <form
-        className="flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void run(async () => {
-            await featureClip(pro, clipId);
-            setClipId("");
-          }, "Couldn't feature that clip.");
-        }}
-      >
-        <input
-          aria-label="Clip id"
-          className={INPUT}
-          value={clipId}
-          onChange={(e) => setClipId(e.target.value)}
-          placeholder="Clip id"
-        />
-        <button type="submit" className={BTN}>
-          FEATURE
-        </button>
-      </form>
-      <Status error={error} ok="" />
-      {mine && mine.length > 0 && (
-        <ul className="mt-3 space-y-1">
-          {mine.map((f) => (
-            <li key={f.clipId} className="flex items-center justify-between font-body text-xs">
-              <span>{f.trickName || f.clipId}</span>
-              <button
-                type="button"
-                className={BTN}
-                onClick={() => void run(() => unfeatureClip(f.clipId), "Couldn't unpin that clip.")}
-              >
-                Unpin
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
     </section>
   );
 }

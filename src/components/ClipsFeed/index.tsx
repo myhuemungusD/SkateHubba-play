@@ -3,7 +3,7 @@ import type { ClipDoc } from "../../services/clips";
 import type { UserProfile } from "../../services/users";
 import type { Dispute } from "../../types/dispute";
 import { isFirebaseStorageUrl } from "../../utils/helpers";
-import { isClipEditorEnabled, isFeedModesEnabled, isWttEnabled } from "../../lib/featureFlags";
+import { isFeedModesEnabled, isWttEnabled } from "../../lib/featureFlags";
 import { useFeedMode } from "../../hooks/useFeedMode";
 
 const FeedModeToggle = lazy(() => import("../FeedModeToggle").then((m) => ({ default: m.FeedModeToggle })));
@@ -51,7 +51,6 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
   const [disputeReport, setDisputeReport] = useState<Dispute | null>(null);
   const [commentsTarget, setCommentsTarget] = useState<ClipDoc | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [editFirst, setEditFirst] = useState(false);
   const [moderationRefresh, setModerationRefresh] = useState(0);
 
   // Only use feed mode and WTT when features are enabled
@@ -117,18 +116,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         onSortChange={clips.handleSortChange}
         disabled={clips.loading || clips.loadingMore}
         position={showSlides && slideCount > 0 ? { index: activeIndex, total: slideCount } : undefined}
-        onPostClip={() => {
-          setEditFirst(false);
-          setUploadOpen(true);
-        }}
-        onEditClip={
-          isClipEditorEnabled()
-            ? () => {
-                setEditFirst(true);
-                setUploadOpen(true);
-              }
-            : undefined
-        }
+        onPostClip={() => setUploadOpen(true)}
       />
 
       {feedModesEnabled && (
@@ -236,7 +224,6 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
           setReportTarget(clip);
         }}
         uploadOpen={uploadOpen}
-        editFirst={editFirst}
         onCloseUpload={() => setUploadOpen(false)}
         onPosted={() => {
           setUploadOpen(false);

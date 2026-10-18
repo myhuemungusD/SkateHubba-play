@@ -16,8 +16,6 @@ interface FeedModalsProps {
   onReportFromComments: (clip: ClipDoc) => void;
   // Upload
   uploadOpen: boolean;
-  /** Upload opened from the Edit icon: jump into the editor once footage is staged. */
-  editFirst?: boolean;
   onCloseUpload: () => void;
   onPosted: () => void;
   // Report (dispute)
@@ -41,7 +39,6 @@ export function FeedModals({
   onCloseComments,
   onReportFromComments,
   uploadOpen,
-  editFirst,
   onCloseUpload,
   onPosted,
   disputeReport,
@@ -68,13 +65,7 @@ export function FeedModals({
 
       {uploadOpen && (
         <Suspense fallback={null}>
-          <UserClipUploadModal
-            uid={uid}
-            username={username}
-            onClose={onCloseUpload}
-            onPosted={onPosted}
-            editFirst={editFirst}
-          />
+          <UserClipUploadModal uid={uid} username={username} onClose={onCloseUpload} onPosted={onPosted} />
         </Suspense>
       )}
 

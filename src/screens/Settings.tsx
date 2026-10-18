@@ -17,7 +17,7 @@ import { InstallAppCard } from "../components/InstallAppCard";
 import { AccountActions } from "../components/AccountActions";
 import { TwoFactorSection } from "../components/TwoFactorSection";
 import { SmsTwoFactorSection } from "../components/SmsTwoFactorSection";
-import { SOCIAL_LINKS } from "../constants/socialLinks";
+import { FollowLinks } from "./settings/FollowLinks";
 import { TrainingConsentToggle } from "../components/TrainingConsentToggle";
 import { SafetyReportsSection } from "../components/SafetyReportsSection";
 import { usePushPermission } from "./settings/usePushPermission";
@@ -287,53 +287,7 @@ export function Settings({
 
         {/* Follow SkateHubba — official accounts + Shopify store */}
         <SectionHeader title="FOLLOW SKATEHUBBA" />
-        <div className="space-y-2">
-          <a
-            href={SOCIAL_LINKS.store}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-          >
-            <p className="font-display text-sm text-white tracking-wide">Shop the Store</p>
-            <p className="font-body text-xs text-faint mt-1">Decks, tees, and more at skatehubba.store.</p>
-          </a>
-          <a
-            href={SOCIAL_LINKS.tiktok}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-          >
-            <p className="font-display text-sm text-white tracking-wide">TikTok</p>
-            <p className="font-body text-xs text-faint mt-1">@skatehubba_app</p>
-          </a>
-          <a
-            href={SOCIAL_LINKS.instagram}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-          >
-            <p className="font-display text-sm text-white tracking-wide">Instagram</p>
-            <p className="font-body text-xs text-faint mt-1">@skatehubba_app</p>
-          </a>
-          <a
-            href={SOCIAL_LINKS.facebook}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-          >
-            <p className="font-display text-sm text-white tracking-wide">Facebook</p>
-            <p className="font-body text-xs text-faint mt-1">SkateHubba on Facebook</p>
-          </a>
-          <a
-            href={SOCIAL_LINKS.x}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-          >
-            <p className="font-display text-sm text-white tracking-wide">X</p>
-            <p className="font-body text-xs text-faint mt-1">@skatehubba_</p>
-          </a>
-        </div>
+        <FollowLinks />
 
         {/* Tutorial replay — re-arms Hubz's onboarding tour */}
         <SectionHeader title="TUTORIAL" />
@@ -349,6 +303,7 @@ export function Settings({
           </button>
         </div>
 
+        {isClosetStudioEnabled() && <SectionHeader title="CLOSET STUDIO" />}
         {isClosetStudioEnabled() && (
           <Link
             to="/closet/studio"

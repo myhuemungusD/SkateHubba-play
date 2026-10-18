@@ -3,9 +3,10 @@ import type { NotifyOpts } from "../context/NotificationContext";
 import { verificationFailureMessage, writeVerificationSendState } from "../utils/verificationEmail";
 import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
-import { EMAIL_RE, getUserMessage } from "../utils/helpers";
+import { EMAIL_RE, getUserMessage, parseFirebaseError } from "../utils/helpers";
 import { passwordPolicyMessage, type SignupPasswordPolicy } from "../utils/passwordPolicy";
-import { getAuthErrorMessage } from "../utils/authCodes";
+import { getAuthErrorMessage, isBenignAuthCode } from "../utils/authCodes";
+import { captureException } from "../lib/sentry";
 import { parseDob } from "../utils/age";
 
 /** Client-side email/password checks for AuthScreen. Returns the banner copy, or null when valid. */
@@ -48,6 +49,29 @@ export function trackEmailAuthFailure(isSignup: boolean, code: string): void {
   else analytics.signInFailure("email", code || "unknown");
   if (isSignup) metrics.signUpFailure("email", code || "unknown");
   else metrics.signInFailure("email", code || "unknown");
+}
+
+/**
+ * Log + count a failed email submit, and forward it to Sentry unless the code
+ * is benign (wrong password, email taken, popup closed): user-error noise
+ * would drown real outage signals. Not called for a pending second factor.
+ */
+export function reportEmailAuthFailure(isSignup: boolean, code: string, err: unknown): void {
+  trackEmailAuthFailure(isSignup, code);
+  if (!isBenignAuthCode(code)) {
+    captureException(err, {
+      extra: { context: "AuthScreen.submit", mode: isSignup ? "signup" : "signin", code },
+    });
+  }
+}
+
+/** Structured warn line for every failed email submit, MFA included. */
+export function logEmailAuthError(isSignup: boolean, code: string, err: unknown): void {
+  logger.warn("auth_screen_submit_error", {
+    mode: isSignup ? "signup" : "signin",
+    code,
+    message: parseFirebaseError(err),
+  });
 }
 
 /**
