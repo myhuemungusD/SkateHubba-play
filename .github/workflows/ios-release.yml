@@ -138,6 +138,11 @@ jobs:
           VITE_FEATURE_FEED_MODES_ENABLED: ${{ inputs.wtt && 'true' || 'false' }}
           VITE_FEATURE_PROFILE_BANNER: ${{ inputs.profile_banner && 'true' || 'false' }}
           VITE_FEATURE_EXTRAS_ENABLED: "false"
+          # Map stays off for the public, but testers get every flag through the
+          # config/featureTesters override, so the build needs the map key or
+          # their Map tab opens to "Map is temporarily unavailable".
+          VITE_MAPBOX_TOKEN: ${{ secrets.VITE_MAPBOX_TOKEN }}
+          VITE_MAPBOX_STYLE_URL: ${{ secrets.VITE_MAPBOX_STYLE_URL }}
           # Pro blessing UI. The proBlessing function still gates who can act
           # (PRO_BLESSING_ENABLED / PRO_BLESSING_TESTER_UIDS, docs/PRO_BLESSING.md).
           VITE_FEATURE_PRO_BLESSING: "true"
