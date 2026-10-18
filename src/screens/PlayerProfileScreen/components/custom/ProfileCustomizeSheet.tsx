@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useFocusTrap } from "../../../../hooks/useFocusTrap";
 import { ArrowDown, ArrowUp, Pin, X } from "lucide-react";
 import { MUSIC_TRACKS } from "../../../../lib/clipEditor/musicLibrary";
 import {
@@ -90,6 +91,10 @@ function Slider(props: { name: string; min: number; max: number; value: number; 
  * Live preview strip at the top; nothing saves until Save.
  */
 export function ProfileCustomizeSheet({ uid, initial, onClose, onSaved }: Props) {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  // Escape closes. No swipe-down here: the sheet has reorder controls and
+  // unsaved edits, so a stray vertical drag must not discard them.
+  useFocusTrap(sheetRef, true, onClose);
   const [draft, setDraft] = useState<ProfileCustom>(initial);
   const [tab, setTab] = useState<Tab>("look");
   const [clips, setClips] = useState<PinnableClip[]>([]);
@@ -130,6 +135,7 @@ export function ProfileCustomizeSheet({ uid, initial, onClose, onSaved }: Props)
 
   return (
     <div
+      ref={sheetRef}
       role="dialog"
       aria-modal="true"
       aria-label="Customize profile"

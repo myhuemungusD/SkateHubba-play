@@ -71,6 +71,7 @@ function renderPage() {
     <MemoryRouter initialEntries={[`/spots/${FIXTURE_SPOT.id}`]}>
       <Routes>
         <Route path="/spots/:id" element={<SpotDetailPage />} />
+        <Route path="/map" element={<p>map page</p>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -184,13 +185,13 @@ describe("SpotDetailPage", () => {
     expect(mockNavigateToChallengeWithSpot).toHaveBeenCalledWith(FIXTURE_SPOT.id);
   });
 
-  it("'Back to map' header button routes through setScreen('map')", async () => {
+  it("'Back to map' lands on the map when the spot was opened cold (deep link)", async () => {
     renderPage();
     await waitFor(() => {
       expect(screen.getByLabelText("Back to map")).toBeInTheDocument();
     });
     await userEvent.click(screen.getByLabelText("Back to map"));
-    expect(mockSetScreen).toHaveBeenCalledWith("map");
+    expect(screen.getByText("map page")).toBeInTheDocument();
   });
 
   it("'Back to Map' error fallback button routes through setScreen('map')", async () => {

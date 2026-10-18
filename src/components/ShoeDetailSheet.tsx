@@ -41,7 +41,12 @@ export function ShoeDetailSheet({
       >
         <div className="mb-3 flex items-start justify-between gap-3">
           <p className="font-display text-lg leading-tight text-white">{name}</p>
-          <button type="button" aria-label="Close" onClick={onClose} className="text-subtle hover:text-white">
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={onClose}
+            className="inline-flex min-h-11 min-w-11 items-center justify-center text-subtle hover:text-white"
+          >
             <X size={20} aria-hidden="true" />
           </button>
         </div>

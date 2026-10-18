@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router";
 import { useAuthContext } from "../../context/AuthContext";
+import { ScreenHeader } from "../../components/ScreenHeader";
 import { useMyDiceGames } from "../../hooks/useDice";
 import type { DiceGameDoc } from "../../services/dice";
 import { opponentName } from "./diceCopy";
@@ -21,7 +22,7 @@ export function DiceHub() {
 
   return (
     <div className="mx-auto min-h-dvh max-w-[430px] bg-background px-5 pb-24 pt-[max(env(safe-area-inset-top),2rem)]">
-      <h1 className="font-display text-3xl tracking-wider text-white">Roll Dice</h1>
+      <ScreenHeader title="Roll Dice" fallback="/lobby" />
       <p className="mt-2 font-body text-sm text-muted">Street dice with another skater. Wins and losses only.</p>
       <p className="mt-4 font-display text-sm tracking-wider text-brand-orange" data-testid="dice-record">
         {stats.wins}–{stats.losses}

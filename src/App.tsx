@@ -16,6 +16,7 @@ import { ToastContainer } from "./components/ToastContainer";
 import { GameNotificationWatcher, OPEN_GAME_EVENT } from "./components/GameNotificationWatcher";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { BottomNav, isBottomNavScreen } from "./components/BottomNav";
+import { canGoBackInApp } from "./hooks/useGoBack";
 import { useBlockedUsers } from "./hooks/useBlockedUsers";
 import { useIsAdmin } from "./hooks/useIsAdmin";
 import { firebaseReady } from "./firebase";
@@ -373,6 +374,13 @@ function AppRoutes() {
   const auth = useAuthContext();
   const nav = useNavigationContext();
   const navigate = useNavigate();
+  const routeLocation = useLocation();
+  // Header Back mirrors swipe-back / hardware back: pop in-app history, or
+  // land on `fallback` when the screen was opened cold (deep link, refresh).
+  const backOr = (fallback: string) => () => {
+    if (canGoBackInApp(routeLocation.key)) void navigate(-1);
+    else void navigate(fallback, { replace: true });
+  };
   const game = useGameContext();
   const blockedUids = useBlockedUsers(auth.user?.uid ?? "");
   const analyticsAllowed = useAnalyticsConsent();
@@ -707,7 +715,7 @@ function AppRoutes() {
                 path="/closet/studio"
                 element={
                   auth.activeProfile ? (
-                    <ClosetStudioScreen uid={auth.activeProfile.uid} onBack={() => navigate(-1)} />
+                    <ClosetStudioScreen uid={auth.activeProfile.uid} onBack={backOr("/me")} />
                   ) : (
                     <Navigate to="/" replace />
                   )
@@ -728,7 +736,7 @@ function AppRoutes() {
                   currentUserProfile={auth.activeProfile}
                   ownGames={game.games}
                   onOpenGame={game.openGame}
-                  onBack={() => nav.setScreen(auth.activeProfile ? "lobby" : "landing")}
+                  onBack={backOr(auth.activeProfile ? "/lobby" : "/")}
                   onChallenge={(_uid, username) => directChallenge(username)}
                   onViewPlayer={nav.navigateToPlayer}
                   blockedUids={blockedUids}
@@ -746,15 +754,12 @@ function AppRoutes() {
 
             <Route
               path="/privacy"
-              element={<PrivacyPolicy onBack={() => nav.setScreen("landing")} onNav={nav.setScreen} />}
+              element={<PrivacyPolicy onBack={backOr(auth.user ? "/lobby" : "/")} onNav={nav.setScreen} />}
             />
 
-            <Route path="/terms" element={<TermsOfService onBack={() => nav.setScreen("landing")} />} />
+            <Route path="/terms" element={<TermsOfService onBack={backOr(auth.user ? "/lobby" : "/")} />} />
 
-            <Route
-              path="/data-deletion"
-              element={<DataDeletion onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />}
-            />
+            <Route path="/data-deletion" element={<DataDeletion onBack={backOr(auth.user ? "/lobby" : "/")} />} />
 
             <Route
               path="/settings"
@@ -762,7 +767,7 @@ function AppRoutes() {
                 auth.activeProfile ? (
                   <Settings
                     profile={auth.activeProfile}
-                    onBack={() => nav.setScreen("lobby")}
+                    onBack={backOr("/me")}
                     onDownloadData={auth.handleDownloadData}
                     onDeleteAccount={auth.handleDeleteAccount}
                   />
@@ -781,7 +786,7 @@ function AppRoutes() {
               path="/my-stats"
               element={
                 auth.activeProfile ? (
-                  <MyStatsScreen profile={auth.activeProfile} onBack={() => nav.setScreen("me")} />
+                  <MyStatsScreen profile={auth.activeProfile} onBack={backOr("/me")} />
                 ) : (
                   <Navigate to="/" replace />
                 )
@@ -867,19 +872,14 @@ function AppRoutes() {
                 <ProToolsRoute
                   uid={auth.user?.uid ?? null}
                   isVerifiedPro={auth.activeProfile?.isVerifiedPro === true}
-                  onBack={() => nav.setScreen(auth.user ? "me" : "landing")}
+                  onBack={backOr(auth.user ? "/me" : "/")}
                 />
               }
             />
 
             <Route
               path="/admin"
-              element={
-                <AdminRoute
-                  uid={auth.user?.uid ?? null}
-                  onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")}
-                />
-              }
+              element={<AdminRoute uid={auth.user?.uid ?? null} onBack={backOr(auth.user ? "/lobby" : "/")} />}
             />
 
             <Route path="/404" element={<NotFound onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />} />

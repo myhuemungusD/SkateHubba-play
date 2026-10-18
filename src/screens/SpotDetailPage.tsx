@@ -5,6 +5,7 @@ import type { Spot, SpotComment } from "../types/spot";
 import { getSpot, getSpotComments, addSpotComment } from "../services/spots";
 import { useAuthContext } from "../context/AuthContext";
 import { useNavigationContext } from "../context/NavigationContext";
+import { useGoBack } from "../hooks/useGoBack";
 import { GnarRating } from "../components/map/GnarRating";
 import { BustRisk } from "../components/map/BustRisk";
 import { SpotChat } from "../components/SpotChat/SpotChat";
@@ -13,6 +14,7 @@ import { isSpotChatsEnabled } from "../lib/featureFlags";
 export function SpotDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { setScreen, navigateToChallengeWithSpot } = useNavigationContext();
+  const backToMap = useGoBack("/map");
   const { user } = useAuthContext();
 
   const [spot, setSpot] = useState<Spot | null>(null);
@@ -127,8 +129,8 @@ export function SpotDetailPage() {
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-[#222] px-4 pt-safe pb-3 flex items-center gap-3">
         <button
           type="button"
-          onClick={() => setScreen("map")}
-          className="text-muted hover:text-white"
+          onClick={backToMap}
+          className="-ml-2 inline-flex min-h-11 min-w-11 items-center justify-center text-muted hover:text-white"
           aria-label="Back to map"
         >
           <ChevronLeft size={24} />

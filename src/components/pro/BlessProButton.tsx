@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
+import { useSwipeDownToClose } from "../useSwipeDownToClose";
 import { Sparkles, X } from "lucide-react";
 import {
   BLESSING_REASON_MAX,
@@ -19,6 +21,10 @@ interface Props {
  */
 export function BlessProButton({ targetUid, username }: Props) {
   const [open, setOpen] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useFocusTrap(dialogRef, open, close);
+  useSwipeDownToClose(dialogRef, close, open);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +71,7 @@ export function BlessProButton({ targetUid, username }: Props) {
       </button>
       {open && (
         <div
+          ref={dialogRef}
           role="dialog"
           aria-modal="true"
           aria-labelledby="bless-title"

@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { useFocusTrap } from "../../../hooks/useFocusTrap";
+import { useSwipeDownToClose } from "../../../components/useSwipeDownToClose";
 import {
   achievementFamilies,
   BRONZE_ACHIEVEMENTS,
@@ -21,6 +23,10 @@ const TIER_LABEL: Record<AchievementTier, string> = {
 
 export function AchievementsRibbon({ achievements = [], clipsPosted = 0 }: Props) {
   const [seeAll, setSeeAll] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeAll = useCallback(() => setSeeAll(false), []);
+  useFocusTrap(dialogRef, seeAll, closeAll);
+  useSwipeDownToClose(dialogRef, closeAll, seeAll);
   const earned = new Set(achievements.map((item) => item.id));
 
   return (
@@ -43,7 +49,13 @@ export function AchievementsRibbon({ achievements = [], clipsPosted = 0 }: Props
         ))}
       </ul>
       {seeAll && (
-        <div role="dialog" aria-label="All achievements" className="fixed inset-0 z-50 bg-black/80 overflow-y-auto">
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="All achievements"
+          className="fixed inset-0 z-50 bg-black/80 overflow-y-auto"
+        >
           <div className="max-w-lg mx-auto px-4 py-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-display text-sm tracking-wider text-white">ALL ACHIEVEMENTS</h2>
