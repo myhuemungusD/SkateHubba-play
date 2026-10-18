@@ -1034,6 +1034,31 @@ service cloud.firestore {
     // ── Admin audit log ──
     // Append-only record of admin console actions. Admin claim only, stamped
     // with the acting uid and server time; never edited or deleted.
+    // Admin announcements (VITE_FEATURE_ADMIN_INSIGHTS). Any signed-in player
+    // reads them for the in-app banner; only the admin claim posts or ends
+    // one. Pros get nothing here. Push fan-out runs server-side
+    // (announcementOnCreate), which also writes pushStatus/pushCount.
+    match /announcements/{annId} {
+      allow read: if request.auth != null;
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['title', 'body', 'audience', 'push', 'active', 'createdBy', 'createdAt'])
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 80
+        && request.resource.data.body is string
+        && request.resource.data.body.size() > 0
+        && request.resource.data.body.size() <= 240
+        && request.resource.data.audience in ['all', 'testers', 'pros']
+        && request.resource.data.push is bool
+        && request.resource.data.active == true
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active'])
+        && request.resource.data.active == false;
+      allow delete: if false;
+    }
+
     match /adminAudit/{entryId} {
       allow read: if isAdmin();
       allow create: if isAdmin()

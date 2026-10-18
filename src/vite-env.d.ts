@@ -108,6 +108,8 @@ interface ImportMetaEnv {
   readonly VITE_FEATURE_PRO_CAMERA?: string;
   readonly VITE_FEATURE_PROFILE_BANNER?: string;
   readonly VITE_FEATURE_PROFILE_CUSTOM?: string;
+  /** Admin analytics and announcements (in-app banner + push). Admin-claim only. Literal "true" only; off by default. */
+  readonly VITE_FEATURE_ADMIN_INSIGHTS?: string;
   /** Pro challenges, pro props and pro-featured clips (verified pros only, never admin powers). Literal "true" only; off by default. */
   readonly VITE_FEATURE_PRO_COMMUNITY?: string;
   /** Pro review queue + gold clip authoring for verified pros (never admin powers). Literal "true" only; off by default. */
