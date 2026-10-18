@@ -21,13 +21,7 @@ const fs = vi.hoisted(() => ({
 }));
 
 vi.mock("../../firebase");
-vi.mock("../../lib/sentry", () => ({ addBreadcrumb: vi.fn(), captureException: vi.fn() }));
-vi.mock("../logger", () => ({ logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
-vi.mock("firebase/functions", () => ({
-  getFunctions: fns.getFunctions,
-  httpsCallable: fns.httpsCallable,
-  connectFunctionsEmulator: fns.connectFunctionsEmulator,
-}));
+vi.mock("firebase/functions", () => fns);
 vi.mock("firebase/firestore", () => ({
   collection: vi.fn((_db: unknown, ...path: string[]) => ({ path: path.join("/") })),
   doc: vi.fn((_db: unknown, ...path: string[]) => ({ path: path.join("/") })),
@@ -39,6 +33,10 @@ vi.mock("firebase/firestore", () => ({
   serverTimestamp: vi.fn(() => "ts"),
   writeBatch: vi.fn(() => ({ set: fs.batchSet, commit: fs.commit })),
 }));
+
+const logFn = vi.hoisted(() => () => vi.fn());
+vi.mock("../logger", () => ({ logger: { info: logFn(), warn: logFn(), debug: logFn(), error: logFn() } }));
+vi.mock("../../lib/sentry", () => ({ captureException: vi.fn(), addBreadcrumb: vi.fn() }));
 
 const svc = await import("../mapCheckins");
 

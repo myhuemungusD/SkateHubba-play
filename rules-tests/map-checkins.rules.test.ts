@@ -1,19 +1,10 @@
 /** Map Phase 1: public browse flag, server-only spot fields, privateSpots, passport, check-in log, mapState. */
 import { describe, it } from "vitest";
 import { assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  where,
-  writeBatch,
-} from "firebase/firestore";
+import * as fsx from "firebase/firestore";
+
+const { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } =
+  fsx;
 import { setupRulesTestEnv } from "./_fixtures";
 
 const SPOT = {
