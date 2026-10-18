@@ -900,3 +900,15 @@ describe("AuthScreen", () => {
     });
   });
 });
+
+describe("AuthScreen header Back", () => {
+  it("renders Back only when onBack is given and calls it", async () => {
+    const onBack = vi.fn();
+    const { unmount } = renderWithProviders(<AuthScreen {...defaultProps} onBack={onBack} />);
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+    unmount();
+    renderWithProviders(<AuthScreen {...defaultProps} />);
+    expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
+  });
+});
