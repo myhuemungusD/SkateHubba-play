@@ -3,6 +3,7 @@ import type { LucideIcon } from "lucide-react";
 import type { LockerItem } from "../services/locker";
 import { designerCreditFor } from "../lib/closet/mikeWhiteCollection";
 import { DesignerCredit } from "./DesignerCredit";
+import { isClosetStudioEnabled } from "../lib/featureFlags";
 
 /**
  * "Hubba Locker" — the gear a player has earned (Economy Phase A).
@@ -67,7 +68,7 @@ export function ClosetShowcase({ items, isOwnProfile }: Props) {
     if (!isOwnProfile) return null;
     return (
       <section aria-label="Closet" data-testid="closet-showcase" className="mb-8 animate-fade-in">
-        <SectionHeading />
+        <SectionHeading own={isOwnProfile} />
         <p
           data-testid="closet-empty-hint"
           className="rounded-2xl border border-dashed border-border px-4 py-6 text-center font-body text-xs text-subtle"
@@ -80,7 +81,7 @@ export function ClosetShowcase({ items, isOwnProfile }: Props) {
 
   return (
     <section aria-label="Closet" data-testid="closet-showcase" className="mb-8 animate-fade-in">
-      <SectionHeading />
+      <SectionHeading own={isOwnProfile} />
       <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
         {sortedItems.map((item) => (
           <ClosetCard key={item.id} item={item} />
@@ -90,8 +91,21 @@ export function ClosetShowcase({ items, isOwnProfile }: Props) {
   );
 }
 
-function SectionHeading() {
-  return <h2 className="font-display text-[10px] tracking-[0.2em] text-brand-orange mb-3">CLOSET</h2>;
+function SectionHeading({ own = false }: { own?: boolean }) {
+  return (
+    <div className="mb-3 flex items-center justify-between">
+      <h2 className="font-display text-[10px] tracking-[0.2em] text-brand-orange">CLOSET</h2>
+      {own && isClosetStudioEnabled() && (
+        <a
+          href="/closet/studio"
+          className="font-body text-[11px] text-white underline"
+          data-testid="open-closet-studio"
+        >
+          Closet Studio
+        </a>
+      )}
+    </div>
+  );
 }
 
 function ClosetCard({ item }: { item: LockerItem }) {

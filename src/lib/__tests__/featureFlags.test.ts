@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   isAppleSignInEnabled,
   isClipEditorEnabled,
+  isClosetStudioEnabled,
   isClipModerationEnabled,
   isDiceEnabled,
   isExtrasEnabled,
@@ -323,6 +324,29 @@ describe("isSpotChatsEnabled tester override", () => {
     localStorage.setItem(FEATURE_TESTER_STORAGE_KEY, "u1");
     try {
       expect(isSpotChatsEnabled()).toBe(true);
+    } finally {
+      localStorage.removeItem(FEATURE_TESTER_STORAGE_KEY);
+    }
+  });
+});
+
+describe("isClosetStudioEnabled", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is off unless the env var is the literal string true", () => {
+    expect(isClosetStudioEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_CLOSET_STUDIO", "1");
+    expect(isClosetStudioEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_CLOSET_STUDIO", "true");
+    expect(isClosetStudioEnabled()).toBe(true);
+  });
+
+  it("turns on for a feature tester", () => {
+    localStorage.setItem(FEATURE_TESTER_STORAGE_KEY, "u1");
+    try {
+      expect(isClosetStudioEnabled()).toBe(true);
     } finally {
       localStorage.removeItem(FEATURE_TESTER_STORAGE_KEY);
     }

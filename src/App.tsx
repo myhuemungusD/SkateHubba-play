@@ -24,7 +24,13 @@ import { KeyboardInset } from "./components/KeyboardInset";
 import { ScrollToTop } from "./components/ScrollToTop";
 import { DeleteAccountRetryBanner } from "./components/DeleteAccountRetryBanner";
 import { useAnalyticsConsent } from "./hooks/useAnalyticsConsent";
-import { isDiceEnabled, isExtrasEnabled, isProBlessingEnabled, isRunnerEnabled } from "./lib/featureFlags";
+import {
+  isDiceEnabled,
+  isExtrasEnabled,
+  isProBlessingEnabled,
+  isRunnerEnabled,
+  isClosetStudioEnabled,
+} from "./lib/featureFlags";
 import { prefetchLikelyRoutes } from "./lib/routePrefetch";
 import { registerCacheWorker } from "./lib/registerCacheSw";
 import {
@@ -76,6 +82,9 @@ const SpotDetailPage = lazy(() => import("./screens/SpotDetailPage").then((m) =>
 const Settings = lazy(() => import("./screens/Settings").then((m) => ({ default: m.Settings })));
 const MyStatsScreen = lazy(() => import("./screens/MyStatsScreen").then((m) => ({ default: m.MyStatsScreen })));
 const AdminScreen = lazy(() => import("./screens/AdminScreen").then((m) => ({ default: m.AdminScreen })));
+const ClosetStudioScreen = lazy(() =>
+  import("./screens/ClosetStudio/ClosetStudioScreen").then((m) => ({ default: m.ClosetStudioScreen })),
+);
 const RunnerScreen = lazy(() => import("./screens/Runner/RunnerScreen").then((m) => ({ default: m.RunnerScreen })));
 const DiceHub = lazy(() => import("./screens/Dice/DiceHub").then((m) => ({ default: m.DiceHub })));
 const DiceNew = lazy(() => import("./screens/Dice/DiceNew").then((m) => ({ default: m.DiceNew })));
@@ -692,6 +701,19 @@ function AppRoutes() {
                 own guard to the landing page — no second auth check here. */}
             {/* Skate Runner: public, flag-gated (VITE_FEATURE_RUNNER_ENABLED). */}
             {isRunnerEnabled() && <Route path="/play/runner" element={<RunnerScreen />} />}
+            {/* Closet Studio: signed-in, flag-gated (VITE_FEATURE_CLOSET_STUDIO). */}
+            {isClosetStudioEnabled() && (
+              <Route
+                path="/closet/studio"
+                element={
+                  auth.activeProfile ? (
+                    <ClosetStudioScreen uid={auth.activeProfile.uid} onBack={() => navigate(-1)} />
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                }
+              />
+            )}
             <Route path="/play" element={<Navigate to="/lobby" replace />} />
             <Route path="/play/*" element={<Navigate to="/lobby" replace />} />
 

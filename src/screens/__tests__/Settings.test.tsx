@@ -189,6 +189,20 @@ afterEach(() => {
 /* ── Tests ─────────────────────────────────────────────── */
 
 describe("Settings", () => {
+  it("shows the credits and, behind its flag, a Closet Studio link", () => {
+    const { unmount } = render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+    expect(screen.getByTestId("app-credits")).toHaveTextContent("Mike White");
+    expect(screen.queryByText("Closet Studio")).toBeNull();
+    unmount();
+    vi.stubEnv("VITE_FEATURE_CLOSET_STUDIO", "true");
+    try {
+      render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+      expect(screen.getByText("Closet Studio").closest("a")).toHaveAttribute("href", "/closet/studio");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("renders the main header, subsections, and back button", () => {
     render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
     expect(screen.getByRole("heading", { name: /Settings/i })).toBeInTheDocument();

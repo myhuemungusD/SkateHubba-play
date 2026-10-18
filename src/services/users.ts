@@ -23,6 +23,7 @@ import { deleteUserClips, deleteUserClipVotes } from "./clips";
 import { deleteUserDisputeVotes, deleteUserDisputes } from "./disputes";
 import { deleteAvatar } from "./avatars";
 import { deleteBannerObject } from "./banners";
+import { deleteAllDesignObjects } from "./closetStudio";
 import { deleteUserNotifications } from "./notifications";
 import { PUSH_TARGETS_COLLECTION } from "./pushDispatch";
 import { analytics } from "./analytics";
@@ -551,13 +552,14 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   // Achievements, locker, and xpMarkers are owner-deletable per
   // `firestore.rules`. A subcollection is not removed with its parent, so any
   // new one under users/{uid} must be swept here too. Fetched in parallel.
-  const [achievementsSnap, lockerSnap, markerSnap] = await Promise.all([
+  const [achievementsSnap, lockerSnap, markerSnap, designSnap] = await Promise.all([
     getDocs(collection(db, "users", uid, "achievements")),
     getDocs(collection(db, "users", uid, "locker")),
     getDocs(collection(db, "users", uid, "xpMarkers")),
+    getDocs(collection(db, "users", uid, "closetDesigns")),
   ]);
   const batch = writeBatch(db);
-  for (const ownedDoc of [...achievementsSnap.docs, ...lockerSnap.docs, ...markerSnap.docs]) {
+  for (const ownedDoc of [...achievementsSnap.docs, ...lockerSnap.docs, ...markerSnap.docs, ...designSnap.docs]) {
     batch.delete(ownedDoc.ref);
   }
   batch.delete(doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID));
@@ -588,6 +590,11 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   // the catch covers a Storage boot failure.
   await deleteBannerObject(uid).catch((err: unknown) => {
     logger.warn("banner_delete_failed", { uid, error: err instanceof Error ? err.message : String(err) });
+  });
+
+  // Closet Studio pictures (VITE_FEATURE_CLOSET_STUDIO); each delete is best-effort.
+  await deleteAllDesignObjects(uid).catch((err: unknown) => {
+    logger.warn("closet_designs_delete_failed", { uid, error: err instanceof Error ? err.message : String(err) });
   });
 
   analytics.accountDeleted(uid, achievementsSnap.docs.length, avatarRemoved);

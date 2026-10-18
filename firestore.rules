@@ -87,6 +87,30 @@ service cloud.firestore {
         && d.themeSongId in ['', 'boom-bap-90', 'punk-170', 'lofi-75', 'breaks-128'];
     }
 
+    // Closet Studio (VITE_FEATURE_CLOSET_STUDIO) — mirror: services/closetStudio.ts.
+    // Fixed keys, picture URL pinned to the owner's own object, Mike White
+    // credit required on anything made from his templates, and a design is
+    // public only after the image filter passed.
+    function closetDesignValid(d, uid, designId) {
+      return d.keys().hasOnly(['name', 'slot', 'templateId', 'credit', 'imageUrl',
+          'layerCount', 'shared', 'moderation', 'updatedAt'])
+        && d.keys().hasAll(['name', 'slot', 'templateId', 'credit', 'imageUrl',
+          'layerCount', 'shared', 'moderation', 'updatedAt'])
+        && d.updatedAt == request.time
+        && d.name is string && d.name.size() >= 1 && d.name.size() <= 40
+        && d.slot in ['shoes', 'top', 'bottom', 'head', 'deck']
+        && d.templateId is string && d.templateId.size() <= 64
+        && d.templateId.matches('^[a-z0-9_]*$')
+        && d.credit == (d.templateId.matches('^mike_white.*') ? 'Based on a Mike White design' : '')
+        && d.imageUrl is string
+        && d.imageUrl.matches('^https://firebasestorage\\.googleapis\\.com/v0/b/' + FIREBASE_BUCKET() +
+          '/o/closetDesigns%2F' + uid + '%2F' + designId + '\\.webp(\\?.*)?$')
+        && d.layerCount is int && d.layerCount >= 1 && d.layerCount <= 8
+        && d.shared is bool
+        && d.moderation in ['pending', 'passed']
+        && (!d.shared || d.moderation == 'passed');
+    }
+
     function isSignedIn() {
       return request.auth != null;
     }
@@ -979,6 +1003,18 @@ service cloud.firestore {
         allow create, update: if isOwner(uid)
           && docId == 'main'
           && profileCustomValid(request.resource.data);
+        allow delete: if isOwner(uid);
+      }
+
+      // ── Closet Studio designs (VITE_FEATURE_CLOSET_STUDIO) ──
+      // users/{uid}/closetDesigns/d0..d23 (24-slot cap). Owner reads all;
+      // anyone may get a shared (moderated) design. Owner-only writes.
+      match /closetDesigns/{designId} {
+        allow get: if isOwner(uid) || resource.data.shared == true;
+        allow list: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && designId.matches('^d([0-9]|1[0-9]|2[0-3])$')
+          && closetDesignValid(request.resource.data, uid, designId);
         allow delete: if isOwner(uid);
       }
 

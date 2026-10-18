@@ -1,5 +1,5 @@
 import { render } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ClosetShowcase } from "../ClosetShowcase";
 
 function item(overrides?: Partial<Parameters<typeof ClosetShowcase>[0]["items"][0]>) {
@@ -105,5 +105,19 @@ describe("ClosetShowcase", () => {
   it("shows no designer credit on uncredited gear", () => {
     render(<ClosetShowcase items={[item()]} isOwnProfile />);
     expect(document.querySelector("[data-testid=designer-credit]")).not.toBeInTheDocument();
+  });
+
+  it("links the owner to Closet Studio only when the studio flag is on", () => {
+    const { queryByTestId, rerender } = render(<ClosetShowcase items={[]} isOwnProfile />);
+    expect(queryByTestId("open-closet-studio")).toBeNull();
+    vi.stubEnv("VITE_FEATURE_CLOSET_STUDIO", "true");
+    try {
+      rerender(<ClosetShowcase items={[item()]} isOwnProfile />);
+      expect(queryByTestId("open-closet-studio")).toHaveAttribute("href", "/closet/studio");
+      rerender(<ClosetShowcase items={[item()]} isOwnProfile={false} />);
+      expect(queryByTestId("open-closet-studio")).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
