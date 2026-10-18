@@ -152,6 +152,12 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Admin ops: disputes queue with final ruling + admin audit log (admin claim only). DEFAULTS TO OFF. Read via isAdminOpsEnabled().
+  VITE_FEATURE_ADMIN_OPS: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // Customizable profiles. DEFAULTS TO OFF. Read via isProfileCustomEnabled().
   VITE_FEATURE_PROFILE_CUSTOM: z
     .string()

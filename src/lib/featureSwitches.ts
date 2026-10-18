@@ -27,6 +27,7 @@ export const FEATURE_SWITCH_KEYS = [
   "VITE_FEATURE_TRICK_PICKER_ENABLED",
   "VITE_FEATURE_WTT_ENABLED",
   "VITE_FEATURE_XP_ENABLED",
+  "VITE_FEATURE_ADMIN_OPS",
 ] as const;
 
 export interface FeatureSwitchState {

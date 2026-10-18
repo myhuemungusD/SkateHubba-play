@@ -546,7 +546,14 @@ async function resolveCommunityReview(
     // a closed switch cannot change this transaction.
     const voteAwards = await readVoteAwards(db, tx, disputeRef.id, nowMs);
 
-    const tally = { landVotes: coerceVotes(dispute.landVotes), bailVotes: coerceVotes(dispute.bailVotes) };
+    // An admin's final ruling (disputes queue, admin claim only) replaces the
+    // crowd tally with a one-vote decision, so the same close-out applies it.
+    const tally =
+      dispute.adminRuling === "land"
+        ? { landVotes: 1, bailVotes: 0 }
+        : dispute.adminRuling === "bail"
+          ? { landVotes: 0, bailVotes: 1 }
+          : { landVotes: coerceVotes(dispute.landVotes), bailVotes: coerceVotes(dispute.bailVotes) };
     const decision = decideDisputeResolution(game, tally, nowMs);
     const matcherUid = game.reviewFor ?? opponentOf(game, game.currentSetter);
 
