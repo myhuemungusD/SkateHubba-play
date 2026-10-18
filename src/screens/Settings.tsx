@@ -1,4 +1,6 @@
 import { useCallback, useState } from "react";
+import { AppCredits } from "../components/AppCredits";
+import { isClosetStudioEnabled } from "../lib/featureFlags";
 import { Link } from "react-router";
 import type { UserProfile } from "../services/users";
 import { unblockUser } from "../services/blocking";
@@ -347,6 +349,18 @@ export function Settings({
           </button>
         </div>
 
+        {isClosetStudioEnabled() && (
+          <Link
+            to="/closet/studio"
+            className="mb-2 block p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          >
+            <p className="font-display text-sm text-white tracking-wide">Closet Studio</p>
+            <p className="font-body text-xs text-faint mt-1">
+              Design your own gear, starting from Mike White&apos;s templates.
+            </p>
+          </Link>
+        )}
+
         <SectionHeader title="REPORTS & ACTIONS" />
         <SafetyReportsSection uid={profile.uid} />
 
@@ -372,6 +386,9 @@ export function Settings({
             <p className="font-display text-sm text-white tracking-wide">Data Deletion</p>
           </Link>
         </div>
+
+        <SectionHeader title="CREDITS" />
+        <AppCredits />
 
         {/* Account — data export + deletion. Rows self-hide when the
             corresponding handler isn't supplied. */}

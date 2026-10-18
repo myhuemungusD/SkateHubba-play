@@ -91,6 +91,11 @@ vi.mock("../banners", () => ({
   deleteBannerObject: (...args: unknown[]) => mockDeleteBannerObject(...args),
 }));
 
+const mockDeleteAllDesignObjects = vi.fn().mockResolvedValue(undefined);
+vi.mock("../closetStudio", () => ({
+  deleteAllDesignObjects: (...args: unknown[]) => mockDeleteAllDesignObjects(...args),
+}));
+
 const mockDeleteGameVideos = vi.fn().mockResolvedValue(0);
 vi.mock("../storage", () => ({
   deleteGameVideos: (...args: unknown[]) => mockDeleteGameVideos(...args),
@@ -511,6 +516,7 @@ describe("users service", () => {
      *   3. users/{uid}/achievements subcollection
      *   4. users/{uid}/locker subcollection
      *   5. users/{uid}/xpMarkers subcollection
+     *   6. users/{uid}/closetDesigns subcollection
      * Tests that don't care about the owned-item subcollections stub them out
      * as empty. Order matters: Promise.all invokes them in argument order.
      */
@@ -518,6 +524,7 @@ describe("users service", () => {
       mockGetDocs.mockResolvedValueOnce({ docs: [] }); // achievements
       mockGetDocs.mockResolvedValueOnce({ docs: [] }); // locker
       mockGetDocs.mockResolvedValueOnce({ docs: [] }); // xpMarkers
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // closetDesigns
     }
 
     /** Stub the two game queries and both owned-item subcollections as empty. */
@@ -708,6 +715,7 @@ describe("users service", () => {
       });
       mockGetDocs.mockResolvedValueOnce({ docs: [] }); // locker
       mockGetDocs.mockResolvedValueOnce({ docs: [] }); // xpMarkers
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // closetDesigns
       mockDeleteDoc.mockResolvedValue(undefined);
 
       await deleteUserData("u1", "sk8r");
@@ -733,6 +741,7 @@ describe("users service", () => {
       const lockerRefs = [{ fullPath: "users/u1/locker/deck-1" }, { fullPath: "users/u1/locker/wheels-2" }];
       mockGetDocs.mockResolvedValueOnce({ docs: lockerRefs.map((ref) => ({ ref })) });
       mockGetDocs.mockResolvedValueOnce({ docs: [] }); // xpMarkers
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // closetDesigns
       mockDeleteDoc.mockResolvedValue(undefined);
 
       await deleteUserData("u1", "sk8r");
@@ -753,6 +762,7 @@ describe("users service", () => {
       mockGetDocs.mockResolvedValueOnce({ docs: [{ ref: achievementRef }] });
       mockGetDocs.mockResolvedValueOnce({ docs: [{ ref: lockerRef }] });
       mockGetDocs.mockResolvedValueOnce({ docs: [] }); // xpMarkers
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // closetDesigns
 
       await deleteUserData("u1", "sk8r");
 
@@ -780,6 +790,7 @@ describe("users service", () => {
       mockGetDocs.mockResolvedValueOnce({ docs: achievementRefs.map((ref) => ({ ref })) });
       mockGetDocs.mockResolvedValueOnce({ docs: [] }); // locker
       mockGetDocs.mockResolvedValueOnce({ docs: [] }); // xpMarkers
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // closetDesigns
       mockDeleteAvatar.mockResolvedValueOnce({ removed: true });
 
       await deleteUserData("u1", "sk8r");
@@ -794,6 +805,18 @@ describe("users service", () => {
       await deleteUserData("u1", "sk8r");
 
       expect(mockAccountDeleted).toHaveBeenCalledWith("u1", 0, false);
+    });
+
+    it("deletes Closet Studio pictures and logs when that fails", async () => {
+      stubEmptyCascade();
+      mockDeleteAllDesignObjects.mockRejectedValueOnce(new Error("boom"));
+      await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
+      expect(mockDeleteAllDesignObjects).toHaveBeenCalledWith("u1");
+      expect(mockLoggerWarn).toHaveBeenCalledWith("closet_designs_delete_failed", { uid: "u1", error: "boom" });
+      stubEmptyCascade();
+      mockDeleteAllDesignObjects.mockRejectedValueOnce("nope");
+      await deleteUserData("u1", "sk8r");
+      expect(mockLoggerWarn).toHaveBeenCalledWith("closet_designs_delete_failed", { uid: "u1", error: "nope" });
     });
 
     it("logs and continues when deleteAvatar itself throws", async () => {

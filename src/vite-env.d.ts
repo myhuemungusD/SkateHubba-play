@@ -108,6 +108,8 @@ interface ImportMetaEnv {
   readonly VITE_FEATURE_PRO_CAMERA?: string;
   readonly VITE_FEATURE_PROFILE_BANNER?: string;
   readonly VITE_FEATURE_PROFILE_CUSTOM?: string;
+  /** Closet Studio clothes editor. Literal "true" only; off by default. */
+  readonly VITE_FEATURE_CLOSET_STUDIO?: string;
   readonly VITE_MAPBOX_TOKEN?: string;
   /** Optional Mapbox Studio style URL. Falls back to mapbox://styles/mapbox/dark-v11. */
   readonly VITE_MAPBOX_STYLE_URL?: string;

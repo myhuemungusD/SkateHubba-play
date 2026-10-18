@@ -114,6 +114,24 @@ service firebase.storage {
         && (filename.matches('avatar\\.(webp|jpeg|png)') || filename == 'banner.webp');
     }
 
+    // ── Closet Studio designs (VITE_FEATURE_CLOSET_STUDIO) ──
+    // closetDesigns/{uid}/d0..d23.webp. Owner-only read/create/delete, webp
+    // only, 100 B–1 MB, no in-place update (re-save = delete then create, so
+    // a moderated picture can't be swapped behind the same URL). Shared
+    // designs are viewed through their tokenized download URL.
+    match /closetDesigns/{uid}/{fileName} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && fileName.matches('d([0-9]|1[0-9]|2[0-3])\\.webp')
+        && request.resource.contentType == 'image/webp'
+        && request.resource.size >= 100
+        && request.resource.size <= 1024 * 1024
+        && request.resource.metadata.uploaderUid == request.auth.uid;
+      allow update: if false;
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+
     // ── User-uploaded clips (feed uploads with no backing game) ──
     // Path: userClips/{uid}/{fileName}.webm (web) or .mp4 (native).
     // The uid IS the path prefix here (unlike game videos, where turn

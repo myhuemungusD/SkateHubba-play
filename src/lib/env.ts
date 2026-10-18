@@ -152,6 +152,12 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Closet Studio clothes editor. DEFAULTS TO OFF. Read via isClosetStudioEnabled().
+  VITE_FEATURE_CLOSET_STUDIO: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // Skate clip editor (speed ramps, looks, music, SFX, 4K export). DEFAULTS
   // TO OFF. Read via isClipEditorEnabled() in featureFlags.ts.
   VITE_FEATURE_CLIP_EDITOR: z

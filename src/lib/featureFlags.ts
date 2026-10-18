@@ -235,6 +235,16 @@ export function isProfileCustomEnabled(): boolean {
 }
 
 /**
+ * Closet Studio: paint-style clothes editor for the avatar (fill, brush,
+ * eraser, layers, symmetry, stickers, text, import). Mike White designs are
+ * the starter templates. Literal "true" only; off by default. See
+ * docs/CLOSET_STUDIO.md.
+ */
+export function isClosetStudioEnabled(): boolean {
+  return flagOn(import.meta.env.VITE_FEATURE_CLOSET_STUDIO);
+}
+
+/**
  * 360 shoe viewer for signature shoes (item detail + profile showcase).
  * Literal "true" only; off by default. Testers get it via the override.
  */
