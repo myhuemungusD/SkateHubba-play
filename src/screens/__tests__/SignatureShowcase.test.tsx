@@ -9,7 +9,7 @@ describe("SignatureShowcase", () => {
       <SignatureShowcase
         accent="#f60"
         items={[
-          buildLockerItem({ id: "a", itemDefId: "mike_white_dip_sets", name: "Dip Sets" }),
+          buildLockerItem({ id: "a", itemDefId: "mike_white_og_gum", name: "OG Gum" }),
           buildLockerItem({ id: "b", itemDefId: "mike_white_teeth_fire", name: "Teeth" }),
           buildLockerItem({ id: "c", itemDefId: null }),
         ]}
@@ -18,13 +18,11 @@ describe("SignatureShowcase", () => {
     const hero = screen.getByTestId("signature-hero");
     expect(hero).toHaveTextContent("Teeth");
     expect(hero).toHaveTextContent("Designed by Mike White");
-    expect(screen.getByAltText("Dip Sets")).toHaveAttribute("src", "/assets/closet/mike-white/card/dip-sets.webp");
+    expect(screen.getByAltText("OG Gum")).toHaveAttribute("src", "/assets/closet/mike-white/card/og-gum.webp");
   });
 
   it("skips the hero when no owned piece has a skin", () => {
-    render(
-      <SignatureShowcase accent="#f60" items={[buildLockerItem({ id: "a", itemDefId: "mike_white_dip_sets" })]} />,
-    );
+    render(<SignatureShowcase accent="#f60" items={[buildLockerItem({ id: "a", itemDefId: "mike_white_og_gum" })]} />);
     expect(screen.queryByTestId("signature-hero")).toBeNull();
     expect(screen.getByTestId("signature-showcase")).toBeInTheDocument();
   });
