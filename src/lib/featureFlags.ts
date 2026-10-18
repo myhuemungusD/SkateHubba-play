@@ -280,3 +280,8 @@ export function isProCallsEnabled(): boolean {
 export function isProCommunityEnabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_PRO_COMMUNITY);
 }
+
+/** Admin analytics and announcements (in-app banner + push). Admin-claim only. Literal "true" only; off by default; tester override turns it on. */
+export function isAdminInsightsEnabled(): boolean {
+  return flagOn(import.meta.env.VITE_FEATURE_ADMIN_INSIGHTS);
+}

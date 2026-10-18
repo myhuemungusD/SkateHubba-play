@@ -21,6 +21,8 @@ const ACTION_LABELS: Record<string, string> = {
   hide_dispute: "Hid dispute",
   rule_dispute: "Ruled on dispute",
   resolve_report: "Closed report",
+  announce: "Announced",
+  end_announcement: "Ended announcement",
 };
 
 export function DisputesQueueSection() {
