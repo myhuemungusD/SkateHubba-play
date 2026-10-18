@@ -33,7 +33,7 @@
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>SkateHubba can save a profile photo you choose to keep, and save full-quality clips you export from the clip editor to your camera roll.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>SkateHubba uses your location while you are using the app to show skate spots near you. Your location is not saved on your profile.</string>
+	<string>SkateHubba uses your location only while you are using the app, to show skate spots near you and to confirm you are at a spot when you check in. Your exact location is never shown to other skaters.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

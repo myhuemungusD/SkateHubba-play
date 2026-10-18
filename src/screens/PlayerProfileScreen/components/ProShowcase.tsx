@@ -1,6 +1,5 @@
-import { Film, MapPin, Swords, Wrench } from "lucide-react";
+import { Swords, Wrench } from "lucide-react";
 import type { ProProfileContent } from "../../../constants/proProfiles";
-import { ComingSoonCard } from "../../../components/pro/ComingSoonCard";
 import { ProProfileEditor } from "../../../components/pro/ProProfileEditor";
 import { useState } from "react";
 import { isProShowcaseEnabled } from "../../../lib/featureFlags";
@@ -227,20 +226,7 @@ export function ProShowcase({
 
       {isProShowcaseEnabled() && uid ? (
         <ProReelAndSpots uid={uid} displayName={content.displayName} isOwn={isOwn} />
-      ) : (
-        <div className="space-y-3">
-          <ComingSoonCard
-            icon={<Film size={16} />}
-            title="Clip reel"
-            description="A pinned reel of the pro's best clips, picked by them, at the top of their profile."
-          />
-          <ComingSoonCard
-            icon={<MapPin size={16} />}
-            title="Pro spots"
-            description="Spots the pro skates or recommends, linked to the map with their clips from each one."
-          />
-        </div>
-      )}
+      ) : null}
     </div>
   );
 }
