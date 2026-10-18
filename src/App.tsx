@@ -30,7 +30,9 @@ import {
   isProBlessingEnabled,
   isRunnerEnabled,
   isClosetStudioEnabled,
+  isMapCheckinsEnabled,
 } from "./lib/featureFlags";
+import { startCheckinQueue } from "./services/mapCheckins";
 import { prefetchLikelyRoutes } from "./lib/routePrefetch";
 import { registerCacheWorker } from "./lib/registerCacheSw";
 import {
@@ -165,6 +167,13 @@ function AppScreens() {
   useEffect(() => {
     if (!loading && !user && takeBootAppleSignIn()) void handleAppleSignIn();
   }, [loading, user, handleAppleSignIn]);
+
+  // Map Phase 1: send check-ins saved while offline, now and on reconnect.
+  const queueUid = user?.uid;
+  useEffect(() => {
+    if (!queueUid || !isMapCheckinsEnabled()) return;
+    return startCheckinQueue();
+  }, [queueUid]);
 
   const shellActive = useSyncExternalStore(subscribeBootShell, isBootShellActive);
 
@@ -823,7 +832,10 @@ function AppRoutes() {
               existing auth guards use. */}
             {extrasEnabled ? (
               <>
-                <Route path="/map" element={auth.user ? <MapPage /> : <Navigate to="/auth" replace />} />
+                <Route
+                  path="/map"
+                  element={auth.user || isMapCheckinsEnabled() ? <MapPage /> : <Navigate to="/auth" replace />}
+                />
                 {/* Signed-out target is "/" (not "/auth") to match the auth
                 router's bounce for gated screens — /spots/:id now resolves to
                 the "spotdetail" screen, so both mechanisms fire and must agree

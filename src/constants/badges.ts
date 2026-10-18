@@ -38,6 +38,14 @@ export const BADGE_META: Readonly<Record<string, BadgeMeta>> = {
  * Look up presentation metadata for a badge id. Returns `undefined` for ids
  * this build doesn't know about — callers must skip rather than guess.
  */
+/** Legendary-spot badges are minted per spot (`legend_<slug>`) by the mapCheckin callable. */
+const LEGEND_META: BadgeMeta = {
+  label: "Legend",
+  description: "Checked in at a legendary spot.",
+  Icon: Crown,
+};
+
 export function getBadgeMeta(id: string): BadgeMeta | undefined {
+  if (/^legend_[a-z0-9_]{1,60}$/.test(id)) return LEGEND_META;
   return Object.hasOwn(BADGE_META, id) ? BADGE_META[id] : undefined;
 }

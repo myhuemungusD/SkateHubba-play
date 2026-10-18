@@ -43,6 +43,8 @@ import { PinnedClips } from "./components/custom/PinnedClips";
 import { SignatureShowcase } from "./components/custom/SignatureShowcase";
 import { ProfileCustomizeSheet } from "./components/custom/ProfileCustomizeSheet";
 import { gradientCss, type SectionId } from "../../services/profileCustom";
+import { SpotPassport } from "../../components/SpotPassport";
+import { isMapCheckinsEnabled } from "../../lib/featureFlags";
 
 /**
  * Streak length before the banner appears. A "1 win streak" is just a win —
@@ -414,6 +416,8 @@ export function PlayerProfileScreen({
         )}
 
         <BadgesRow achievements={c.achievements} />
+
+        {isMapCheckinsEnabled() && hasViewer && <SpotPassport uid={profile.uid} isOwner={isOwnProfile} />}
 
         {customOn ? (
           <>

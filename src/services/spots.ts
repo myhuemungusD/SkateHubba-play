@@ -45,6 +45,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
+import { isMapCheckinsEnabled } from "../lib/featureFlags";
 import type { CreateSpotRequest, ObstacleType, Spot, SpotComment } from "../types/spot";
 import { logger } from "./logger";
 import { captureException } from "../lib/sentry";
@@ -165,7 +166,23 @@ function toSpot(snap: { id: string; data: () => Record<string, unknown> }): Spot
     isActive: raw.isActive,
     createdAt: timestampToIso(raw.createdAt),
     updatedAt: timestampToIso(raw.updatedAt),
+    ...mapFields(raw),
   };
+}
+
+/** Map Phase 1 fields, only present when set (keeps older spots' shape unchanged). */
+function mapFields(raw: Record<string, unknown>): Partial<Spot> {
+  const out: Partial<Spot> = {};
+  if (raw.source === "user" || raw.source === "osm" || raw.source === "curated") out.source = raw.source;
+  if (raw.kind === "spot" || raw.kind === "park" || raw.kind === "shop") out.kind = raw.kind;
+  if (raw.isLegendary === true) out.isLegendary = true;
+  if (typeof raw.checkinCount === "number") out.checkinCount = raw.checkinCount;
+  return out;
+}
+
+/** Seeded spots (OpenStreetMap, curated legendary list) stay hidden until map check-ins are switched on. */
+function seededHidden(spot: Spot): boolean {
+  return !isMapCheckinsEnabled() && (spot.source === "osm" || spot.source === "curated");
 }
 
 /** Parse a `spots/{id}/comments/{commentId}` snapshot into a typed `SpotComment`. */
@@ -390,6 +407,7 @@ export async function getSpotsInBounds(bounds: SpotBounds): Promise<Spot[]> {
     try {
       const spot = toSpot(docSnap);
       if (spot.longitude < west || spot.longitude > east) continue;
+      if (seededHidden(spot)) continue;
       spots.push(spot);
     } catch (err) {
       // Skip malformed docs — log once and keep the feed live.

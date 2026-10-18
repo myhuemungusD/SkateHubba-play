@@ -438,6 +438,80 @@ service cloud.firestore {
       allow list, write: if false;
     }
 
+    // ── Map flags (docs/MAP_ROADMAP.md Phase 1) ──
+    // `publicBrowse: true` lets signed-out visitors read active public spots.
+    // Admin SDK only; absent doc = signed-in only (the pre-Phase-1 behavior).
+    match /config/mapFlags {
+      allow get: if true;
+      allow list, write: if false;
+    }
+
+    function mapPublicBrowse() {
+      return fsExists('config', 'mapFlags') && fsGet('config', 'mapFlags').data.get('publicBrowse', false) == true;
+    }
+
+    // Spot fields only the Admin SDK (check-in callable, seed script) writes.
+    function spotServerKeys() {
+      return ['isLegendary', 'legendaryBadgeId', 'checkinCount', 'lastCheckinAt', 'source', 'osmId', 'kind', 'checkinsAllowed'];
+    }
+
+    // ── Map state (check-in anti-spoofing: last fix, hourly cap, strikes) ──
+    match /mapState/{uid} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if false;
+    }
+
+    // ── Spot passport visibility (off unless the owner turns it on) ──
+    match /passportSettings/{uid} {
+      allow read: if isSignedIn();
+      allow create, update: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['public'])
+        && request.resource.data.public is bool;
+      allow delete: if isOwner(uid);
+    }
+
+    // ── Crew-only and private spots ──
+    // Kept out of spots/ so a public map query can never surface them.
+    // Readable by the owner, and by uids in crewUids when visibility is crew.
+    match /privateSpots/{spotId} {
+      function privateSpotShapeOk(d) {
+        return d.keys().hasOnly(['createdBy', 'name', 'description', 'latitude', 'longitude', 'gnarRating',
+            'bustRisk', 'obstacles', 'photoUrls', 'isVerified', 'isActive', 'visibility', 'crewUids',
+            'createdAt', 'updatedAt'])
+          && d.name is string && d.name.size() >= 1 && d.name.size() <= 80
+          && (d.get('description', null) == null || (d.description is string && d.description.size() <= 500))
+          && d.latitude is number && d.latitude >= -90 && d.latitude <= 90
+          && d.longitude is number && d.longitude >= -180 && d.longitude <= 180
+          && d.gnarRating is int && d.gnarRating >= 1 && d.gnarRating <= 5
+          && d.bustRisk is int && d.bustRisk >= 1 && d.bustRisk <= 5
+          && d.obstacles is list && d.obstacles.size() <= 14
+          && d.photoUrls is list && d.photoUrls.size() <= 5
+          && d.visibility in ['crew', 'private']
+          && d.crewUids is list && d.crewUids.size() <= 50;
+      }
+      allow read: if isSignedIn()
+        && resource.data.isActive == true
+        && (resource.data.createdBy == request.auth.uid
+            || (resource.data.visibility == 'crew' && request.auth.uid in resource.data.crewUids));
+      allow create: if isSignedIn()
+        && notBanned()
+        && request.auth.token.email_verified == true
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.isVerified == false
+        && request.resource.data.isActive == true
+        && privateSpotShapeOk(request.resource.data)
+        && spotRateLimitOk();
+      allow update: if isSignedIn()
+        && resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.latitude == resource.data.latitude
+        && request.resource.data.longitude == resource.data.longitude
+        && request.resource.data.isVerified == resource.data.isVerified
+        && request.resource.data.isActive == resource.data.isActive
+        && privateSpotShapeOk(request.resource.data);
+      allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+    }
+
     match /users/{uid} {
       // Split read into get/list deliberately. `get` is public so a shared
       // `/player/{uid}` link resolves for a signed-OUT visitor — the link
@@ -949,6 +1023,26 @@ service cloud.firestore {
         allow read: if isOwner(uid);
         allow create, update: if false;
         allow delete: if isOwner(uid);
+      }
+
+      // ── Spot passport (map check-ins) ──
+      // Written only by the mapCheckin callable. Others see public-spot
+      // stamps only when the owner turned passportSettings/{uid}.public on;
+      // their query must filter scope == 'public'.
+      match /passport/{stampId} {
+        allow read: if isOwner(uid)
+          || (isSignedIn()
+              && resource.data.scope == 'public'
+              && fsExists('passportSettings', uid)
+              && fsGet('passportSettings', uid).data.public == true);
+        allow create, update: if false;
+        allow delete: if isOwner(uid);
+      }
+
+      // ── Check-in log (idempotency + audit). Callable-written. ──
+      match /checkins/{checkinId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if false;
       }
 
       // ── Locker (subcollection) ──
@@ -2176,9 +2270,9 @@ service cloud.firestore {
     // only update their own spots and cannot change immutable fields
     // (coordinates, createdBy, isVerified, isActive) after creation.
     match /spots/{spotId} {
-      // Active spots are readable only by signed-in users. Requiring auth
+      // Active spots: signed-in, or anyone when config/mapFlags.publicBrowse is on.
       // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r27
-      allow read: if isSignedIn() && resource.data.isActive == true;
+      allow read: if resource.data.isActive == true && (isSignedIn() || mapPublicBrowse());
 
       // Create: signed-in + email-verified, owner-stamped, with full
       // field validation mirroring the shared Spot type. Rate-limited
@@ -2222,6 +2316,8 @@ service cloud.firestore {
         // must start true (soft-delete is an update, not a create).
         && request.resource.data.isVerified == false
         && request.resource.data.isActive == true
+        // Map fields (legendary, check-in counts, OSM source) are server-only.
+        && !request.resource.data.keys().hasAny(spotServerKeys())
         // Rate limit: at most one spot creation per 30 seconds per user.
         // Same idiom as clipRateLimitOk(): the batch MUST advance
         // users/{uid}.lastSpotCreatedAt to request.time (getAfter), so a
@@ -2238,6 +2334,7 @@ service cloud.firestore {
         && request.resource.data.longitude == resource.data.longitude
         && request.resource.data.isVerified == resource.data.isVerified
         && request.resource.data.isActive == resource.data.isActive
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(spotServerKeys())
         // Mutable fields still get type-checked.
         && request.resource.data.name is string
         && request.resource.data.name.size() >= 1

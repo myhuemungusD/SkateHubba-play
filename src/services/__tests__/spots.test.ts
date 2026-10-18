@@ -427,6 +427,38 @@ describe("fetchSpotName", () => {
  * ──────────────────────────────────────────── */
 
 describe("getSpotsInBounds", () => {
+  const bounds = { north: 34.1, south: 34.0, east: -118.2, west: -118.3 };
+  function seededSnap() {
+    return makeQuerySnap([
+      { ...makeSpotSnap({ source: "osm", kind: "park" }, "osm"), id: "osm" },
+      { ...makeSpotSnap({ source: "curated", isLegendary: true, checkinCount: 4 }, "legend"), id: "legend" },
+      { ...makeSpotSnap({ source: "user", kind: "spot" }, "user"), id: "user" },
+      { ...makeSpotSnap({ source: "elsewhere", kind: "castle", isLegendary: "yes" }, "plain"), id: "plain" },
+    ]);
+  }
+
+  it("hides seeded (OSM / curated) spots while map check-ins are off", async () => {
+    vi.stubEnv("VITE_FEATURE_MAP_CHECKINS", "");
+    mockGetDocs.mockResolvedValueOnce(seededSnap());
+    const spots = await getSpotsInBounds(bounds);
+    expect(spots.map((x) => x.id)).toEqual(["user", "plain"]);
+    expect(spots[0]).toMatchObject({ source: "user", kind: "spot" });
+    expect(spots[1]).not.toHaveProperty("source");
+    expect(spots[1]).not.toHaveProperty("kind");
+    expect(spots[1]).not.toHaveProperty("isLegendary");
+    vi.unstubAllEnvs();
+  });
+
+  it("shows seeded spots with their map fields once check-ins are on", async () => {
+    vi.stubEnv("VITE_FEATURE_MAP_CHECKINS", "true");
+    mockGetDocs.mockResolvedValueOnce(seededSnap());
+    const spots = await getSpotsInBounds(bounds);
+    expect(spots.map((x) => x.id)).toEqual(["osm", "legend", "user", "plain"]);
+    expect(spots[0]).toMatchObject({ source: "osm", kind: "park" });
+    expect(spots[1]).toMatchObject({ source: "curated", isLegendary: true, checkinCount: 4 });
+    vi.unstubAllEnvs();
+  });
+
   it("queries the spots collection with the isActive filter and latitude range", async () => {
     mockGetDocs.mockResolvedValueOnce(makeQuerySnap([]));
     await getSpotsInBounds({ north: 34.1, south: 34.0, east: -118.2, west: -118.3 });

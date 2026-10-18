@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router";
 import type { ReactElement } from "react";
 import { SpotPreviewCard } from "../SpotPreviewCard";
+
+vi.mock("../CheckInButton", () => ({ CheckInButton: () => <div data-testid="checkin-button" /> }));
 import type { Spot } from "../../../types/spot";
 
 /** Echoes the current router location.search so the test can assert it. */
@@ -151,5 +153,18 @@ describe("SpotPreviewCard", () => {
     // The broken <img> is replaced by the placeholder with an accessible label.
     expect(screen.getByLabelText(/Photo unavailable for Hollenbeck Hubba/i)).toBeInTheDocument();
     expect(screen.queryByAltText(/Hollenbeck Hubba photo/)).toBeNull();
+  });
+});
+
+describe("SpotPreviewCard map check-ins", () => {
+  it("shows Check in only when the flag is on, and disables View Spot for private spots", () => {
+    const { unmount } = render(renderCard(FIXTURE_SPOT));
+    expect(screen.queryByTestId("checkin-button")).toBeNull();
+    unmount();
+    vi.stubEnv("VITE_FEATURE_MAP_CHECKINS", "true");
+    render(renderCard({ ...FIXTURE_SPOT, scope: "private" }));
+    expect(screen.getByTestId("checkin-button")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "View Spot" })).toBeDisabled();
+    vi.unstubAllEnvs();
   });
 });

@@ -81,7 +81,16 @@ Each phase ships behind its own flag, testers first.
 
 ### Phase 1: Check-ins and the spot passport
 
-Flag: `VITE_MAP_CHECKINS_ENABLED` (`isMapCheckinsEnabled`).
+Flag: `VITE_FEATURE_MAP_CHECKINS` (`isMapCheckinsEnabled`). Server switch: `MAP_CHECKINS_ENABLED` / `MAP_TESTER_UIDS`. Signed-out browsing also needs `config/mapFlags.publicBrowse == true` (Admin SDK only).
+
+**Status (Oct 2026): built.** Callable `mapCheckin` (`functions/src/map/`), client `src/services/mapCheckins.ts`, rules in `firestore.rules`, seed script `scripts/map/seed_osm.mjs`. What shipped, beyond the list below:
+
+- **Browse without an account** when the flag is on and `publicBrowse` is set. Add-spot and check-in ask signed-out visitors to sign in.
+- **Location only on tap.** With the flag on, the map never asks for location on open; the prompt appears on Check in or the recenter button.
+- **Public, crew-only, or private spots.** Crew-only and private spots live in `privateSpots/{id}` (with `visibility` and `crewUids`, up to 50), never in `spots/`, so a public map query can't return them. They stamp the passport but pay no XP.
+- **Offline check-ins.** A check-in that fails for network reasons is saved on the phone (`sh_checkin_queue`) and sent when the signal returns. The server accepts it up to 6 hours late; the `clientId` makes retries safe.
+- **Pioneer bonus:** +50 XP for the first check-in at a public spot nobody has checked into for 30 days (never on your own spot). New spot +50, repeat +5, inside the shared 3,000/day XP cap.
+- **Seeded spots stay hidden** in the app until the flag is on.
 
 - Check in at a spot when you are within about 100 m of it. A callable function decides, not the client.
 - XP for the first check-in at a new spot, a small amount for repeat check-ins (once per spot per day), tapered like game XP.
@@ -97,14 +106,17 @@ The map needs spots on day one, so seeding is a Phase 1 task.
 - **Attribution.** OSM data is under the ODbL. The map always shows "© OpenStreetMap contributors", and seeded docs keep `source: "osm"` and `osmId` so we can credit the data and refresh it later.
 - **Dedupe** against existing spots: matching `osmId`, or a spot within about 50 m with a similar name, gets merged rather than duplicated. User-created spots win, and seeded data only fills in gaps.
 - **Seeded spots start unverified** (`isVerified == false`) and go through the same review as user spots before they can hold crowns or bounties.
-- **Curated legendary list:** an admin-reviewed file (`scripts/map/legendary_spots.json`) with El Toro, Cherry Park, the Berrics, Hubba Hideout, Love Park, the Brooklyn Banks, Wallenberg, and others. Each entry gets `isLegendary` and a badge. Private spots like the Berrics only get a check-in or challenge with the owner's permission. Until then they're map-only.
+- **Curated legendary list:** an admin-reviewed file (`scripts/map/legendary_spots.json`). First batch: Cherry Park, Love Park, EMB, Pier 7, MACBA, Southbank, plus El Toro, Wallenberg, and Hollywood High as map-only (`checkinsAllowed: false`) because they are schools. The Berrics, Hubba Hideout, and the Brooklyn Banks still need confirmed coordinates and permission. Each entry gets `isLegendary` and a badge. Private spots like the Berrics only get a check-in or challenge with the owner's permission. Until then they're map-only.
 - **No scraping of Google Maps or Yelp.** Their terms forbid it. Shops not in OSM get added by the shop or by players through the normal spot submission.
 
 Data model:
 
-- `spots/{spotId}/checkins/{checkinId}`: `uid, createdAt, accuracyM, verdict` (`ok`, `suspect`, `rejected`). Server-written only.
-- `users/{uid}/passport/{spotId}`: `spotId, spotName, firstAt, lastAt, count, legendary`. Server-written only, owner-readable. Public view controlled by `passportPublic` on the user.
-- `spots/{spotId}`: add `isLegendary`, `legendaryBadgeId`, `checkinCount`, `source` (`user`, `osm`, `curated`), `osmId`, `kind` (`spot`, `park`, `shop`). Admin-only fields.
+- `users/{uid}/checkins/{clientId}`: `spotId, scope, verdict (ok | suspect), reason, xp, accuracyM, clientAt, createdAt`. Server-written, owner read/delete. Kept under the user (not the spot) so account deletion removes it.
+- `mapState/{uid}`: last accepted fix, hourly count, strikes, `blockedUntil`. Server-written, owner read/delete.
+- `passportSettings/{uid}`: `{ public: bool }`, owner-written.
+- `privateSpots/{spotId}`: crew-only and private spots (see above).
+- `users/{uid}/passport/{spotId}` (private spots: `p_{spotId}`): `spotId, scope, spotName, firstAt, lastAt, lastDay, count, legendary`. Server-written only. Others can read public-spot stamps only when `passportSettings/{uid}.public` is true.
+- `spots/{spotId}`: add `isLegendary`, `legendaryBadgeId`, `checkinCount`, `lastCheckinAt`, `checkinsAllowed`, `source` (`user`, `osm`, `curated`), `osmId`, `kind` (`spot`, `park`, `shop`). Admin-only fields: rules reject them on create and on update.
 - Reuses `users/{uid}/xpMarkers/spot_{spotId}` so a first check-in and a first game at a spot share one "new spot" marker.
 
 Rules notes: clients cannot create checkins or passport docs. The `spots/{spotId}` update rule must keep denying `isLegendary`, `legendaryBadgeId`, and `checkinCount` changes from owners. Passport reads: owner always, others only when `passportPublic == true`. Account deletion walks `passport` the same way it walks `xpMarkers`.

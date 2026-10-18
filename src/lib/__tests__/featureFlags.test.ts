@@ -363,3 +363,14 @@ describe("isShoe360Enabled", () => {
     vi.unstubAllEnvs();
   });
 });
+
+describe("isMapCheckinsEnabled", () => {
+  it("is on only for the literal true", async () => {
+    const { isMapCheckinsEnabled } = await import("../featureFlags");
+    vi.stubEnv("VITE_FEATURE_MAP_CHECKINS", "true");
+    expect(isMapCheckinsEnabled()).toBe(true);
+    vi.stubEnv("VITE_FEATURE_MAP_CHECKINS", "1");
+    expect(isMapCheckinsEnabled()).toBe(false);
+    vi.unstubAllEnvs();
+  });
+});

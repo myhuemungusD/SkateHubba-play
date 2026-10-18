@@ -78,3 +78,20 @@ describe("useUserGeolocation", () => {
     expect(markerRemove).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("useUserGeolocation autoStart=false (map check-ins)", () => {
+  it("does not ask for location until recenter is tapped", () => {
+    const mapRef = makeMapRef();
+    const { result, unmount } = renderHook(() =>
+      useUserGeolocation({ map: mapRef as unknown as React.MutableRefObject<MapboxMap | null>, autoStart: false }),
+    );
+    expect(watchPosition).not.toHaveBeenCalled();
+    expect(result.current.isTrackingUser).toBe(false);
+    const onWaiting = vi.fn();
+    act(() => result.current.handleRecenter(onWaiting));
+    expect(onWaiting).toHaveBeenCalled();
+    expect(watchPosition).toHaveBeenCalledTimes(1);
+    expect(result.current.isTrackingUser).toBe(true);
+    unmount();
+  });
+});

@@ -14,6 +14,9 @@ import { injectPulseCSS } from "./spotMapStyles";
 import { useSpotsInBounds } from "./useSpotsInBounds";
 import { useUserGeolocation } from "./useUserGeolocation";
 import { useSpotMarkers } from "./useSpotMarkers";
+import { isMapCheckinsEnabled } from "../../lib/featureFlags";
+import { useAuthContext } from "../../context/AuthContext";
+import { listMyPrivateSpots } from "../../services/mapCheckins";
 import {
   SpotMapUnavailable,
   MapLoadingOverlay,
@@ -53,6 +56,9 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry, autoOpenAddSp
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { spots, setSpots, fetchSpots } = useSpotsInBounds();
+  const mapPhase1 = isMapCheckinsEnabled();
+  const { user } = useAuthContext();
+  const [privateSpots, setPrivateSpots] = useState<Spot[]>([]);
   const [filters, setFilters] = useState<SpotFilters>(DEFAULT_SPOT_FILTERS);
   const [selectedSpot, setSelectedSpot] = useState<Spot | null>(null);
   const [isAddingSpot, setIsAddingSpot] = useState(autoOpenAddSpot);
@@ -65,7 +71,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry, autoOpenAddSp
     gpsBannerDismissed,
     setGpsBannerDismissed,
     handleRecenter: recenterToUser,
-  } = useUserGeolocation({ map });
+  } = useUserGeolocation({ map, autoStart: !mapPhase1 });
 
   const [toast, setToast] = useState<string | null>(null);
   const [mapLoading, setMapLoading] = useState(true);
@@ -77,7 +83,24 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry, autoOpenAddSp
   // Spots to actually render on the map after applying client-side filters.
   // Kept as a memoized derivation so marker diffing below doesn't re-run when
   // the filter object is referentially stable.
-  const visibleSpots = useMemo(() => applySpotFilters(spots, filters), [spots, filters]);
+  const visibleSpots = useMemo(
+    () => applySpotFilters(privateSpots.length > 0 ? [...spots, ...privateSpots] : spots, filters),
+    [spots, privateSpots, filters],
+  );
+
+  // Crew-only and private spots (Map Phase 1) are loaded once; they live
+  // outside spots/ so the viewport query never returns them.
+  const uid = user?.uid;
+  useEffect(() => {
+    if (!mapPhase1 || !uid) return;
+    let live = true;
+    void listMyPrivateSpots(uid).then((list) => {
+      if (live) setPrivateSpots(list);
+    });
+    return () => {
+      live = false;
+    };
+  }, [mapPhase1, uid]);
 
   // Surface the missing-token condition to telemetry so ops notice the
   // outage without waiting on a user screenshot. `MAPBOX_TOKEN` is a module
@@ -127,6 +150,8 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry, autoOpenAddSp
       minZoom: MAP_DEFAULTS.minZoom,
       maxZoom: MAP_DEFAULTS.maxZoom,
       center: [-118.2437, 34.0522], // Assumption: default to Los Angeles
+      // Seeded spots come from OpenStreetMap (ODbL), which requires this credit.
+      ...(isMapCheckinsEnabled() ? { customAttribution: "© OpenStreetMap contributors" } : {}),
     });
 
     // Add zoom controls
@@ -258,7 +283,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry, autoOpenAddSp
       {/* Empty state — two distinct messages: (1) nothing in the viewport at
           all → invite the user to add one; (2) spots exist but filters are
           hiding them → hint to loosen filters. */}
-      {!mapLoading && spots.length === 0 && <EmptyViewportPrompt onAddSpot={() => setIsAddingSpot(true)} />}
+      {!mapLoading && spots.length === 0 && user && <EmptyViewportPrompt onAddSpot={() => setIsAddingSpot(true)} />}
 
       {!mapLoading && spots.length > 0 && visibleSpots.length === 0 && <NoFilterMatchesNotice />}
 
@@ -283,17 +308,19 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry, autoOpenAddSp
         <Crosshair size={18} aria-hidden="true" />
       </button>
 
-      {/* Add spot FAB */}
-      <button
-        type="button"
-        onClick={() => setIsAddingSpot(true)}
-        className="absolute bottom-24 right-2.5 z-20 w-12 h-12 bg-[#F97316] rounded-full
+      {/* Add spot FAB (signed-in only; signed-out visitors can browse) */}
+      {user && (
+        <button
+          type="button"
+          onClick={() => setIsAddingSpot(true)}
+          className="absolute bottom-24 right-2.5 z-20 w-12 h-12 bg-[#F97316] rounded-full
                    flex items-center justify-center text-white shadow-lg
                    hover:bg-[#EA580C] transition-colors"
-        aria-label="Add a spot"
-      >
-        <Plus size={24} />
-      </button>
+          aria-label="Add a spot"
+        >
+          <Plus size={24} />
+        </button>
+      )}
 
       {/* Spot preview card */}
       {selectedSpot && (

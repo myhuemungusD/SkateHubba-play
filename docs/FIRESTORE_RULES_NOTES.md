@@ -659,7 +659,14 @@ the enforcement; do not add a client communityReview branch.
 
 ## r27
 
-Precedes: `allow read: if isSignedIn() && resource.data.isActive == true;`
+Precedes: `allow read: if resource.data.isActive == true && (isSignedIn() || mapPublicBrowse());`
+
+Update (Map Phase 1, Oct 2026): signed-out reads are allowed only when the
+Admin-only doc `config/mapFlags` has `publicBrowse: true` (default absent =
+off). Crew-only and private spots live in `privateSpots/`, so a public
+query can never return them. Spot docs hold no user location, only the
+creator uid, which is already public on `/player/:uid`. The note below
+describes the original reasoning.
 
 ```text
 Active spots are readable only by signed-in users. Requiring auth

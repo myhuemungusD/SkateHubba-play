@@ -5,6 +5,8 @@ import type { Spot } from "../../types/spot";
 import { useFocusTrap } from "../../hooks/useFocusTrap";
 import { GnarRating } from "./GnarRating";
 import { BustRisk } from "./BustRisk";
+import { CheckInButton } from "./CheckInButton";
+import { isMapCheckinsEnabled } from "../../lib/featureFlags";
 
 interface SpotPreviewCardProps {
   spot: Spot;
@@ -164,6 +166,8 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
           </div>
         </div>
 
+        {isMapCheckinsEnabled() && <CheckInButton spot={spot} />}
+
         {/* Challenge from here — the primary action per charter 2.2:
             the map exists to serve the S.K.A.T.E. game loop, so starting
             a challenge is the dominant affordance on a spot preview. */}
@@ -182,6 +186,7 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
         <div className="mt-2 grid grid-cols-2 gap-2">
           <button
             type="button"
+            disabled={spot.scope === "private"}
             onClick={() => navigate(`/spots/${spot.id}`)}
             className="py-2.5 rounded-xl bg-surface-alt border border-[#333] text-[#CCC]
                        font-semibold text-sm hover:bg-[#222] hover:border-[#444] transition-colors"
