@@ -2480,7 +2480,10 @@ service cloud.firestore {
     // ── Push targets (cross-readable token mirror) ──
     // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r29
     match /pushTargets/{uid} {
-      allow read: if isSignedIn();
+      // get only: a sender looks up one recipient it already knows. No list,
+      // so nobody can dump every user's device tokens in one query.
+      allow get: if isSignedIn();
+      allow list: if false;
 
       // Allowlist of accepted keys. setDoc(..., merge:true) is the only
       // legitimate writer (src/services/fcm.ts + pushNotifications.ts), and
