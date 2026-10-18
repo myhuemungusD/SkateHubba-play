@@ -122,6 +122,17 @@ jobs:
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
           VITE_FIREBASE_VAPID_KEY: ${{ secrets.VITE_FIREBASE_VAPID_KEY }}
+          # Crash reports and analytics, same as the website, so tester-build
+          # crashes show up in Sentry. Both no-op when the secret is unset.
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+          VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
+          # Every other VITE_FEATURE_* flag (map/check-ins, clips, closet,
+          # Closet Studio, 360 shoes, pro/admin tools, XP, spot chats, runner...)
+          # is left unset on purpose: default-off for the public, and
+          # src/lib/featureFlags.ts flagOn() turns each one on at runtime for
+          # uids in config/featureTesters. The code is always compiled in, so
+          # leave the tester inputs below unticked for a tester build.
           # App Review must see Sign in with Apple. Enable the Firebase provider
           # first (docs/IOS_RELEASE.md). The website and Android stay off until
           # VITE_FEATURE_APPLE_SIGNIN_ENABLED is the literal "true" in Vercel.
