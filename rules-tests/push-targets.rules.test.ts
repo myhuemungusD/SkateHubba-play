@@ -13,7 +13,7 @@
  */
 import { describe, it } from "vitest";
 import { assertSucceeds, assertFails, type RulesTestContext } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc, serverTimestamp, Timestamp } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, setDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 import { setupRulesTestEnv } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-pushtargets-redteam";
@@ -101,5 +101,12 @@ describe("pushTargets — reads", () => {
       });
     });
     await assertFails(getDoc(doc(getEnv().unauthenticatedContext().firestore(), "pushTargets", OWNER_UID)));
+  });
+
+  it("attack: a signed-in user CANNOT list every user's mirror (token dump)", async () => {
+    await getEnv().withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "pushTargets", OWNER_UID), { tokens: ["t1"], updatedAt: Timestamp.now() });
+    });
+    await assertFails(getDocs(collection(asUser(OTHER_UID).firestore(), "pushTargets")));
   });
 });

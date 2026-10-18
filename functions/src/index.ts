@@ -15,6 +15,7 @@ import { sweepExpiredDiceGames } from "./dice/handlers.js";
 import { adminDiceDb } from "./dice/store.js";
 import { handleCheckinCall } from "./map/callable.js";
 import { handleBlessingCall } from "./pro/callable.js";
+import { applyProCall } from "./pro/proCalls.js";
 import { handleClipCreated, handleClipReport, handleDecideClip } from "./moderation/handlers.js";
 import { adminClipStore } from "./moderation/publish.js";
 import type { ClosetFlags } from "./closet/access.js";
@@ -341,5 +342,21 @@ export const pushDispatchSweep = onSchedule(
       );
       console.log(JSON.stringify({ event: "referees", results }));
     }
+  },
+);
+
+/** A verified pro's review of a split WTT vote becomes the clip's gold label. */
+export const proReviewOnCreate = onDocumentCreated(
+  { document: "proReviews/{reviewId}", database: DATABASE_ID, region: "us-central1", timeoutSeconds: 60 },
+  async (event): Promise<void> => {
+    await applyProCall(getFirestore(DATABASE_ID), "review", event.data?.data());
+  },
+);
+
+/** A verified pro's known-correct trick on a clip becomes its gold label. */
+export const proGoldOnCreate = onDocumentCreated(
+  { document: "proGold/{clipId}", database: DATABASE_ID, region: "us-central1", timeoutSeconds: 60 },
+  async (event): Promise<void> => {
+    await applyProCall(getFirestore(DATABASE_ID), "gold", event.data?.data());
   },
 );

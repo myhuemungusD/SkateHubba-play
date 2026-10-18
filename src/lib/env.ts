@@ -162,6 +162,12 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Pro review queue + gold clip authoring for verified pros (never admin powers). DEFAULTS TO OFF. Read via isProCallsEnabled().
+  VITE_FEATURE_PRO_CALLS: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // Customizable profiles. DEFAULTS TO OFF. Read via isProfileCustomEnabled().
   VITE_FEATURE_PROFILE_CUSTOM: z
     .string()

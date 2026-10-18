@@ -3,7 +3,18 @@ import { ComingSoonCard } from "../../components/pro/ComingSoonCard";
 import { PRO_TOOLS } from "../../components/pro/proTools";
 import { BlessingHero } from "../../components/pro/BlessingHero";
 import { useIsAdmin } from "../../hooks/useIsAdmin";
-import { isProBlessingEnabled, isProProfilesEnabled } from "../../lib/featureFlags";
+import { isProBlessingEnabled, isProCallsEnabled, isProProfilesEnabled } from "../../lib/featureFlags";
+import { GoldClipAuthoring, ProReviewQueue } from "../../components/pro/ProCallsTools";
+import type { ProToolId } from "../../components/pro/proTools";
+import type { ReactNode } from "react";
+
+/** Built pro tools, keyed by id. Only for a real pro (not admin review mode). */
+function liveTool(id: ProToolId, uid: string): ReactNode | null {
+  if ((id === "review" || id === "gold") && isProCallsEnabled()) {
+    return id === "review" ? <ProReviewQueue uid={uid} /> : <GoldClipAuthoring uid={uid} />;
+  }
+  return null;
+}
 import { NotFound } from "../NotFound";
 import { Spinner } from "../../components/ui/Spinner";
 import { resolveProToolsAccess } from "./access";
@@ -45,9 +56,14 @@ export function ProToolsScreen({ uid = null, reviewMode, onBack }: ScreenProps) 
       )}
       <BlessingHero uid={uid} live={!reviewMode && isProBlessingEnabled()} />
       <div className="space-y-3">
-        {PRO_TOOLS.map((t) => (
-          <ComingSoonCard key={t.title} icon={t.icon} title={t.title} description={t.description} status={t.status} />
-        ))}
+        {PRO_TOOLS.map((t) => {
+          const live = !reviewMode && uid ? liveTool(t.id, uid) : null;
+          return live ? (
+            <div key={t.title}>{live}</div>
+          ) : (
+            <ComingSoonCard key={t.title} icon={t.icon} title={t.title} description={t.description} status={t.status} />
+          );
+        })}
       </div>
     </div>
   );

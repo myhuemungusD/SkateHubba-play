@@ -166,7 +166,7 @@ export async function submitProReview(
     createdAt: new Date(),
   };
 
-  await setDoc(doc(collection(db, PRO_REVIEWS_COLLECTION)), {
+  await setDoc(doc(db, PRO_REVIEWS_COLLECTION, `${clipId}_${uid}`), {
     clipId: reviewDoc.clipId,
     uid: reviewDoc.uid,
     answerTrickId: reviewDoc.answerTrickId,

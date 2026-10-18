@@ -282,3 +282,8 @@ export function isAdminConsoleEnabled(): boolean {
 export function isAdminOpsEnabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_ADMIN_OPS);
 }
+
+/** Pro review queue + gold clip authoring for verified pros (never admin powers). Literal "true" only; off by default; tester override turns it on. */
+export function isProCallsEnabled(): boolean {
+  return flagOn(import.meta.env.VITE_FEATURE_PRO_CALLS);
+}
