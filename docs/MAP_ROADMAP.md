@@ -115,7 +115,7 @@ Data model:
 - `mapState/{uid}`: last accepted fix, hourly count, strikes, `blockedUntil`. Server-written, owner read/delete.
 - `passportSettings/{uid}`: `{ public: bool }`, owner-written.
 - `privateSpots/{spotId}`: crew-only and private spots (see above).
-- `users/{uid}/passport/{spotId}` (private spots: `p_{spotId}`): `spotId, scope, spotName, firstAt, lastAt, lastDay, count, legendary`. Server-written only. Others can read public-spot stamps only when `passportSettings/{uid}.public` is true.
+- `users/{uid}/passport/{spotId}` (private spots: `p_{spotId}`): `spotId, scope, spotName, firstAt (first of the month, UTC), count, legendary`. Server-written only. No exact times or coordinates: the per-day cooldown is an owner-only `users/{uid}/checkins/day.{passportId}.{YYYY-MM-DD}` marker, spot `lastCheckinAt` and legendary `earnedAt` are rounded to the UTC day, and raw fixes live only in owner-only `checkins` and `mapState`. Others can read public-spot stamps only when `passportSettings/{uid}.public` is true.
 - `spots/{spotId}`: add `isLegendary`, `legendaryBadgeId`, `checkinCount`, `lastCheckinAt`, `checkinsAllowed`, `source` (`user`, `osm`, `curated`), `osmId`, `kind` (`spot`, `park`, `shop`). Admin-only fields: rules reject them on create and on update.
 - Reuses `users/{uid}/xpMarkers/spot_{spotId}` so a first check-in and a first game at a spot share one "new spot" marker.
 

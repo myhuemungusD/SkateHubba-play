@@ -144,6 +144,15 @@ export function spotPath(req: Pick<CheckinRequest, "scope" | "spotId">): string 
 }
 
 /** Passport doc id. Private spots get a prefix so ids from the two collections never collide. */
+function dayStartMs(t: number): number {
+  return Math.floor(t / 86_400_000) * 86_400_000;
+}
+
+function monthStartMs(t: number): number {
+  const d = new Date(t);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+}
+
 export function passportId(req: Pick<CheckinRequest, "scope" | "spotId">): string {
   return req.scope === "private" ? `p_${req.spotId}` : req.spotId;
 }
@@ -186,13 +195,15 @@ export async function performCheckin(db: DiceDb, actor: CheckinActor, req: Check
     const logPath = `users/${uid}/checkins/${req.clientId}`;
     const pPath = `users/${uid}/passport/${passportId(req)}`;
     const statePath = `mapState/${uid}`;
-    const [prior, spotDoc, passport, stateDoc, userDoc, marker] = await Promise.all([
+    const dayPath = `users/${uid}/checkins/day.${passportId(req)}.${utcDay(req.clientAt)}`;
+    const [prior, spotDoc, passport, stateDoc, userDoc, marker, dayMark] = await Promise.all([
       tx.get(logPath),
       tx.get(spotPath(req)),
       tx.get(pPath),
       tx.get(statePath),
       tx.get(`users/${uid}`),
       tx.get(`users/${uid}/xpMarkers/spot_${req.spotId}`),
+      tx.get(dayPath),
     ]);
     if (prior.data) {
       return result("duplicate", { xp: num(prior.data.xp) });
@@ -206,8 +217,7 @@ export async function performCheckin(db: DiceDb, actor: CheckinActor, req: Check
     if (distanceM(req.lat, req.lng, sLat, sLng) > CHECKIN_RADIUS_M) return result("too_far");
 
     const state = stateDoc.data ?? {};
-    const day = utcDay(req.clientAt);
-    if (passport.data && passport.data.lastDay === day) return result("cooldown_spot");
+    if (dayMark.data) return result("cooldown_spot");
 
     const hourStart = num(state.hourStart);
     const inHour = nowMs - hourStart < HOUR_MS;
@@ -287,7 +297,8 @@ export async function performCheckin(db: DiceDb, actor: CheckinActor, req: Check
       badgeId = badgeCandidate;
       const name = typeof spot.name === "string" ? spot.name : "a legendary spot";
       tx.set(`users/${uid}/achievements/${badgeId}`, {
-        earnedAt: new Date(nowMs),
+        // Day precision only: badges are public, so no exact time at a place.
+        earnedAt: new Date(dayStartMs(nowMs)),
         reason: `Checked in at ${name}.`.slice(0, 200),
       });
     }
@@ -300,14 +311,15 @@ export async function performCheckin(db: DiceDb, actor: CheckinActor, req: Check
         scope: req.scope,
         spotName: typeof spot.name === "string" ? spot.name.slice(0, 80) : "Spot",
         legendary,
-        firstAt: passport.data?.firstAt ?? at,
-        lastAt: at,
-        lastDay: day,
+        // Month precision only: stamps can be public, so they never say when
+        // someone was at a spot. The per-day cooldown lives in owner-only checkins.
+        firstAt: passport.data?.firstAt ?? new Date(monthStartMs(at.getTime())),
         count: num(passport.data?.count) + 1,
       },
       true,
     );
-    tx.update(spotPath(req), { checkinCount: num(spot.checkinCount) + 1, lastCheckinAt: new Date(nowMs) });
+    tx.update(spotPath(req), { checkinCount: num(spot.checkinCount) + 1, lastCheckinAt: new Date(dayStartMs(nowMs)) });
+    tx.set(dayPath, { createdAt: new Date(nowMs) });
     tx.set(
       statePath,
       {

@@ -188,3 +188,36 @@ describe("check-in log and mapState", () => {
     await assertSucceeds(deleteDoc(doc(as("owner"), "mapState", "owner")));
   });
 });
+
+describe("server-written check-in rewards", () => {
+  it("players cannot write their own XP, level or daily XP counters", async () => {
+    for (const patch of [{ xp: 9999 }, { level: 50 }, { xpDay: "2026-10-17" }, { xpToday: 0 }]) {
+      await assertFails(updateDoc(doc(as("u2"), "users", "u2"), patch));
+    }
+  });
+
+  it("a new profile cannot start with check-in XP", async () => {
+    await assertFails(setDoc(doc(as("fresh"), "users", "fresh"), { uid: "fresh", username: "fresh", xp: 50 }));
+    await assertFails(
+      setDoc(doc(as("fresh"), "users", "fresh"), { uid: "fresh", username: "fresh", xpDay: "2026-10-17" }),
+    );
+    await assertFails(setDoc(doc(as("fresh"), "users", "fresh"), { uid: "fresh", username: "fresh", xpToday: 5 }));
+  });
+
+  it("players cannot award themselves a legendary badge, stamp, day marker or spot count", async () => {
+    const reason = { earnedAt: serverTimestamp(), reason: "Checked in." };
+    await assertFails(setDoc(doc(as("u2"), "users", "u2", "achievements", "legend_love_park"), reason));
+    await assertFails(setDoc(doc(as("u2"), "users", "u2", "passport", "s1"), { scope: "public", count: 1 }));
+    await assertFails(setDoc(doc(as("u2"), "users", "u2", "checkins", "day.s1.2026-10-17"), { createdAt: 1 }));
+    await assertFails(setDoc(doc(as("u2"), "users", "u2", "xpMarkers", "spot_s1"), { kind: "spot" }));
+    await assertFails(updateDoc(doc(as("owner"), "spots", "s1"), { checkinCount: 99 }));
+    await assertFails(updateDoc(doc(as("owner"), "spots", "s1"), { lastCheckinAt: serverTimestamp() }));
+  });
+
+  it("nobody else can read where a player checked in from", async () => {
+    await assertFails(getDocs(collection(as("viewer"), "users", "owner", "checkins")));
+    await assertFails(getDoc(doc(as("viewer"), "mapState", "owner")));
+    await assertFails(getDoc(doc(anon(), "mapState", "owner")));
+    await assertFails(getDocs(collection(anon(), "users", "owner", "checkins")));
+  });
+});

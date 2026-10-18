@@ -242,8 +242,22 @@ describe("performCheckin", () => {
 
   it("enforces the once-per-spot-per-day cooldown", async () => {
     const db = setup();
-    db.seed("users/u1/passport/s1", { lastDay: "2026-10-17" });
-    expect((await performCheckin(db, actor, req())).code).toBe("cooldown_spot");
+    expect((await performCheckin(db, actor, req())).code).toBe("ok");
+    expect((await performCheckin(db, actor, req({ clientId: "c2" }))).code).toBe("cooldown_spot");
+  });
+
+  it("never stores an exact time at a spot in public-readable docs", async () => {
+    const db = setup();
+    await performCheckin(db, actor, req());
+    const stamp = db.docs.get("users/u1/passport/s1") as Record<string, unknown>;
+    expect(stamp).not.toHaveProperty("lastAt");
+    expect(stamp).not.toHaveProperty("lastDay");
+    expect(stamp).not.toHaveProperty("lat");
+    const first = (stamp.firstAt as Date).getTime();
+    expect(new Date(first).getUTCDate()).toBe(1);
+    expect(first % 86_400_000).toBe(0);
+    const spot = db.docs.get("spots/s1") as Record<string, unknown>;
+    expect((spot.lastCheckinAt as Date).getTime() % 86_400_000).toBe(0);
   });
 
   it("enforces the hourly cap and resets it after an hour", async () => {
