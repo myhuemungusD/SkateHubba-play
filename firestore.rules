@@ -3637,5 +3637,85 @@ service cloud.firestore {
         && fsExists('wttItems', clipId);
       allow read, update, delete: if false;
     }
+  
+    // ── Pro community (VITE_FEATURE_PRO_COMMUNITY) ──
+    // Verified-pro scoped creates; never an admin power. Shout-outs and
+    // props are not pro status (only a blessing is).
+    match /proChallenges/{challengeId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && isVerifiedPro()
+        && request.resource.data.keys().hasOnly(['proUid','proUsername','trickName','description','createdAt'])
+        && request.resource.data.proUid == request.auth.uid
+        && request.resource.data.proUsername is string
+        && request.resource.data.proUsername.size() <= 20
+        && request.resource.data.trickName is string
+        && request.resource.data.trickName.size() > 0
+        && request.resource.data.trickName.size() <= 60
+        && request.resource.data.description is string
+        && request.resource.data.description.size() <= 280
+        && request.resource.data.createdAt == request.time;
+      allow update: if false;
+      allow delete: if isSignedIn() && resource.data.proUid == request.auth.uid;
+    }
+
+    match /proChallengeEntries/{entryId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && notBanned()
+        && emailVerified()
+        && entryId == request.resource.data.challengeId + '_' + request.auth.uid
+        && request.resource.data.keys().hasOnly(['challengeId','uid','username','clipId','featured','createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.username is string
+        && request.resource.data.username.size() <= 20
+        && request.resource.data.clipId is string
+        && request.resource.data.featured == false
+        && request.resource.data.createdAt == request.time
+        && fsExists('proChallenges', request.resource.data.challengeId)
+        && fsGet('clips', request.resource.data.clipId).data.playerUid == request.auth.uid;
+      // Only the challenge's pro flips `featured`, and nothing else.
+      allow update: if isSignedIn()
+        && fsGet('proChallenges', resource.data.challengeId).data.proUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['featured'])
+        && request.resource.data.featured is bool;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    match /proProps/{propId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && isVerifiedPro()
+        && request.resource.data.keys().hasOnly(['fromUid','fromUsername','toUid','toUsername','sticker','note','createdAt'])
+        && request.resource.data.fromUid == request.auth.uid
+        && request.resource.data.toUid is string
+        && request.resource.data.toUid != request.auth.uid
+        && fsExists('users', request.resource.data.toUid)
+        && request.resource.data.fromUsername is string
+        && request.resource.data.fromUsername.size() <= 20
+        && request.resource.data.toUsername is string
+        && request.resource.data.toUsername.size() <= 20
+        && request.resource.data.sticker in ['fire','steez','gnarly','clean','respect']
+        && request.resource.data.note is string
+        && request.resource.data.note.size() <= 140
+        && request.resource.data.createdAt == request.time;
+      allow update: if false;
+      allow delete: if isSignedIn() && resource.data.fromUid == request.auth.uid;
+    }
+
+    match /proFeatured/{clipId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && isVerifiedPro()
+        && request.resource.data.keys().hasOnly(['clipId','proUid','proUsername','createdAt'])
+        && request.resource.data.clipId == clipId
+        && request.resource.data.proUid == request.auth.uid
+        && request.resource.data.proUsername is string
+        && request.resource.data.proUsername.size() <= 20
+        && request.resource.data.createdAt == request.time
+        && fsExists('clips', clipId);
+      allow update: if false;
+      allow delete: if isSignedIn() && resource.data.proUid == request.auth.uid;
+    }
   }
 }
