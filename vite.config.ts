@@ -141,6 +141,11 @@ export default defineConfig({
           if (id.includes("node_modules/react-dom/") || id.includes("node_modules/react/")) {
             return "react";
           }
+          // three + r3f + drei are shared by the skate runner and the 360 shoe
+          // viewer; both are lazy, so one named chunk loads only on those routes.
+          if (/node_modules\/(three|three-stdlib|@react-three|camera-controls|maath)\//.test(id)) {
+            return "three-vendor";
+          }
         },
       },
     },

@@ -74,3 +74,23 @@ the `closetAdmin` callable.
 | `mike-raw-16.jpg`, `mike-raw-23.jpg` | Byte-identical to `mike-raw-1.jpg`                                                                                                                                     |
 | `mike-raw-15.jpg`                    | Mike's sketch of the OG Signature (shipped as `mike-ai-1.png`); his signature is cropped from this file                                                                |
 | `mike-raw-6.jpg`                     | **Left out:** the photo includes a cigarette pack. The B-One beanie, tee and deck in it can be added later from a clean re-shoot or crop that has no tobacco in frame. |
+
+## Polished cards and 360 view
+
+`scripts/closet/build_shoe_skins.py` (python3 + numpy + Pillow) cuts each design
+out of its background and writes:
+
+- `public/assets/closet/mike-white/card/<slug>.webp`: the 2D card for every design,
+  on the same dark studio backdrop, centered, with a soft contact shadow. Photos,
+  split backgrounds and multi-shoe sheets (`KEEP_FRAME`) keep their framing.
+- `public/assets/closet/mike-white/skin/<slug>.webp` + `src/lib/closet/shoe360Skins.json`:
+  a 1024x512 side texture and the silhouette profile for each 360 skin.
+
+The viewer (`src/closet360/Shoe360Canvas.tsx`, lazy-loaded by `components/Shoe360`)
+lofts a low-poly shoe (~1k verts, no model file) from the profile and projects
+Mike's art onto it, so the art always lines up and every pair shares one look.
+Launch skins: m-navy-gold, m-red-grey, m-blackout, teeth-fire, true-blues,
+panda-wave, redline, creamsicle. To add one, put its slug in `SKINS` and rerun.
+Gated by `VITE_FEATURE_SHOE_360` (off; testers get it via config/featureTesters).
+Credit stays on every surface: the detail sheet and showcase hero render
+DesignerCredit ("Designed by Mike White" + signature).

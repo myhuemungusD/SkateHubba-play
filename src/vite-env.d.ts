@@ -72,6 +72,7 @@ interface ImportMetaEnv {
   readonly VITE_FEATURE_CLOSET_DROPS_ENABLED?: string;
   readonly VITE_FEATURE_CLOSET_TRADING_ENABLED?: string;
   readonly VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED?: string;
+  readonly VITE_FEATURE_SHOE_360?: string;
   /** Sign in with Apple switch: "true" shows the button. Unset (default)
    *  hides it. Read via isAppleSignInEnabled(). */
   readonly VITE_FEATURE_APPLE_SIGNIN_ENABLED?: string;
