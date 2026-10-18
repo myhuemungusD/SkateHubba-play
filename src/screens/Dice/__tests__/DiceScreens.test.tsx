@@ -295,7 +295,56 @@ describe("DiceTable", () => {
     tableState.current = { game: null, loading: false, missing: true };
     renderTable();
     expect(screen.getByText("That match is gone.")).toBeInTheDocument();
+    expect(screen.getByTestId("screen-back")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Back to Roll Dice" }));
+    expect(screen.getByText("hub")).toBeInTheDocument();
+  });
+});
+
+describe("Roll Dice navigation — no dead ends", () => {
+  beforeEach(() => {
+    auth.user = { uid: "u1" };
+    hubState.current = { games: [], stats: { wins: 0, losses: 0, gamesPlayed: 0 }, loading: false };
+    tableState.current = { game: match(), loading: false, missing: false };
+  });
+
+  it("the hub has a 44pt header Back that falls back to home on a cold open", async () => {
+    render(
+      <MemoryRouter initialEntries={["/dice"]}>
+        <Routes>
+          <Route path="/dice" element={<DiceHub />} />
+          <Route path="/lobby" element={<p>home</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const back = screen.getByTestId("screen-back");
+    expect(back).toHaveClass("min-h-11", "min-w-11");
+    await userEvent.click(back);
+    expect(screen.getByText("home")).toBeInTheDocument();
+  });
+
+  it("the hub's Back pops history when there is some", async () => {
+    render(
+      <MemoryRouter initialEntries={["/me", "/dice"]} initialIndex={1}>
+        <Routes>
+          <Route path="/dice" element={<DiceHub />} />
+          <Route path="/me" element={<p>me</p>} />
+          <Route path="/lobby" element={<p>home</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await userEvent.click(screen.getByTestId("screen-back"));
+    expect(screen.getByText("me")).toBeInTheDocument();
+  });
+
+  it("the table has a Back while loading and while playing", async () => {
+    tableState.current = { game: null, loading: true, missing: false };
+    const { unmount } = renderTable();
+    expect(screen.getByTestId("screen-back")).toBeInTheDocument();
+    unmount();
+    tableState.current = { game: match(), loading: false, missing: false };
+    renderTable();
+    await userEvent.click(screen.getByTestId("screen-back"));
     expect(screen.getByText("hub")).toBeInTheDocument();
   });
 });

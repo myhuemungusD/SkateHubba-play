@@ -1,10 +1,13 @@
 import { useEffect, type RefObject } from "react";
+import { useSwipeDownToClose } from "./useSwipeDownToClose";
 
 /**
  * Manual focus-trap (audit D3) for a bottom sheet: Tab loops within the
- * sheet, Escape calls `onClose`, and the first control is focused on mount.
+ * sheet, Escape calls `onClose`, a pull-down from the top calls `onClose`,
+ * and the first control is focused on mount.
  */
 export function useSheetFocusTrap(ref: RefObject<HTMLElement | null>, onClose: () => void): void {
+  useSwipeDownToClose(ref, onClose);
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {

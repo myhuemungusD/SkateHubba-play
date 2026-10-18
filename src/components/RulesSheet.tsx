@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { useSwipeDownToClose } from "./useSwipeDownToClose";
 import { useFocusTrap } from "../hooks/useFocusTrap";
 import { TargetIcon, FilmIcon, ClockIcon, XCircleIcon, SkullIcon, type IconProps } from "./icons";
 
@@ -13,6 +14,7 @@ const RULES: { Icon: (props: IconProps) => React.ReactNode; text: string; color:
 export function RulesSheet({ onClose }: { onClose: () => void }) {
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(panelRef);
+  useSwipeDownToClose(panelRef, onClose);
 
   return (
     <div

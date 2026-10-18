@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { ScreenHeader } from "../../components/ScreenHeader";
 import { OpponentPicker } from "../../components/OpponentPicker";
 import { useAuthContext } from "../../context/AuthContext";
 import { createDiceGame, diceErrorMessage } from "../../services/dice";
@@ -23,7 +24,7 @@ export function DiceNew() {
         return;
       }
       const result = await createDiceGame(opponentUid);
-      navigate(`/dice/${result.gameId}`);
+      navigate(`/dice/${result.gameId}`, { replace: true });
     } catch (err) {
       setError(diceErrorMessage(err));
     } finally {
@@ -33,14 +34,7 @@ export function DiceNew() {
 
   return (
     <div className="mx-auto min-h-dvh max-w-[430px] bg-background px-5 pb-24 pt-[max(env(safe-area-inset-top),2rem)]">
-      <button
-        type="button"
-        onClick={() => navigate("/dice")}
-        className="inline-flex min-h-11 items-center font-body text-sm text-bright"
-      >
-        Back
-      </button>
-      <h1 className="mt-4 font-display text-3xl tracking-wider text-white">Roll someone</h1>
+      <ScreenHeader title="Roll someone" fallback="/dice" />
       <p className="mt-2 mb-6 font-body text-sm text-muted">Same people you can challenge to S.K.A.T.E.</p>
       {user ? (
         <OpponentPicker viewerUid={user.uid} collapsed={busy} onSelect={(username) => void pick(username)} />

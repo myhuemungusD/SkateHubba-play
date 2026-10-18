@@ -1,5 +1,6 @@
 /** New-trade flow: pick your items, then name the skater to send the offer to. */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 import type { LockerItem } from "../services/locker";
 import { proposeTrade } from "../services/closet.trading";
 import { fetchLockerItems } from "../services/locker";
@@ -12,6 +13,8 @@ interface CreateTradeModalProps {
 }
 
 export function CreateTradeModal({ onClose, currentUid }: CreateTradeModalProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef, true, onClose);
   const [step, setStep] = useState<"select-items" | "find-partner" | "confirm">("select-items");
   const [myItems, setMyItems] = useState<LockerItem[]>([]);
   const [selectedMyItems, setSelectedMyItems] = useState<string[]>([]);
@@ -43,10 +46,21 @@ export function CreateTradeModal({ onClose, currentUid }: CreateTradeModalProps)
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="bg-surface rounded-2xl border border-border max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="New trade"
+        className="bg-surface rounded-2xl border border-border max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6"
+      >
         <div className="flex items-center justify-between mb-6">
           <h2 className="font-display text-xl text-brand-orange">NEW TRADE</h2>
-          <button onClick={onClose} className="text-subtle hover:text-foreground text-2xl">
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={onClose}
+            className="inline-flex min-h-11 min-w-11 items-center justify-center text-subtle hover:text-foreground text-2xl"
+          >
             ×
           </button>
         </div>

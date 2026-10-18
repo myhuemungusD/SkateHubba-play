@@ -358,7 +358,7 @@ describe("TradingScreen", () => {
   it("closes the new-trade modal", async () => {
     render(<TradingScreen />);
     fireEvent.click(await screen.findByRole("button", { name: "NEW TRADE" }));
-    fireEvent.click(screen.getByRole("button", { name: "×" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.queryByText(/select items you want/i)).not.toBeInTheDocument();
   });
 });

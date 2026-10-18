@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { ActionDock } from "../../components/ActionDock";
 import { Btn } from "../../components/ui/Btn";
+import { ScreenHeader } from "../../components/ScreenHeader";
 import { Die } from "../../components/dice/Die";
 import { useAuthContext } from "../../context/AuthContext";
 import { useDiceGame } from "../../hooks/useDice";
@@ -51,12 +52,18 @@ export function DiceTable() {
   }
 
   if (loading) {
-    return <p className="px-5 pt-8 font-body text-sm text-muted">Loading the table…</p>;
+    return (
+      <div className="mx-auto min-h-dvh max-w-[430px] bg-background px-5 pt-[max(env(safe-area-inset-top),2rem)]">
+        <ScreenHeader title="Roll Dice" fallback="/dice" />
+        <p className="mt-4 font-body text-sm text-muted">Loading the table…</p>
+      </div>
+    );
   }
   if (missing || !game) {
     return (
-      <div className="px-5 pt-8">
-        <p className="font-body text-sm text-muted">That match is gone.</p>
+      <div className="mx-auto min-h-dvh max-w-[430px] bg-background px-5 pt-[max(env(safe-area-inset-top),2rem)]">
+        <ScreenHeader title="Roll Dice" fallback="/dice" />
+        <p className="mt-4 font-body text-sm text-muted">That match is gone.</p>
         <button
           type="button"
           onClick={() => navigate("/dice")}
@@ -79,14 +86,7 @@ export function DiceTable() {
 
   return (
     <div className="mx-auto min-h-dvh max-w-[430px] bg-background px-5 pb-[calc(14rem+env(safe-area-inset-bottom))] pt-[max(env(safe-area-inset-top),2rem)]">
-      <button
-        type="button"
-        onClick={() => navigate("/dice")}
-        className="inline-flex min-h-11 items-center font-body text-sm text-bright"
-      >
-        Back
-      </button>
-      <h1 className="mt-4 font-display text-3xl tracking-wider text-white">Roll Dice</h1>
+      <ScreenHeader title="Roll Dice" fallback="/dice" />
       <p className="mt-2 font-body text-sm text-muted">
         vs @{name || "skater"} · round {game.round} · {scoreLeft}–{scoreRight}
       </p>
@@ -137,7 +137,7 @@ export function DiceTable() {
             onClick={() =>
               void run(async () => {
                 const next = await createDiceGame(opponentUid(game.player1Uid, game.player2Uid, uid));
-                navigate(`/dice/${next.gameId}`);
+                navigate(`/dice/${next.gameId}`, { replace: true });
               }, false)
             }
           >

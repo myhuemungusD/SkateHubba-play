@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from "react";
+import { useSwipeDownToClose } from "../useSwipeDownToClose";
 import { X, ChevronLeft } from "lucide-react";
 import type { Spot, ObstacleType, CreateSpotRequest } from "../../types/spot";
 import { createSpot } from "../../services/spots";
@@ -25,6 +26,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
   const { user } = useAuthContext();
   const sheetRef = useRef<HTMLDivElement>(null);
   useFocusTrap(sheetRef);
+  useSwipeDownToClose(sheetRef, onClose);
   const [step, setStep] = useState<Step>(1);
 
   // Step 1: Location.
