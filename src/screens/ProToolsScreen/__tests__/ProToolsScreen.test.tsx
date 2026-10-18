@@ -125,10 +125,14 @@ describe("ProToolsScreen live pro calls", () => {
     expect(screen.getByRole("region", { name: "Pro review queue" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Gold clip authoring" })).toBeInTheDocument();
   });
-  it("keeps placeholders in admin review mode", () => {
+  it("shows built tools as preview cards tagged live in admin review mode", () => {
     vi.stubEnv("VITE_FEATURE_PRO_CALLS", "true");
+    vi.stubEnv("VITE_FEATURE_PRO_COMMUNITY", "true");
     render(<ProToolsScreen uid="a" reviewMode onBack={() => {}} />);
-    expect(screen.getByRole("region", { name: "Pro review queue (coming soon)" })).toBeInTheDocument();
+    for (const name of ["Pro review queue", "Gold clip authoring", "Pro challenges", "Pro props", "Featured clips"]) {
+      expect(screen.getByRole("region", { name: `${name} (live for pros)` })).toBeInTheDocument();
+    }
+    expect(screen.queryByText("COMING SOON")).toBeNull();
   });
 });
 

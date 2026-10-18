@@ -28,6 +28,16 @@ function liveTool(id: ProToolId, uid: string, username: string): ReactNode | nul
   }
   return null;
 }
+
+/**
+ * Tag for a built tool shown as a preview card (admin review mode, or a pro
+ * whose username hasn't loaded). Without it a working tool read COMING SOON.
+ */
+function builtStatus(id: ProToolId): string | undefined {
+  if ((id === "challenges" || id === "props" || id === "featured") && isProCommunityEnabled()) return "LIVE FOR PROS";
+  if ((id === "review" || id === "gold") && isProCallsEnabled()) return "LIVE FOR PROS";
+  return undefined;
+}
 import { NotFound } from "../NotFound";
 import { Spinner } from "../../components/ui/Spinner";
 import { resolveProToolsAccess } from "./access";
@@ -75,7 +85,13 @@ export function ProToolsScreen({ uid = null, reviewMode, onBack }: ScreenProps) 
           return live ? (
             <div key={t.title}>{live}</div>
           ) : (
-            <ComingSoonCard key={t.title} icon={t.icon} title={t.title} description={t.description} status={t.status} />
+            <ComingSoonCard
+              key={t.title}
+              icon={t.icon}
+              title={t.title}
+              description={t.description}
+              status={t.status ?? builtStatus(t.id)}
+            />
           );
         })}
       </div>
