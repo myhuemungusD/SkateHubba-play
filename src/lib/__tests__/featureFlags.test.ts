@@ -9,6 +9,7 @@ import {
   isProCameraEnabled,
   isProfileBannerEnabled,
   isProfileCustomEnabled,
+  isProCallsEnabled,
   isAdminOpsEnabled,
   isAdminConsoleEnabled,
   isProShowcaseEnabled,
@@ -420,5 +421,23 @@ describe("isAdminOpsEnabled (VITE_FEATURE_ADMIN_OPS)", () => {
   it("turns on for a feature tester", () => {
     localStorage.setItem(FEATURE_TESTER_STORAGE_KEY, "u1");
     expect(isAdminOpsEnabled()).toBe(true);
+  });
+});
+
+describe("isProCallsEnabled (VITE_FEATURE_PRO_CALLS)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    localStorage.removeItem(FEATURE_TESTER_STORAGE_KEY);
+  });
+  it("is off by default and on only for literal true", () => {
+    expect(isProCallsEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_PRO_CALLS", "1");
+    expect(isProCallsEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_PRO_CALLS", "true");
+    expect(isProCallsEnabled()).toBe(true);
+  });
+  it("turns on for a feature tester", () => {
+    localStorage.setItem(FEATURE_TESTER_STORAGE_KEY, "u1");
+    expect(isProCallsEnabled()).toBe(true);
   });
 });

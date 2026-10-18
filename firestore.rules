@@ -3570,7 +3570,10 @@ service cloud.firestore {
     // proReviews: verified-pro create; admin read
 
     match /wttItems/{clipId} {
-      allow read: if isSignedIn() && resource.data.status == 'open';
+      // Verified pros also read the split-vote queue (Pro review queue).
+      allow read: if isSignedIn()
+        && (resource.data.status == 'open'
+            || (resource.data.status == 'pro_queue' && isVerifiedPro()));
       allow write: if false;
     }
 
@@ -3604,6 +3607,9 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && isVerifiedPro()
         && request.resource.data.uid == request.auth.uid
+        // One call per pro per clip, on a real WTT item.
+        && reviewId == request.resource.data.clipId + '_' + request.auth.uid
+        && fsExists('wttItems', request.resource.data.clipId)
         && request.resource.data.keys().hasOnly(['clipId','uid','answerTrickId','note','createdAt'])
         && request.resource.data.clipId is string
         && request.resource.data.answerTrickId is string
@@ -3612,6 +3618,23 @@ service cloud.firestore {
         && (!('note' in request.resource.data)
           || (request.resource.data.note is string && request.resource.data.note.size() <= 280))
         && request.resource.data.createdAt == request.time;
+      allow read, update, delete: if false;
+    }
+
+    // proGold: a verified pro marks a WTT clip's known-correct trick (Gold
+    // clip authoring). First call per clip wins; the proGoldOnCreate trigger
+    // copies it into wttGold. Pro-scoped, never readable by clients.
+    match /proGold/{clipId} {
+      allow create: if isSignedIn()
+        && isVerifiedPro()
+        && request.resource.data.keys().hasOnly(['clipId','uid','answerTrickId','createdAt'])
+        && request.resource.data.clipId == clipId
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.answerTrickId is string
+        && request.resource.data.answerTrickId.size() > 0
+        && request.resource.data.answerTrickId.size() <= 48
+        && request.resource.data.createdAt == request.time
+        && fsExists('wttItems', clipId);
       allow read, update, delete: if false;
     }
   }

@@ -166,7 +166,10 @@ describe("users/{uid}/private/wtt", () => {
 describe("proReviews", () => {
   it("allows a Verified Pro to submit a review", async () => {
     await seed("users/pro", { username: "pro", isVerifiedPro: true });
-    await assertSucceeds(setDoc(doc(verified("pro").firestore(), "proReviews/r1"), review("pro", { note: "clean" })));
+    await seed("wttItems/clip1", { clipId: "clip1", status: "pro_queue", options: [] });
+    await assertSucceeds(
+      setDoc(doc(verified("pro").firestore(), "proReviews/clip1_pro"), review("pro", { note: "clean" })),
+    );
   });
 
   it("rejects non-pros", async () => {
