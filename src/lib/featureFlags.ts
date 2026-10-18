@@ -243,3 +243,11 @@ export function isProfileCustomEnabled(): boolean {
 export function isClosetStudioEnabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_CLOSET_STUDIO);
 }
+
+/**
+ * 360 shoe viewer for signature shoes (item detail + profile showcase).
+ * Literal "true" only; off by default. Testers get it via the override.
+ */
+export function isShoe360Enabled(): boolean {
+  return flagOn(import.meta.env.VITE_FEATURE_SHOE_360);
+}

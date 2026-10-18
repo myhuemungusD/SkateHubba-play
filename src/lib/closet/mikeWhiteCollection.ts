@@ -100,6 +100,11 @@ function artFor(itemDefId: string): string {
   return `/assets/closet/mike-white/${itemDefId.replace(/_/g, "-")}.webp`;
 }
 
+/** Polished card (shared backdrop, crop, shadow); see scripts/closet/build_shoe_skins.py. */
+function cardFor(itemDefId: string): string {
+  return `/assets/closet/mike-white/card/${itemDefId.replace(/^mike_white_/, "").replace(/_/g, "-")}.webp`;
+}
+
 export const MIKE_WHITE_COLLECTION: readonly MikeWhiteItem[] = DESIGNS.map(([itemDefId, name, colorway]) => ({
   itemDefId,
   name: `${name} — ${colorway}`,
@@ -107,7 +112,7 @@ export const MIKE_WHITE_COLLECTION: readonly MikeWhiteItem[] = DESIGNS.map(([ite
   type: "shoes",
   slot: "shoes",
   rarity: "limited",
-  artUrl: artFor(itemDefId),
+  artUrl: cardFor(itemDefId),
   layerUrls: { front: artFor(itemDefId), back: null },
   model3dUrl: null,
   edition: { kind: "limited", supply: 1000, minted: 0, soldOut: false },

@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { Boxes, CircleDot, Footprints, HardHat, Layers, Shirt, Sticker, Wrench } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { LockerItem } from "../services/locker";
 import { designerCreditFor } from "../lib/closet/mikeWhiteCollection";
 import { DesignerCredit } from "./DesignerCredit";
 import { isClosetStudioEnabled } from "../lib/featureFlags";
+import { cardArtFor } from "../lib/closet/shoe360";
+import { ShoeDetailSheet } from "./ShoeDetailSheet";
 
 /**
  * "Hubba Locker" — the gear a player has earned (Economy Phase A).
@@ -118,6 +121,9 @@ function ClosetCard({ item }: { item: LockerItem }) {
   const detail = item.provenanceReason ? `. ${item.provenanceReason}` : "";
   const credit = designerCreditFor(item.itemDefId);
   const creditLabel = credit ? `. ${credit.credit}` : "";
+  const [open, setOpen] = useState(false);
+  // Credited designs use the polished card art, whatever URL the locker copy carries.
+  const imageUrl = credit ? cardArtFor(item.itemDefId ?? "") : item.imageUrl;
 
   return (
     <li
@@ -126,10 +132,19 @@ function ClosetCard({ item }: { item: LockerItem }) {
       title={item.provenanceReason ?? undefined}
       className={`overflow-hidden rounded-2xl border bg-surface ${rarity.card}`}
     >
-      <div className="flex aspect-square items-center justify-center bg-surface-alt">
-        {item.imageUrl ? (
+      <div className="relative flex aspect-square items-center justify-center bg-surface-alt">
+        {credit && (
+          <button
+            type="button"
+            aria-label={`View ${item.name}`}
+            data-testid={`closet-view-${item.id}`}
+            onClick={() => setOpen(true)}
+            className="absolute inset-0 z-10"
+          />
+        )}
+        {imageUrl ? (
           <img
-            src={item.imageUrl}
+            src={imageUrl}
             alt=""
             loading="lazy"
             aria-hidden="true"
@@ -161,6 +176,14 @@ function ClosetCard({ item }: { item: LockerItem }) {
           {item.rarity.toUpperCase()}
         </span>
       </div>
+      {open && credit && (
+        <ShoeDetailSheet
+          itemDefId={item.itemDefId ?? ""}
+          name={item.name}
+          credit={credit}
+          onClose={() => setOpen(false)}
+        />
+      )}
     </li>
   );
 }

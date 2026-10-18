@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ClosetShowcase } from "../ClosetShowcase";
 
@@ -119,5 +119,31 @@ describe("ClosetShowcase", () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+});
+
+describe("ClosetShowcase signature detail", () => {
+  it("shows the polished card and opens the detail sheet for a credited shoe", () => {
+    render(
+      <ClosetShowcase
+        items={[
+          item({ id: "m1", type: "shoes", name: "Teeth", imageUrl: "/old.webp", itemDefId: "mike_white_teeth_fire" }),
+        ]}
+        isOwnProfile
+      />,
+    );
+    expect(document.querySelector("[data-testid=closet-image-m1]")).toHaveAttribute(
+      "src",
+      "/assets/closet/mike-white/card/teeth-fire.webp",
+    );
+    fireEvent.click(document.querySelector("[data-testid=closet-view-m1]")!);
+    expect(document.querySelector("[data-testid=shoe-detail]")).toHaveTextContent("Designed by Mike White");
+    fireEvent.click(document.querySelector("[aria-label=Close]")!);
+    expect(document.querySelector("[data-testid=shoe-detail]")).toBeNull();
+  });
+
+  it("has no detail button for uncredited items", () => {
+    render(<ClosetShowcase items={[item()]} isOwnProfile />);
+    expect(document.querySelector("[data-testid=closet-view-d1]")).toBeNull();
   });
 });
