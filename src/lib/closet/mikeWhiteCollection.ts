@@ -94,6 +94,9 @@ const DESIGNS: ReadonlyArray<readonly [string, string, string]> = [
   ["mike_white_mw_patch_brown", "MW Patch", "Brown / Gold"],
   ["mike_white_royal_stripe", "Royal Stripe", "Navy / White"],
   ["mike_white_night_strap", "Night Strap", "Black / White / Purple"],
+  ["mike_white_heel_loop_white_red", "Heel Loop Low", "White / Red / Grey"],
+  ["mike_white_claw_runner", "Claw Runner", "Black / Orange"],
+  ["mike_white_claw_runner_royal", "Claw Runner", "White / Royal / Yellow"],
 ];
 
 function artFor(itemDefId: string): string {

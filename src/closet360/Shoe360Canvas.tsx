@@ -7,7 +7,7 @@ import { useEffect, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import { ContactShadows, OrbitControls, useTexture } from "@react-three/drei";
 import { BufferAttribute, BufferGeometry, SRGBColorSpace } from "three";
-import { buildShoeLoft, type ShoeSkin } from "../lib/closet/shoe360";
+import { buildMultiViewLoft, buildShoeLoft, type ShoeSkin } from "../lib/closet/shoe360";
 
 function Shoe({ skin }: { skin: ShoeSkin }) {
   const texture = useTexture(skin.textureUrl, (t) => {
@@ -15,7 +15,7 @@ function Shoe({ skin }: { skin: ShoeSkin }) {
     t.anisotropy = 4;
   });
   const geometry = useMemo(() => {
-    const loft = buildShoeLoft(skin.profile);
+    const loft = skin.views ? buildMultiViewLoft(skin.profile, skin.views) : buildShoeLoft(skin.profile);
     const g = new BufferGeometry();
     g.setAttribute("position", new BufferAttribute(loft.positions, 3));
     g.setAttribute("uv", new BufferAttribute(loft.uvs, 2));

@@ -70,7 +70,7 @@ describe("Shoe360", () => {
     expect(screen.getByTestId("shoe360-fallback")).toBeInTheDocument();
     unmount();
     webgl.ok = true;
-    render(<Shoe360 {...props} itemDefId="mike_white_dip_sets" />);
+    render(<Shoe360 {...props} itemDefId="mike_white_og_gum" />);
     expect(screen.getByTestId("shoe360-fallback")).toBeInTheDocument();
   });
 
