@@ -3,6 +3,11 @@ import mapboxgl from "mapbox-gl";
 
 interface UseUserGeolocationParams {
   map: React.MutableRefObject<mapboxgl.Map | null>;
+  /**
+   * Start watching GPS on mount (default). Map Phase 1 passes false so the
+   * permission prompt only appears when the skater taps recenter or Check in.
+   */
+  autoStart?: boolean;
 }
 
 interface UseUserGeolocationResult {
@@ -33,14 +38,15 @@ function getGpsErrorMessage(err: GeolocationPositionError): string {
  * recenter logic. Reads the latest userLocation through a ref so the
  * recenter callback never goes stale.
  */
-export function useUserGeolocation({ map }: UseUserGeolocationParams): UseUserGeolocationResult {
+export function useUserGeolocation({ map, autoStart = true }: UseUserGeolocationParams): UseUserGeolocationResult {
+  const [started, setStarted] = useState(autoStart);
   const userMarker = useRef<mapboxgl.Marker | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const hasLockedRef = useRef(false);
   const userLocationRef = useRef<{ lat: number; lng: number } | null>(null);
 
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [isTrackingUser, setIsTrackingUser] = useState(true);
+  const [isTrackingUser, setIsTrackingUser] = useState(autoStart);
   const [gpsError, setGpsError] = useState<string | null>(() =>
     "geolocation" in navigator ? null : "Geolocation not supported by your browser",
   );
@@ -53,7 +59,7 @@ export function useUserGeolocation({ map }: UseUserGeolocationParams): UseUserGe
 
   // GPS tracking
   useEffect(() => {
-    if (!("geolocation" in navigator)) return;
+    if (!started || !("geolocation" in navigator)) return;
 
     const id = navigator.geolocation.watchPosition(
       (pos) => {
@@ -80,7 +86,7 @@ export function useUserGeolocation({ map }: UseUserGeolocationParams): UseUserGe
       navigator.geolocation.clearWatch(id);
       watchIdRef.current = null;
     };
-  }, [map, setUserLocation]);
+  }, [map, setUserLocation, started]);
 
   // Update user marker
   useEffect(() => {
@@ -126,6 +132,12 @@ export function useUserGeolocation({ map }: UseUserGeolocationParams): UseUserGe
   }, []);
 
   const handleRecenter = (onWaiting: () => void) => {
+    if (!started) {
+      setStarted(true);
+      setIsTrackingUser(true);
+      onWaiting();
+      return;
+    }
     const loc = userLocationRef.current;
     if (!loc) {
       onWaiting();

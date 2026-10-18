@@ -47,6 +47,11 @@ vi.mock("../../../firebase", () => ({
 // mount. These specs assert SpotMap's own open/closed wiring, not the sheet's
 // internals — those belong to AddSpotSheet.test.tsx. The stub keeps the same
 // dialog role + accessible name so the queries stay honest.
+const authState = vi.hoisted(() => ({ user: { uid: "u1" } as { uid: string } | null }));
+vi.mock("../../../context/AuthContext", () => ({ useAuthContext: () => authState }));
+const privateSpots = vi.hoisted(() => ({ list: vi.fn(async () => [] as unknown[]) }));
+vi.mock("../../../services/mapCheckins", () => ({ listMyPrivateSpots: privateSpots.list }));
+
 vi.mock("../AddSpotSheet", () => ({
   AddSpotSheet: ({ onClose }: { onClose: () => void }) => (
     <div role="dialog" aria-label="Add a spot">
@@ -550,5 +555,55 @@ describe("SpotMap load-timeout retry", () => {
     } finally {
       globalThis.queueMicrotask = realQueueMicrotask;
     }
+  });
+});
+
+describe("SpotMap map check-ins (Phase 1)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    authState.user = { uid: "u1" };
+  });
+
+  it("lets signed-out visitors browse without the add-spot controls", async () => {
+    authState.user = null;
+    mockGetSpotsInBounds.mockResolvedValue([]);
+    render(
+      <MemoryRouter>
+        <SpotMap />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(mockGetSpotsInBounds).toHaveBeenCalled());
+    expect(screen.queryByLabelText("Add a spot")).toBeNull();
+    expect(privateSpots.list).not.toHaveBeenCalled();
+  });
+
+  it("credits OpenStreetMap and shows the skater's private spots when the flag is on", async () => {
+    vi.stubEnv("VITE_FEATURE_MAP_CHECKINS", "true");
+    const secret = { ...FIXTURE, id: "secret-1", name: "Secret", scope: "private" as const };
+    privateSpots.list.mockResolvedValueOnce([secret]);
+    render(
+      <MemoryRouter>
+        <SpotMap />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(document.querySelector('[data-testid="spot-marker-secret-1"]')).not.toBeNull());
+    expect(privateSpots.list).toHaveBeenCalledWith("u1");
+    expect((lastMapInitOpts as { customAttribution?: string } | null)?.customAttribution).toBe(
+      "© OpenStreetMap contributors",
+    );
+  });
+
+  it("drops private spots that arrive after unmount", async () => {
+    vi.stubEnv("VITE_FEATURE_MAP_CHECKINS", "true");
+    let resolve: (v: unknown[]) => void = () => {};
+    privateSpots.list.mockReturnValueOnce(new Promise((r) => (resolve = r)));
+    const { unmount } = render(
+      <MemoryRouter>
+        <SpotMap />
+      </MemoryRouter>,
+    );
+    unmount();
+    resolve([FIXTURE]);
+    await Promise.resolve();
   });
 });

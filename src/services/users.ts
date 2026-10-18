@@ -552,16 +552,31 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   // Achievements, locker, and xpMarkers are owner-deletable per
   // `firestore.rules`. A subcollection is not removed with its parent, so any
   // new one under users/{uid} must be swept here too. Fetched in parallel.
-  const [achievementsSnap, lockerSnap, markerSnap, designSnap] = await Promise.all([
-    getDocs(collection(db, "users", uid, "achievements")),
-    getDocs(collection(db, "users", uid, "locker")),
-    getDocs(collection(db, "users", uid, "xpMarkers")),
-    getDocs(collection(db, "users", uid, "closetDesigns")),
-  ]);
+  const [achievementsSnap, lockerSnap, markerSnap, designSnap, passportSnap, checkinSnap, privateSpotSnap] =
+    await Promise.all([
+      getDocs(collection(db, "users", uid, "achievements")),
+      getDocs(collection(db, "users", uid, "locker")),
+      getDocs(collection(db, "users", uid, "xpMarkers")),
+      getDocs(collection(db, "users", uid, "closetDesigns")),
+      // Map Phase 1: passport stamps, check-in log, and spots only this user can see.
+      getDocs(collection(db, "users", uid, "passport")),
+      getDocs(collection(db, "users", uid, "checkins")),
+      getDocs(query(collection(db, "privateSpots"), where("createdBy", "==", uid), where("isActive", "==", true))),
+    ]);
   const batch = writeBatch(db);
-  for (const ownedDoc of [...achievementsSnap.docs, ...lockerSnap.docs, ...markerSnap.docs, ...designSnap.docs]) {
+  for (const ownedDoc of [
+    ...achievementsSnap.docs,
+    ...lockerSnap.docs,
+    ...markerSnap.docs,
+    ...designSnap.docs,
+    ...passportSnap.docs,
+    ...checkinSnap.docs,
+    ...privateSpotSnap.docs,
+  ]) {
     batch.delete(ownedDoc.ref);
   }
+  batch.delete(doc(db, "mapState", uid));
+  batch.delete(doc(db, "passportSettings", uid));
   batch.delete(doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID));
   // Customizable profile (VITE_FEATURE_PROFILE_CUSTOM); a no-op when never saved.
   batch.delete(doc(db, "users", uid, "profileCustom", "main"));

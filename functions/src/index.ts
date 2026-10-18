@@ -13,6 +13,7 @@ import { applyGameStats } from "./applyGameStats.js";
 import { handleDiceCall } from "./dice/callable.js";
 import { sweepExpiredDiceGames } from "./dice/handlers.js";
 import { adminDiceDb } from "./dice/store.js";
+import { handleCheckinCall } from "./map/callable.js";
 import { handleBlessingCall } from "./pro/callable.js";
 import { fanOutAnnouncement } from "./admin/announce.js";
 import { handleAnalyticsCall } from "./admin/analytics.js";
@@ -167,6 +168,25 @@ export const diceAction = onCall({ region: "us-central1", enforceAppCheck: false
   handleDiceCall(request, {
     enabled: diceEnabled.value(),
     testers: diceTesterUids.value(),
+    nowMs: Date.now(),
+    db: adminDiceDb(getFirestore(DATABASE_ID)),
+  }),
+);
+
+/**
+ * Map check-ins kill switch (docs/MAP_ROADMAP.md Phase 1). Default off. While
+ * off, only uids in MAP_TESTER_UIDS can check in.
+ */
+const mapCheckinsEnabled = defineBoolean("MAP_CHECKINS_ENABLED", { default: false });
+const mapTesterUids = defineString("MAP_TESTER_UIDS", { default: "" });
+
+/** The only write path for check-ins, passport stamps and legendary badges. */
+export const mapCheckin = onCall({ region: "us-central1", enforceAppCheck: false }, (request) =>
+  handleCheckinCall(request, {
+    enabled: mapCheckinsEnabled.value(),
+    testers: mapTesterUids.value(),
+    xpEnabled: xpEnabled.value(),
+    xpTesters: xpTesterUids.value(),
     nowMs: Date.now(),
     db: adminDiceDb(getFirestore(DATABASE_ID)),
   }),

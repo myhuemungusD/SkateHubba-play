@@ -11,6 +11,9 @@ import { hashUid } from "../../utils/pii";
 import { isValidLatLng, isValidPhotoUrl, parseCoord } from "./addSpotHelpers";
 import { AddSpotDetailsStep } from "./AddSpotDetailsStep";
 import { AddSpotPhotosStep } from "./AddSpotPhotosStep";
+import { SpotVisibilityPicker } from "./SpotVisibilityPicker";
+import { isMapCheckinsEnabled } from "../../lib/featureFlags";
+import { createPrivateSpot, resolveCrew, type SpotVisibility } from "../../services/mapCheckins";
 
 export { safePhotoPreviewSrc } from "./addSpotHelpers";
 
@@ -51,6 +54,10 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
   // Step 3: Photos
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [photoInput, setPhotoInput] = useState("");
+
+  // Map Phase 1: who can see the spot.
+  const [visibility, setVisibility] = useState<SpotVisibility>("public");
+  const [crewText, setCrewText] = useState("");
 
   // Submission state
   const [submitting, setSubmitting] = useState(false);
@@ -99,7 +106,17 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
     };
 
     try {
-      const spot: Spot = await createSpot(req, user.uid);
+      let spot: Spot;
+      if (visibility === "public") {
+        spot = await createSpot(req, user.uid);
+      } else {
+        const crew = visibility === "crew" ? await resolveCrew(crewText.split(",")) : { uids: [], unknown: [] };
+        if (crew.unknown.length > 0) {
+          setError(`No skater named ${crew.unknown.join(", ")}`);
+          return;
+        }
+        spot = await createPrivateSpot(req, user.uid, visibility, crew.uids);
+      }
       onSuccess(spot);
     } catch (err) {
       // Mirror ProfileSetup's catch: surface the Firestore error code in the
@@ -116,7 +133,20 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
     } finally {
       setSubmitting(false);
     }
-  }, [user, name, description, pinLat, pinLng, gnarRating, bustRisk, obstacles, photoUrls, onSuccess]);
+  }, [
+    user,
+    name,
+    description,
+    pinLat,
+    pinLng,
+    gnarRating,
+    bustRisk,
+    obstacles,
+    photoUrls,
+    onSuccess,
+    visibility,
+    crewText,
+  ]);
 
   const [photoError, setPhotoError] = useState<string | null>(null);
 
@@ -281,6 +311,14 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
           )}
 
           {/* Step 3: Photos */}
+          {step === 3 && isMapCheckinsEnabled() && (
+            <SpotVisibilityPicker
+              visibility={visibility}
+              onChange={setVisibility}
+              crewText={crewText}
+              onCrewText={setCrewText}
+            />
+          )}
           {step === 3 && (
             <AddSpotPhotosStep
               photoUrls={photoUrls}

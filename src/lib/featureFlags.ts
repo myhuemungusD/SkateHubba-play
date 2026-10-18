@@ -261,6 +261,18 @@ export function isShoe360Enabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_SHOE_360);
 }
 
+/**
+ * Map Phase 1 (docs/MAP_ROADMAP.md): server-verified check-ins, the offline
+ * retry queue, XP + pioneer bonus, the spot passport, legendary badges,
+ * crew-only / private spots, seeded OpenStreetMap spots, signed-out map
+ * browsing, and location asked only on Check in. Literal "true" only; off by
+ * default. Server switch: MAP_CHECKINS_ENABLED / MAP_TESTER_UIDS. Signed-out
+ * reads also need config/mapFlags.publicBrowse.
+ */
+export function isMapCheckinsEnabled(): boolean {
+  return flagOn(import.meta.env.VITE_FEATURE_MAP_CHECKINS);
+}
+
 /** Admin console: bans list, user search, feature switches viewer (admin claim only). Literal "true" only; off by default; tester override turns it on. */
 export function isAdminConsoleEnabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_ADMIN_CONSOLE);

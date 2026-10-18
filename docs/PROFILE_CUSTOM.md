@@ -29,6 +29,7 @@ Tests: `rules-tests/profile-custom.rules.test.ts`, `src/services/__tests__/profi
 
 Flag: `VITE_FEATURE_PRO_SHOWCASE` (literal `"true"`, default off; tester override turns it on).
 Replaces the COMING SOON cards on a verified pro's showcase. Read-only, no rules change:
+
 - **Clip Reel:** the pro's own `pinnedClipIds` above (max 3), resolved via `fetchPinnedClips`.
 - **Pro Spots:** spots the pro created (marked Recommended) plus every spot tagged on their clips,
   each linking to `/spots/:id` with the pro's clips from it. `src/services/proShowcase.ts`.

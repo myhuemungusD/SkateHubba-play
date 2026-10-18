@@ -1,0 +1,44 @@
+{
+  "_note": "Admin-reviewed legendary spots (docs/MAP_ROADMAP.md Phase 1). Coordinates from OpenStreetMap Nominatim lookups, Oct 2026; check each on the map before turning check-ins on publicly. Schools are map-only (checkinsAllowed false) per the roadmap's safety rules until Jason decides otherwise.",
+  "spots": [
+    {
+      "slug": "cherry_park",
+      "name": "Cherry Park (Bixby Park)",
+      "lat": 33.7659926,
+      "lng": -118.1671287,
+      "checkinsAllowed": true
+    },
+    {
+      "slug": "love_park",
+      "name": "Love Park (JFK Plaza)",
+      "lat": 39.9541495,
+      "lng": -75.1657445,
+      "checkinsAllowed": true
+    },
+    {
+      "slug": "emb",
+      "name": "EMB (Justin Herman Plaza)",
+      "lat": 37.7948968,
+      "lng": -122.3949467,
+      "checkinsAllowed": true
+    },
+    { "slug": "pier_7", "name": "Pier 7", "lat": 37.7994416, "lng": -122.3955347, "checkinsAllowed": true },
+    { "slug": "macba", "name": "MACBA", "lat": 41.3831012, "lng": 2.1667659, "checkinsAllowed": true },
+    {
+      "slug": "southbank",
+      "name": "Southbank Undercroft",
+      "lat": 51.5057791,
+      "lng": -0.116787,
+      "checkinsAllowed": true
+    },
+    { "slug": "el_toro", "name": "El Toro 20", "lat": 33.6369734, "lng": -117.6877516, "checkinsAllowed": false },
+    { "slug": "wallenberg", "name": "Wallenberg 4", "lat": 37.7804851, "lng": -122.4460825, "checkinsAllowed": false },
+    {
+      "slug": "hollywood_high",
+      "name": "Hollywood High 16",
+      "lat": 34.099453,
+      "lng": -118.340077,
+      "checkinsAllowed": false
+    }
+  ]
+}

@@ -39,6 +39,14 @@ export interface Spot {
   isActive: boolean;
   createdAt: string; // ISO string
   updatedAt: string;
+  /** Map Phase 1. "private" = lives in privateSpots/ (crew-only or only me). Absent = public. */
+  scope?: "public" | "private";
+  visibility?: "public" | "crew" | "private";
+  /** Where a public spot came from. Seeded (osm/curated) spots show only while map check-ins are on. */
+  source?: "user" | "osm" | "curated";
+  kind?: "spot" | "park" | "shop";
+  isLegendary?: boolean;
+  checkinCount?: number;
 }
 
 export interface SpotComment {

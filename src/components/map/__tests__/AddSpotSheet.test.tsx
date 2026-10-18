@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -7,6 +7,13 @@ const mockUseAuthContext = vi.fn();
 
 vi.mock("../../../services/spots", () => ({
   createSpot: (...args: unknown[]) => mockCreateSpot(...args),
+}));
+
+const mockCreatePrivateSpot = vi.fn();
+const mockResolveCrew = vi.fn();
+vi.mock("../../../services/mapCheckins", () => ({
+  createPrivateSpot: (...args: unknown[]) => mockCreatePrivateSpot(...args),
+  resolveCrew: (...args: unknown[]) => mockResolveCrew(...args),
 }));
 
 vi.mock("../../../context/AuthContext", () => ({
@@ -222,5 +229,59 @@ describe("AddSpotSheet", () => {
       expect(screen.getByText(/Invalid coordinates/i)).toBeInTheDocument();
     });
     expect(mockCreateSpot).not.toHaveBeenCalled();
+  });
+});
+
+describe("AddSpotSheet visibility (map check-ins on)", () => {
+  async function toStep3() {
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await userEvent.type(screen.getByPlaceholderText(/Hollywood High/i), "Secret");
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+  }
+  beforeEach(() => vi.stubEnv("VITE_FEATURE_MAP_CHECKINS", "true"));
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("creates a crew-only spot with resolved crew", async () => {
+    mockResolveCrew.mockResolvedValueOnce({ uids: ["u2"], unknown: [] });
+    mockCreatePrivateSpot.mockResolvedValueOnce({ ...FIXTURE_SPOT, scope: "private" });
+    const onSuccess = vi.fn();
+    render(<AddSpotSheet userLocation={{ lat: 34.0522, lng: -118.2437 }} onClose={vi.fn()} onSuccess={onSuccess} />);
+    await toStep3();
+    await userEvent.click(screen.getByRole("button", { name: "Crew only" }));
+    await userEvent.type(screen.getByLabelText("Crew usernames"), "mike");
+    await userEvent.click(screen.getByRole("button", { name: /Submit Spot/i }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    expect(mockResolveCrew).toHaveBeenCalledWith(["mike"]);
+    expect(mockCreatePrivateSpot).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Secret" }),
+      "creator-uid",
+      "crew",
+      ["u2"],
+    );
+    expect(mockCreateSpot).not.toHaveBeenCalled();
+  });
+
+  it("stops on an unknown crew username", async () => {
+    mockResolveCrew.mockResolvedValueOnce({ uids: [], unknown: ["ghost"] });
+    render(<AddSpotSheet userLocation={null} onClose={vi.fn()} onSuccess={vi.fn()} />);
+    await toStep3();
+    await userEvent.click(screen.getByRole("button", { name: "Crew only" }));
+    await userEvent.click(screen.getByRole("button", { name: /Submit Spot/i }));
+    await waitFor(() => expect(screen.getByText("No skater named ghost")).toBeInTheDocument());
+    expect(mockCreatePrivateSpot).not.toHaveBeenCalled();
+  });
+
+  it("creates an only-me spot without looking up crew", async () => {
+    mockCreatePrivateSpot.mockResolvedValueOnce(FIXTURE_SPOT);
+    render(<AddSpotSheet userLocation={null} onClose={vi.fn()} onSuccess={vi.fn()} />);
+    await toStep3();
+    expect(screen.getByText("Everyone can see it on the map.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Only me" }));
+    expect(screen.queryByLabelText("Crew usernames")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /Submit Spot/i }));
+    await waitFor(() =>
+      expect(mockCreatePrivateSpot).toHaveBeenCalledWith(expect.anything(), "creator-uid", "private", []),
+    );
+    expect(mockResolveCrew).not.toHaveBeenCalled();
   });
 });
