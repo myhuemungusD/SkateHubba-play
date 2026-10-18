@@ -14,6 +14,7 @@ import { BlockControls } from "./components/BlockControls";
 import { ChallengeButton } from "./components/ChallengeButton";
 import { RollDiceButton } from "./components/RollDiceButton";
 import {
+  isClipEditorEnabled,
   isDiceEnabled,
   isExtrasEnabled,
   isProBlessingEnabled,
@@ -38,7 +39,8 @@ import { WinStreakBanner } from "./components/WinStreakBanner";
 import { ProShowcaseGate } from "./components/ProShowcaseGate";
 import { PropsRow } from "../../components/pro/ProPicks";
 import { isProCommunityEnabled } from "../../lib/featureFlags";
-import { Palette } from "lucide-react";
+import { OwnProfileActions } from "./components/OwnProfileActions";
+import { useShareProfile } from "./useShareProfile";
 import { useProfileCustom } from "./components/custom/useProfileCustom";
 import { ProfileAbout } from "./components/custom/ProfileAbout";
 import { PinnedClips } from "./components/custom/PinnedClips";
@@ -117,8 +119,8 @@ interface Props {
  * Modern profile UX:
  *   - 96px avatar with optional custom image + pencil-edit overlay (own profile).
  *   - Pull-to-refresh on own profile.
- *   - "Share my profile" button on own profile (`navigator.share` with
- *     clipboard fallback). Shares a deep-link to `/player/{uid}`.
+ *   - "Share my profile" button on own profile (native share sheet via
+ *     nativeBridge, clipboard fallback). Shares a deep-link to `/player/{uid}`.
  *   - AddedSpotsSection — spots this player created (`spots.createdBy`),
  *     each linking to `/spots/:id`. Empty state when they have added none.
  *     The CTA opens the map with the Add Spot sheet already open.
@@ -227,36 +229,7 @@ export function PlayerProfileScreen({
     onAddSpot();
   }, [onAddSpot, viewerUid]);
 
-  const [shareCopiedAt, setShareCopiedAt] = useState<number | null>(null);
-  const handleShareProfile = useCallback(async () => {
-    // `/player/:uid` is the public profile route. `/profile` is the
-    // profile-*setup* route and matches exactly, so `/profile/{uid}` fell
-    // through to `*` and redirected every shared link to /404.
-    const url = `${window.location.origin}/player/${viewerUid}`;
-    trackEvent("profile_share_my_profile_tapped", { uid: hashUid(viewerUid) });
-    const payload: ShareData = {
-      title: `@${currentUserProfile?.username} on SkateHubba`,
-      text: `Catch my SkateHubba profile`,
-      url,
-    };
-    const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> };
-    if (typeof nav.share === "function") {
-      try {
-        await nav.share(payload);
-        return;
-      } catch {
-        // User cancelled or platform rejected — fall through to clipboard.
-      }
-    }
-    try {
-      await navigator.clipboard?.writeText?.(url);
-      setShareCopiedAt(Date.now());
-      window.setTimeout(() => setShareCopiedAt(null), 1500);
-    } catch {
-      // No clipboard either — silent fail. Telemetry already fired so we
-      // can detect this on the dashboard.
-    }
-  }, [viewerUid, currentUserProfile?.username]);
+  const { share: handleShareProfile, copied: shareCopied } = useShareProfile(viewerUid, currentUserProfile?.username);
 
   // A visitor with no account has no lobby to go back to — send them home.
   const backLabel = hasViewer ? "Lobby" : "Home";
@@ -332,57 +305,13 @@ export function PlayerProfileScreen({
         />
 
         {isOwnProfile && (
-          // Two compact secondary actions side by side. Neither is the primary
-          // job of this screen, so neither takes the full width or the orange
-          // treatment that the Challenge CTA owns. The bottom margin closes up
-          // when the My Stats button follows, which owns the gap instead.
-          <div className={`flex items-center gap-2 ${onViewMyStats ? "mb-2" : "mb-6"}`}>
-            {onEditProfile && (
-              <button
-                type="button"
-                onClick={onEditProfile}
-                data-testid="edit-profile-button"
-                className="flex-1 min-h-[44px] px-3 rounded-xl bg-surface border border-white/[0.06] shadow-card font-display text-xs tracking-wider text-white/80 hover:text-white hover:bg-surface-alt transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-              >
-                EDIT PROFILE
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={handleShareProfile}
-              data-testid="share-my-profile-button"
-              className="flex-1 min-h-[44px] px-3 rounded-xl bg-surface border border-white/[0.06] shadow-card font-display text-xs tracking-wider text-white/80 hover:text-white hover:bg-surface-alt transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-              aria-label="Share my profile"
-            >
-              {shareCopiedAt ? "LINK COPIED" : "SHARE"}
-            </button>
-            {customOn && (
-              <button
-                type="button"
-                onClick={() => setCustomizing(true)}
-                data-testid="customize-profile-button"
-                aria-label="Customize profile"
-                className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-xl bg-surface border border-white/[0.06] shadow-card text-white/80 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-              >
-                <Palette size={16} />
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Owner-only deep analytics. Kept off the Edit/Share row — a third
-            item there squeezes all three labels onto two lines at 430px — and
-            given the same neutral treatment so it reads as a quiet drill-down
-            rather than a second CTA competing with Challenge. */}
-        {isOwnProfile && onViewMyStats && (
-          <button
-            type="button"
-            onClick={onViewMyStats}
-            data-testid="my-stats-button"
-            className="w-full min-h-[44px] px-3 mb-6 rounded-xl bg-surface border border-white/[0.06] shadow-card font-display text-xs tracking-wider text-white/80 hover:text-white hover:bg-surface-alt transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-          >
-            MY STATS
-          </button>
+          <OwnProfileActions
+            onEditProfile={onEditProfile}
+            onViewMyStats={onViewMyStats}
+            onShare={() => void handleShareProfile()}
+            shareCopied={shareCopied}
+            onCustomize={customOn ? () => setCustomizing(true) : undefined}
+          />
         )}
 
         {/* Challenging and blocking both need an account. A signed-out visitor
@@ -429,7 +358,16 @@ export function PlayerProfileScreen({
             {isXpEnabled() && <AchievementsRibbon achievements={c.achievements} clipsPosted={profile.clipsPosted} />}
             {pc.custom.sections.map((id: SectionId) => (
               <div key={id} data-testid={`custom-section-${id}`}>
-                {id === "clips" && <PinnedClips clips={pc.pinned} />}
+                {id === "clips" && (
+                  <PinnedClips
+                    clips={pc.pinned}
+                    editor={
+                      isOwnProfile && isClipEditorEnabled()
+                        ? { uid: profile.uid, username: profile.username }
+                        : undefined
+                    }
+                  />
+                )}
                 {id === "stats" && (
                   <ProfileStatsGrid
                     stats={c.stats}

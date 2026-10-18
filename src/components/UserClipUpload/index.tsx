@@ -10,6 +10,7 @@ import { VideoRecorder } from "../VideoRecorder";
 import { UserClipForm } from "./UserClipForm";
 import { useUserClipUpload } from "./useUserClipUpload";
 import { VIDEO_ACCEPT_ATTR } from "./validation";
+import { useInitialClip, type InitialClip } from "./useInitialClip";
 
 // Code-split: the editor (WebGL engine, panels) never touches the entry chunk.
 const ClipEditor = lazy(() => import("../ClipEditor/ClipEditor").then((m) => ({ default: m.ClipEditor })));
@@ -22,6 +23,8 @@ export interface UserClipUploadModalProps {
   onPosted: () => void;
   /** Opened from the feed's Edit icon: open the editor as soon as footage is staged. */
   editFirst?: boolean;
+  /** Own-profile Edit: stage this posted clip and open it in the editor. */
+  initialClip?: InitialClip;
 }
 
 /**
@@ -35,8 +38,16 @@ export interface UserClipUploadModalProps {
  * Three steps, one at a time so the sheet never gets taller than a phone:
  * pick a source → capture/choose → name it and post.
  */
-export function UserClipUploadModal({ uid, username, onClose, onPosted, editFirst = false }: UserClipUploadModalProps) {
+export function UserClipUploadModal({
+  uid,
+  username,
+  onClose,
+  onPosted,
+  editFirst = false,
+  initialClip,
+}: UserClipUploadModalProps) {
   const c = useUserClipUpload(uid, username, onPosted);
+  const loadError = useInitialClip(initialClip, c.handleRecorded, c.setTrickName);
   const panelRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState(false);
@@ -85,9 +96,10 @@ export function UserClipUploadModal({ uid, username, onClose, onPosted, editFirs
         </p>
 
         {c.error && <ErrorBanner message={c.error} onDismiss={c.clearError} />}
+        {loadError && <ErrorBanner message={loadError} onDismiss={onClose} />}
 
         {/* Step 1 — source fork. Skipped entirely once footage is staged. */}
-        {c.mode === "choose" && !c.blob && (
+        {c.mode === "choose" && !c.blob && !initialClip && (
           <div className="flex flex-col gap-3">
             <Btn onClick={() => c.chooseMode("record")} variant="primary">
               <CameraIcon size={16} className="-mt-0.5 inline" /> Film It

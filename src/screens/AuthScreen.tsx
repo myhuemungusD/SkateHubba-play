@@ -5,7 +5,7 @@ import { loadSignupPasswordPolicy } from "../services/passwordPolicy";
 import { EMAIL_RE, getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { MIRRORED_PASSWORD_POLICY, type SignupPasswordPolicy } from "../utils/passwordPolicy";
 import { isMinorDob } from "../utils/age";
-import { Btn } from "../components/ui/Btn";
+import { AuthSubmitButton } from "./AuthSubmitButton";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { DobConsentFields } from "../components/DobConsentFields";
@@ -24,11 +24,10 @@ import {
   reportVerificationSend,
   emailAuthErrorMessage,
   trackEmailAuthAttempt,
-  trackEmailAuthFailure,
+  logEmailAuthError,
+  reportEmailAuthFailure,
   validateCredentials,
 } from "./authScreenHelpers";
-import { captureException } from "../lib/sentry";
-import { isBenignAuthCode } from "../utils/authCodes";
 import { useNotifications } from "../context/NotificationContext";
 import { isAppleSignInEnabled } from "../lib/featureFlags";
 import { clearBootAuthDraft, peekBootAuthDraft } from "../boot/landingBoot";
@@ -186,11 +185,7 @@ export function AuthScreen({
       onDone();
     } catch (err: unknown) {
       const code = getErrorCode(err);
-      logger.warn("auth_screen_submit_error", {
-        mode: isSignup ? "signup" : "signin",
-        code,
-        message: parseFirebaseError(err),
-      });
+      logEmailAuthError(isSignup, code, err);
       // Roll back the optimistic age-gate context write we made before the
       // network call. Otherwise the DOB persists past the failed signup and
       // pollutes a subsequent sign-in with a different (existing) account.
@@ -201,15 +196,7 @@ export function AuthScreen({
       // adoption read as a rising failure rate; the matching `sign_in` is
       // emitted by AuthContext once the challenge clears. The card takes over.
       if (onMfaBegin(err, "email")) return;
-      trackEmailAuthFailure(isSignup, code);
-      // Only surface non-benign codes to Sentry as exceptions — benign codes
-      // (wrong password, email taken, popup closed) would drown real outage
-      // signals in user-error noise.
-      if (!isBenignAuthCode(code)) {
-        captureException(err, {
-          extra: { context: "AuthScreen.submit", mode: isSignup ? "signup" : "signin", code },
-        });
-      }
+      reportEmailAuthFailure(isSignup, code, err);
       setLastErrorCode(code);
       // Context-sensitive cases first — these pair with an inline recovery
       // action below that the generic mapper can't express.
@@ -388,18 +375,7 @@ export function AuthScreen({
             </div>
           )}
 
-          <Btn type="submit" disabled={anyLoading}>
-            {loading ? (
-              <span className="inline-flex items-center gap-2">
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                {isSignup ? "Creating Account…" : "Signing In…"}
-              </span>
-            ) : isSignup ? (
-              "Create Account"
-            ) : (
-              "Sign In"
-            )}
-          </Btn>
+          <AuthSubmitButton isSignup={isSignup} loading={loading} disabled={anyLoading} />
         </form>
 
         {!isSignup && !socialLoading && (

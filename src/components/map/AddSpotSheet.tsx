@@ -8,7 +8,8 @@ import { useFocusTrap } from "../../hooks/useFocusTrap";
 import { logger } from "../../services/logger";
 import { captureException } from "../../lib/sentry";
 import { hashUid } from "../../utils/pii";
-import { isValidLatLng, isValidPhotoUrl, parseCoord } from "./addSpotHelpers";
+import { isValidLatLng, isValidPhotoUrl } from "./addSpotHelpers";
+import { AddSpotLocationStep } from "./AddSpotLocationStep";
 import { AddSpotDetailsStep } from "./AddSpotDetailsStep";
 import { AddSpotPhotosStep } from "./AddSpotPhotosStep";
 import { SpotVisibilityPicker } from "./SpotVisibilityPicker";
@@ -221,73 +222,21 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
             </div>
           )}
 
-          {/* Step 1: Pin location */}
           {step === 1 && (
-            <div>
-              {/* Assumption: Static map preview showing pin location. Full drag-to-reposition
-                  requires Mapbox Static Images API or a second map instance. Using coordinate
-                  input for MVP. */}
-              <div className="bg-background rounded-xl p-4 mb-4 border border-[#333]">
-                <div className="text-center text-muted text-sm mb-3">
-                  Adjust coordinates or use your current location
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-muted mb-1">Latitude</label>
-                    <input
-                      type="number"
-                      step="0.0001"
-                      min={-90}
-                      max={90}
-                      value={pinLatText}
-                      onChange={(e) => {
-                        setPinLatText(e.target.value);
-                        setPinLat(parseCoord(e.target.value));
-                      }}
-                      className="w-full bg-surface-alt border border-[#444] rounded-lg px-3 py-2 text-white text-base"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-muted mb-1">Longitude</label>
-                    <input
-                      type="number"
-                      step="0.0001"
-                      min={-180}
-                      max={180}
-                      value={pinLngText}
-                      onChange={(e) => {
-                        setPinLngText(e.target.value);
-                        setPinLng(parseCoord(e.target.value));
-                      }}
-                      className="w-full bg-surface-alt border border-[#444] rounded-lg px-3 py-2 text-white text-base"
-                    />
-                  </div>
-                </div>
-                {userLocation && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPinLat(userLocation.lat);
-                      setPinLng(userLocation.lng);
-                      setPinLatText(String(userLocation.lat));
-                      setPinLngText(String(userLocation.lng));
-                    }}
-                    className="mt-3 text-xs text-[#F97316] hover:underline"
-                  >
-                    Use my current location
-                  </button>
-                )}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setStep(2)}
-                className="w-full py-2.5 rounded-xl bg-[#F97316] text-white font-semibold text-sm
-                           hover:bg-[#EA580C] transition-colors"
-              >
-                Next
-              </button>
-            </div>
+            <AddSpotLocationStep
+              userLocation={userLocation}
+              pinLatText={pinLatText}
+              pinLngText={pinLngText}
+              onLat={(text, value) => {
+                setPinLatText(text);
+                setPinLat(value);
+              }}
+              onLng={(text, value) => {
+                setPinLngText(text);
+                setPinLng(value);
+              }}
+              onNext={() => setStep(2)}
+            />
           )}
 
           {/* Step 2: Spot details */}
