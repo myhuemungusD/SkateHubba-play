@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeedScreen } from "../FeedScreen";
@@ -18,6 +18,10 @@ vi.mock("../../components/ClipsFeed", () => ({
       <button onClick={() => onChallengeUser("rival")}>__challenge__</button>
     </div>
   ),
+}));
+
+vi.mock("../../components/pro/ProPicks", () => ({
+  ProPicks: ({ player }: { player: { uid: string } }) => <div data-testid="pro-picks" data-uid={player.uid} />,
 }));
 
 const profile: UserProfile = { uid: "u1", username: "sk8r", stance: "Regular", createdAt: null };
@@ -40,5 +44,17 @@ describe("FeedScreen", () => {
 
     expect(onViewPlayer).toHaveBeenCalledWith("u2");
     expect(onChallengeUser).toHaveBeenCalledWith("rival");
+  });
+});
+
+describe("FeedScreen pro picks", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it("hides Pro picks by default and shows them when the flag is on", () => {
+    const { unmount } = render(<FeedScreen profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    expect(screen.queryByTestId("pro-picks")).toBeNull();
+    unmount();
+    vi.stubEnv("VITE_FEATURE_PRO_COMMUNITY", "true");
+    render(<FeedScreen profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    expect(screen.getByTestId("pro-picks")).toHaveAttribute("data-uid", "u1");
   });
 });
