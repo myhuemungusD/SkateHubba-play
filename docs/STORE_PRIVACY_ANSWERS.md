@@ -2,6 +2,12 @@
 
 > **Oct 2026 update.** SMS two-step verification means the app now collects a **phone number**, and comments, bios and spot text count as **Other User Content**. Both are declared in `ios/App/App/PrivacyInfo.xcprivacy`. The App Store Connect App Privacy answers must match that manifest, including Precise Location as declared there.
 
+> **Oct 17, 2026 — map check-ins (supersedes the location rows below).** Spot check-ins (`functions/src/map/checkin.ts`) send the device GPS fix to the server to confirm you are within ~100 m of the spot, and the server keeps the last check-in position (`lastLat`/`lastLng`) and accuracy on the user's record for anti-spoofing. So location **is collected**:
+>
+> - **App Store → Precise Location:** Collected, Linked to user, not used for tracking, purpose App Functionality (matches `PrivacyInfo.xcprivacy`).
+> - **Play Data safety → Location → Precise location:** Collected, not shared, **optional** (only when you tap Check in), purpose App functionality and Fraud prevention/security. Approximate location: same answer (Play counts precise as covering it, but tick both if asked).
+> - Location is only requested While In Use (iOS `NSLocationWhenInUseUsageDescription`; Android has no `ACCESS_BACKGROUND_LOCATION`).
+
 **Status: DRAFT for owner review — 2026-07-30.**
 Every row below is derived from what the code actually does on branch
 `claude/skatehubba-health-check-sjv064`, with file citations. Transcribe into
