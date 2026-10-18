@@ -328,3 +328,14 @@ describe("isSpotChatsEnabled tester override", () => {
     }
   });
 });
+
+describe("isShoe360Enabled", () => {
+  it("is on only for the literal true", async () => {
+    const { isShoe360Enabled } = await import("../featureFlags");
+    vi.stubEnv("VITE_FEATURE_SHOE_360", "true");
+    expect(isShoe360Enabled()).toBe(true);
+    vi.stubEnv("VITE_FEATURE_SHOE_360", "1");
+    expect(isShoe360Enabled()).toBe(false);
+    vi.unstubAllEnvs();
+  });
+});

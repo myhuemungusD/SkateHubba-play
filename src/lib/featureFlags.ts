@@ -233,3 +233,11 @@ export function isProfileBannerEnabled(): boolean {
 export function isProfileCustomEnabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_PROFILE_CUSTOM);
 }
+
+/**
+ * 360 shoe viewer for signature shoes (item detail + profile showcase).
+ * Literal "true" only; off by default. Testers get it via the override.
+ */
+export function isShoe360Enabled(): boolean {
+  return flagOn(import.meta.env.VITE_FEATURE_SHOE_360);
+}
