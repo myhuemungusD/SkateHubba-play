@@ -9,7 +9,8 @@ import { useGoBack } from "../hooks/useGoBack";
 import { GnarRating } from "../components/map/GnarRating";
 import { BustRisk } from "../components/map/BustRisk";
 import { SpotChat } from "../components/SpotChat/SpotChat";
-import { isSpotChatsEnabled } from "../lib/featureFlags";
+import { isMapCheckinsEnabled, isSpotChatsEnabled } from "../lib/featureFlags";
+import { CheckInButton } from "../components/map/CheckInButton";
 
 export function SpotDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -189,7 +190,7 @@ export function SpotDetailPage() {
                   key={o}
                   className="px-3 py-1 text-xs rounded-full bg-surface-alt border border-[#333] text-[#CCC]"
                 >
-                  {o.replace("_", " ")}
+                  {o.replaceAll("_", " ")}
                 </span>
               ))}
             </div>
@@ -205,6 +206,9 @@ export function SpotDetailPage() {
         >
           Challenge to S.K.A.T.E. here
         </button>
+
+        {/* Check in here too, not only from the map preview card. */}
+        {isMapCheckinsEnabled() && <CheckInButton spot={spot} />}
 
         {/* Spot Chat (feature flagged) */}
         {isSpotChatsEnabled() && (
