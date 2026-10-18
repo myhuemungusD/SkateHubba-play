@@ -14,8 +14,8 @@ export interface ProTool {
 
 /**
  * The verified-pro toolset. Single source for the admin Pro tab (review) and
- * the pro-only /pro screen. Every entry is a placeholder until built; none of
- * them writes anything, and Firestore has no pro write paths enabled yet.
+ * the pro-only /pro screen. Built tools render live for pros; review mode
+ * shows them as cards tagged LIVE FOR PROS.
  * Admin-only powers (bans, reports, clip moderation, verifying pros, awards)
  * deliberately do not belong in this list.
  */
