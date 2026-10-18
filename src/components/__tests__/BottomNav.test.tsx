@@ -216,3 +216,17 @@ describe("BottomNav — feature freeze (VITE_FEATURE_EXTRAS_ENABLED unset, the d
     expect(hrefs).toEqual(["/lobby", "/challenge", "/me"]);
   });
 });
+
+describe("BottomNav tester override", () => {
+  it("shows the Map tab for a tester even when the extras flag is off", () => {
+    vi.stubEnv("VITE_FEATURE_EXTRAS_ENABLED", "false");
+    localStorage.setItem("sh_feature_tester_uid", "tester-uid");
+    try {
+      renderNav("/lobby");
+      expect(screen.getByRole("link", { name: "Map" })).toHaveAttribute("href", "/map");
+    } finally {
+      localStorage.removeItem("sh_feature_tester_uid");
+      vi.unstubAllEnvs();
+    }
+  });
+});
