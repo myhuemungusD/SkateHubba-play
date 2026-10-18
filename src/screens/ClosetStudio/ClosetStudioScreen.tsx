@@ -179,7 +179,12 @@ export function ClosetStudioScreen({ uid, onBack }: Props) {
 
   const header = (
     <div className="mb-4 flex items-center gap-3">
-      <button type="button" onClick={onBack} aria-label="Back" className="text-white">
+      <button
+        type="button"
+        onClick={onBack}
+        aria-label="Back"
+        className="-ml-2 inline-flex min-h-11 min-w-11 items-center justify-center text-white"
+      >
         <ArrowLeft size={22} aria-hidden="true" />
       </button>
       <h1 className="font-display text-2xl tracking-wide text-white">Closet Studio</h1>

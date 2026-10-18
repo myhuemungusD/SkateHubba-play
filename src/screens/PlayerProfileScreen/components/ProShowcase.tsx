@@ -3,6 +3,8 @@ import type { ProProfileContent } from "../../../constants/proProfiles";
 import { ComingSoonCard } from "../../../components/pro/ComingSoonCard";
 import { ProProfileEditor } from "../../../components/pro/ProProfileEditor";
 import { useState } from "react";
+import { isProShowcaseEnabled } from "../../../lib/featureFlags";
+import { ProReelAndSpots } from "../../../components/pro/ProReelAndSpots";
 import type { ProProfileEdit } from "../../../services/proProfile";
 
 interface Props {
@@ -28,6 +30,10 @@ interface Props {
   onPlayPro?: () => void;
   /** Opens the pro-only Pro tools screen. Only passed on the pro's own profile. */
   onOpenProTools?: () => void;
+  /** The pro's uid; loads the Clip Reel and Pro Spots. */
+  uid?: string;
+  /** Viewer is the pro. */
+  isOwn?: boolean;
 }
 
 /** "goofy" -> "Goofy"; empty -> "Not set". */
@@ -59,6 +65,8 @@ export function ProShowcase({
   reviewMode,
   onPlayPro,
   onOpenProTools,
+  uid,
+  isOwn = false,
 }: Props) {
   const games = wins + losses;
   const [saved, setSaved] = useState<ProProfileEdit | null>(null);
@@ -217,18 +225,22 @@ export function ProShowcase({
         </p>
       </section>
 
-      <div className="space-y-3">
-        <ComingSoonCard
-          icon={<Film size={16} />}
-          title="Clip reel"
-          description="A pinned reel of the pro's best clips, picked by them, at the top of their profile."
-        />
-        <ComingSoonCard
-          icon={<MapPin size={16} />}
-          title="Pro spots"
-          description="Spots the pro skates or recommends, linked to the map with their clips from each one."
-        />
-      </div>
+      {isProShowcaseEnabled() && uid ? (
+        <ProReelAndSpots uid={uid} displayName={content.displayName} isOwn={isOwn} />
+      ) : (
+        <div className="space-y-3">
+          <ComingSoonCard
+            icon={<Film size={16} />}
+            title="Clip reel"
+            description="A pinned reel of the pro's best clips, picked by them, at the top of their profile."
+          />
+          <ComingSoonCard
+            icon={<MapPin size={16} />}
+            title="Pro spots"
+            description="Spots the pro skates or recommends, linked to the map with their clips from each one."
+          />
+        </div>
+      )}
     </div>
   );
 }

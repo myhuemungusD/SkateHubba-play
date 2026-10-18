@@ -109,6 +109,10 @@ interface ImportMetaEnv {
   readonly VITE_FEATURE_PRO_CAMERA?: string;
   readonly VITE_FEATURE_PROFILE_BANNER?: string;
   readonly VITE_FEATURE_PROFILE_CUSTOM?: string;
+  /** Admin console: bans list, user search, feature switches viewer (admin claim only). Literal "true" only; off by default. */
+  readonly VITE_FEATURE_ADMIN_CONSOLE?: string;
+  /** Pro Clip Reel + Pro Spots. Literal "true" only; off by default. */
+  readonly VITE_FEATURE_PRO_SHOWCASE?: string;
   /** Closet Studio clothes editor. Literal "true" only; off by default. */
   readonly VITE_FEATURE_CLOSET_STUDIO?: string;
   readonly VITE_MAPBOX_TOKEN?: string;

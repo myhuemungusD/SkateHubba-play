@@ -322,6 +322,7 @@ export function PlayerProfileScreen({
           losses={profile.losses ?? 0}
           viewerUid={viewerUid}
           uid={profile.uid}
+          isOwn={isOwnProfile}
           onPlayPro={!isOwnProfile && hasViewer && !c.isBlocked ? onChallenge : undefined}
           onOpenProTools={isOwnProfile && profile.isVerifiedPro ? onOpenProTools : undefined}
         />

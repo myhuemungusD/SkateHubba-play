@@ -20,6 +20,8 @@ interface Props {
   viewerUid: string;
   /** The pro's uid, handed to onPlayPro. */
   uid: string;
+  /** Viewer is the pro. */
+  isOwn?: boolean;
   /** Starts a S.K.A.T.E. challenge; omit to hide "Play a pro". */
   onPlayPro?: (uid: string, username: string) => void;
   /** Own profile only: opens the Pro tools screen. */
@@ -44,6 +46,7 @@ export function ProShowcaseGate({
   losses,
   viewerUid,
   uid,
+  isOwn = false,
   onPlayPro,
   onOpenProTools,
 }: Props) {
@@ -68,6 +71,8 @@ export function ProShowcaseGate({
       reviewMode={!flagOn}
       onPlayPro={onPlayPro ? () => onPlayPro(uid, username) : undefined}
       onOpenProTools={onOpenProTools}
+      uid={uid}
+      isOwn={isOwn}
     />
   );
 }

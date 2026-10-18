@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { useSwipeDownToClose } from "../useSwipeDownToClose";
 import type { ClipDoc } from "../../services/clips";
 import { useFocusTrap } from "../../hooks/useFocusTrap";
 import { ClipCommentComposer } from "./ClipCommentComposer";
@@ -31,6 +32,7 @@ export function ClipComments({ clip, viewerUid, viewerUsername, onClose, onRepor
   const c = useClipComments(clip.id, viewerUid, viewerUsername, blockedUids);
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(panelRef);
+  useSwipeDownToClose(panelRef, onClose);
 
   return (
     <div
