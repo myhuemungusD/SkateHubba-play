@@ -24,3 +24,11 @@ permutation, list/length caps, `https://` host allowlist (`LINK_HOSTS` in
 song ids from `MUSIC_TRACKS`, `updatedAt == request.time`. Public `get`, no `list`.
 Images: only the banner, which still goes through `services/banners.ts` (avatar NSFW filter).
 Tests: `rules-tests/profile-custom.rules.test.ts`, `src/services/__tests__/profileCustom.test.ts`, `src/screens/__tests__/PlayerProfileScreen.custom.test.tsx`.
+
+## Pro Clip Reel + Pro Spots
+
+Flag: `VITE_FEATURE_PRO_SHOWCASE` (literal `"true"`, default off; tester override turns it on).
+Replaces the COMING SOON cards on a verified pro's showcase. Read-only, no rules change:
+- **Clip Reel:** the pro's own `pinnedClipIds` above (max 3), resolved via `fetchPinnedClips`.
+- **Pro Spots:** spots the pro created (marked Recommended) plus every spot tagged on their clips,
+  each linking to `/spots/:id` with the pro's clips from it. `src/services/proShowcase.ts`.

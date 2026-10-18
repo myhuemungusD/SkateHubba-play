@@ -9,6 +9,7 @@ import {
   isProCameraEnabled,
   isProfileBannerEnabled,
   isProfileCustomEnabled,
+  isProShowcaseEnabled,
   FEATURE_TESTER_STORAGE_KEY,
   isRefereeEnabled,
   isSpotChatsEnabled,
@@ -361,5 +362,25 @@ describe("isShoe360Enabled", () => {
     vi.stubEnv("VITE_FEATURE_SHOE_360", "1");
     expect(isShoe360Enabled()).toBe(false);
     vi.unstubAllEnvs();
+  });
+});
+
+describe("isProShowcaseEnabled (VITE_FEATURE_PRO_SHOWCASE)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    localStorage.removeItem(FEATURE_TESTER_STORAGE_KEY);
+  });
+
+  it("is off by default and on only for literal true", () => {
+    expect(isProShowcaseEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_PRO_SHOWCASE", "1");
+    expect(isProShowcaseEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_PRO_SHOWCASE", "true");
+    expect(isProShowcaseEnabled()).toBe(true);
+  });
+
+  it("turns on for a feature tester", () => {
+    localStorage.setItem(FEATURE_TESTER_STORAGE_KEY, "u1");
+    expect(isProShowcaseEnabled()).toBe(true);
   });
 });
