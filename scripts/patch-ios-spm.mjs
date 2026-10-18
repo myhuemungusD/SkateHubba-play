@@ -120,6 +120,11 @@ if (existsSync(recorderSwift)) {
       }
       swift = swift.replace(anchor, replacement);
     }
+    // The pre-roll block above is the class's sample-buffer delegate (it calls
+    // setSampleBufferDelegate(self, ...)), so declare the conformance, and pull
+    // in CoreImage for the native fisheye filter keys.
+    swift = swift.replace("import AVFoundation\n", "import AVFoundation\nimport CoreImage\n");
+    swift += "\nextension VideoRecorder: AVCaptureVideoDataOutputSampleBufferDelegate {}\n";
     writeFileSync(recorderSwift, swift);
     log("added pro capture (ultra-wide lens, 1080p60, stabilization, focus) to video-recorder");
   }
