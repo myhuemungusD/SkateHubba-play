@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { GameDoc } from "../../../services/games";
 import { LETTERS } from "../../../utils/helpers";
 import { trackEvent } from "../../../services/analytics";
+import { copyText, shareText } from "../../../services/nativeBridge";
 import { TurnHistoryViewer } from "../../../components/TurnHistoryViewer";
 import { GameReplay } from "../../../components/GameReplay";
 import { Btn } from "../../../components/ui/Btn";
@@ -67,18 +68,18 @@ export function GameHistoryCard({ game, profileUid, expanded, onToggle, onOpenGa
 
     const text = lines.join("\n");
 
-    if (navigator.share) {
-      try {
-        await navigator.share({ text });
+    try {
+      const method = await shareText({ text });
+      if (method !== "clipboard") {
         trackEvent("game_shared", { context: "archive" });
         return;
-      } catch {
-        // User cancelled or share failed — fall through to clipboard
       }
+    } catch {
+      // User cancelled or the sheet failed — fall through to a clipboard copy
     }
 
     try {
-      await navigator.clipboard.writeText(text);
+      await copyText(text);
       setShareLabel("Copied!");
       trackEvent("game_shared", { context: "archive", method: "clipboard" });
       shareLabelTimerRef.current = setTimeout(() => setShareLabel("Share Game"), 2000);

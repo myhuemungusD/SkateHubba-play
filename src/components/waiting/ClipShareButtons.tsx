@@ -48,17 +48,19 @@ export function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; tr
   const handleShare = useCallback(async () => {
     setShareStatus("sharing");
     try {
-      const res = await fetch(videoUrl);
-      if (!res.ok) throw new Error("Fetch failed");
-      const blob = await res.blob();
-      const file = new File([blob], `skatehubba-${trickName.replace(/\s+/g, "-").toLowerCase()}.webm`, {
-        type: "video/webm",
-      });
+      const loadFiles = async () => {
+        const res = await fetch(videoUrl);
+        if (!res.ok) throw new Error("Fetch failed");
+        const blob = await res.blob();
+        return [
+          new File([blob], `skatehubba-${trickName.replace(/\s+/g, "-").toLowerCase()}.webm`, { type: "video/webm" }),
+        ];
+      };
       const url = import.meta.env.VITE_APP_URL || window.location.origin;
       const method = await shareText({
         title: `SkateHubba — ${trickName}`,
         text: `Check out my ${trickName} on SkateHubba!`,
-        files: [file],
+        loadFiles,
         textWithoutFiles: `Check out my ${trickName} on SkateHubba!\n${url}`,
       });
       trackEvent("clip_shared", { method, context: "waiting_screen" });
