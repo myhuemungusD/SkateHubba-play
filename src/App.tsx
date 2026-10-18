@@ -504,6 +504,7 @@ function AppRoutes() {
               path="/auth"
               element={
                 <AuthScreen
+                  onBack={backOr("/")}
                   mode={nav.authMode}
                   onDone={() => {
                     /* auth state change triggers auto-navigate */
