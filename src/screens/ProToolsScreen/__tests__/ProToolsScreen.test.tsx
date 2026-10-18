@@ -9,6 +9,12 @@ vi.mock("../../../hooks/useIsAdmin", () => ({
   useIsAdmin: (uid: string) => mockIsAdmin(uid),
 }));
 vi.mock("../../NotFound", () => ({ NotFound: () => <p>not-found</p> }));
+vi.mock("../../../services/proCalls", () => ({
+  fetchProQueue: async () => [],
+  fetchGoldCandidates: async () => [],
+  submitProCall: vi.fn(),
+  submitGoldClip: vi.fn(),
+}));
 
 import { ProToolsRoute, ProToolsScreen } from "..";
 import { resolveProToolsAccess } from "../access";
@@ -101,5 +107,20 @@ describe("ProToolsRoute", () => {
     mockIsAdmin.mockReturnValue({ isAdmin: false, loading: false });
     render(<ProToolsRoute uid={null} isVerifiedPro onBack={() => {}} />);
     expect(screen.getByText("not-found")).toBeInTheDocument();
+  });
+});
+
+describe("ProToolsScreen live pro calls", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it("swaps the review queue and gold cards for live tools for a real pro", () => {
+    vi.stubEnv("VITE_FEATURE_PRO_CALLS", "true");
+    render(<ProToolsScreen uid="p" reviewMode={false} onBack={() => {}} />);
+    expect(screen.getByRole("region", { name: "Pro review queue" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Gold clip authoring" })).toBeInTheDocument();
+  });
+  it("keeps placeholders in admin review mode", () => {
+    vi.stubEnv("VITE_FEATURE_PRO_CALLS", "true");
+    render(<ProToolsScreen uid="a" reviewMode onBack={() => {}} />);
+    expect(screen.getByRole("region", { name: "Pro review queue (coming soon)" })).toBeInTheDocument();
   });
 });
