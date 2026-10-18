@@ -9,6 +9,8 @@ import {
   isProCameraEnabled,
   isProfileBannerEnabled,
   isProfileCustomEnabled,
+  isAdminInsightsEnabled,
+  isProCommunityEnabled,
   isProCallsEnabled,
   isAdminOpsEnabled,
   isAdminConsoleEnabled,
@@ -450,5 +452,41 @@ describe("isProCallsEnabled (VITE_FEATURE_PRO_CALLS)", () => {
   it("turns on for a feature tester", () => {
     localStorage.setItem(FEATURE_TESTER_STORAGE_KEY, "u1");
     expect(isProCallsEnabled()).toBe(true);
+  });
+});
+
+describe("isProCommunityEnabled (VITE_FEATURE_PRO_COMMUNITY)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    localStorage.removeItem(FEATURE_TESTER_STORAGE_KEY);
+  });
+  it("is off by default and on only for literal true", () => {
+    expect(isProCommunityEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_PRO_COMMUNITY", "1");
+    expect(isProCommunityEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_PRO_COMMUNITY", "true");
+    expect(isProCommunityEnabled()).toBe(true);
+  });
+  it("turns on for a feature tester", () => {
+    localStorage.setItem(FEATURE_TESTER_STORAGE_KEY, "u1");
+    expect(isProCommunityEnabled()).toBe(true);
+  });
+});
+
+describe("isAdminInsightsEnabled (VITE_FEATURE_ADMIN_INSIGHTS)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    localStorage.removeItem(FEATURE_TESTER_STORAGE_KEY);
+  });
+  it("is off by default and on only for literal true", () => {
+    expect(isAdminInsightsEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_ADMIN_INSIGHTS", "1");
+    expect(isAdminInsightsEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_ADMIN_INSIGHTS", "true");
+    expect(isAdminInsightsEnabled()).toBe(true);
+  });
+  it("turns on for a feature tester", () => {
+    localStorage.setItem(FEATURE_TESTER_STORAGE_KEY, "u1");
+    expect(isAdminInsightsEnabled()).toBe(true);
   });
 });

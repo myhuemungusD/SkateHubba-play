@@ -15,6 +15,8 @@ import { sweepExpiredDiceGames } from "./dice/handlers.js";
 import { adminDiceDb } from "./dice/store.js";
 import { handleCheckinCall } from "./map/callable.js";
 import { handleBlessingCall } from "./pro/callable.js";
+import { fanOutAnnouncement } from "./admin/announce.js";
+import { handleAnalyticsCall } from "./admin/analytics.js";
 import { applyProCall } from "./pro/proCalls.js";
 import { handleClipCreated, handleClipReport, handleDecideClip } from "./moderation/handlers.js";
 import { adminClipStore } from "./moderation/publish.js";
@@ -343,6 +345,20 @@ export const pushDispatchSweep = onSchedule(
       console.log(JSON.stringify({ event: "referees", results }));
     }
   },
+);
+
+/** Admin announcement with push on: queue one push per recipient. */
+export const announcementOnCreate = onDocumentCreated(
+  { document: "announcements/{id}", database: DATABASE_ID, region: "us-central1", timeoutSeconds: 300 },
+  async (event): Promise<void> => {
+    await fanOutAnnouncement(getFirestore(DATABASE_ID), event.params.id, event.data?.data());
+  },
+);
+
+/** Admin-claim-only analytics snapshot. */
+export const adminAnalytics = onCall(
+  { region: "us-central1", enforceAppCheck: false, timeoutSeconds: 120 },
+  (request) => handleAnalyticsCall(request, getFirestore(DATABASE_ID), Date.now()),
 );
 
 /** A verified pro's review of a split WTT vote becomes the clip's gold label. */

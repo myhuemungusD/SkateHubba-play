@@ -28,6 +28,7 @@ import { useAnalyticsConsent } from "./hooks/useAnalyticsConsent";
 import {
   isDiceEnabled,
   isExtrasEnabled,
+  isAdminInsightsEnabled,
   isProBlessingEnabled,
   isRunnerEnabled,
   isClosetStudioEnabled,
@@ -78,6 +79,9 @@ const DataDeletion = lazy(() => import("./screens/DataDeletion").then((m) => ({ 
 const NotFound = lazy(() => import("./screens/NotFound").then((m) => ({ default: m.NotFound })));
 const MapPage = lazy(() => import("./screens/MapPage").then((m) => ({ default: m.MapPage })));
 // Pro blessing "turned pro" moment. Lazy so nothing loads with the flag off.
+const AnnouncementBanner = lazy(() =>
+  import("./components/AnnouncementBanner").then((m) => ({ default: m.AnnouncementBanner })),
+);
 const TurnedProGate = lazy(() => import("./components/pro/TurnedProGate").then((m) => ({ default: m.TurnedProGate })));
 const ProToolsRoute = lazy(() => import("./screens/ProToolsScreen").then((m) => ({ default: m.ProToolsRoute })));
 const FeedScreen = lazy(() => import("./screens/FeedScreen").then((m) => ({ default: m.FeedScreen })));
@@ -456,6 +460,11 @@ function AppRoutes() {
 
   return (
     <>
+      {isAdminInsightsEnabled() && auth.user && auth.activeProfile && (
+        <Suspense fallback={null}>
+          <AnnouncementBanner uid={auth.user.uid} isPro={auth.activeProfile.isVerifiedPro === true} />
+        </Suspense>
+      )}
       {isProBlessingEnabled() && auth.user && auth.activeProfile && auth.activeProfile.isVerifiedPro !== true && (
         <Suspense fallback={null}>
           <TurnedProGate uid={auth.user.uid} onTurnedPro={() => void auth.refreshProfile()} />

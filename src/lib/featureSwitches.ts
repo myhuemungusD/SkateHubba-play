@@ -30,6 +30,8 @@ export const FEATURE_SWITCH_KEYS = [
   "VITE_FEATURE_XP_ENABLED",
   "VITE_FEATURE_ADMIN_OPS",
   "VITE_FEATURE_PRO_CALLS",
+  "VITE_FEATURE_PRO_COMMUNITY",
+  "VITE_FEATURE_ADMIN_INSIGHTS",
 ] as const;
 
 export interface FeatureSwitchState {

@@ -22,7 +22,9 @@ export type AdminAction =
   | "remove_item"
   | "hide_dispute"
   | "rule_dispute"
-  | "resolve_report";
+  | "resolve_report"
+  | "announce"
+  | "end_announcement";
 
 export interface AuditEntry {
   id: string;

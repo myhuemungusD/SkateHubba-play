@@ -1128,6 +1128,31 @@ service cloud.firestore {
     // ── Admin audit log ──
     // Append-only record of admin console actions. Admin claim only, stamped
     // with the acting uid and server time; never edited or deleted.
+    // Admin announcements (VITE_FEATURE_ADMIN_INSIGHTS). Any signed-in player
+    // reads them for the in-app banner; only the admin claim posts or ends
+    // one. Pros get nothing here. Push fan-out runs server-side
+    // (announcementOnCreate), which also writes pushStatus/pushCount.
+    match /announcements/{annId} {
+      allow read: if request.auth != null;
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['title', 'body', 'audience', 'push', 'active', 'createdBy', 'createdAt'])
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 80
+        && request.resource.data.body is string
+        && request.resource.data.body.size() > 0
+        && request.resource.data.body.size() <= 240
+        && request.resource.data.audience in ['all', 'testers', 'pros']
+        && request.resource.data.push is bool
+        && request.resource.data.active == true
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active'])
+        && request.resource.data.active == false;
+      allow delete: if false;
+    }
+
     match /adminAudit/{entryId} {
       allow read: if isAdmin();
       allow create: if isAdmin()
@@ -3736,6 +3761,86 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time
         && fsExists('wttItems', clipId);
       allow read, update, delete: if false;
+    }
+  
+    // ── Pro community (VITE_FEATURE_PRO_COMMUNITY) ──
+    // Verified-pro scoped creates; never an admin power. Shout-outs and
+    // props are not pro status (only a blessing is).
+    match /proChallenges/{challengeId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && isVerifiedPro()
+        && request.resource.data.keys().hasOnly(['proUid','proUsername','trickName','description','createdAt'])
+        && request.resource.data.proUid == request.auth.uid
+        && request.resource.data.proUsername is string
+        && request.resource.data.proUsername.size() <= 20
+        && request.resource.data.trickName is string
+        && request.resource.data.trickName.size() > 0
+        && request.resource.data.trickName.size() <= 60
+        && request.resource.data.description is string
+        && request.resource.data.description.size() <= 280
+        && request.resource.data.createdAt == request.time;
+      allow update: if false;
+      allow delete: if isSignedIn() && resource.data.proUid == request.auth.uid;
+    }
+
+    match /proChallengeEntries/{entryId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && notBanned()
+        && emailVerified()
+        && entryId == request.resource.data.challengeId + '_' + request.auth.uid
+        && request.resource.data.keys().hasOnly(['challengeId','uid','username','clipId','featured','createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.username is string
+        && request.resource.data.username.size() <= 20
+        && request.resource.data.clipId is string
+        && request.resource.data.featured == false
+        && request.resource.data.createdAt == request.time
+        && fsExists('proChallenges', request.resource.data.challengeId)
+        && fsGet('clips', request.resource.data.clipId).data.playerUid == request.auth.uid;
+      // Only the challenge's pro flips `featured`, and nothing else.
+      allow update: if isSignedIn()
+        && fsGet('proChallenges', resource.data.challengeId).data.proUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['featured'])
+        && request.resource.data.featured is bool;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    match /proProps/{propId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && isVerifiedPro()
+        && request.resource.data.keys().hasOnly(['fromUid','fromUsername','toUid','toUsername','sticker','note','createdAt'])
+        && request.resource.data.fromUid == request.auth.uid
+        && request.resource.data.toUid is string
+        && request.resource.data.toUid != request.auth.uid
+        && fsExists('users', request.resource.data.toUid)
+        && request.resource.data.fromUsername is string
+        && request.resource.data.fromUsername.size() <= 20
+        && request.resource.data.toUsername is string
+        && request.resource.data.toUsername.size() <= 20
+        && request.resource.data.sticker in ['fire','steez','gnarly','clean','respect']
+        && request.resource.data.note is string
+        && request.resource.data.note.size() <= 140
+        && request.resource.data.createdAt == request.time;
+      allow update: if false;
+      allow delete: if isSignedIn() && resource.data.fromUid == request.auth.uid;
+    }
+
+    match /proFeatured/{clipId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && isVerifiedPro()
+        && request.resource.data.keys().hasOnly(['clipId','proUid','proUsername','createdAt'])
+        && request.resource.data.clipId == clipId
+        && request.resource.data.proUid == request.auth.uid
+        && request.resource.data.proUsername is string
+        && request.resource.data.proUsername.size() <= 20
+        && request.resource.data.createdAt == request.time
+        && fsExists('clips', clipId);
+      allow update: if false;
+      allow delete: if isSignedIn() && resource.data.proUid == request.auth.uid;
     }
   }
 }

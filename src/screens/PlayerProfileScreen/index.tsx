@@ -36,6 +36,8 @@ import { SignUpToChallengeCta } from "./components/SignUpToChallengeCta";
 import { AddedSpotsSection } from "./components/AddedSpotsSection";
 import { WinStreakBanner } from "./components/WinStreakBanner";
 import { ProShowcaseGate } from "./components/ProShowcaseGate";
+import { PropsRow } from "../../components/pro/ProPicks";
+import { isProCommunityEnabled } from "../../lib/featureFlags";
 import { Palette } from "lucide-react";
 import { useProfileCustom } from "./components/custom/useProfileCustom";
 import { ProfileAbout } from "./components/custom/ProfileAbout";
@@ -308,6 +310,8 @@ export function PlayerProfileScreen({
         {isProBlessingEnabled() && profile.isVerifiedPro === true && (
           <BlessedByLine uid={profile.uid} onViewPlayer={onViewPlayer} />
         )}
+
+        {isProCommunityEnabled() && <PropsRow uid={profile.uid} />}
 
         <ProShowcaseGate
           username={profile.username}

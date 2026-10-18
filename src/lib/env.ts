@@ -168,6 +168,18 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Pro challenges, pro props and pro-featured clips (verified pros only, never admin powers). DEFAULTS TO OFF. Read via isProCommunityEnabled().
+  VITE_FEATURE_PRO_COMMUNITY: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
+  // Admin analytics and announcements (in-app banner + push). Admin-claim only. DEFAULTS TO OFF. Read via isAdminInsightsEnabled().
+  VITE_FEATURE_ADMIN_INSIGHTS: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // Customizable profiles. DEFAULTS TO OFF. Read via isProfileCustomEnabled().
   VITE_FEATURE_PROFILE_CUSTOM: z
     .string()

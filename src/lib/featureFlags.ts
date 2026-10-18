@@ -287,3 +287,13 @@ export function isAdminOpsEnabled(): boolean {
 export function isProCallsEnabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_PRO_CALLS);
 }
+
+/** Pro challenges, pro props and pro-featured clips (verified pros only, never admin powers). Literal "true" only; off by default; tester override turns it on. */
+export function isProCommunityEnabled(): boolean {
+  return flagOn(import.meta.env.VITE_FEATURE_PRO_COMMUNITY);
+}
+
+/** Admin analytics and announcements (in-app banner + push). Admin-claim only. Literal "true" only; off by default; tester override turns it on. */
+export function isAdminInsightsEnabled(): boolean {
+  return flagOn(import.meta.env.VITE_FEATURE_ADMIN_INSIGHTS);
+}
