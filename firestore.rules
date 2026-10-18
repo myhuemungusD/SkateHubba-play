@@ -432,9 +432,11 @@ service cloud.firestore {
     // client turns every VITE_FEATURE_* flag on); anyone else is denied, so
     // the list never leaks. Written only from the console / Admin SDK.
     match /config/featureTesters {
-      allow get: if request.auth != null
+      // Testers read their own listing; admins read it for the feature
+      // switches viewer (admin claim only, never pros).
+      allow get: if isAdmin() || (request.auth != null
         && resource.data.uids is list
-        && request.auth.uid in resource.data.uids;
+        && request.auth.uid in resource.data.uids);
       allow list, write: if false;
     }
 

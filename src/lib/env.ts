@@ -146,6 +146,12 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Admin console: bans list, user search, feature switches viewer (admin claim only). DEFAULTS TO OFF. Read via isAdminConsoleEnabled().
+  VITE_FEATURE_ADMIN_CONSOLE: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
+
   // Customizable profiles. DEFAULTS TO OFF. Read via isProfileCustomEnabled().
   VITE_FEATURE_PROFILE_CUSTOM: z
     .string()

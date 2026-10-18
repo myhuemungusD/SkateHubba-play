@@ -260,3 +260,8 @@ export function isClosetStudioEnabled(): boolean {
 export function isShoe360Enabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_SHOE_360);
 }
+
+/** Admin console: bans list, user search, feature switches viewer (admin claim only). Literal "true" only; off by default; tester override turns it on. */
+export function isAdminConsoleEnabled(): boolean {
+  return flagOn(import.meta.env.VITE_FEATURE_ADMIN_CONSOLE);
+}

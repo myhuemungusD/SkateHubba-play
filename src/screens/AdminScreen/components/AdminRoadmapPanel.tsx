@@ -1,5 +1,10 @@
 import { BarChart3, Ban, FileClock, Flag, Megaphone, Scale, Users } from "lucide-react";
 import { ComingSoonCard } from "../../../components/pro/ComingSoonCard";
+import { isAdminConsoleEnabled } from "../../../lib/featureFlags";
+import { AdminConsolePanel } from "./AdminConsolePanel";
+
+/** Roadmap titles the admin console has built (hidden when its flag is on). */
+export const ADMIN_CONSOLE_BUILT = ["Bans list", "User search", "Feature switches"];
 
 const SECTIONS = [
   {
@@ -42,12 +47,15 @@ const SECTIONS = [
 
 /** Admin sections that are planned but not built yet. */
 export function AdminRoadmapPanel() {
+  const consoleOn = isAdminConsoleEnabled();
+  const pending = SECTIONS.filter((s) => !consoleOn || !ADMIN_CONSOLE_BUILT.includes(s.title));
   return (
     <div className="space-y-3" data-testid="admin-roadmap-panel">
+      {consoleOn && <AdminConsolePanel />}
       <p className="font-body text-xs text-white/70">
         Live today: Verify Pro, Awards, Reports (resolve, ban, hide dispute) and Clips. Coming next:
       </p>
-      {SECTIONS.map((s) => (
+      {pending.map((s) => (
         <ComingSoonCard key={s.title} icon={s.icon} title={s.title} description={s.description} />
       ))}
     </div>
