@@ -122,6 +122,20 @@ If that function is not deployed yet, the block above is the safe starting point
 
 The workflow does not print the file.
 
+## One command (laptop)
+
+```bash
+npm run deploy:functions            # every function
+npm run deploy:functions -- --only mapCheckin,diceAction
+npm run deploy:rules                # Firestore rules + indexes + Storage rules
+npm run deploy:all
+npm run deploy:all -- --dry-run     # every check, prints the deploy command, uploads nothing
+```
+
+`scripts/deploy.mjs` refuses to run unless you are on `main`, the tree is clean, and you match `origin/main`. It runs the typecheck, the functions build and tests, and the rules tests when the rules changed since this machine's last rules deploy. Then it deploys to `sk8hub-d7806` (database `skatehubba`).
+
+The parameter values live outside the repo in `~/.skatehubba/functions.sk8hub-d7806.env` (or the path in `SKATEHUBBA_FUNCTIONS_ENV`), in the format under "Parameter file" below. The script checks every `defineString` / `defineBoolean` / `defineInt` in `functions/src` has a valid value, copies the file to `functions/.env.sk8hub-d7806` for the upload, and always deletes that copy afterwards, even if the deploy fails or you press Ctrl-C. `npm run testers:sync -- --apply` keeps the tester lists in that file matched to `config/featureTesters`.
+
 ## Laptop deploy
 
 The same upload still works from a machine that is already logged in:
