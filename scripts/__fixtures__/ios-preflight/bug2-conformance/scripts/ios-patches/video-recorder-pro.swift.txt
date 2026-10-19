@@ -1,0 +1,480 @@
+    // ── SkateHubba pro capture (scripts/patch-ios-spm.mjs Fix 3) ──
+    // Lens: the back camera is the virtual triple / dual-wide device when the
+    // phone has an ultra-wide, so 0.5x <-> 1x <-> 2x is a smooth zoom ramp that
+    // also works mid-recording (iOS hands over between physical lenses).
+    
+    // MARK: - Performance Metrics
+    private var previewFrameCount: Int = 0
+    private var droppedFrameCount: Int = 0
+    private var previewStartTime: CFAbsoluteTime = 0
+    private var thermalStateToken: NSObjectProtocol?
+    
+    // MARK: - Pre-Roll Buffer
+    private var preRollEnabled: Bool = true
+    private let preRollDuration: TimeInterval = 2.5  // 2.5 seconds of pre-roll
+    private var preRollBufferQueue: DispatchQueue = DispatchQueue(label: "com.skatehubba.preroll", qos: .userInitiated)
+    private var bufferedSamples: [(sample: CMSampleBuffer, timestamp: CMTime)] = []
+    private var videoDataOutput: AVCaptureVideoDataOutput?
+    private var isCapturingPreRoll: Bool = false
+    
+    func shZoomBase(_ dev: AVCaptureDevice) -> CGFloat {
+        if dev.deviceType == .builtInTripleCamera || dev.deviceType == .builtInDualWideCamera,
+           let first = dev.virtualDeviceSwitchOverVideoZoomFactors.first {
+            return CGFloat(truncating: first)
+        }
+        return 1.0
+    }
+
+    // MARK: - Quality Modes
+    enum CaptureQuality: String {
+        case standard1080p60  // 1080p at 60fps - default, best balance
+        case pro4k60          // 4K at 60fps - max quality
+        case slomo120         // 1080p at 120fps - slow motion
+        case slomo240         // 1080p at 240fps - ultra slow motion
+    }
+    
+    private var currentQuality: CaptureQuality = .standard1080p60
+    
+    func shTune() {
+        shTuneWithQuality(currentQuality)
+    }
+    
+    func shTuneWithQuality(_ quality: CaptureQuality) {
+        guard let dev = self.cameraInput?.device else { return }
+        do {
+            try dev.lockForConfiguration()
+            
+            switch quality {
+            case .standard1080p60:
+                // 1080p at 60fps: the lowest-max-fps 1920x1080 format that reaches
+                // 60 (the 120/240 binned formats look softer), keeping full sensor quality.
+                let candidates = dev.formats.filter { f in
+                    let d = CMVideoFormatDescriptionGetDimensions(f.formatDescription)
+                    return d.width == 1920 && d.height == 1080
+                        && f.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= 60 }
+                }
+                if let best = candidates.min(by: { a, b in
+                    (a.videoSupportedFrameRateRanges.map { $0.maxFrameRate }.max() ?? 0)
+                        < (b.videoSupportedFrameRateRanges.map { $0.maxFrameRate }.max() ?? 0)
+                }) {
+                    dev.activeFormat = best
+                    dev.activeVideoMinFrameDuration = CMTime(value: 1, timescale: 60)
+                    dev.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: 60)
+                }
+                
+            case .pro4k60:
+                // 4K (3840x2160) at 60fps for max quality
+                let candidates = dev.formats.filter { f in
+                    let d = CMVideoFormatDescriptionGetDimensions(f.formatDescription)
+                    return d.width == 3840 && d.height == 2160
+                        && f.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= 60 }
+                }
+                if let best = candidates.first {
+                    dev.activeFormat = best
+                    dev.activeVideoMinFrameDuration = CMTime(value: 1, timescale: 60)
+                    dev.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: 60)
+                }
+                
+            case .slomo120:
+                // 1080p at 120fps for slow motion
+                let candidates = dev.formats.filter { f in
+                    let d = CMVideoFormatDescriptionGetDimensions(f.formatDescription)
+                    return d.width == 1920 && d.height == 1080
+                        && f.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= 120 }
+                }
+                if let best = candidates.first {
+                    dev.activeFormat = best
+                    dev.activeVideoMinFrameDuration = CMTime(value: 1, timescale: 120)
+                    dev.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: 120)
+                }
+                
+            case .slomo240:
+                // 1080p at 240fps for ultra slow motion
+                let candidates = dev.formats.filter { f in
+                    let d = CMVideoFormatDescriptionGetDimensions(f.formatDescription)
+                    return d.width == 1920 && d.height == 1080
+                        && f.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= 240 }
+                }
+                if let best = candidates.first {
+                    dev.activeFormat = best
+                    dev.activeVideoMinFrameDuration = CMTime(value: 1, timescale: 240)
+                    dev.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: 240)
+                }
+            }
+            
+            if dev.isFocusModeSupported(.continuousAutoFocus) { dev.focusMode = .continuousAutoFocus }
+            if dev.isExposureModeSupported(.continuousAutoExposure) { dev.exposureMode = .continuousAutoExposure }
+            dev.isSubjectAreaChangeMonitoringEnabled = true
+            // Start on the 1x lens, like the native Camera app.
+            let base = shZoomBase(dev)
+            dev.videoZoomFactor = max(dev.minAvailableVideoZoomFactor, min(base, dev.maxAvailableVideoZoomFactor))
+            dev.unlockForConfiguration()
+            
+            // Start thermal monitoring
+            startThermalMonitoring()
+        } catch {
+            print("shTune failed: \(error)")
+        }
+    }
+
+    func shStabilize(_ connection: AVCaptureConnection) {
+        guard connection.isVideoStabilizationSupported, let dev = self.cameraInput?.device else { return }
+        if dev.activeFormat.isVideoStabilizationModeSupported(.cinematicExtended) {
+            connection.preferredVideoStabilizationMode = .cinematicExtended
+        } else if dev.activeFormat.isVideoStabilizationModeSupported(.cinematic) {
+            connection.preferredVideoStabilizationMode = .cinematic
+        } else {
+            connection.preferredVideoStabilizationMode = .auto
+        }
+    }
+
+    /** { lens: number } in display units (0.5, 1, 2, 3). Smooth ramp, safe while recording. */
+    @objc func setZoom(_ call: CAPPluginCall) {
+        let lens = CGFloat(call.getDouble("lens", 1.0))
+        DispatchQueue.main.async {
+            guard let dev = self.cameraInput?.device else { call.reject("Camera not ready"); return }
+            do {
+                try dev.lockForConfiguration()
+                let target = max(dev.minAvailableVideoZoomFactor, min(lens * self.shZoomBase(dev), dev.maxAvailableVideoZoomFactor))
+                dev.ramp(toVideoZoomFactor: target, withRate: 12.0)
+                dev.unlockForConfiguration()
+                call.resolve(["lens": Double(target / self.shZoomBase(dev))])
+            } catch {
+                call.reject("Zoom failed")
+            }
+        }
+    }
+
+    /** Which lenses this phone offers, in display units. */
+    @objc func getLensInfo(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard let dev = self.cameraInput?.device else { call.resolve(["ultraWide": false, "maxLens": 1.0]); return }
+            let base = self.shZoomBase(dev)
+            call.resolve([
+                "ultraWide": base > 1.0,
+                "maxLens": Double(min(dev.maxAvailableVideoZoomFactor, 15.0 * base) / base),
+            ])
+        }
+    }
+
+    /** { x, y } as 0..1 screen fractions, { lock } holds focus + exposure there. */
+    @objc func focusAt(_ call: CAPPluginCall) {
+        let x = CGFloat(call.getDouble("x", 0.5))
+        let y = CGFloat(call.getDouble("y", 0.5))
+        let lock = call.getBool("lock", false)
+        DispatchQueue.main.async {
+            guard let dev = self.cameraInput?.device else { call.reject("Camera not ready"); return }
+            var point = CGPoint(x: y, y: 1 - x)
+            if let layer = self.cameraView?.videoPreviewLayer {
+                point = layer.captureDevicePointConverted(fromLayerPoint: CGPoint(x: x * layer.bounds.width, y: y * layer.bounds.height))
+            }
+            do {
+                try dev.lockForConfiguration()
+                if dev.isFocusPointOfInterestSupported {
+                    dev.focusPointOfInterest = point
+                    let mode: AVCaptureDevice.FocusMode = lock ? .autoFocus : .continuousAutoFocus
+                    if dev.isFocusModeSupported(mode) { dev.focusMode = mode }
+                }
+                if dev.isExposurePointOfInterestSupported {
+                    dev.exposurePointOfInterest = point
+                    let mode: AVCaptureDevice.ExposureMode = lock ? .autoExpose : .continuousAutoExposure
+                    if dev.isExposureModeSupported(mode) { dev.exposureMode = mode }
+                }
+                dev.isSubjectAreaChangeMonitoringEnabled = !lock
+                dev.unlockForConfiguration()
+                call.resolve(["locked": lock])
+            } catch {
+                call.reject("Focus failed")
+            }
+        }
+    }
+    
+    // MARK: - Quality Selection
+    /** { quality: "standard1080p60" | "pro4k60" | "slomo120" | "slomo240" } */
+    @objc func setQuality(_ call: CAPPluginCall) {
+        guard let qualityStr = call.getString("quality"),
+              let quality = CaptureQuality(rawValue: qualityStr) else {
+            call.reject("Invalid quality mode")
+            return
+        }
+        currentQuality = quality
+        DispatchQueue.main.async {
+            self.shTuneWithQuality(quality)
+            call.resolve(["quality": quality.rawValue])
+        }
+    }
+    
+    /** Returns available quality modes and current selection */
+    @objc func getQualityModes(_ call: CAPPluginCall) {
+        guard let dev = self.cameraInput?.device else {
+            call.resolve(["modes": [], "current": "standard1080p60"])
+            return
+        }
+        
+        var modes: [String] = ["standard1080p60"]
+        
+        // Check for 4K60 support
+        if dev.formats.contains(where: { f in
+            let d = CMVideoFormatDescriptionGetDimensions(f.formatDescription)
+            return d.width == 3840 && d.height == 2160
+                && f.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= 60 }
+        }) {
+            modes.append("pro4k60")
+        }
+        
+        // Check for 120fps support
+        if dev.formats.contains(where: { f in
+            let d = CMVideoFormatDescriptionGetDimensions(f.formatDescription)
+            return d.width == 1920 && d.height == 1080
+                && f.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= 120 }
+        }) {
+            modes.append("slomo120")
+        }
+        
+        // Check for 240fps support
+        if dev.formats.contains(where: { f in
+            let d = CMVideoFormatDescriptionGetDimensions(f.formatDescription)
+            return d.width == 1920 && d.height == 1080
+                && f.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= 240 }
+        }) {
+            modes.append("slomo240")
+        }
+        
+        call.resolve([
+            "modes": modes,
+            "current": currentQuality.rawValue
+        ])
+    }
+    
+    // MARK: - Thermal Management
+    func startThermalMonitoring() {
+        guard thermalStateToken == nil else { return }
+        thermalStateToken = NotificationCenter.default.addObserver(
+            forName: ProcessInfo.thermalStateDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleThermalStateChange()
+        }
+    }
+    
+    func handleThermalStateChange() {
+        let state = ProcessInfo.processInfo.thermalState
+        switch state {
+        case .nominal:
+            // All good, maintain quality
+            break
+        case .fair:
+            // Getting warm, but still okay
+            print("Thermal state: fair")
+        case .serious:
+            // Consider dropping to 1080p60 if in 4K
+            if currentQuality == .pro4k60 {
+                print("Thermal state: serious - consider lowering quality")
+                // Auto-throttle to 1080p60
+                currentQuality = .standard1080p60
+                DispatchQueue.main.async {
+                    self.shTuneWithQuality(.standard1080p60)
+                }
+            }
+        case .critical:
+            // Drop to 1080p60 if not already
+            if currentQuality != .standard1080p60 {
+                print("Thermal state: critical - auto-throttling to 1080p60")
+                currentQuality = .standard1080p60
+                DispatchQueue.main.async {
+                    self.shTuneWithQuality(.standard1080p60)
+                }
+            }
+        @unknown default:
+            break
+        }
+    }
+    
+    // MARK: - Performance Metrics
+    /** Get current performance metrics: preview FPS, dropped frames */
+    @objc func getPerformanceMetrics(_ call: CAPPluginCall) {
+        let elapsed = CFAbsoluteTimeGetCurrent() - previewStartTime
+        let fps = elapsed > 0 ? Double(previewFrameCount) / elapsed : 0
+        call.resolve([
+            "previewFps": fps,
+            "droppedFrames": droppedFrameCount,
+            "thermalState": thermalStateString(),
+            "quality": currentQuality.rawValue
+        ])
+    }
+    
+    func thermalStateString() -> String {
+        switch ProcessInfo.processInfo.thermalState {
+        case .nominal: return "nominal"
+        case .fair: return "fair"
+        case .serious: return "serious"
+        case .critical: return "critical"
+        @unknown default: return "unknown"
+        }
+    }
+    
+    func resetMetrics() {
+        previewFrameCount = 0
+        droppedFrameCount = 0
+        previewStartTime = CFAbsoluteTimeGetCurrent()
+    }
+    
+    // MARK: - Pre-Roll Buffering
+    
+    /** Enable/disable pre-roll buffer (default: enabled) */
+    @objc func setPreRoll(_ call: CAPPluginCall) {
+        let enabled = call.getBool("enabled", true)
+        preRollEnabled = enabled
+        if enabled {
+            startPreRollCapture()
+        } else {
+            stopPreRollCapture()
+        }
+        call.resolve(["enabled": enabled])
+    }
+    
+    /** Get pre-roll buffer status */
+    @objc func getPreRollStatus(_ call: CAPPluginCall) {
+        let bufferedSeconds = bufferedSamples.isEmpty ? 0.0 : CMTimeGetSeconds(bufferedSamples.last!.timestamp - bufferedSamples.first!.timestamp)
+        call.resolve([
+            "enabled": preRollEnabled,
+            "bufferedSeconds": bufferedSeconds,
+            "bufferCount": bufferedSamples.count
+        ])
+    }
+    
+    func startPreRollCapture() {
+        guard preRollEnabled, !isCapturingPreRoll else { return }
+        guard let session = self.captureSession else { return }
+        
+        // Add video data output to capture raw frames
+        let dataOutput = AVCaptureVideoDataOutput()
+        dataOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange]
+        dataOutput.alwaysDiscardsLateVideoFrames = true
+        dataOutput.setSampleBufferDelegate(self, queue: preRollBufferQueue)
+        
+        if session.canAddOutput(dataOutput) {
+            session.addOutput(dataOutput)
+            videoDataOutput = dataOutput
+            isCapturingPreRoll = true
+        }
+    }
+    
+    func stopPreRollCapture() {
+        guard let output = videoDataOutput, let session = self.captureSession else { return }
+        session.removeOutput(output)
+        videoDataOutput = nil
+        isCapturingPreRoll = false
+        clearPreRollBuffer()
+    }
+    
+    func clearPreRollBuffer() {
+        preRollBufferQueue.async {
+            self.bufferedSamples.removeAll()
+        }
+    }
+    
+    // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
+    
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        guard isCapturingPreRoll, self.videoOutput?.isRecording != true else { return }
+        
+        // Create a copy of the sample buffer (required because the buffer is reused by the system)
+        guard let copy = copySampleBuffer(sampleBuffer) else { return }
+        let timestamp = CMSampleBufferGetPresentationTimeStamp(copy)
+        
+        preRollBufferQueue.async {
+            self.bufferedSamples.append((sample: copy, timestamp: timestamp))
+            
+            // Keep only the last preRollDuration seconds
+            let cutoffTime = timestamp - CMTime(seconds: self.preRollDuration, preferredTimescale: 600)
+            self.bufferedSamples.removeAll { sample in
+                sample.timestamp < cutoffTime
+            }
+        }
+    }
+    
+    func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        droppedFrameCount += 1
+    }
+    
+    func copySampleBuffer(_ sampleBuffer: CMSampleBuffer) -> CMSampleBuffer? {
+        guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return nil }
+        
+        var copiedBuffer: CMSampleBuffer?
+        var formatDescription: CMFormatDescription?
+        CMVideoFormatDescriptionCreateForImageBuffer(
+            allocator: kCFAllocatorDefault,
+            imageBuffer: imageBuffer,
+            formatDescriptionOut: &formatDescription
+        )
+        
+        guard let format = formatDescription else { return nil }
+        
+        var timingInfo = CMSampleTimingInfo()
+        CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timingInfo)
+        
+        CMSampleBufferCreateForImageBuffer(
+            allocator: kCFAllocatorDefault,
+            imageBuffer: imageBuffer,
+            dataReady: true,
+            makeDataReadyCallback: nil,
+            refcon: nil,
+            formatDescription: format,
+            sampleTiming: &timingInfo,
+            sampleBufferOut: &copiedBuffer
+        )
+        
+        return copiedBuffer
+    }
+    
+    // MARK: - Native Fisheye Effect
+    
+    private var fisheyeFilter: CIFilter?
+    private var fisheyeStrength: Float = 2.0
+    
+    /** Enable native AVFoundation fisheye effect (alternative to web GPU shader) */
+    @objc func setNativeFisheye(_ call: CAPPluginCall) {
+        let enabled = call.getBool("enabled", false)
+        let strength = Float(call.getDouble("strength", 2.0))
+        
+        if enabled {
+            // Create bump distortion filter for fisheye effect
+            fisheyeFilter = CIFilter(name: "CIBumpDistortion")
+            fisheyeFilter?.setValue(CIVector(x: 0.5, y: 0.5), forKey: kCIInputCenterKey)
+            fisheyeFilter?.setValue(strength * 150.0, forKey: kCIInputRadiusKey)
+            fisheyeFilter?.setValue(strength * 0.5, forKey: kCIInputScaleKey)
+            fisheyeStrength = strength
+        } else {
+            fisheyeFilter = nil
+        }
+        
+        call.resolve(["enabled": enabled, "strength": Double(strength)])
+    }
+    
+    // Apply fisheye to captured frame (called during sample buffer processing)
+    func applyFisheyeToSampleBuffer(_ sampleBuffer: CMSampleBuffer) -> CMSampleBuffer? {
+        guard let filter = fisheyeFilter else { return sampleBuffer }
+        guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return sampleBuffer }
+        
+        let ciImage = CIImage(cvPixelBuffer: imageBuffer)
+        filter.setValue(ciImage, forKey: kCIInputImageKey)
+        
+        guard let outputImage = filter.outputImage else { return sampleBuffer }
+        
+        let context = CIContext()
+        context.render(outputImage, to: imageBuffer)
+        
+        return sampleBuffer
+    }
+    
+    // MARK: - Cleanup
+    deinit {
+        if let token = thermalStateToken {
+            NotificationCenter.default.removeObserver(token)
+        }
+        stopPreRollCapture()
+    }
+    // ── end SkateHubba pro capture ──
+
