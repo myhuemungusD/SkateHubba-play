@@ -196,7 +196,7 @@ The honor-system path no longer resolves a "landed" claim instantly. It freezes 
 | Automate Firebase rules deploy in CI  | **Done** — `.github/workflows/firebase-rules-deploy.yml` (deploy on merge to `main` + daily freshness check with failure-issue alerting) | Ops   |
 | Daily Firestore managed exports       | **Ops Pending**                                                                                                                          | Ops   |
 | Storage lifecycle rule for old videos | **Ops Pending**                                                                                                                          | Ops   |
-| GitHub branch protection rules        | **Ops Pending**                                                                                                                          | Ops   |
+| GitHub branch protection rules        | **Done** — required checks, up-to-date branches, linear history                                                                          | Ops   |
 | "Download My Data" (GDPR Art. 20)     | **Done**                                                                                                                                 | Dev   |
 
 ### P2 — Quality

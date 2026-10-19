@@ -78,7 +78,7 @@ Not features, not optional. Tracked in [docs/STATUS_REPORT.md](docs/STATUS_REPOR
 - [x] Automate Firestore rules deploy in CI — `.github/workflows/firebase-rules-deploy.yml` (deploy on merge to `main` + daily freshness check)
 - [ ] Daily Firestore managed exports — tooling built (`.github/workflows/firebase-infra-setup.yml`, manual dispatch); confirm it has been run against production
 - [ ] Storage lifecycle rule for old videos — same workflow, same caveat
-- [ ] GitHub branch protection rules applied
+- [x] GitHub branch protection rules applied — required checks on `main` (build-and-test, e2e, CI guards, rules + functions), up-to-date branches, linear history, no force pushes
 - [ ] Accessibility (axe-core) in CI
 - [ ] TTL cleanup for username reservations
 
