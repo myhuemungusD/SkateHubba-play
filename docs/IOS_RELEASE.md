@@ -98,7 +98,7 @@ Open the SkateHubba repo → **Settings** → **Secrets and variables** → **Ac
 
 Leave `MATCH_GIT_URL` unset. The workflows already use `https://github.com/myhuemungusD/skatehubba-certs.git`. Set `MATCH_GIT_URL` only if you created the cert repo at a different address, and use an `https://` URL with no token in it.
 
-The TestFlight workflow forces `VITE_FEATURE_DICE_ENABLED=false` and `VITE_FEATURE_APPLE_SIGNIN_ENABLED=true`. Do not add a secret that turns Roll Dice on for a store build.
+The TestFlight workflow forces public App Store flags on (`EXTRAS`, `MAP_CHECKINS`, `SPOT_PRESENCE`, `TIPS`, Apple Sign-In, pro blessing/profiles) and keeps Dice / Runner / WTT / Closet Studio / admin / XP off unless a tester tick box is used. Do not add a secret that turns Roll Dice on for a store build. See [FEATURE_FLAGS.md](FEATURE_FLAGS.md).
 
 ## 6. Run the bootstrap once
 

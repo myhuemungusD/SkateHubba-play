@@ -42,9 +42,10 @@ echo "node $(node --version), npm $(npm --version)"
 npm ci --no-audit --no-fund
 
 # 3. Web build with the same production env and flags as ios-release.yml.
-# Tester-only screens stay off for the public; Jason and Mike get every
-# flag through the config/featureTesters override at runtime, which is why
-# the Mapbox key must be present even though the map flag is off.
+# Public App Store flags match store screenshots (Map/Clips, passport,
+# Who's skating, tips). Tester-only screens (Dice, Runner, WTT, Closet
+# Studio, admin, XP…) stay off; Jason and Mike still get every flag
+# through the config/featureTesters override at runtime.
 export VITE_FEATURE_APPLE_SIGNIN_ENABLED=true
 export VITE_FEATURE_DICE_ENABLED="${VITE_FEATURE_DICE_ENABLED:-false}"
 export VITE_FEATURE_CLIP_EDITOR="${VITE_FEATURE_CLIP_EDITOR:-false}"
@@ -52,7 +53,10 @@ export VITE_FEATURE_PRO_CAMERA="${VITE_FEATURE_PRO_CAMERA:-false}"
 export VITE_FEATURE_WTT_ENABLED="${VITE_FEATURE_WTT_ENABLED:-false}"
 export VITE_FEATURE_FEED_MODES_ENABLED="${VITE_FEATURE_WTT_ENABLED}"
 export VITE_FEATURE_PROFILE_BANNER="${VITE_FEATURE_PROFILE_BANNER:-false}"
-export VITE_FEATURE_EXTRAS_ENABLED=false
+export VITE_FEATURE_EXTRAS_ENABLED=true
+export VITE_FEATURE_MAP_CHECKINS=true
+export VITE_FEATURE_SPOT_PRESENCE=true
+export VITE_FEATURE_TIPS=true
 export VITE_FEATURE_PRO_BLESSING=true
 export VITE_FEATURE_PRO_PROFILES=true
 export REQUIRE_SW_CONFIG=1

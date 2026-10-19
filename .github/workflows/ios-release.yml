@@ -147,12 +147,12 @@ jobs:
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
           VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
           VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
-          # Every other VITE_FEATURE_* flag (map/check-ins, clips, closet,
-          # Closet Studio, 360 shoes, pro/admin tools, XP, spot chats, runner...)
-          # is left unset on purpose: default-off for the public, and
-          # src/lib/featureFlags.ts flagOn() turns each one on at runtime for
-          # uids in config/featureTesters. The code is always compiled in, so
-          # leave the tester inputs below unticked for a tester build.
+          # Public App Store flags (screenshots must match the binary):
+          # Map/Clips/Verified Pro, spot passport/check-ins, Who's skating,
+          # Hesher tips, Sign in with Apple, pro blessing + pro profiles.
+          # Everything else stays default-off; flagOn() still turns them on
+          # at runtime for uids in config/featureTesters. Leave the tester
+          # inputs below unticked for store builds.
           # App Review must see Sign in with Apple. Enable the Firebase provider
           # first (docs/IOS_RELEASE.md). The website and Android stay off until
           # VITE_FEATURE_APPLE_SIGNIN_ENABLED is the literal "true" in Vercel.
@@ -168,10 +168,17 @@ jobs:
           VITE_FEATURE_WTT_ENABLED: ${{ inputs.wtt && 'true' || 'false' }}
           VITE_FEATURE_FEED_MODES_ENABLED: ${{ inputs.wtt && 'true' || 'false' }}
           VITE_FEATURE_PROFILE_BANNER: ${{ inputs.profile_banner && 'true' || 'false' }}
-          VITE_FEATURE_EXTRAS_ENABLED: "false"
-          # Map stays off for the public, but testers get every flag through the
-          # config/featureTesters override, so the build needs the map key or
-          # their Map tab opens to "Map is temporarily unavailable".
+          # Public: Map tab, Clips feed, Verified Pro (matches store screenshots).
+          VITE_FEATURE_EXTRAS_ENABLED: "true"
+          # Public: spot passport / verified check-ins UI. Server still gates
+          # writes with MAP_CHECKINS_ENABLED / MAP_TESTER_UIDS.
+          VITE_FEATURE_MAP_CHECKINS: "true"
+          # Public: Who's skating + online dots. Server still gates writes with
+          # SPOT_PRESENCE_ENABLED / SPOT_PRESENCE_TESTER_UIDS.
+          VITE_FEATURE_SPOT_PRESENCE: "true"
+          # Public: Hesher tip bubbles (client-only, never on camera).
+          VITE_FEATURE_TIPS: "true"
+          # Map key required now that Map is public (and for testers).
           VITE_MAPBOX_TOKEN: ${{ secrets.VITE_MAPBOX_TOKEN }}
           VITE_MAPBOX_STYLE_URL: ${{ secrets.VITE_MAPBOX_STYLE_URL }}
           # Pro blessing UI. The proBlessing function still gates who can act
