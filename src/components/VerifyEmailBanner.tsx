@@ -164,7 +164,7 @@ export function VerifyEmailBanner({
           disabled={checking}
           className="mt-2 flex min-h-11 w-full items-center font-body text-sm text-bright underline underline-offset-2 hover:text-brand-orange disabled:opacity-40 transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange rounded"
           aria-busy={checking}
-          aria-label={checking ? "Checking verification status" : "I verified my email — check now"}
+          aria-label={checking ? "Checking verification status" : "I verified — check now (email verification)"}
         >
           {checking ? "Checking…" : "I verified — check now"}
         </button>

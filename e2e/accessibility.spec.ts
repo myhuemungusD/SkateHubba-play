@@ -1,63 +1,58 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { clearAll } from "./helpers/emulator";
+import { signUpAndSetupProfile } from "./helpers/auth-flow";
 
 /**
- * Accessibility checks with axe-core. Tests critical user paths for WCAG compliance.
- * Runs against the emulator-backed dev server (npm run test:e2e).
+ * axe-core WCAG 2.1 A/AA checks on the main screens. Runs inside the normal
+ * e2e job (emulator-backed dev server), so it needs no CI job of its own.
  */
+const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
+
+async function scan(page: Page) {
+  const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
+  // Print a readable summary on failure instead of a giant object diff.
+  const summary = results.violations.map(
+    (v) => `${v.id} (${v.impact}): ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`,
+  );
+  expect(summary).toEqual([]);
+}
+
+test.beforeEach(async () => {
+  await clearAll();
+});
 
 test.describe("Accessibility", () => {
   test("Landing page has no detectable accessibility violations", async ({ page }) => {
     await page.goto("/");
-    const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
-    expect(results.violations).toEqual([]);
+    await expect(page.getByRole("button", { name: "Create account", exact: true })).toBeVisible({ timeout: 10_000 });
+    await scan(page);
   });
 
   test("Auth screen has no detectable accessibility violations", async ({ page }) => {
     await page.goto("/auth");
-    const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
-    expect(results.violations).toEqual([]);
-  });
-
-  test("Lobby has no detectable accessibility violations", async ({ page }) => {
-    // Sign in first
-    await page.goto("/auth");
-    await page.getByPlaceholder("Email address").fill("test@example.com");
-    await page.getByPlaceholder("Password").fill("password123");
-    await page.getByRole("button", { name: /sign in/i }).click();
-
-    // Wait for lobby to load
-    await page.waitForURL("/lobby", { timeout: 10000 });
-
-    const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
-    expect(results.violations).toEqual([]);
+    await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 10_000 });
+    await scan(page);
   });
 
   test("Map page has no detectable accessibility violations", async ({ page }) => {
-    // Navigate to map (requires auth in production but may be accessible in test)
     await page.goto("/map");
+    await page.waitForLoadState("load");
+    await scan(page);
+  });
 
-    // Give map time to load
-    await page.waitForTimeout(2000);
-
-    const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
-    expect(results.violations).toEqual([]);
+  test("Lobby has no detectable accessibility violations", async ({ page }) => {
+    await signUpAndSetupProfile(page, "a11y-lobby@test.com", "password123", "a11ylobby");
+    await scan(page);
   });
 
   test("Settings page has no detectable accessibility violations", async ({ page }) => {
-    // Sign in first
-    await page.goto("/auth");
-    await page.getByPlaceholder("Email address").fill("test@example.com");
-    await page.getByPlaceholder("Password").fill("password123");
-    await page.getByRole("button", { name: /sign in/i }).click();
-
-    await page.waitForURL("/lobby");
-
-    // Navigate to settings
-    await page.goto("/settings");
-    await page.waitForTimeout(1000);
-
-    const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
-    expect(results.violations).toEqual([]);
+    await signUpAndSetupProfile(page, "a11y-settings@test.com", "password123", "a11ysettings");
+    // Open Settings the way a user does (lobby header icon). Firestore keeps
+    // a listener open, so "networkidle" never settles; wait for the heading.
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.waitForURL("**/settings**", { timeout: 10_000 });
+    await expect(page.getByRole("heading").first()).toBeVisible({ timeout: 10_000 });
+    await scan(page);
   });
 });

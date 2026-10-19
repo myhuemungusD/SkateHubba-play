@@ -6,6 +6,10 @@ This document provides step-by-step deployment instructions for Roll Dice and Pu
 
 ---
 
+**Testers:** the tester lists hold only Jason and Mike. `npm run testers:sync` keeps every server `*_TESTER_UIDS` list and `config/featureTesters` in step.
+
+**Before testing a callable:** `diceAction` and `decideClipModeration` must answer a CORS preflight with `204`, not Google's bare `403`. If they answer `403`, the Cloud Run invoker grant is missing. See "Callables must be public at the Cloud Run layer" in [DEPLOYMENT.md](DEPLOYMENT.md#cloud-functions-deployment).
+
 ## Pre-Deployment Verification
 
 ### ✅ Roll Dice Ready
