@@ -85,7 +85,7 @@ either one.
 
 ## Automated Guards (CI-Enforced)
 
-In addition to GitHub's branch protection settings, the following CI checks run on every PR to `main` (plus the out-of-band `audit-nightly` job at the bottom of the table, which runs on a schedule rather than per PR):
+In addition to GitHub's branch protection settings, the following CI checks run on every PR to `main` (plus the deploy, infra, `audit-nightly` and CodeQL rows at the bottom of the table, which do not run per PR):
 
 | Check                             | Workflow                        | Purpose                                                                                                                                                                                       |
 | --------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -97,6 +97,8 @@ In addition to GitHub's branch protection settings, the following CI checks run 
 | `guard-todo-fixme-hack`           | `pr-gate.yml`                   | Rejects `TODO` / `FIXME` / `HACK` in `src/` and `api/`                                                                                                                                        |
 | `check-test-duplication`          | `pr-gate.yml`                   | Flags duplicated test blocks                                                                                                                                                                  |
 | `check-file-length`               | `pr-gate.yml`                   | Fails the PR if any file exceeds its LOC budget (`--strict`)                                                                                                                                  |
+| `guard-tester-lists`              | `pr-gate.yml`                   | Fails if code adds a `*_TESTER_UIDS` list that `npm run testers:sync` does not know (`node scripts/testers-sync.mjs --check`)                                                                 |
+| `iOS pre-flight`                  | `ios-preflight.yml`             | Free Linux check of the iOS native patches, only on PRs that touch them. Catches build breaks before a paid Mac build                                                                         |
 | `Build and test Cloud Functions`  | `pr-gate.yml`                   | Builds, tests and audits (high+) the approved Cloud Functions codebase when it changes                                                                                                        |
 | `e2e`                             | `main.yml`                      | Playwright end-to-end suite against the Firebase emulators                                                                                                                                    |
 | `build-and-test`                  | `main.yml`                      | Lint, type check, tests, build (blocking `npm audit` when this PR touches deps; report-only otherwise)                                                                                        |
@@ -105,7 +107,7 @@ In addition to GitHub's branch protection settings, the following CI checks run 
 | Functions deploy                  | `firebase-functions-deploy.yml` | Manual Cloud Functions upload (`workflow_dispatch` only). Not a required PR check — it does not run on pull requests. See `docs/DEPLOY_FUNCTIONS.md`                                          |
 | Infra setup                       | `firebase-infra-setup.yml`      | Manual workflow for daily Firestore backups + 90-day Storage lifecycle (`workflow_dispatch`)                                                                                                  |
 | `audit-nightly`                   | `main.yml`                      | Manual (dispatch-only) `npm audit` of main's root lockfile (moderate+) and `functions/` lockfile (high+)                                                                                      |
-| CodeQL                            | `codeql.yml`                    | Static analysis (JS/TS, Actions, Python) on PRs, pushes to main and weekly. Not required yet                                                                                                  |
+| CodeQL                            | `codeql.yml`                    | Static analysis (JS/TS, Actions, Python) on pushes to main and weekly. Not required yet                                                                                                       |
 
 ---
 

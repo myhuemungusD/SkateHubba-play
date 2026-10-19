@@ -44,7 +44,7 @@ This app brings that to your phone, async. Set your trick whenever, opponent mat
 
 ## Contents
 
-[Screenshots](#screenshots) · [Tech Stack](#tech-stack) · [Features](#features) · [Quick Start](#quick-start) · [Scripts](#scripts) · [Project Structure](#project-structure) · [Environment Variables](#environment-variables) · [Documentation](#documentation) · [Deployment](#deployment) · [Traction](#traction) · [Analytics](#event-instrumentation--core-funnel) · [Roadmap](#roadmap-async-gameplay--network-effects) · [Contributing](#contributing)
+[Screenshots](#screenshots) · [Tech Stack](#tech-stack) · [Features](#features) · [Quick Start](#quick-start) · [Scripts](#scripts) · [Project Structure](#project-structure) · [Environment Variables](#environment-variables) · [Documentation](#documentation) · [Deployment](#deployment) · [Traction](#traction) · [Analytics](#event-instrumentation--core-funnel) · [Roadmap](#roadmap-async-gameplay--network-effects) · [Credits](#credits) · [Contributing](#contributing)
 
 ---
 
@@ -76,8 +76,8 @@ This app brings that to your phone, async. Set your trick whenever, opponent mat
 | Auth      | Firebase Auth: email, Google, Sign in with Apple; TOTP/SMS 2-step |
 | Database  | Cloud Firestore (real-time, offline-capable)                      |
 | Storage   | Firebase Storage (trick videos — WebM on web, MP4 on native)      |
-| Native    | Capacitor 8 (iOS + Android); iOS ships to TestFlight via fastlane |
-| Hosting   | Vercel (web + `api/` endpoints), Cloud Functions (gen 2)          |
+| Native    | Capacitor 8 (iOS + Android); iOS builds are started by hand only  |
+| Hosting   | Vercel (web + `api/` endpoints), Cloud Functions (gen 2, Blaze)   |
 | Analytics | Vercel Analytics + PostHog (consent-gated via in-app banner)      |
 | Errors    | Sentry                                                            |
 | Testing   | Vitest, @testing-library/react, Playwright (E2E)                  |
@@ -85,8 +85,8 @@ This app brings that to your phone, async. Set your trick whenever, opponent mat
 
 No custom backend for core game logic: the client talks directly to Firebase, and Firestore rules enforce turn order, scores and rate limits. Server code is kept small and pinned by CI (`verify-no-cloud-functions` allowlist):
 
-- **Cloud Functions** (`functions/src/`): stats close-out, Roll Dice (`dice/`, off), clip moderation (`moderation/`, off) and `proBlessing` (`pro/`, tester-gated). Deployed by hand; see [Deployment](#deployment).
-- **`api/` serverless endpoints** on Vercel: scheduled sweeps for expired turns and disputes, FCM push delivery, account deletion, `/player` social cards, and the Apple/Android app-link files.
+- **Cloud Functions** (`functions/src/`): stats close-out, Roll Dice (`dice/`), clip moderation (`moderation/`), `proBlessing` and pro tools triggers (`pro/`), the Closet economy (`closet/`), push delivery plus the 5-minute sweep that also calls the referee endpoints (`push/`), map check-ins and spot presence (`map/`), and admin analytics/announcements (`admin/`). Each is behind its own server switch, and all are deployed by hand; see [Deployment](#deployment).
+- **`api/` serverless endpoints** on Vercel: the expired-turn and dispute referees (called by the `pushDispatchSweep` function), account deletion, `/player` social cards, and the Apple/Android app-link files.
 
 ---
 
@@ -124,16 +124,27 @@ No custom backend for core game logic: the client talks directly to Firebase, an
 - **Leaderboard** — ranked players by wins
 - **Player profiles** — public per-user pages with full game history
 - **Spots map** — geo-tagged skate spots with gnar rating + bust risk, filters, a nearby-spots dropdown (closest spots within 10 km), and challenge-from-spot
+- **Map check-ins** _(testers only)_ — server-verified check-ins, a spot passport, legendary and seeded OpenStreetMap spots, crew-only and private spots ([docs/MAP_ROADMAP.md](docs/MAP_ROADMAP.md))
+- **Spot presence** _(testers only)_ — "Challenge here" lists only skaters checked in at that spot, a day pass re-checks you in automatically within about 500 ft (you can turn it off) while the app is open, and online dots on avatars. The presence record never stores a location, only "at this spot until"
+- **Spot chats** _(testers only)_ — a group chat per spot with report, block, word filter and rate limits
 - **Achievements & badges** — earned badges (century club, streaks, OG, …) shown on profiles
 - **Hubba Locker** — collectible locker items with a profile showcase (economy Phase A)
+- **Closet** _(testers only)_ — earned and bought items, Drop Day, trading and Hubba Bucks, all server-authoritative. Includes the Mike White Signature collection with a 360 shoe viewer, and Closet Studio, a paint-style clothes editor that starts from Mike's designs ([docs/MIKE_WHITE_COLLECTION.md](docs/MIKE_WHITE_COLLECTION.md), [docs/CLOSET_STUDIO.md](docs/CLOSET_STUDIO.md))
+- **Customizable profiles** _(testers only)_ — banner photo, theme colors, section order, pinned clips, links and a theme song ([docs/PROFILE_CUSTOM.md](docs/PROFILE_CUSTOM.md))
 - **Verified Pro** — gold badge for professional skaters. Nobody can earn it: an existing pro has to bless you
 - **Bless a pro** — a verified pro offers the badge with a public reason, the skater accepts, and the lineage ("Blessed by") shows on the profile. Limits: 2 per pro per 30 days, target account at least 30 days old ([docs/PRO_BLESSING.md](docs/PRO_BLESSING.md))
-- **Pro profiles and `/pro` tools** — pro hero, bio, sponsors and signature tricks, edited by the pro on the Pro tools screen (public showcase behind `VITE_FEATURE_PRO_PROFILES`)
-- **Admin console** — in-app moderation surface for bans, badge awards, and dispute oversight
+- **Pro profiles and `/pro` tools** — pro hero, bio, sponsors and signature tricks, edited by the pro on the Pro tools screen (public showcase behind `VITE_FEATURE_PRO_PROFILES`). Testers also get the Clip Reel and Pro Spots, a pro review queue, gold clip authoring, pro challenges, pro props and featured clips. Pro tools never carry admin powers
+- **Admin console** — in-app moderation surface for bans, badge awards, and dispute oversight; testers also get user search, a disputes queue with an audit log, analytics and announcements (admin claim only)
+
+### Extras (testers only)
+
+- **Hesher tips** — Hesher, the SkateHubba mascot (formerly "Hubz"), shows one to three tip bubbles the first time you open each screen. Never while the camera is open. Settings has "Show tips" and "Replay tips"
+- **Skate Runner** — an endless three-lane street grind game at `/play/runner` ([docs/RUNNER.md](docs/RUNNER.md)). Off for everyone except testers until it's signed off
+- **Roll Dice**, **XP and levels**, **What's That Trick**, the **clip editor** and the **pro camera** — see [docs/FEATURE_FLAGS.md](docs/FEATURE_FLAGS.md)
 
 ### Platform
 
-- **Native apps** — Capacitor builds for iOS and Android; iOS goes to TestFlight from GitHub Actions ([docs/IOS_RELEASE.md](docs/IOS_RELEASE.md))
+- **Native apps** — Capacitor builds for iOS and Android; iOS goes to TestFlight from a hand-started GitHub Actions or Xcode Cloud build ([docs/IOS_RELEASE.md](docs/IOS_RELEASE.md))
 - **PWA-ready** — installable from the browser
 - **Offline support** — Firestore local cache lets you read games without internet
 - **Consent-gated analytics** — Vercel Analytics + PostHog behind an in-app consent banner, with full funnel instrumentation
@@ -161,31 +172,39 @@ For full setup including Firebase emulators, see [docs/DEVELOPMENT.md](docs/DEVE
 
 ## Scripts
 
-| Command                           | Description                                                         |
-| --------------------------------- | ------------------------------------------------------------------- |
-| `npm run dev`                     | Start the Vite dev server at `http://localhost:5173`                |
-| `npm run build`                   | Type-check + production build → `dist/`                             |
-| `npm run preview`                 | Preview the production build locally                                |
-| `npm run typecheck`               | Run `tsc -b` only                                                   |
-| `npm test`                        | Run the unit + component test suite once                            |
-| `npm run test:watch`              | Run tests in watch mode                                             |
-| `npm run test:coverage`           | Run tests with coverage report (CI gate)                            |
-| `npm run check:coverage-per-file` | Fail when a file drops below its per-file coverage floor            |
-| `npm run test:rules`              | Run Firestore security-rules tests against the rules emulator       |
-| `npm run test:e2e`                | Run Playwright E2E tests (auto-starts emulators)                    |
-| `npm run test:e2e:ui`             | Same as above in the Playwright UI runner                           |
-| `npm run lint`                    | Lint `src/`, `api/`, `e2e/`, and `public/sw-cleanup.js` with ESLint |
-| `npm run lint:fix`                | Lint and auto-fix where possible                                    |
-| `npm run format`                  | Format `src/**/*.{ts,tsx}` with Prettier                            |
-| `npm run check:test-dup`          | Flag duplicated test cases (CI gate)                                |
-| `npm run check:file-length`       | Fail on any file over its LOC budget (blocking in the PR gate)      |
-| `npm run verify`                  | Full CI gate: type-check, lint, coverage, build, test-dup           |
-| `npm run emulators`               | Start the Firebase emulator suite locally                           |
-| `npm run cap:sync`                | Sync the web build into iOS/Android Capacitor projects              |
-| `npm run cap:open:ios`            | Open the iOS project in Xcode                                       |
-| `npm run cap:open:android`        | Open the Android project in Android Studio                          |
-| `npm run cap:run:ios`             | Build and run the app on an iOS device/simulator                    |
-| `npm run cap:run:android`         | Build and run the app on an Android device/emulator                 |
+| Command                           | Description                                                                                       |
+| --------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `npm run dev`                     | Start the Vite dev server at `http://localhost:5173`                                              |
+| `npm run build`                   | Type-check + production build → `dist/`                                                           |
+| `npm run preview`                 | Preview the production build locally                                                              |
+| `npm run typecheck`               | Run `tsc -b` only                                                                                 |
+| `npm test`                        | Run the unit + component test suite once                                                          |
+| `npm run test:watch`              | Run tests in watch mode                                                                           |
+| `npm run test:coverage`           | Run tests with coverage report (CI gate)                                                          |
+| `npm run check:coverage-per-file` | Fail when a file drops below its per-file coverage floor                                          |
+| `npm run test:rules`              | Run Firestore security-rules tests against the rules emulator                                     |
+| `npm run test:e2e`                | Run Playwright E2E tests (auto-starts emulators)                                                  |
+| `npm run test:e2e:ui`             | Same as above in the Playwright UI runner                                                         |
+| `npm run lint`                    | Lint `src/`, `api/`, `e2e/`, and `public/sw-cleanup.js` with ESLint                               |
+| `npm run lint:fix`                | Lint and auto-fix where possible                                                                  |
+| `npm run format`                  | Format `src/**/*.{ts,tsx}` with Prettier                                                          |
+| `npm run check:test-dup`          | Flag duplicated test cases (CI gate)                                                              |
+| `npm run check:file-length`       | Fail on any file over its LOC budget (blocking in the PR gate)                                    |
+| `npm run verify`                  | Full CI gate: type-check, lint, coverage, build, test-dup                                         |
+| `npm run emulators`               | Start the Firebase emulator suite locally                                                         |
+| `npm run cap:sync`                | Sync the web build into iOS/Android Capacitor projects                                            |
+| `npm run cap:open:ios`            | Open the iOS project in Xcode                                                                     |
+| `npm run cap:open:android`        | Open the Android project in Android Studio                                                        |
+| `npm run cap:run:ios`             | Build and run the app on an iOS device/simulator                                                  |
+| `npm run cap:run:android`         | Build and run the app on an Android device/emulator                                               |
+| `npm run testers:sync`            | Match every server `*_TESTER_UIDS` list to `config/featureTesters` (dry run; `-- --apply` writes) |
+| `npm run check:testers`           | Fail if code has a `*_TESTER_UIDS` list that `testers:sync` doesn't know (PR gate)                |
+| `npm run ios:preflight`           | Free Linux check of the iOS native patches before a paid Mac build                                |
+| `npm run deploy:functions`        | One-command Cloud Functions deploy (checks first; `-- --only a,b`, `-- --dry-run`)                |
+| `npm run deploy:rules`            | One-command Firestore + Storage rules deploy                                                      |
+| `npm run deploy:all`              | Functions and rules together                                                                      |
+| `npm run review:seed`             | Create or reset the App Review / Play demo account with real-looking content                      |
+| `npm run review:screenshots`      | Take store screenshots at every required size                                                     |
 
 ---
 
@@ -260,47 +279,32 @@ Copy `.env.example` to `.env.local` and fill in the values. The full template (w
 
 **Optional (recommended in production)**
 
-| Variable                       | Purpose                                                                       |
-| ------------------------------ | ----------------------------------------------------------------------------- |
-| `VITE_FIREBASE_MEASUREMENT_ID` | Firebase Analytics                                                            |
-| `VITE_FIREBASE_VAPID_KEY`      | FCM web push (Firebase Console → Cloud Messaging → Web Push certificates)     |
-| `VITE_RECAPTCHA_SITE_KEY`      | App Check via reCAPTCHA v3 (blocks bot/API-abuse traffic)                     |
-| `VITE_APPCHECK_ENABLED`        | App Check master switch; set to `true` to activate alongside the site key     |
-| `VITE_SENTRY_DSN`              | Sentry error tracking; without it, errors only appear in the browser console  |
-| `VITE_POSTHOG_KEY`             | PostHog product analytics; consent-gated, omit to disable                     |
-| `VITE_POSTHOG_HOST`            | PostHog ingestion host; defaults to the US cloud when unset                   |
-| `VITE_APP_URL`                 | Production domain for Firebase email action links + invite URLs               |
-| `VITE_MAPBOX_STYLE_URL`        | Custom Mapbox Studio style; falls back to `mapbox://styles/mapbox/dark-v11`   |
-| `VITE_USE_EMULATORS=true`      | Local-only — point the client at the Firebase emulator suite                  |
-| `VITE_FEATURE_EXTRAS_ENABLED`  | Switch for Map / Clips feed / Verified Pro — `true` in production (see below) |
+| Variable                       | Purpose                                                                      |
+| ------------------------------ | ---------------------------------------------------------------------------- |
+| `VITE_FIREBASE_MEASUREMENT_ID` | Firebase Analytics                                                           |
+| `VITE_FIREBASE_VAPID_KEY`      | FCM web push (Firebase Console → Cloud Messaging → Web Push certificates)    |
+| `VITE_RECAPTCHA_SITE_KEY`      | App Check via reCAPTCHA v3 (blocks bot/API-abuse traffic)                    |
+| `VITE_APPCHECK_ENABLED`        | App Check master switch; set to `true` to activate alongside the site key    |
+| `VITE_SENTRY_DSN`              | Sentry error tracking; without it, errors only appear in the browser console |
+| `VITE_POSTHOG_KEY`             | PostHog product analytics; consent-gated, omit to disable                    |
+| `VITE_POSTHOG_HOST`            | PostHog ingestion host; defaults to the US cloud when unset                  |
+| `VITE_APP_URL`                 | Production domain for Firebase email action links + invite URLs              |
+| `VITE_MAPBOX_STYLE_URL`        | Custom Mapbox Studio style; falls back to `mapbox://styles/mapbox/dark-v11`  |
+| `VITE_USE_EMULATORS=true`      | Local-only — point the client at the Firebase emulator suite                 |
+| `VITE_FEATURE_*`               | Feature flags, all off by default (see below)                                |
 
-**Feature flags.** Every flag needs the literal string `true` (see [`src/lib/featureFlags.ts`](src/lib/featureFlags.ts)). `VITE_*` values are baked in at build time, so a change needs a redeploy or a new app build.
+**Feature flags.** Every feature flag defaults to **off**: only the literal string `true` turns one on, and `VITE_*` values are baked in at build time, so a change needs a redeploy or a new app build. Testers listed in the Firestore doc `config/featureTesters` (Jason and Mike) get every flag on through a runtime override. The full list, what each flag shows, its server switch and where it is on today live in [docs/FEATURE_FLAGS.md](docs/FEATURE_FLAGS.md).
 
-| Flag                                   | What it shows                              | Web (Vercel prod) | iOS store build                  |
-| -------------------------------------- | ------------------------------------------ | ----------------- | -------------------------------- |
-| `VITE_FEATURE_EXTRAS_ENABLED`          | Map, Clips feed, Verified Pro              | on                | off                              |
-| `VITE_FEATURE_APPLE_SIGNIN_ENABLED`    | Sign in with Apple button                  | off               | on                               |
-| `VITE_FEATURE_PRO_BLESSING`            | Bless a pro, Blessed by, turned-pro screen | off               | on (server limits it to testers) |
-| `VITE_FEATURE_PRO_PROFILES`            | Public pro showcase (admins always see it) | off               | off                              |
-| `VITE_FEATURE_DICE_ENABLED`            | Roll Dice                                  | off               | off                              |
-| `VITE_FEATURE_XP_ENABLED`              | XP and levels                              | off               | off                              |
-| `VITE_FEATURE_REFEREE_ENABLED`         | Nominate a referee on new games            | off               | off                              |
-| `VITE_FEATURE_CLIP_MODERATION_ENABLED` | Hold uploads for moderation                | off               | off                              |
+On the website only `VITE_FEATURE_EXTRAS_ENABLED=true` is set (Map, Clips feed, Verified Pro). The launch freeze was lifted on 2026-10-10. A local build or fork without it falls back to the core game loop: those routes redirect to `/lobby` (signed in) or `/` (signed out). iPhone builds set `VITE_FEATURE_APPLE_SIGNIN_ENABLED`, `VITE_FEATURE_PRO_BLESSING` and `VITE_FEATURE_PRO_PROFILES` and leave extras off.
 
-Server-side switches for the Cloud Functions (`XP_*`, `DICE_*`, `MODERATION_ENABLED`, `PRO_BLESSING_*`) live in the `FUNCTIONS_DOTENV` secret; see [docs/DEPLOY_FUNCTIONS.md](docs/DEPLOY_FUNCTIONS.md).
-
-**Extras switch (`VITE_FEATURE_EXTRAS_ENABLED`)**
-
-The launch feature freeze was lifted on 2026-10-10. The Map (`/map`, `/spots/:id`), the Clips feed (`/feed`) and Verified Pro are live on skatehubba.com, with `VITE_FEATURE_EXTRAS_ENABLED=true` set for Production and Preview in Vercel. The code still requires the literal string `true` (see [`src/lib/featureFlags.ts`](src/lib/featureFlags.ts)), so a local build or fork without it falls back to the core game loop only: those routes redirect to `/lobby` (signed in) or `/` (signed out) and the Clips/Map tabs, "Add a spot" CTA and Verified Pro treatment are hidden. `VITE_*` values are inlined at build time, so changing it needs a redeploy. The landing-page Map teaser was removed outright (not gated) so mapbox-gl never loads on `/`.
-
-See the flag table above for what is on where.
+Server-side switches for the Cloud Functions (`MAP_*`, `SPOT_PRESENCE_*`, `XP_*`, `DICE_*`, `CLOSET_*`, `MODERATION_ENABLED`, `PRO_BLESSING_*`) live in the functions parameter file; see [docs/DEPLOY_FUNCTIONS.md](docs/DEPLOY_FUNCTIONS.md).
 
 **Server-only (Vercel project env, never `VITE_`-prefixed — see `.env.example`)**
 
-| Variable                        | Purpose                                                                                |
-| ------------------------------- | -------------------------------------------------------------------------------------- |
-| `CRON_SECRET`                   | Bearer token the scheduled GitHub Actions sweeps present to the `api/cron/*` endpoints |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | Admin SDK credentials for the serverless endpoints (cron sweeps, account deletion)     |
+| Variable                        | Purpose                                                                              |
+| ------------------------------- | ------------------------------------------------------------------------------------ |
+| `CRON_SECRET`                   | Bearer token the `pushDispatchSweep` function presents to the `api/cron/*` endpoints |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Admin SDK credentials for the serverless endpoints (cron sweeps, account deletion)   |
 
 ---
 
@@ -309,6 +313,7 @@ See the flag table above for what is on where.
 | Document                                                       | Description                                  |
 | -------------------------------------------------------------- | -------------------------------------------- |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)                     | Local setup, emulators, dev workflow         |
+| [docs/FEATURE_FLAGS.md](docs/FEATURE_FLAGS.md)                 | Every flag, testers override, testers:sync   |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)                       | Production deploy to Vercel + Firebase       |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                   | System design, data flow, decisions          |
 | [docs/DATABASE.md](docs/DATABASE.md)                           | Firestore schema and security rules          |
@@ -328,6 +333,12 @@ See the flag table above for what is on where.
 | [docs/DICE.md](docs/DICE.md)                                   | Roll Dice (server-rolled, off)               |
 | [docs/DEPLOY_FUNCTIONS.md](docs/DEPLOY_FUNCTIONS.md)           | Cloud Functions deploy + parameter secret    |
 | [docs/IOS_RELEASE.md](docs/IOS_RELEASE.md)                     | iOS signing, TestFlight, App Store release   |
+| [docs/XCODE_CLOUD.md](docs/XCODE_CLOUD.md)                     | iOS builds on Xcode Cloud                    |
+| [docs/STORE_REVIEW_KIT.md](docs/STORE_REVIEW_KIT.md)           | Demo reviewer account + store screenshots    |
+| [docs/MAP_ROADMAP.md](docs/MAP_ROADMAP.md)                     | Map check-ins, spot presence, map roadmap    |
+| [docs/RUNNER.md](docs/RUNNER.md)                               | Skate Runner (testers only)                  |
+| [docs/MIKE_WHITE_COLLECTION.md](docs/MIKE_WHITE_COLLECTION.md) | Mike White Signature collection + credit     |
+| [docs/CLOSET_STUDIO.md](docs/CLOSET_STUDIO.md)                 | Closet Studio clothes editor                 |
 | [docs/STORE_PRIVACY_ANSWERS.md](docs/STORE_PRIVACY_ANSWERS.md) | App Privacy / Data safety answers            |
 | [CONTRIBUTING.md](CONTRIBUTING.md)                             | How to contribute                            |
 | [SECURITY.md](SECURITY.md)                                     | Security policy and vulnerability reporting  |
@@ -339,10 +350,10 @@ See the flag table above for what is on where.
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full guide. Short version:
 
-1. **Web:** merging to `main` deploys to Vercel (env vars live in the Vercel project).
-2. **Rules:** the _Deploy Firebase Rules_ workflow ships `firestore.rules` / `storage.rules` after merge.
-3. **Cloud Functions:** never automatic. Run _Deploy Firebase Functions_ by hand (`gh workflow run firebase-functions-deploy.yml --ref main -f confirm=deploy`). It needs every key in the `FUNCTIONS_DOTENV` secret ([docs/DEPLOY_FUNCTIONS.md](docs/DEPLOY_FUNCTIONS.md)). A brand-new function needs a one-time stub first.
-4. **iOS:** run _iOS TestFlight_ (`ios-release.yml`). fastlane match signs it, bumps the build number and uploads it to TestFlight ([docs/IOS_RELEASE.md](docs/IOS_RELEASE.md)).
+1. **Web:** merging to `main` deploys to Vercel (env vars live in the Vercel project). Finished work is merged in batches, about once a day, so each batch costs one production build.
+2. **Rules:** the _Deploy Firebase Rules_ workflow ships `firestore.rules` / `storage.rules` after merge. From a logged-in PC, `npm run deploy:rules` does the same with checks first.
+3. **Cloud Functions:** never automatic. Run `npm run deploy:functions` from a logged-in PC, or _Deploy Firebase Functions_ by hand (`gh workflow run firebase-functions-deploy.yml --ref main -f confirm=deploy`). Every parameter needs a value ([docs/DEPLOY_FUNCTIONS.md](docs/DEPLOY_FUNCTIONS.md)). A brand-new function needs a one-time stub first.
+4. **iOS:** never automatic, and no merge starts a Mac build. Run `npm run ios:preflight`, then start _iOS TestFlight_ (`ios-release.yml`) by hand or an Xcode Cloud build. Each Mac build costs money, so builds are batched and infrequent ([docs/IOS_RELEASE.md](docs/IOS_RELEASE.md)). Publishing a GitHub release or pushing a `v*` tag runs the unsigned `ios-build.yml` check, so don't merge the release-please PR casually.
 
 ---
 
@@ -355,7 +366,7 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full guide. Short version:
 | Real-time multiplayer | Firestore `onSnapshot` — sub-second updates                                                                                                         |
 | Video infrastructure  | WebM (web) + MP4 (native), 1 KB – 50 MB per clip, retry w/ backoff                                                                                  |
 | Turn timer            | 24 h per turn, server-validated forfeit                                                                                                             |
-| Native apps           | Capacitor builds for iOS + Android; iOS on TestFlight                                                                                               |
+| Native apps           | Capacitor builds for iOS + Android; iOS on TestFlight (builds started by hand)                                                                      |
 | CI pipeline           | Lint → type-check → unit tests + coverage → build → Lighthouse → E2E                                                                                |
 | Test coverage         | 100% on `src/services/**` and `src/hooks/**` (enforced by CI thresholds)                                                                            |
 | Rules tests           | `@firebase/rules-unit-testing` against the Firestore emulator                                                                                       |
@@ -470,6 +481,13 @@ Optional third player who arbitrates disputes. Shipped 2026-04-19 — see the `[
 - Honor-system games skip the `disputable` phase entirely; they use the binding community-dispute path instead (`pendingReview` → `communityReview`), documented in [docs/DISPUTE_BINDING_DESIGN.md](docs/DISPUTE_BINDING_DESIGN.md)
 
 **The thesis:** Each game produces shareable video content. Each shared clip is a free acquisition channel. Each new player brings their crew. The game mechanic (asynchronous, video-first) removes the coordination cost that kills most multiplayer apps — you don't need to be online at the same time or at the same spot.
+
+---
+
+## Credits
+
+- **Mike White** designed the Mike White Signature collection (every signature shoe, drawn by hand) and the Closet Studio starter templates. The app shows "Designed by Mike White" on his items and "Based on a Mike White design" on anything made from them ([docs/MIKE_WHITE_COLLECTION.md](docs/MIKE_WHITE_COLLECTION.md)).
+- Skate sounds and Skate Runner models carry their own licenses: [public/editor/CREDITS.md](public/editor/CREDITS.md) and [docs/RUNNER_ASSETS.md](docs/RUNNER_ASSETS.md).
 
 ---
 

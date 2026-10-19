@@ -1,6 +1,7 @@
 # SkateHubba Economy & Creator Ecosystem
 
 > **Status:** Vision document. Nothing here ships before the traction criteria in [ROADMAP.md](../ROADMAP.md) are met.
+> **Built so far (Oct 2026, testers only):** the Closet — shop, Hubba Bucks wallet and ledger, Drop Day and draws, trading with holds, earn track, equip, IAP verification and admin catalog tools. The server is `functions/src/closet/` (every write is server-authoritative), the client is `src/services/closet*.ts`, and `scripts/simulate-economy.mjs` checks the Bucks balance curve. Everything is behind `VITE_FEATURE_CLOSET_*` plus the `CLOSET_*` server switches, all default off ([FEATURE_FLAGS.md](FEATURE_FLAGS.md)). Public launch waits for 100 finished games. The Mike White Signature items are earn/drop only ([MIKE_WHITE_COLLECTION.md](MIKE_WHITE_COLLECTION.md)).
 > **Constraints:** [docs/CHARTER.md](CHARTER.md) governs. Every mechanic below is designed for Firestore — no new datastore, no backend, no Cloud Functions beyond the approved set.
 
 SkateHubba is more than a place to find skate spots or play games of S.K.A.T.E. The long-term goal is a digital skateboarding ecosystem where **actually skating creates value**. A skater's activity inside SkateHubba builds their identity, reputation, collection, content library, and eventually their ability to earn money.

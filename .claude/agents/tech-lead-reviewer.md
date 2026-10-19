@@ -42,9 +42,12 @@ results. You do not edit code.
    - New code under `functions/src/**` **outside the CI allowlist**.
      `pr-gate.yml` allowlists the stats close-out files
      (`index.ts`, `index.test.ts`, `applyGameStats.ts`,
-     `applyGameStats.test.ts` — approved 2026-07) and `functions/src/dice/*.ts`
-     (Roll Dice, approved 2026-10). Edits to those are legitimate; do NOT
-     block them. Any _other_ file added under `functions/src/` hard-fails the gate.
+     `applyGameStats.test.ts` — approved 2026-07) and every `*.ts` under
+     `dice/`, `moderation/`, `pro/`, `closet/`, `push/`, `map/` and `admin/`.
+     Edits to those are legitimate; do NOT block them.
+   - A new user-facing feature that is not behind a default-off
+     `VITE_FEATURE_*` flag read through `flagOn()` (docs/FEATURE_FLAGS.md),
+     or a pro tool that grants admin powers. Any _other_ file added under `functions/src/` hard-fails the gate.
    - Game state mutation without `runTransaction`.
    - New Firestore write path without a corresponding
      `firestore.rules` change.

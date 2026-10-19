@@ -45,9 +45,11 @@ Firebase SDK.
   Sentry for everything else.
 - `functions/src/` is allowlisted, not banned. `pr-gate.yml` permits
   `index.ts`, `index.test.ts`, `applyGameStats.ts`, `applyGameStats.test.ts`
-  (the maintainer-approved stats close-out, approved 2026-07) and
-  `functions/src/dice/*.ts` (Roll Dice, approved 2026-10). Any other file
-  added there hard-fails the gate — discuss first.
+  (the maintainer-approved stats close-out, approved 2026-07) and every
+  `*.ts` under `dice/`, `moderation/`, `pro/`, `closet/`, `push/`, `map/`
+  and `admin/`. Any other file added there hard-fails the gate — discuss first.
+- Server features gate on `*_ENABLED` plus a `*_TESTER_UIDS` list. Keep that
+  naming so `npm run testers:sync` finds the list; the PR gate checks it.
 
 ## Verification gate (run before declaring done)
 

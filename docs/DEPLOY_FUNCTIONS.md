@@ -1,6 +1,6 @@
 # Deploy Cloud Functions
 
-Merging to `main` does not deploy Cloud Functions. Firestore rules and indexes still go out on their own (`firebase-rules-deploy.yml`). Functions wait until someone runs the manual workflow.
+Merging to `main` does not deploy Cloud Functions. Firestore rules and indexes still go out on their own (`firebase-rules-deploy.yml`). Functions wait until someone deploys them by hand: `npm run deploy:functions` from a logged-in PC ([One command](#one-command-laptop), preferred) or the manual workflow below.
 
 ## Run it
 
@@ -106,9 +106,20 @@ PRO_BLESSING_TESTER_UIDS=
 PRO_BLESSING_LIMIT=2
 PRO_BLESSING_WINDOW_DAYS=30
 PRO_BLESSING_MIN_ACCOUNT_DAYS=30
+CLOSET_ENABLED=false
+CLOSET_DROPS_ENABLED=false
+CLOSET_TRADING_ENABLED=false
+CLOSET_BUCKS_PURCHASE_ENABLED=false
+CLOSET_TESTER_UIDS=
+MAP_CHECKINS_ENABLED=false
+MAP_TESTER_UIDS=
+SPOT_PRESENCE_ENABLED=false
+SPOT_PRESENCE_TESTER_UIDS=
 ```
 
-`XP_ENABLED`, `DICE_ENABLED`, `MODERATION_ENABLED`, and `PRO_BLESSING_ENABLED` must be `true` or `false`. The tester lists and `SENTRY_DSN` may be empty.
+Every `*_ENABLED` key must be `true` or `false`, and the `PRO_BLESSING_*` numbers must be whole numbers. The tester lists and `SENTRY_DSN` may be empty. `scripts/deploy.mjs` lists every `defineString` / `defineBoolean` / `defineInt` in `functions/src` and refuses to deploy if one is missing, so this block can't silently drift from the code.
+
+`CRON_SECRET` is not in this file. `pushDispatchSweep` reads it from Firebase Secret Manager (`firebase functions:secrets:set CRON_SECRET`), and the value must match the Vercel env exactly.
 
 Copy the live values before the first run. A wrong file overwrites production on the next deploy (it can turn dice or moderation off).
 
@@ -134,11 +145,11 @@ npm run deploy:all -- --dry-run     # every check, prints the deploy command, up
 
 `scripts/deploy.mjs` refuses to run unless you are on `main`, the tree is clean, and you match `origin/main`. It runs the typecheck, the functions build and tests, and the rules tests when the rules changed since this machine's last rules deploy. Then it deploys to `sk8hub-d7806` (database `skatehubba`).
 
-The parameter values live outside the repo in `~/.skatehubba/functions.sk8hub-d7806.env` (or the path in `SKATEHUBBA_FUNCTIONS_ENV`), in the format under "Parameter file" below. The script checks every `defineString` / `defineBoolean` / `defineInt` in `functions/src` has a valid value, copies the file to `functions/.env.sk8hub-d7806` for the upload, and always deletes that copy afterwards, even if the deploy fails or you press Ctrl-C. `npm run testers:sync -- --apply` keeps the tester lists in that file matched to `config/featureTesters`.
+The parameter values live outside the repo in `~/.skatehubba/functions.sk8hub-d7806.env` (or the path in `SKATEHUBBA_FUNCTIONS_ENV`), in the format under "Parameter file" above. The script checks every `defineString` / `defineBoolean` / `defineInt` in `functions/src` has a valid value, copies the file to `functions/.env.sk8hub-d7806` for the upload, and always deletes that copy afterwards, even if the deploy fails or you press Ctrl-C. `npm run testers:sync -- --apply` keeps the tester lists in that file matched to `config/featureTesters`.
 
-## Laptop deploy
+## Plain firebase deploy
 
-The same upload still works from a machine that is already logged in:
+The raw upload still works from a machine that is already logged in, but it skips the checks above and needs the parameter file in place by hand:
 
 ```bash
 firebase use sk8hub-d7806

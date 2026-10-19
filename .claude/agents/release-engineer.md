@@ -48,8 +48,13 @@ green and the production deploy healthy.
   against `npm run build && npm run preview` before pushing.
 - `functions/src/` is allowlisted, not banned. `pr-gate.yml` permits
   `index.ts`, `index.test.ts`, `applyGameStats.ts`, `applyGameStats.test.ts`
-  (approved 2026-07) and `functions/src/dice/*.ts` (Roll Dice, approved
-  2026-10); any other file added there hard-fails the gate. Note
+  (approved 2026-07) and every `*.ts` under `dice/`, `moderation/`, `pro/`,
+  `closet/`, `push/`, `map/` and `admin/`; any other file added there
+  hard-fails the gate.
+- Cloud Functions deploy by hand only (`npm run deploy:functions` or the
+  manual workflow). iPhone builds are manual and batched: never add a
+  trigger that starts a Mac build on merge, and run `npm run ios:preflight`
+  before any paid build. Merges are batched too (one Vercel build each). Note
   `pr-gate.yml` also _builds and tests_ the `functions/` package on change.
 
 ## Verification gate

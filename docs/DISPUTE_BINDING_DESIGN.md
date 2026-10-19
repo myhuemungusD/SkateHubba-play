@@ -6,7 +6,7 @@ live vote-tally UI completed it 2026-08-21 (#522). Owner-approved 2026-07. Scope
 
 This remains the **design of record**, not an archive: it is the only written source for the
 frozen-phase state machine and the stat-increment rules, and the referee cron cites its §3.3/§3.4
-(`.github/workflows/resolve-expired-disputes.yml`). Kept in `docs/`, deliberately.
+(`api/cron/resolve-expired-disputes.ts`, called every 15 minutes by the `pushDispatchSweep` Cloud Function). Kept in `docs/`, deliberately.
 
 This document is the single source of truth every implementation phase builds against. If code and
 this doc disagree, fix one of them deliberately — do not let them drift.

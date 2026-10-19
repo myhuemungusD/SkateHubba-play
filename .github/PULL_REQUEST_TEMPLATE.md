@@ -32,7 +32,8 @@ production. -->
 - [ ] No new dependency — or the addition is justified below with its `npm audit` result and bundle-size impact
 
 <!-- Auto-enforced by CI (not optional):
-  - New code under functions/src/ is rejected except the approved stats file set and functions/src/dice/*.ts.
+  - New code under functions/src/ is rejected except the approved stats file set and the approved folders (dice, moderation, pro, closet, push, map, admin).
+  - A new *_TESTER_UIDS list must be known to scripts/testers-sync.mjs.
   - Changes to .github/workflows/** are flagged for maintainer review.
   - `as any` and TODO/FIXME/HACK in src/ fail the PR gate.
 -->

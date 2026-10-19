@@ -102,7 +102,7 @@ Flag: `VITE_FEATURE_MAP_CHECKINS` (`isMapCheckinsEnabled`). Server switch: `MAP_
 
 The map needs spots on day one, so seeding is a Phase 1 task.
 
-- **Baseline from OpenStreetMap via the Overpass API.** Skateparks: `leisure=pitch` + `sport=skateboard`, and `leisure=skatepark`. Skate shops: `shop=sports` + `sport=skateboard`, and `shop=skate`. An admin script (`scripts/map/seed_osm.ts`) pulls one region at a time, so we stay inside Overpass's fair-use limits.
+- **Baseline from OpenStreetMap via the Overpass API.** Skateparks: `leisure=pitch` + `sport=skateboard`, and `leisure=skatepark`. Skate shops: `shop=sports` + `sport=skateboard`, and `shop=skate`. An admin script (`scripts/map/seed_osm.mjs`) pulls one region at a time, so we stay inside Overpass's fair-use limits.
 - **Attribution.** OSM data is under the ODbL. The map always shows "© OpenStreetMap contributors", and seeded docs keep `source: "osm"` and `osmId` so we can credit the data and refresh it later.
 - **Dedupe** against existing spots: matching `osmId`, or a spot within about 50 m with a similar name, gets merged rather than duplicated. User-created spots win, and seeded data only fills in gaps.
 - **Seeded spots start unverified** (`isVerified == false`) and go through the same review as user spots before they can hold crowns or bounties.
@@ -130,7 +130,7 @@ Anti-cheat (this phase sets it up for all later phases):
 
 ### Phase 2: Live map and nearby challenges
 
-Flag: `VITE_MAP_PRESENCE_ENABLED` (`isMapPresenceEnabled`).
+Flag (as planned): `VITE_MAP_PRESENCE_ENABLED`. **The first slice shipped as [Spot presence](#spot-presence-oct-18-2026) behind `VITE_FEATURE_SPOT_PRESENCE` instead**; the planned pin counts and privacy zones below are not built yet.
 
 - When you check in, you can choose to show as "skating here" for 2 hours. Default is off.
 - Others see a count and avatars on the spot pin, never a dot on your exact position. Presence is tied to the spot, not to where you are standing.

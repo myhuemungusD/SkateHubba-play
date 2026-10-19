@@ -12,15 +12,11 @@ The switch is `VITE_FEATURE_RUNNER_ENABLED`. It works like Roll Dice: only the l
 
 `VITE_*` values are baked in at build time. Changing the variable does nothing until that deployment is rebuilt.
 
-### Try it on a Vercel preview
+### Who sees it
 
-Preview for this branch already has the flag set to the literal `true`. Open:
+Skate Runner is **testers only** until Jason signs off on it. Leave `VITE_FEATURE_RUNNER_ENABLED` unset in Vercel and in every app build. Testers listed in `config/featureTesters` still get it through the runtime override ([FEATURE_FLAGS.md](FEATURE_FLAGS.md)), so they can keep playing it on skatehubba.com and in TestFlight builds.
 
-`https://play-git-cursor-skate-runner-phase-1-5d57-skatehubba.vercel.app/play/runner`
-
-The preview host still asks you to sign in to Vercel. After that, the game itself does not need a SkateHubba account. Leave Production unset so skatehubba.com stays on the main game.
-
-Signed-in players also get a **Skate Runner** card on the lobby. The old `/play/*` redirect to `/lobby` still applies to every other `/play/...` path. `/play/runner` is the exception, including at the Vercel edge.
+When it is on, signed-in players also get a **Skate Runner** card on the lobby. The old `/play/*` redirect to `/lobby` still applies to every other `/play/...` path. `/play/runner` is the exception, including at the Vercel edge.
 
 ## Controls
 

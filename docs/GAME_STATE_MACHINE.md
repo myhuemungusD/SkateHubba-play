@@ -244,8 +244,9 @@ paths cannot diverge.
 
 ## Server-resolved transitions (cron only)
 
-`api/cron/resolve-expired-disputes.ts`, scheduled `*/15 * * * *` by
-`.github/workflows/resolve-expired-disputes.yml`. Bearer-`CRON_SECRET`
+`api/cron/resolve-expired-disputes.ts`, called every 15 minutes by the
+`pushDispatchSweep` Cloud Function (`.github/workflows/resolve-expired-disputes.yml`
+is a manual fallback). Bearer-`CRON_SECRET`
 authenticated, `MAX_PER_RUN = 100` per phase, idempotent, dry-run capable.
 
 ### `pendingReview` + `reviewDeadline` lapsed

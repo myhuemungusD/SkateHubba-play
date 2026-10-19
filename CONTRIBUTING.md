@@ -110,7 +110,8 @@ The `main` branch has protection rules that apply to all contributors, including
 - **Squash merge only** (linear history) — the PR title becomes the commit on `main`, so it must be a Conventional Commit
 - **All review conversations must be resolved** before merging
 - The maintainer (`@myhuemungusD`) is auto-requested as reviewer via CODEOWNERS
-- **`functions/src/` is allowlisted, not banned** — a CI guard permits `index.ts`, `index.test.ts`, `applyGameStats.ts`, and `applyGameStats.test.ts` (the maintainer-approved stats close-out, approved 2026-07) and `functions/src/dice/*.ts` (Roll Dice, approved 2026-10). It rejects any other file added under `functions/src/`. Discuss before adding one.
+- **`functions/src/` is allowlisted, not banned** — a CI guard permits the stats close-out (`index.ts`, `index.test.ts`, `applyGameStats.ts`, `applyGameStats.test.ts`) and the approved folders `dice/`, `moderation/`, `pro/`, `closet/`, `push/`, `map/` and `admin/`. It rejects any other file added under `functions/src/`. Discuss before adding one.
+- **Merges are batched** — finished PRs wait and go in together, about once a day, so each batch is one production build
 - **Workflow changes are flagged** — modifications to `.github/workflows/` require explicit maintainer review
 
 See [`.github/BRANCH_PROTECTION.md`](.github/BRANCH_PROTECTION.md) for the full ruleset and setup checklist.
@@ -127,6 +128,8 @@ Before opening a PR, confirm:
 - [ ] No console.log statements left in code (use `console.warn` for expected error paths only)
 - [ ] Firebase security rules updated if new collections or fields are added; `npm run test:rules` covers them
 - [ ] `.env.example` updated if new environment variables are introduced
+- [ ] New features sit behind a default-off `VITE_FEATURE_*` flag read through `flagOn()` ([docs/FEATURE_FLAGS.md](docs/FEATURE_FLAGS.md)); any server tester list is named `*_TESTER_UIDS`
+- [ ] `CHANGELOG.md` not hand-edited (release-please writes it)
 - [ ] PR description explains what changed and why
 
 ---
@@ -149,7 +152,7 @@ See [docs/TESTING.md](docs/TESTING.md) for patterns and examples.
 
 To keep this repo focused:
 
-- No backend / API servers — this is a Firebase-first app. The only approved server-side code is the maintainer-approved stats close-out function and the Roll Dice functions (`functions/src/`, pinned by the `verify-no-cloud-functions` CI gate — see `docs/DICE.md`) and the existing narrow `api/` serverless endpoints (cron sweeps, push drain, account deletion, social cards). New code in either location requires maintainer sign-off — see `docs/CHARTER.md` §4.14.
+- No backend / API servers — this is a Firebase-first app. The only approved server-side code is the maintainer-approved Cloud Functions under `functions/src/` (pinned by the `verify-no-cloud-functions` CI gate) and the existing narrow `api/` serverless endpoints (referee sweeps, account deletion, social cards). New code in either location requires maintainer sign-off — see `docs/CHARTER.md` §4.14.
 - No new database engines (PostgreSQL, Redis, etc.)
 - No state management libraries (Redux, Zustand, etc.) — local state + hooks are sufficient
 - No UI component libraries — we use Tailwind with custom components
