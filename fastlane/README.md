@@ -53,9 +53,12 @@ bundle exec fastlane android release           # promote beta → production (10
 1. Work lands on `main` via PR. `release-please` opens a release PR with the
    version bump + CHANGELOG update.
 2. Merge the release PR. `release-please` tags `v1.x.y` and creates a GitHub
-   Release.
+   Release. That tag starts `ios-build.yml` (a paid macOS simulator build), so
+   only merge the release PR when you mean to ship.
 3. Release workflow uploads a web build artifact + notifies Sentry.
-4. From the Actions tab, run **iOS TestFlight**. For Android, run the
+4. Run `npm run ios:preflight`, then from the Actions tab run **iOS
+   TestFlight** (or start the Xcode Cloud workflow). iPhone builds are always
+   started by hand and batched; see [`docs/IOS_RELEASE.md`](../docs/IOS_RELEASE.md). For Android, run the
    Android workflow or `bundle exec fastlane android internal`.
 5. After smoke testing the build on real devices:
    - `bundle exec fastlane android beta`
@@ -67,12 +70,15 @@ bundle exec fastlane android release           # promote beta → production (10
 ## CI wiring
 
 - **Android** — `.github/workflows/android-aab.yml` builds the release AAB
-  and, when its `publish_internal` dispatch input is set, runs
+  and, when its `upload_to_play` dispatch input is ticked, runs
   `bundle exec fastlane android publish_internal` to upload it to the Play
   internal track.
 - **iOS simulator** — `.github/workflows/ios-build.yml` is the unsigned
-  simulator build. It also boots a notched iPhone and an iPhone SE and
-  uploads screenshots. It does not sign.
+  simulator build. It runs on a published release, a `v*` tag, or by hand
+  (never on PRs or merges). It also boots a notched iPhone and an iPhone SE
+  and uploads screenshots as a workflow artifact. It does not sign.
+- **iOS pre-flight** — `.github/workflows/ios-preflight.yml` runs
+  `npm run ios:preflight` on Linux for PRs that touch the native patches.
 - **iOS signing bootstrap** — `.github/workflows/ios-signing-bootstrap.yml`
   is `workflow_dispatch` only. Run it once. It creates the distribution
   certificate with `MATCH_READONLY=false` and stores it in the private

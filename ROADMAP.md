@@ -20,14 +20,15 @@ Architectural boundaries are set by [docs/CHARTER.md](docs/CHARTER.md). Nothing 
 
 Released **v1.1.0**, live at [skatehubba.com](https://skatehubba.com).
 
-| Phase                              | State                                                                     |
-| ---------------------------------- | ------------------------------------------------------------------------- |
-| Phase 1 — Core Loop                | Shipped                                                                   |
-| Phase 2 — Viral Mechanics          | Shipped                                                                   |
-| Phase 3 — Social Graph & Discovery | Shipped except spectator mode (deferred)                                  |
-| Phase 4 — Network Effects          | Partial — spots/map shipped; crew, trick library, tournaments not started |
-| Referee System                     | Shipped (v1.1.0)                                                          |
-| Binding community disputes         | Shipped post-v1.1.0 (`pendingReview` → `communityReview`)                 |
+| Phase                              | State                                                                                                                                                 |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase 1 — Core Loop                | Shipped                                                                                                                                               |
+| Phase 2 — Viral Mechanics          | Shipped                                                                                                                                               |
+| Phase 3 — Social Graph & Discovery | Shipped except spectator mode (deferred)                                                                                                              |
+| Phase 4 — Network Effects          | Partial — spots/map shipped; crew, trick library, tournaments not started                                                                             |
+| Referee System                     | Shipped (v1.1.0)                                                                                                                                      |
+| Binding community disputes         | Shipped post-v1.1.0 (`pendingReview` → `communityReview`)                                                                                             |
+| Testers-only builds                | Map check-ins, spot presence, Closet, pro tools, Hesher tips, Skate Runner and more, all default off ([docs/FEATURE_FLAGS.md](docs/FEATURE_FLAGS.md)) |
 
 **The core loop is built.** Async games, video proof, push delivery, clips feed with vote-driven ranking, leaderboard, profiles, spot map, moderation — all in production. The open question is no longer _can we build it_. It is _do skaters use it_.
 
@@ -77,7 +78,7 @@ Not features, not optional. Tracked in [docs/STATUS_REPORT.md](docs/STATUS_REPOR
 - [x] Automate Firestore rules deploy in CI — `.github/workflows/firebase-rules-deploy.yml` (deploy on merge to `main` + daily freshness check)
 - [ ] Daily Firestore managed exports — tooling built (`.github/workflows/firebase-infra-setup.yml`, manual dispatch); confirm it has been run against production
 - [ ] Storage lifecycle rule for old videos — same workflow, same caveat
-- [ ] GitHub branch protection rules applied
+- [x] GitHub branch protection rules applied — required checks on `main` (build-and-test, e2e, CI guards, rules + functions), up-to-date branches, linear history, no force pushes
 - [ ] Accessibility (axe-core) in CI
 - [ ] TTL cleanup for username reservations
 

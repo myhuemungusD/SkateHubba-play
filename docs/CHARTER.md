@@ -94,9 +94,10 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 
 - **Referee on new games** (`VITE_FEATURE_REFEREE_ENABLED`) — hidden for launch simplicity, so every dispute on a new game goes to the community vote. The challenge screen does not offer a referee, and `createGame` will not stamp one. Games already in flight keep their judge: invites, `disputable`, `setReview`, the Judge / No Judge badge, notifications, stats, and `api/cron` referee sweeps are unchanged. `firestore.rules` is unchanged.
 - **Roll Dice** (`VITE_FEATURE_DICE_ENABLED`) — built, but the `diceAction` / `diceSweep` server functions are not yet deployed. Goes to testers first. See `docs/DICE.md`.
-- **Skate Runner** (`VITE_FEATURE_RUNNER_ENABLED`) — board-only grind prototype at `/play/runner`. Scores stay in the run and are not S.K.A.T.E. letters. A personal best can stay on the device. No Firestore writes. See `docs/RUNNER.md`.
+- **Skate Runner** (`VITE_FEATURE_RUNNER_ENABLED`) — board-only grind prototype at `/play/runner`. Testers only until Jason signs off. Scores stay in the run and are not S.K.A.T.E. letters. A personal best can stay on the device. No Firestore writes. See `docs/RUNNER.md`.
 - **Public clip moderation** (`VITE_FEATURE_CLIP_MODERATION_ENABLED`) — built, but `moderateNewClip`, `moderateClipReport`, and `decideClipModeration` are not deployed, and the Video Intelligence API is not enabled. Goes to testers first. See `docs/CLIP_MODERATION.md`.
-- **Sign in with Apple** (`VITE_FEATURE_APPLE_SIGNIN_ENABLED`) — waiting on Apple account setup (Firebase Apple provider). Web and Android stay on Google + email until then.
+- **Sign in with Apple** (`VITE_FEATURE_APPLE_SIGNIN_ENABLED`) — on in iPhone builds; web and Android stay on Google + email until the flag is set in Vercel.
+- **Everything else built since v6.2** ships default off and is visible only to testers in `config/featureTesters` (every `VITE_FEATURE_*` flag reads through `flagOn()`): Hesher tip bubbles (the mascot was renamed from Hubz), map check-ins, spot presence and the Who's skating sheet on Home, spot chats, the Closet (shop, Drop Day, trading, Hubba Bucks) with the Mike White Signature collection, Closet Studio and the 360 shoe viewer, customizable profiles, pro showcase and pro tools (review queue, gold clips, challenges, props, featured clips), the admin console, ops and insights, XP, What's That Trick, the clip editor and the pro camera. Server tester lists are kept matched by `npm run testers:sync`. Full table: `docs/FEATURE_FLAGS.md`.
 
 ### 2.3 Active focus
 
@@ -106,7 +107,7 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 
 ### 2.4 Known critical gaps
 
-- ~~**Auto-forfeit is speculative.**~~ **Closed.** `api/cron/sweep-expired-turns.ts` runs every 15 min (`.github/workflows/sweep-expired-turns.yml`) and applies the same transition via the shared `decideExpiredForfeit` helper, so stale active games no longer accumulate.
+- ~~**Auto-forfeit is speculative.**~~ **Closed.** `api/cron/sweep-expired-turns.ts` runs every 15 min (called by the `pushDispatchSweep` Cloud Function since #721) and applies the same transition via the shared `decideExpiredForfeit` helper, so stale active games no longer accumulate.
 - **No Firestore backups.** Workflow file exists (`firebase-infra-setup.yml`); not run.
 - **No video lifecycle purge.** Storage costs grow unbounded.
 - **Per-listener cap of 20 on `subscribeToMyGames`** with no `startAfter` cursor (DEC-003). Three listeners (player1Uid, player2Uid, judgeId), each `limit(20)` by default, grown by +20 per "load more". Acceptable short-term.
@@ -178,6 +179,8 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 
 ### 4.4 Push & background work
 
+> **Update (#721, 2026-10-17):** push delivery moved to the `pushDispatchOnCreate` and `pushDispatchSweep` Cloud Functions (`functions/src/push/`, every 5 minutes), and `pushDispatchSweep` now calls the two referee endpoints every 15 minutes. The GitHub Actions schedules below are gone; those workflows are manual only. The Vercel endpoints and the queue contract are unchanged. Runbook: `docs/DEPLOYMENT.md` → Cron Endpoints Runbook.
+
 Push dispatch is served by `api/cron/drain-push-dispatch.ts`, a Vercel serverless endpoint invoked every five minutes by `.github/workflows/drain-push-dispatch.yml`. It reads the oldest `/push_dispatch` docs, sends them through the FCM API with admin credentials, prunes tokens FCM reports dead, and deletes what it processed.
 
 This replaced a `firebase/firestore-send-fcm` Firebase Extension that earlier revisions of this charter described as shipped. **That extension does not exist.** `extensions.dev` returns HTTP 404 for `firebase/firestore-send-fcm` while `firebase/firestore-send-email` at the identical URL shape returns 200, the registry lists no FCM extension at all, and no local `extensions/firestore-send-fcm/` manifest was ever generated. `/push_dispatch` consequently had no consumer: every dispatch doc the client and the sweep cron wrote was validated, rate-limited, and then left to rot, and no OS-level push was ever delivered. The collection also accumulated without bound, since its rules set `allow update, delete: if false` on the assumption the extension would delete-on-success.
@@ -196,7 +199,7 @@ Types permitted on the push path are `your_turn`, `new_challenge`, `game_won`, `
 
 The `verify-no-cloud-functions` CI gate scopes to `^functions/src/` — the drain endpoint lives under `api/`, alongside the auto-referee sweep, so the gate remains in force against application-authored Cloud Functions. As of 2026-07 the gate is an allowlist: it permits the maintainer-approved stats close-out file set (see §4.14) and, as of 2026-10, Roll Dice under `functions/src/dice/` (`diceAction` plus `diceSweep` — see `docs/DICE.md`). As of 2026-10-10 it also permits public clip moderation under `functions/src/moderation/` (Jason approved; see `docs/CLIP_MODERATION.md`). As of 2026-10-16 it also permits pro blessing under `functions/src/pro/` (`proBlessing`; sign-off is Jason merging PR #696; see `docs/PRO_BLESSING.md`). As of 2026-10-17 it also permits the Closet economy under `functions/src/closet/`, the push courier under `functions/src/push/`, map check-ins under `functions/src/map/` (`mapCheckin`; see `docs/MAP_ROADMAP.md`) and admin analytics and announcements under `functions/src/admin/` (`adminAnalytics`, `announcementOnCreate`; admin claim only). It hard-fails any other `functions/src/` addition. Reintroducing further authored functions still requires maintainer sign-off.
 
-Auto-forfeit runs on two paths: the client's `forfeitExpiredTurn` on game open, and `api/cron/sweep-expired-turns.ts` on a 15-minute GitHub Actions schedule. Both share the `decideExpiredForfeit` helper in `src/services/turnForfeit.shared.ts`, so they cannot diverge.
+Auto-forfeit runs on two paths: the client's `forfeitExpiredTurn` on game open, and `api/cron/sweep-expired-turns.ts` every 15 minutes (called by `pushDispatchSweep`). Both share the `decideExpiredForfeit` helper in `src/services/turnForfeit.shared.ts`, so they cannot diverge.
 
 ### 4.5 Security rules (the real backend, 3,082 lines / ~173 KB)
 
@@ -343,25 +346,31 @@ These are the approved majors. Minors and patches track upstream via the caret r
 ### 4.13 Documentation index (`docs/`)
 
 ```
-API.md, APPCHECK_ROLLOUT.md, ARCHITECTURE.md, CHARTER.md (this file),
-CLIP_MODERATION.md, DATABASE.md, DECISIONS.md, DEPLOY_FUNCTIONS.md, DEPLOYMENT.md, DEVELOPMENT.md,
-DICE.md, DISPUTE_BINDING_DESIGN.md, DSA_COMPLIANCE.md, ECONOMY.md, EMAIL_VERIFICATION.md,
-FIRESTORE_RULES_NOTES.md, GAME_MECHANICS.md, GAME_STATE_MACHINE.md, GAPS.md, IOS_RELEASE.md,
-MAPBOX_STYLE.md, MFA_TOTP.md, mobile-phone-layout.md, NOTIFICATION_AUDIT.md,
-PERMISSION_DENIED_RUNBOOK.md, SENTRY_ALERTS.md, STATS.md, STATUS_REPORT.md,
-STORE_PRIVACY_ANSWERS.md, TESTING.md, XCODE_CLOUD.md, XP_LEVELS.md
-(32 files)
+API.md, APPCHECK_ROLLOUT.md, ARCHITECTURE.md, CAMERA.md, CHARTER.md (this file),
+CLIP_EDITOR.md, CLIP_MODERATION.md, CLOSET_STUDIO.md, DATABASE.md, DECISIONS.md,
+DEPLOY_FUNCTIONS.md, DEPLOYMENT.md, DEVELOPMENT.md, DICE.md,
+DISPUTE_BINDING_DESIGN.md, DSA_COMPLIANCE.md, ECONOMY.md, EMAIL_VERIFICATION.md,
+FEATURE_FLAGS.md, FIRESTORE_RULES_NOTES.md, GAME_MECHANICS.md,
+GAME_STATE_MACHINE.md, GAPS.md, IOS_RELEASE.md, MAP_ROADMAP.md, MAPBOX_STYLE.md,
+MFA_TOTP.md, MIKE_WHITE_COLLECTION.md, mobile-phone-layout.md,
+NOTIFICATION_AUDIT.md, PERMISSION_DENIED_RUNBOOK.md, PRO_BLESSING.md,
+PROFILE_CUSTOM.md, RUNNER.md, RUNNER_ASSETS.md, RUNNER_PHYSICS.md,
+SECURITY_REVIEW_2026-10-17.md, SENTRY_ALERTS.md, STATS.md, STATUS_REPORT.md,
+STORE_PRIVACY_ANSWERS.md, STORE_REVIEW_KIT.md, TESTING.md, XCODE_CLOUD.md,
+XP_LEVELS.md
+(45 files)
 
-archive/   — superseded audits and plans; history only, never a current
+audits/    — dated audits: AUDIT_2026-10-10.md
+archive/   — superseded audits and ideas; history only, never a current
              risk register:
              AUDIT_2026-05-ALIGNMENT.md, AUDIT_2026-05.md,
              COMPREHENSIVE_GAP_ANALYSIS.md, DATABASE_AUDIT.md,
-             DEEPDIVE_PLAN.md, FIRESTORE_SECURITY_AUDIT.md,
-             IDEAS_PRO_SKATER_PRIZE.md, P0-SECURITY-AUDIT.md,
-             PENTEST_2026-05-22.md, PRODUCTION_AUDIT.md,
+             FIRESTORE_SECURITY_AUDIT.md, IDEAS_PRO_SKATER_PRIZE.md,
+             P0-SECURITY-AUDIT.md, PENTEST_2026-05-22.md, PRODUCTION_AUDIT.md,
              PRODUCTION_GAP_ANALYSIS.md, SECURITY_SCAN_2026-07-30.md,
              STATS_AUDIT.md
-screenshots/
+mobile-phone-layout/ — layout screenshots the e2e mobile spec writes
+screenshots/         — README images and brand assets
 ```
 
 ### 4.14 Prohibited

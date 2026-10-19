@@ -33,28 +33,33 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ## Available Scripts
 
-| Command                                     | Description                                                                 |
-| ------------------------------------------- | --------------------------------------------------------------------------- |
-| `npm run dev`                               | Start Vite dev server at `localhost:5173` with HMR                          |
-| `npm run build`                             | TypeScript check + production build → `dist/`                               |
-| `npm run preview`                           | Serve the production build locally                                          |
-| `npm run typecheck`                         | Run `tsc -b` only                                                           |
-| `npm test`                                  | Run the full test suite once (CI mode)                                      |
-| `npm run test:watch`                        | Run tests in watch mode while editing                                       |
-| `npm run test:coverage`                     | Run tests with coverage report (CI gate enforces thresholds)                |
-| `npm run test:rules`                        | Run Firestore rules tests against the rules emulator                        |
-| `npm run test:e2e`                          | Run Playwright E2E tests (auto-starts the Auth/Firestore/Storage emulators) |
-| `npm run test:e2e:ui`                       | Same as above in the Playwright UI runner                                   |
-| `npm run lint`                              | Lint `src/`, `api/`, `e2e/`, and `public/sw-cleanup.js` with ESLint         |
-| `npm run lint:fix`                          | Lint and auto-fix where possible                                            |
-| `npm run format`                            | Format `src/**/*.{ts,tsx}` with Prettier                                    |
-| `npm run check:test-dup`                    | Flag duplicated test cases (CI gate, part of `verify`)                      |
-| `npm run check:file-length`                 | Fail on any file over its LOC budget (blocking in the PR gate)              |
-| `npm run verify`                            | Full CI gate: `tsc -b && lint && test:coverage && build && check:test-dup`  |
-| `npm run emulators`                         | Start the Firebase emulator suite locally                                   |
-| `npm run cap:sync`                          | Sync the web build into the iOS/Android Capacitor projects                  |
-| `npm run cap:open:ios` / `cap:open:android` | Open the native project in Xcode / Android Studio                           |
-| `npm run cap:run:ios` / `cap:run:android`   | Build and run on a device or simulator/emulator                             |
+| Command                                                    | Description                                                                                       |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `npm run dev`                                              | Start Vite dev server at `localhost:5173` with HMR                                                |
+| `npm run build`                                            | TypeScript check + production build → `dist/`                                                     |
+| `npm run preview`                                          | Serve the production build locally                                                                |
+| `npm run typecheck`                                        | Run `tsc -b` only                                                                                 |
+| `npm test`                                                 | Run the full test suite once (CI mode)                                                            |
+| `npm run test:watch`                                       | Run tests in watch mode while editing                                                             |
+| `npm run test:coverage`                                    | Run tests with coverage report (CI gate enforces thresholds)                                      |
+| `npm run test:rules`                                       | Run Firestore rules tests against the rules emulator                                              |
+| `npm run test:e2e`                                         | Run Playwright E2E tests (auto-starts the Auth/Firestore/Storage emulators)                       |
+| `npm run test:e2e:ui`                                      | Same as above in the Playwright UI runner                                                         |
+| `npm run lint`                                             | Lint `src/`, `api/`, `e2e/`, and `public/sw-cleanup.js` with ESLint                               |
+| `npm run lint:fix`                                         | Lint and auto-fix where possible                                                                  |
+| `npm run format`                                           | Format `src/**/*.{ts,tsx}` with Prettier                                                          |
+| `npm run check:test-dup`                                   | Flag duplicated test cases (CI gate, part of `verify`)                                            |
+| `npm run check:file-length`                                | Fail on any file over its LOC budget (blocking in the PR gate)                                    |
+| `npm run verify`                                           | Full CI gate: `tsc -b && lint && test:coverage && build && check:test-dup`                        |
+| `npm run emulators`                                        | Start the Firebase emulator suite locally                                                         |
+| `npm run cap:sync`                                         | Sync the web build into the iOS/Android Capacitor projects                                        |
+| `npm run cap:open:ios` / `cap:open:android`                | Open the native project in Xcode / Android Studio                                                 |
+| `npm run cap:run:ios` / `cap:run:android`                  | Build and run on a device or simulator/emulator                                                   |
+| `npm run testers:sync`                                     | Match every server `*_TESTER_UIDS` list to `config/featureTesters` (dry run; `-- --apply` writes) |
+| `npm run check:testers`                                    | Fail if code has a tester list `testers:sync` doesn't know (PR gate)                              |
+| `npm run ios:preflight`                                    | Free Linux check of the iOS native patches; run before any paid Mac build                         |
+| `npm run deploy:functions` / `deploy:rules` / `deploy:all` | One-command Firebase deploy with checks first (`-- --dry-run` to preview)                         |
+| `npm run review:seed` / `review:screenshots`               | App Review demo account and store screenshots ([STORE_REVIEW_KIT.md](STORE_REVIEW_KIT.md))        |
 
 ---
 
@@ -68,6 +73,8 @@ Quick summary:
 - **Required for the `/map` page:** `VITE_MAPBOX_TOKEN`. The map silently fails to render without it.
 - **Local-only:** `VITE_USE_EMULATORS=true` to point the app at the Firebase emulator suite (see below). Only takes effect in `npm run dev`.
 - **Optional / production-recommended:** FCM push (`VITE_FIREBASE_VAPID_KEY`), Analytics (`VITE_FIREBASE_MEASUREMENT_ID`), App Check (`VITE_RECAPTCHA_SITE_KEY` + `VITE_APPCHECK_ENABLED`), Sentry (`VITE_SENTRY_DSN`), PostHog (`VITE_POSTHOG_KEY` / `VITE_POSTHOG_HOST`), `VITE_APP_URL` for Firebase email action links, and `VITE_MAPBOX_STYLE_URL` to point `/map` at a custom Mapbox Studio style (defaults to `mapbox://styles/mapbox/dark-v11`; invalid values fall back to that default with a console warning).
+
+- **Feature flags:** every `VITE_FEATURE_*` flag is off unless set to the literal `true`. To see a feature locally, set its flag in `.env.local`, or sign in as a uid listed in `config/featureTesters`. See [FEATURE_FLAGS.md](FEATURE_FLAGS.md).
 
 For Vercel preview/production setup, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
@@ -144,12 +151,13 @@ skatehubba-play/
 │       ├── smoke-helpers.tsx
 │       └── smoke-*.test.tsx # smoke-auth, smoke-lobby, smoke-gameplay, …
 ├── api/                     # Vercel serverless endpoints (cron sweeps, push drain, account deletion, social cards)
-├── functions/               # Maintainer-approved stats close-out Cloud Function (CI-pinned file set)
+├── functions/               # Maintainer-approved Cloud Functions (stats, dice, moderation, pro, closet, push, map, admin; CI-pinned)
 ├── e2e/                     # Playwright E2E tests
 ├── rules-tests/             # Firestore rules tests (@firebase/rules-unit-testing)
 ├── firestore.rules          # Firestore security rules
 ├── firestore.indexes.json   # Composite index declarations
 ├── storage.rules            # Storage security rules
+├── scripts/                 # Ops and CI tools (deploy, testers-sync, ios-preflight, review-kit, backfills)
 ├── vercel.json              # Vercel SPA config + noindex headers
 ├── firebase.json            # Firebase CLI config (named DB: skatehubba)
 ├── vite.config.ts           # Vite + Vitest config (Tailwind v4 plugin)
@@ -222,19 +230,17 @@ firebase deploy --only firestore:rules,firestore:indexes,storage:rules --project
 ### CI deploy hardening (post-incident)
 
 The rules-deploy workflow was historically silent on failure, which let
-production rules drift for ~3 months unnoticed. Two guards now prevent a repeat:
+production rules drift for ~3 months unnoticed. Guards against a repeat:
 
 - **Loud failure alerting.** The `deploy` job has an `if: failure()` step
   (`actions/github-script@v7`) that opens — or updates — a single GitHub issue
   labelled `firebase-rules-deploy-failure` with the failed run URL. It is
   idempotent: repeat failures comment on the existing open issue rather than
   spamming new ones. This requires `issues: write` permission on the workflow.
-- **Daily freshness guard.** A `schedule` cron (`0 7 * * *`) re-runs the full
-  deploy every day. firebase-tools v15 has no reliable "fetch live deployed
-  rules" command to diff against `HEAD`, so re-deploying daily is the simplest
-  implementable guarantee — the deploy is idempotent, so drift between `main`
-  and production can never exceed 24h, and a failed scheduled deploy trips the
-  same alert step above.
+- **No daily re-deploy.** The old daily scheduled deploy was removed to cut
+  Actions spend. Rules now deploy on merge (when a rules file changes) or by
+  hand: run the workflow from the Actions tab, or `npm run deploy:rules` from a
+  logged-in PC.
 
 `firebase-tools` in the deploy step is pinned to `@15` to match the version in
 `package.json` (`firebase-tools@^15`). The deploy runs with `set -euo pipefail`

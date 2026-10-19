@@ -2,13 +2,13 @@
 
 ## Overview
 
-SkateHubba S.K.A.T.E. is a client-first web application. There is no Express server and no general-purpose API — the React SPA talks directly to Firebase services, with Firestore security rules serving as the authorization layer. Server-side code is limited to the maintainer-approved stats close-out Cloud Function and the Roll Dice functions (`functions/src/`, pinned by the `verify-no-cloud-functions` CI gate — see `docs/DICE.md`) and the narrow Vercel serverless endpoints under `api/`: scheduled sweeps for expired turns and disputes, the FCM push drain (`api/cron/drain-push-dispatch.ts` — this replaced a `firestore-send-fcm` Firebase Extension that turned out not to exist, see `docs/CHARTER.md` §4.4), account deletion, and social-card metadata for shared `/player` links.
+SkateHubba S.K.A.T.E. is a client-first web application. There is no Express server and no general-purpose API — the React SPA talks directly to Firebase services, with Firestore security rules serving as the authorization layer. Server-side code is limited to the maintainer-approved Cloud Functions under `functions/src/` (stats close-out, Roll Dice, clip moderation, pro blessing and pro tools triggers, the Closet economy, push delivery plus the referee sweep, map check-ins and spot presence, admin analytics and announcements; pinned by the `verify-no-cloud-functions` CI gate) and a few narrow Vercel endpoints under `api/` (see below). Each Cloud Function sits behind its own server switch, and every new client feature sits behind a default-off flag with a tester override ([FEATURE_FLAGS.md](FEATURE_FLAGS.md)).
 
 This means:
 
 - **Client code is not trusted.** Any business logic in the browser is for UX only. The Firestore rules enforce the same constraints server-side and will reject invalid writes regardless of what the client does.
 - **The attack surface is small.** Firebase and Vercel handle infrastructure security. There's no custom server to harden.
-- **Operational cost is near-zero at low scale.** No servers to run or pay for beyond Firebase's free tier.
+- **Operational cost is low at low scale.** No servers to run. Firebase is on the Blaze plan (needed for Cloud Functions) and stays inside its no-cost quota at current traffic; Vercel is the Pro plan, billed mostly by build minutes.
 
 ---
 
@@ -45,7 +45,7 @@ This means:
 - Framework set to `vite`. Build output is `dist/`. All paths rewrite to `index.html` for SPA navigation.
 - `X-Robots-Tag: noindex, nofollow` is injected on all non-production hosts (any host that is not `skatehubba.com`) via `vercel.json`. This prevents Vercel preview deployment URLs from appearing in search engines.
 - 301 redirects are configured for `skatehubba.xyz`, `www.skatehubba.xyz`, and `www.skatehubba.com` → `skatehubba.com` to complete the domain migration and preserve SEO equity.
-- Vercel serverless functions are limited to the narrow endpoints under `api/` — the scheduled sweeps (expired turns, expired disputes), the FCM push drain, account deletion, and social-card metadata (see Overview). None of them serve gameplay reads or writes; Firestore rules remain the authorization layer.
+- Vercel serverless functions are limited to the narrow endpoints under `api/` — the referee sweeps (expired turns, expired disputes; called every 15 minutes by the `pushDispatchSweep` Cloud Function), the FCM push drain (manual fallback), account deletion, and social-card metadata. None of them serve gameplay reads or writes; Firestore rules remain the authorization layer.
 
 ---
 
@@ -124,7 +124,7 @@ All Firebase SDK calls live in `src/services/`. Components and hooks import from
 | `src/services/admin.ts`         | Admin console operations (with `admin.bans.ts`)                                                                                                                                         |
 | `src/services/mfa.ts`           | Multi-factor auth enrollment + verification                                                                                                                                             |
 | `src/services/avatars.ts`       | Avatar upload (with `avatarModeration.ts` for nsfwjs screening)                                                                                                                         |
-| `src/services/pushDispatch.ts`  | Queues `push_dispatch` docs the cron drain delivers via FCM                                                                                                                             |
+| `src/services/pushDispatch.ts`  | Queues `push_dispatch` docs the push Cloud Functions deliver via FCM                                                                                                                    |
 | `src/services/onboarding.ts`    | Tutorial progress persistence                                                                                                                                                           |
 | `src/hooks/useAuth.ts`          | React hook that wraps `onAuthStateChanged` + profile fetch                                                                                                                              |
 

@@ -110,7 +110,7 @@ _As originally filed:_ when a matcher claimed a land on the honor path, `games.m
 
 ### P0-4 · DSA compliance: zero controls, hard deadline of 2026-02-17 **already missed**
 
-**Status: PARTIALLY CLOSED** — `docs/DSA_COMPLIANCE.md` tracks the account-level items (D-U-N-S, Apple org conversion, point of contact). Those rows are still open. The signed-in code path is under P1-5 and is in the product.
+**Status: PARTIALLY CLOSED** — `docs/DSA_COMPLIANCE.md` tracks the account-level items. D-U-N-S is done (14-018-2909, Design Mainline LLC); the Apple org conversion is in progress (case 102992449613); the DSA point of contact is still open. The signed-in code path is under P1-5 and is in the product.
 
 **Compliance blocker. The trader/DUNS items cannot be compressed at the deadline.**
 **Escalated 2026-08-26: the deadline passed ~6 months ago and every account-level row in `docs/DSA_COMPLIANCE.md` is still 🔴.** The app ships to Apple and Google. The `dsa-compliance-checkpoint` skill tracks a **17 February 2026** gate, now overdue. The account-level items — Apple Individual→Organization conversion, D-U-N-S issuance (days-to-weeks), DSA point-of-contact — bear external lead time and block submission regardless of code.

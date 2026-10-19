@@ -95,7 +95,9 @@ You do not need a Mac. Follow [`docs/IOS_RELEASE.md`](../docs/IOS_RELEASE.md):
 run **iOS signing bootstrap** once, then **iOS TestFlight**. The TestFlight
 workflow builds the web bundle, syncs Capacitor, signs with the stored
 certificate, and uploads. The build number is the latest TestFlight build
-for that version, plus one.
+for that version, plus one. Builds are started by hand only and batched,
+because each one rents a paid Mac. Run `npm run ios:preflight` first. Xcode
+Cloud is the other option ([`docs/XCODE_CLOUD.md`](../docs/XCODE_CLOUD.md)).
 
 ## When to re-run `npx cap sync ios`
 

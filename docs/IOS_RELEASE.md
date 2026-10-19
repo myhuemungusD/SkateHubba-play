@@ -2,6 +2,17 @@
 
 You do not need a Mac. GitHub's macOS runner creates the signing certificate, builds the app, and uploads it to TestFlight. Apple sign-in is already on the App ID. The App Store Connect app already exists (Apple ID `6821392195`, SKU `skatehubba-ios`, bundle ID `com.skatehubba.app`). Firebase for that iOS app is already configured.
 
+## Builds are manual and batched
+
+Every iPhone build runs on a rented Mac and costs money (about $0.50 a try on GitHub Actions; Xcode Cloud uses the 25 free hours a month). So:
+
+- No merge starts a Mac build. `ios-release.yml` (TestFlight) and `ios-signing-bootstrap.yml` run only when someone clicks **Run workflow**. Xcode Cloud is set to **Manual Start** ([XCODE_CLOUD.md](XCODE_CLOUD.md)).
+- `ios-build.yml` (the unsigned simulator check) also runs when a GitHub release is published or a `v*` tag is pushed. Merging the release-please PR does both, so treat that merge as a paid build.
+- Batch changes and build rarely. Run `npm run ios:preflight` first: it checks the native patches for free on Linux and catches the mistakes that broke builds before. The TestFlight workflow runs it again before it rents the Mac, and `ios-preflight.yml` runs it on PRs that touch the patches.
+- Leave the workflow's tester tick boxes unticked. Testers in `config/featureTesters` already get every feature through the runtime override ([FEATURE_FLAGS.md](FEATURE_FLAGS.md)).
+
+## First-time setup
+
 Do the steps below in order. Do not run the workflows until the secrets exist. Each workflow stops immediately and prints the name of every secret that is still missing. It does not sign or upload until those secrets are present.
 
 The EU store deadline in [DSA_COMPLIANCE.md](./DSA_COMPLIANCE.md) has already passed. Items 1–5 there are still open. Finish them before you submit to the App Store, or the app can be pulled from EU storefronts.

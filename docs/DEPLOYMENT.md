@@ -2,12 +2,13 @@
 
 ## Architecture
 
-| Concern                   | Service                                                                                                                                                                     |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Code hosting              | Vercel (auto-deploys from GitHub)                                                                                                                                           |
-| Auth + Database + Storage | Firebase (rules auto-deploy on merge to `main`)                                                                                                                             |
-| Stats close-out           | Firebase Cloud Functions (manual deploy)                                                                                                                                    |
-| CI gate                   | GitHub Actions (`main.yml`: audit → `as any` guard → lint → type check → coverage → test-dup → build, plus separate `e2e` and `lighthouse` jobs; `pr-gate.yml` adds 9 more) |
+| Concern                   | Service                                                                                                                                                                      |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Code hosting              | Vercel (auto-deploys from GitHub)                                                                                                                                            |
+| Auth + Database + Storage | Firebase (rules auto-deploy on merge to `main`)                                                                                                                              |
+| Cloud Functions           | Firebase Cloud Functions on the Blaze plan (manual deploy: `npm run deploy:functions` or the workflow)                                                                       |
+| iOS / Android builds      | Manual only. No merge starts a Mac build ([IOS_RELEASE.md](IOS_RELEASE.md))                                                                                                  |
+| CI gate                   | GitHub Actions (`main.yml`: audit → `as any` guard → lint → type check → coverage → test-dup → build, plus separate `e2e` and `lighthouse` jobs; `pr-gate.yml` adds 10 more) |
 
 ---
 
@@ -53,7 +54,7 @@ If you're setting up for the first time, here's the full sequence:
 
 ### Preview
 
-Every PR and every non-`main` branch gets a Vercel preview URL automatically. Preview deployments use the same Firebase project as production. `X-Robots-Tag: noindex, nofollow` is injected on all preview URLs via `vercel.json` — they will not appear in search results.
+Every PR and non-`main` branch that changes the app gets a Vercel preview URL automatically. `vercel.json`'s `ignoreCommand` (`scripts/vercel-ignore-build.mjs`) skips the build for `release-please--*` and `dependabot/*` branches and for pushes that only touch docs, CI, scripts, functions, e2e, native shells, tests or rules. Unknown files still build. Each Vercel build is billed by the minute, so this skip is the main cost control. Preview deployments use the same Firebase project as production. `X-Robots-Tag: noindex, nofollow` is injected on all preview URLs via `vercel.json` — they will not appear in search results.
 
 ---
 
@@ -62,10 +63,10 @@ Every PR and every non-`main` branch gets a Vercel preview URL automatically. Pr
 The normal development cycle:
 
 ```
-feature branch → PR → CI passes → merge to main → Vercel auto-deploys
+feature branch → PR → CI passes → wait for the batch → merge to main → Vercel auto-deploys
 ```
 
-You don't need to do anything manually for code changes. Vercel picks up `main` automatically after merge.
+You don't need to do anything manually for code changes. Vercel picks up `main` automatically after merge. Every merge is a paid production build, so finished PRs are merged together in a batch (about once a day) instead of one at a time.
 
 **Note:** Vercel deploys only the built SPA. Changes to `firestore.rules` or `storage.rules` must be deployed separately — see below.
 
@@ -78,15 +79,17 @@ Rules changes are **not** part of the Vercel pipeline — but they are **not man
 > **They deploy automatically on merge to `main`.**
 > `.github/workflows/firebase-rules-deploy.yml` triggers on any push to `main`
 > touching `firestore.rules`, `firestore.indexes.json`, `storage.rules`,
-> `firebase.json`, or `.firebaserc`. A daily `cron` re-deploys from `main` as a
-> freshness guard, so a hand-rollback in the Firebase console is reverted within
-> 24 hours — the fix for a bad rule is a revert commit, not a console edit.
+> `firebase.json`, or `.firebaserc`. The old daily re-deploy was removed
+> (#721) to cut Actions spend. A hand-rollback in the Firebase console is
+> reverted by the next rules deploy, so the fix for a bad rule is a revert
+> commit, not a console edit. From a logged-in PC, `npm run deploy:rules` runs
+> the rules tests first and then deploys.
 >
 > **Resolved incident:** every deploy between 2026-08-20 and 2026-09-13 failed
 > (`google-github-actions/auth` rejected `FIREBASE_WIF_PROVIDER`;
 > [#519](https://github.com/myhuemungusD/SkateHubba-play/issues/519), closed
 > 2026-09-14). Since #560 a WIF failure falls back to `FIREBASE_TOKEN` at
-> runtime, and the daily deploy has been green since. **WIF itself still
+> runtime, and deploys have been green since. **WIF itself still
 > fails** (verified in the run #845 log, 2026-10-01): every deploy rides the
 > deprecated `FIREBASE_TOKEN` fallback, and the production PII scan is skipped
 > because that token cannot authenticate the Admin SDK. Fix the
@@ -183,19 +186,29 @@ rules plus an allowlist-based scan.
 
 `functions/` holds the maintainer-approved Cloud Functions, pinned by the
 `verify-no-cloud-functions` allowlist: the stats close-out (2026-07, see
-`docs/CHARTER.md §4.14`), Roll Dice (`dice/`), clip moderation (`moderation/`)
-and pro blessing (`pro/`, the `proBlessing` callable). A brand-new export needs a
-one-time stub created with the appspot build service account before the
-workflow can update it (see [DEPLOY_FUNCTIONS.md](DEPLOY_FUNCTIONS.md)). Like rules, it is **not** part of the
-Vercel pipeline. Merging to `main` does not upload it.
+`docs/CHARTER.md §4.14`), Roll Dice (`dice/`), clip moderation (`moderation/`),
+pro blessing and the pro tools triggers (`pro/`), the Closet economy
+(`closet/`), push delivery plus the referee sweep (`push/`), map check-ins and
+spot presence (`map/`), and admin analytics and announcements (`admin/`). A
+brand-new export needs a one-time stub created with the appspot build service
+account before the workflow can update it (see
+[DEPLOY_FUNCTIONS.md](DEPLOY_FUNCTIONS.md)). Like rules, it is **not** part of
+the Vercel pipeline. Merging to `main` does not upload it.
 
-Deploy from GitHub Actions → **Deploy Firebase Functions**. Type `deploy` in
+**From a logged-in PC (preferred):** `npm run deploy:functions` (or
+`deploy:rules`, `deploy:all`). It checks you are on a clean, up-to-date `main`,
+runs the type check and the functions build and tests, copies the parameter
+file in, checks every parameter has a value, deploys, and always deletes the
+copied parameter file afterwards. Add `-- --only mapCheckin,mapPresence` for
+named functions, or `-- --dry-run` to run every check and print the command.
+
+**From GitHub Actions:** **Deploy Firebase Functions**. Type `deploy` in
 `confirm`. Leave `functions` empty for every export, or name the ones you want
 (`diceAction,diceSweep`). The run builds and tests `functions/` first, and it
 only accepts the `main` branch. One-time IAM and the parameter secret are in
 [DEPLOY_FUNCTIONS.md](DEPLOY_FUNCTIONS.md).
 
-A laptop that is already logged in can still upload:
+Plain `firebase deploy` still works, but skips those checks:
 
 ```bash
 firebase use sk8hub-d7806
@@ -458,16 +471,19 @@ reads them **server-side** when rendering social cards.
 
 ### Workflows that need their own secrets
 
-| Workflow                        | Secrets it needs                                                                                                                                     |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `main.yml`                      | none (CI only)                                                                                                                                       |
-| `pr-gate.yml`                   | none                                                                                                                                                 |
-| `firebase-rules-deploy.yml`     | `FIREBASE_PROJECT_ID`, plus either `FIREBASE_WIF_PROVIDER` + `FIREBASE_WIF_SERVICE_ACCOUNT` (preferred) or the deprecated `FIREBASE_TOKEN`           |
-| `firebase-functions-deploy.yml` | The same Firebase secrets as the rules workflow, plus `FUNCTIONS_DOTENV` (the functions parameter file). Manual only. See `docs/DEPLOY_FUNCTIONS.md` |
-| `release.yml`                   | `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` — without these, production stack traces stay minified                                           |
-| `android-aab.yml`               | the full `VITE_*` set (Firebase, Mapbox, Sentry, PostHog, App Check) plus the Android signing keystore                                               |
-| `ios-build.yml`                 | the same `VITE_*` set plus the Apple signing credentials                                                                                             |
-| the three cron workflows        | `CRON_SECRET` (must match the Vercel project env value exactly, or every run 401s)                                                                   |
+| Workflow                         | Secrets it needs                                                                                                                                     |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `main.yml`                       | none (CI only)                                                                                                                                       |
+| `pr-gate.yml`                    | none                                                                                                                                                 |
+| `firebase-rules-deploy.yml`      | `FIREBASE_PROJECT_ID`, plus either `FIREBASE_WIF_PROVIDER` + `FIREBASE_WIF_SERVICE_ACCOUNT` (preferred) or the deprecated `FIREBASE_TOKEN`           |
+| `firebase-functions-deploy.yml`  | The same Firebase secrets as the rules workflow, plus `FUNCTIONS_DOTENV` (the functions parameter file). Manual only. See `docs/DEPLOY_FUNCTIONS.md` |
+| `release.yml`                    | `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` — without these, production stack traces stay minified                                           |
+| `android-aab.yml`                | the full `VITE_*` set (Firebase, Mapbox, Sentry, PostHog, App Check) plus the Android signing keystore                                               |
+| `ios-build.yml`                  | none (unsigned simulator build). Runs on a published release, a `v*` tag, or by hand. Paid macOS minutes                                             |
+| `ios-release.yml`                | the `VITE_*` set plus the App Store Connect key and fastlane match secrets ([IOS_RELEASE.md](IOS_RELEASE.md)). Manual only                           |
+| `ios-signing-bootstrap.yml`      | the fastlane match secrets. Manual, run once                                                                                                         |
+| `ios-preflight.yml`              | none. Free Linux check on PRs that touch the iOS patches                                                                                             |
+| the three referee/push workflows | `CRON_SECRET` (must match the Vercel project env value exactly, or every run 401s). Manual only now                                                  |
 
 Also in the repo but not covered above: `release-please.yml` (release PR
 automation), `release-recovery.yml`, and `firebase-infra-setup.yml` (manual
@@ -489,18 +505,28 @@ Vercel does **not** redeploy on env-var changes. After adding `VITE_MAPBOX_TOKEN
 
 ## Cron Endpoints Runbook
 
-Three scheduled GitHub Actions workflows call Vercel serverless endpoints with
-admin credentials. When their configuration drifts, turn expiry, push
-delivery, and dispute resolution all stop — silently from the player's point
-of view (a game whose landed claim is under review stays frozen forever if
-the dispute referee never runs). This section exists because exactly that
-happened to the first two on 2026-07-27 (~24h outage).
+Three Vercel serverless endpoints do scheduled work with admin credentials.
+When their configuration drifts, turn expiry, push delivery, and dispute
+resolution all stop — silently from the player's point of view (a game whose
+landed claim is under review stays frozen forever if the dispute referee never
+runs). This section exists because exactly that happened on 2026-07-27 (~24h
+outage).
 
-| Endpoint                             | Workflow                                         | Schedule | Job                                                                                                                                                             |
-| ------------------------------------ | ------------------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/api/cron/sweep-expired-turns`      | `.github/workflows/sweep-expired-turns.yml`      | \*/15min | Auto-forfeits expired turns **and runs the notification passes** (new-challenge notices, upcoming-deadline reminders) — a failure here silently stops those too |
-| `/api/cron/drain-push-dispatch`      | `.github/workflows/drain-push-dispatch.yml`      | \*/5min  | Delivers queued push notifications                                                                                                                              |
-| `/api/cron/resolve-expired-disputes` | `.github/workflows/resolve-expired-disputes.yml` | \*/15min | Resolves trick-dispute reviews and votes                                                                                                                        |
+Since #721 the schedule lives in Cloud Functions, not GitHub Actions:
+
+- `pushDispatchOnCreate` sends a push the moment its `push_dispatch` doc is
+  created, and `pushDispatchSweep` (every 5 minutes) retries anything still
+  queued (`functions/src/push/`).
+- Every 15 minutes `pushDispatchSweep` also calls the two referee endpoints on
+  skatehubba.com with `CRON_SECRET` (a Firebase Secret Manager secret,
+  `functions/src/push/referees.ts`).
+- The three GitHub workflows below are kept for manual runs only.
+
+| Endpoint                             | Called by                                                                | Job                                                                                                                                                             |
+| ------------------------------------ | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/cron/sweep-expired-turns`      | `pushDispatchSweep` every 15 min; `sweep-expired-turns.yml` by hand      | Auto-forfeits expired turns **and runs the notification passes** (new-challenge notices, upcoming-deadline reminders) — a failure here silently stops those too |
+| `/api/cron/resolve-expired-disputes` | `pushDispatchSweep` every 15 min; `resolve-expired-disputes.yml` by hand | Resolves trick-dispute reviews and votes                                                                                                                        |
+| `/api/cron/drain-push-dispatch`      | `drain-push-dispatch.yml` by hand (the functions deliver pushes now)     | Delivers queued push notifications                                                                                                                              |
 
 All three endpoints share the same auth (`CRON_SECRET` bearer), the same
 service-account parser (`api/cron/_serviceAccount.ts`), and the same
@@ -539,10 +565,10 @@ the workflow's query string.
 
 ### The two secrets
 
-| Name                            | Set in                                                                                                             | Read by                                      |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------- |
-| `CRON_SECRET`                   | **Both**: Vercel env (Production) AND GitHub → Settings → Secrets and variables → Actions → **Repository secrets** | Endpoint auth (bearer check) + workflow curl |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | Vercel env (Production) only                                                                                       | firebase-admin init in both endpoints        |
+| Name                            | Set in                                                                                                                                                                       | Read by                                                           |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `CRON_SECRET`                   | **All three**: Vercel env (Production), Firebase Secret Manager (`CRON_SECRET`, read by `pushDispatchSweep`), and GitHub → Actions **Repository secrets** (manual workflows) | Endpoint auth (bearer check), the function's calls, workflow curl |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Vercel env (Production) only                                                                                                                                                 | firebase-admin init in both endpoints                             |
 
 Pitfalls, each observed in production:
 
@@ -550,7 +576,7 @@ Pitfalls, each observed in production:
   secret is invisible to these jobs (they declare no `environment:`) and
   resolves to empty — the run log shows `CRON_SECRET:` blank instead of
   `***`, and the endpoint 401s.
-- The two `CRON_SECRET` values must match byte-for-byte. A trailing space or
+- Every `CRON_SECRET` value must match byte-for-byte. A trailing space or
   newline from a copy-paste fails identically to a wrong value.
 - `FIREBASE_SERVICE_ACCOUNT_JSON` is the **entire** service-account file
   (Firebase Console → Project settings → Service accounts → Generate new
@@ -591,7 +617,8 @@ Pitfalls, each observed in production:
 ### Verify after any change
 
 Force a run instead of waiting for the schedule: Actions → the workflow →
-Re-run jobs (or workflow_dispatch). Green + `HTTP 200` with a JSON summary
+Run workflow. Check the `referees` log line from `pushDispatchSweep` in the
+Firebase console for the scheduled runs. Green + `HTTP 200` with a JSON summary
 means the full chain works. To exercise an endpoint without side effects:
 
 ```bash
@@ -648,18 +675,12 @@ Keep rules changes in small, focused commits so reverting is straightforward.
 
 ---
 
-## Firebase Free Tier Limits (Spark plan)
+## Firebase plan
 
-| Resource           | Free limit   |
-| ------------------ | ------------ |
-| Firestore reads    | 50,000 / day |
-| Firestore writes   | 20,000 / day |
-| Firestore deletes  | 20,000 / day |
-| Storage stored     | 5 GB         |
-| Storage downloaded | 1 GB / day   |
-| Authentication     | Unlimited    |
-
-If you approach these limits, upgrade to the Blaze (pay-as-you-go) plan. Blaze has no fixed free tier but charges only for usage above the same thresholds.
+The project is on the **Blaze** (pay-as-you-go) plan, which Cloud Functions,
+Secret Manager and scheduled functions require. Blaze keeps the same no-cost
+quota as the free Spark plan (for example 50,000 Firestore reads and 20,000
+writes a day) and bills only above it. Budget alerts: `scripts/setup-billing-alerts.sh`.
 
 ---
 
