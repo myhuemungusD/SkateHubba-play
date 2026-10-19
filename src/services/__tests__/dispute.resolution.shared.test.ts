@@ -209,3 +209,21 @@ describe("decidePendingReviewExpiry", () => {
     expect(u.currentSetter).toBe("p1");
   });
 });
+
+describe("game turn length", () => {
+  const THREE_DAYS = 72 * 60 * 60 * 1000;
+
+  it("a 3-day game's pendingReview auto-accept starts a 3-day turn", () => {
+    expect(decidePendingReviewExpiry(baseGame({ turnLengthHours: 72 }), NOW).turnDeadlineMs).toBe(NOW + THREE_DAYS);
+  });
+
+  it("a 3-day game's tie retry and bail both start 3-day turns", () => {
+    const game = baseGame({ turnLengthHours: 72 });
+    expect(decideDisputeResolution(game, { landVotes: 2, bailVotes: 2 }, NOW).gameUpdate.turnDeadlineMs).toBe(
+      NOW + THREE_DAYS,
+    );
+    expect(decideDisputeResolution(game, { landVotes: 0, bailVotes: 3 }, NOW).gameUpdate.turnDeadlineMs).toBe(
+      NOW + THREE_DAYS,
+    );
+  });
+});

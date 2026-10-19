@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { GameDoc } from "../../services/games";
 import type { UserProfile } from "../../services/users";
 import { canNudge, getServerNudgeCooldownMs, sendNudge } from "../../services/nudge";
+import { turnDurationMsFor } from "../../services/turnDuration";
 
 export type NudgeStatus = "idle" | "pending" | "sent" | "error";
 
@@ -82,7 +83,7 @@ export function useWaitingScreen(game: GameDoc, profile: UserProfile): WaitingSc
   // points at (setter in setting phase, matcher in matching phase). Judge
   // review phases would route to GamePlayScreen's review UI, not here.
   const activePlayerUsername = game.player1Uid === game.currentTurn ? game.player1Username : game.player2Username;
-  const [fallbackDeadline] = useState(() => Date.now() + 86400000);
+  const [fallbackDeadline] = useState(() => Date.now() + turnDurationMsFor(game));
   const deadline = game.turnDeadline?.toMillis?.() || fallbackDeadline;
   const nudgeAvailable = nudgeStatus === "idle";
   // Judge-driven phases surface a different "who are we waiting on" copy.

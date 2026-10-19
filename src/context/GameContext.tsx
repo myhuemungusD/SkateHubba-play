@@ -16,6 +16,7 @@ import { getUserProfile } from "../services/users";
 import { isUserBlocked } from "../services/blocking";
 import { createGame, forfeitExpiredTurn, subscribeToMyGames, subscribeToGame, type GameDoc } from "../services/games";
 import type { TrickCategoryId } from "../constants/trickCategories";
+import type { TurnLengthHours } from "../services/turnDuration";
 import { newGameShell, parseFirebaseError } from "../utils/helpers";
 import { analytics } from "../services/analytics";
 import { logger } from "../services/logger";
@@ -27,6 +28,8 @@ export interface StartChallengeOptions {
   judgeUsername?: string | null;
   trickCategory?: TrickCategoryId | null;
   customRules?: string | null;
+  /** Hours per turn (24, 72 or 168). createGame drops it unless VITE_FEATURE_TURN_LENGTH is on. */
+  turnLengthHours?: TurnLengthHours | null;
 }
 
 export interface GameContextValue {
@@ -271,6 +274,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const judgeUsername = options?.judgeUsername ?? null;
       const trickCategory = options?.trickCategory ?? null;
       const customRules = options?.customRules ?? null;
+      const turnLengthHours = options?.turnLengthHours ?? null;
       // Defense-in-depth: check block status client-side (Firestore rules enforce server-side)
       const [blockedByMe, blockedByThem] = await Promise.all([
         isUserBlocked(user.uid, opponentUid),
@@ -317,6 +321,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         customRules,
         judgeUid: judgeAuthUid,
         judgeUsername: judgeAuthUsername,
+        ...(turnLengthHours !== null && { turnLengthHours }),
       });
       analytics.gameCreated(gameId);
       const shell = newGameShell(
@@ -330,6 +335,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         judgeAuthUsername,
         trickCategory,
         customRules,
+        turnLengthHours,
       );
       setActiveGame(shell);
       goToScreen("game");

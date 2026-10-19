@@ -317,3 +317,8 @@ export function isTipsEnabled(): boolean {
 export function isHubbaIconsEnabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_HUBBA_ICONS);
 }
+
+/** Turn-length choice on new challenges (24h / 3 days / 7 days). Literal "true" only; off by default (every game 24h); tester override turns it on. */
+export function isTurnLengthEnabled(): boolean {
+  return flagOn(import.meta.env.VITE_FEATURE_TURN_LENGTH);
+}

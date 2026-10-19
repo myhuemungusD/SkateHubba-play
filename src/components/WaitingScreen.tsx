@@ -6,6 +6,7 @@ import { useWaitingScreen } from "./waiting/useWaitingScreen";
 import { WaitingHeader } from "./waiting/WaitingHeader";
 import { WaitingClipPanel } from "./waiting/WaitingClipPanel";
 import { WaitingActions } from "./waiting/WaitingActions";
+import { TurnLengthChip } from "./TurnLengthChip";
 
 export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profile: UserProfile; onBack: () => void }) {
   const state = useWaitingScreen(game, profile);
@@ -25,6 +26,8 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
           waitingOnLabel={state.waitingOnLabel}
           deadline={state.deadline}
         />
+
+        <TurnLengthChip hours={game.turnLengthHours} className="mt-3" />
 
         <WaitingClipPanel game={game} profile={profile} opponentName={state.opponentName} />
 

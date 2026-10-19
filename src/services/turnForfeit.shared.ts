@@ -20,7 +20,7 @@
  * across both SDKs.
  */
 
-import { TURN_DURATION_MS } from "./turnDuration.js";
+import { turnDurationMsFor } from "./turnDuration.js";
 import type { GameDoc, TurnRecord } from "./games.mappers.js";
 import { trickSnapshot } from "./trickFields.js";
 
@@ -149,7 +149,7 @@ export function decideExpiredForfeit(game: GameDoc, nowMs: number, gameId: strin
   const deadline = game.turnDeadline?.toMillis?.() ?? 0;
   if (deadline === 0 || nowMs < deadline) return null;
 
-  const newDeadlineMs = nowMs + TURN_DURATION_MS;
+  const newDeadlineMs = nowMs + turnDurationMsFor(game);
 
   // ── Disputable phase expired → auto-accept matcher's "landed" call ──
   if (game.phase === "disputable") {

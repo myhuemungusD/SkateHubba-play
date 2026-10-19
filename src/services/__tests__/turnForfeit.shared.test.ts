@@ -218,3 +218,17 @@ describe("decideExpiredForfeit", () => {
     });
   });
 });
+
+describe("decideExpiredForfeit — game turn length", () => {
+  const WEEK = 168 * 60 * 60 * 1000;
+
+  it("a 7-day disputable auto-accept starts a 7-day turn", () => {
+    const game = baseGame({ phase: "disputable", currentTurn: "j1", judgeId: "j1", turnLengthHours: 168 });
+    expect(decideExpiredForfeit(game, NOW, "g1")?.gameUpdate.turnDeadlineMs).toBe(NOW + WEEK);
+  });
+
+  it("a 7-day setReview auto-clear starts a 7-day turn", () => {
+    const game = baseGame({ phase: "setReview", currentTurn: "j1", judgeId: "j1", turnLengthHours: 168 });
+    expect(decideExpiredForfeit(game, NOW, "g1")?.gameUpdate.turnDeadlineMs).toBe(NOW + WEEK);
+  });
+});

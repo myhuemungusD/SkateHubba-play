@@ -356,6 +356,47 @@ describe("games service", () => {
       expect(notif?.body).toContain("mongo only");
     });
 
+    describe("turn length (VITE_FEATURE_TURN_LENGTH)", () => {
+      const DAY = 24 * 60 * 60 * 1000;
+      const deadlineMs = (d: Record<string, unknown>) => (d.turnDeadline as { toMillis: () => number }).toMillis();
+      const challengeBody = () =>
+        mockBatchSet.mock.calls.map((c) => c[1]).find((d) => d && "body" in d)?.body as string | undefined;
+
+      it("flag off: drops the choice and keeps the 24h clock", async () => {
+        const before = Date.now();
+        await createGame("p1", "alice", "p2", "bob", { turnLengthHours: 168 });
+        const docData = gameSetDocCall();
+        expect(docData).not.toHaveProperty("turnLengthHours");
+        expect(deadlineMs(docData) - before).toBeGreaterThanOrEqual(DAY);
+        expect(deadlineMs(docData) - before).toBeLessThan(DAY + 5_000);
+        expect(challengeBody()).not.toContain("turns");
+      });
+
+      it("flag on: stores a 7-day length and a 7-day clock, and says so in the invite", async () => {
+        vi.stubEnv("VITE_FEATURE_TURN_LENGTH", "true");
+        const before = Date.now();
+        await createGame("p1", "alice", "p2", "bob", { turnLengthHours: 168, trickCategory: "flatbar" });
+        const docData = gameSetDocCall();
+        expect(docData.turnLengthHours).toBe(168);
+        expect(deadlineMs(docData) - before).toBeGreaterThanOrEqual(7 * DAY);
+        expect(deadlineMs(docData) - before).toBeLessThan(7 * DAY + 5_000);
+        expect(challengeBody()).toContain("Flat Bar · 7-day turns");
+      });
+
+      it("flag on: a 24h pick is stored but not announced", async () => {
+        vi.stubEnv("VITE_FEATURE_TURN_LENGTH", "true");
+        await createGame("p1", "alice", "p2", "bob", { turnLengthHours: 24 });
+        expect(gameSetDocCall().turnLengthHours).toBe(24);
+        expect(challengeBody()).toMatch(/challenged you to S\.K\.A\.T\.E\.$/);
+      });
+
+      it("flag on: an invalid length is dropped", async () => {
+        vi.stubEnv("VITE_FEATURE_TURN_LENGTH", "true");
+        await createGame("p1", "alice", "p2", "bob", { turnLengthHours: 48 as unknown as 72 });
+        expect(gameSetDocCall()).not.toHaveProperty("turnLengthHours");
+      });
+    });
+
     it("defaults to no judge (honor system)", async () => {
       await createGame("p1", "alice", "p2", "bob");
       const docData = gameSetDocCall();

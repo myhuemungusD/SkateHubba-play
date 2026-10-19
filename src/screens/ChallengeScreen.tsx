@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router";
 import { getUidByUsername, type UserProfile } from "../services/users";
 import { fetchSpotName } from "../services/spots";
 import { analytics } from "../services/analytics";
-import { isRefereeEnabled, isSpotPresenceEnabled } from "../lib/featureFlags";
+import { isRefereeEnabled, isSpotPresenceEnabled, isTurnLengthEnabled } from "../lib/featureFlags";
 import { captureException } from "../lib/sentry";
 import { getUserMessage } from "../utils/helpers";
 import type { StartChallengeOptions } from "../context/GameContext";
@@ -15,6 +15,8 @@ import { Leaderboard } from "../components/Leaderboard";
 import { OpponentPicker } from "../components/OpponentPicker";
 import { RulesSheet } from "../components/RulesSheet";
 import { TrickCategoryPicker } from "../components/TrickCategoryPicker";
+import { TurnLengthPicker } from "../components/TurnLengthPicker";
+import { DEFAULT_TURN_LENGTH_HOURS, type TurnLengthHours } from "../services/turnDuration";
 import { FlameIcon, MapPinIcon } from "../components/icons";
 import { CUSTOM_CATEGORY_ID, CUSTOM_RULES_MAX_LENGTH, type TrickCategoryId } from "../constants/trickCategories";
 
@@ -48,6 +50,7 @@ export function ChallengeScreen({
   const [opponent, setOpponent] = useState(initialOpponent || (searchParams.get("to") ?? "").slice(0, 40));
   const [trickCategory, setTrickCategory] = useState<TrickCategoryId>("any");
   const [customRules, setCustomRules] = useState("");
+  const [turnLengthHours, setTurnLengthHours] = useState<TurnLengthHours>(DEFAULT_TURN_LENGTH_HOURS);
   const [judge, setJudge] = useState("");
   const [judgePickerOpen, setJudgePickerOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
@@ -187,6 +190,7 @@ export function ChallengeScreen({
         // Only forward custom text for the custom category; the service
         // sanitizes and drops it for every other category anyway.
         customRules: trickCategory === CUSTOM_CATEGORY_ID ? customRules.trim() : null,
+        ...(isTurnLengthEnabled() && { turnLengthHours }),
       });
     } catch (err: unknown) {
       // Reaches here only on onSend rejection — the lookups above settle to
@@ -298,6 +302,10 @@ export function ChallengeScreen({
                   </div>
                 )}
               </div>
+
+              {isTurnLengthEnabled() && (
+                <TurnLengthPicker value={turnLengthHours} onChange={setTurnLengthHours} disabled={loading} />
+              )}
 
               {spotId && spotName !== "loading" && (
                 <div

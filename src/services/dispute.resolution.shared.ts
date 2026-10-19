@@ -23,7 +23,7 @@
  * implements that contract exactly.
  */
 
-import { TURN_DURATION_MS } from "./turnDuration.js";
+import { turnDurationMsFor } from "./turnDuration.js";
 import type { GameDoc, TurnRecord } from "./games.mappers.js";
 import { trickSnapshot } from "./trickFields.js";
 
@@ -156,7 +156,7 @@ function honorSwapUpdate(game: GameDoc, matcherUid: string, nowMs: number): Disp
     currentSetter: matcherUid,
     currentTurn: matcherUid,
     turnNumber: game.turnNumber + 1,
-    turnDeadlineMs: nowMs + TURN_DURATION_MS,
+    turnDeadlineMs: nowMs + turnDurationMsFor(game),
     p1Letters: game.p1Letters,
     p2Letters: game.p2Letters,
     reviewFor: null,
@@ -219,7 +219,7 @@ export function decideDisputeResolution(game: GameDoc, tally: DisputeTally, nowM
         // Setter unchanged; the matcher is back on the clock to re-attempt.
         currentSetter: disputerUid,
         currentTurn: matcherUid,
-        turnDeadlineMs: nowMs + TURN_DURATION_MS,
+        turnDeadlineMs: nowMs + turnDurationMsFor(game),
         matchVideoUrl: null,
         reviewFor: null,
         reviewDeadline: null,
@@ -270,7 +270,7 @@ export function decideDisputeResolution(game: GameDoc, tally: DisputeTally, nowM
       currentSetter: disputerUid,
       currentTurn: disputerUid,
       turnNumber: game.turnNumber + 1,
-      turnDeadlineMs: nowMs + TURN_DURATION_MS,
+      turnDeadlineMs: nowMs + turnDurationMsFor(game),
       p1Letters,
       p2Letters,
       reviewFor: null,
@@ -284,7 +284,7 @@ export function decideDisputeResolution(game: GameDoc, tally: DisputeTally, nowM
 /**
  * Decide the `pendingReview` expiry auto-accept — the deferred honor swap.
  *
- * When the opponent lets the 24h accept/dispute window lapse without disputing,
+ * When the opponent lets the accept/dispute window (the game's turn length) lapse without disputing,
  * the matcher's "landed" claim stands and the game continues exactly as today's
  * honor landed resolution, just deferred (§3.3). NO stats are written: no
  * dispute was ever raised, so none of the four counters move. Kept alongside

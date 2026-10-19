@@ -280,6 +280,16 @@ describe("games service", () => {
       expect(updates.turnHistory).toBeUndefined();
     });
 
+    it("7-day game — the setter's accept/dispute window and the clock are 7 days", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...matchingGame, turnLengthHours: 168 }));
+      const before = Date.now();
+      await submitMatchAttempt("g1", "https://vid.url/match.webm", true);
+      const updates = mockTxUpdate.mock.calls[0][1];
+      const week = 168 * 60 * 60 * 1000;
+      expect(updates.reviewDeadline.toMillis() - before).toBeGreaterThanOrEqual(week);
+      expect(updates.turnDeadline.toMillis() - before).toBeLessThan(week + 5_000);
+    });
+
     it("judge nominated but not accepted — still honor system, freezes to pendingReview", async () => {
       const pendingJudgeGame = { ...matchingGameWithJudge, judgeStatus: "pending" };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(pendingJudgeGame));

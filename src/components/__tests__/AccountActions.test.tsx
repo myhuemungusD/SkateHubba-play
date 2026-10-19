@@ -13,7 +13,7 @@ import { deferred } from "../../__tests__/harness/deferred";
  * state); nothing here re-asserts those.
  */
 
-const downloadBtn = () => screen.getByRole("button", { name: /download a copy of my data/i });
+const downloadBtn = () => screen.getByRole("button", { name: /download my data/i });
 const deleteRow = () => screen.getByRole("button", { name: /^Delete account/ });
 
 async function openDeleteModal(): Promise<HTMLElement> {
@@ -33,7 +33,7 @@ describe("AccountActions", () => {
   describe("data export", () => {
     it("hides the Download my data row when no handler is provided", () => {
       render(<AccountActions onDeleteAccount={onDeleteAccount} />);
-      expect(screen.queryByRole("button", { name: /download a copy of my data/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /download my data/i })).not.toBeInTheDocument();
     });
 
     it("invokes onDownloadData when the row is clicked", async () => {
