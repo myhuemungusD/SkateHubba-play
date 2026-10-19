@@ -42,7 +42,7 @@ export function AccountActions({ onDownloadData, onDeleteAccount }: Props): Reac
           type="button"
           onClick={handleDownload}
           disabled={downloading}
-          aria-label="Download a copy of my data"
+          aria-label="Download my data"
           className="block w-full text-left p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:opacity-60 disabled:cursor-wait"
         >
           <p className="font-display text-sm text-white tracking-wide">
