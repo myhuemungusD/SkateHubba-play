@@ -322,3 +322,8 @@ export function isHubbaIconsEnabled(): boolean {
 export function isTurnLengthEnabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_TURN_LENGTH);
 }
+
+/** Trick library at /tricks: community trick index with review + votes. Literal "true" only; off by default; tester override turns it on. */
+export function isTrickLibraryEnabled(): boolean {
+  return flagOn(import.meta.env.VITE_FEATURE_TRICK_LIBRARY_ENABLED);
+}

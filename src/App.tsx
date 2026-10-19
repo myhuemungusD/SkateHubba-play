@@ -35,6 +35,7 @@ import {
   isClosetStudioEnabled,
   isMapCheckinsEnabled,
   isTipsEnabled,
+  isTrickLibraryEnabled,
 } from "./lib/featureFlags";
 import { startCheckinQueue } from "./services/mapCheckins";
 import { PresenceRunner } from "./components/presence/PresenceRunner";
@@ -99,6 +100,9 @@ const RunnerScreen = lazy(() => import("./screens/Runner/RunnerScreen").then((m)
 const DiceHub = lazy(() => import("./screens/Dice/DiceHub").then((m) => ({ default: m.DiceHub })));
 const DiceNew = lazy(() => import("./screens/Dice/DiceNew").then((m) => ({ default: m.DiceNew })));
 const DiceTable = lazy(() => import("./screens/Dice/DiceTable").then((m) => ({ default: m.DiceTable })));
+const TrickLibraryPage = lazy(() =>
+  import("./screens/TrickLibraryPage").then((m) => ({ default: m.TrickLibraryPage })),
+);
 // Spotlight/onboarding is not on the first-paint path. Keeping it out of the
 // App graph drops that chunk from /auth and /feed.
 const TipsHost = lazy(() => import("./components/tips/TipsHost").then((m) => ({ default: m.TipsHost })));
@@ -855,6 +859,17 @@ function AppRoutes() {
               shortcuts still land somewhere useful: signed-in users go to the
               lobby, signed-out visitors go home — the same destinations the
               existing auth guards use. */}
+            {/* Trick Library: its own flag (off by default, testers always on). */}
+            <Route
+              path="/tricks"
+              element={
+                auth.user && isTrickLibraryEnabled() ? (
+                  <TrickLibraryPage uid={auth.user.uid} emailVerified={auth.user.emailVerified} />
+                ) : (
+                  <Navigate to={auth.user ? "/lobby" : "/"} replace />
+                )
+              }
+            />
             {extrasEnabled ? (
               <>
                 <Route

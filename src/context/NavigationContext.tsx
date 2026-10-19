@@ -68,6 +68,7 @@ export type Screen =
   | "datadeletion"
   | "dice"
   | "runner"
+  | "tricks"
   | "notfound";
 
 /** Map screen names to URL paths. */
@@ -89,6 +90,7 @@ const SCREEN_TO_PATH: Record<Screen, string> = {
   datadeletion: "/data-deletion",
   dice: "/dice",
   runner: "/play/runner",
+  tricks: "/tricks",
   notfound: "/404",
 };
 

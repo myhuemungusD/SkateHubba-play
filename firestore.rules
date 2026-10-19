@@ -3946,5 +3946,72 @@ service cloud.firestore {
       allow update: if false;
       allow delete: if isSignedIn() && resource.data.proUid == request.auth.uid;
     }
+
+    // ── Trick Library (flag VITE_FEATURE_TRICK_LIBRARY_ENABLED, default off) ──
+    // Community trick index. Anyone signed in and verified can submit a trick;
+    // it starts "pending" and only an admin-claim holder can approve or reject
+    // it (pros never get this). Approved tricks are public to signed-in users;
+    // a pending or rejected one is visible only to its submitter and admins.
+    match /trickLibrary/{trickId} {
+      allow read: if isSignedIn()
+        && (resource.data.status == 'approved'
+          || resource.data.submittedBy == request.auth.uid
+          || isAdmin());
+
+      allow create: if isSignedIn()
+        && notBanned()
+        && emailVerified()
+        && request.resource.data.keys().hasOnly(['name', 'description', 'difficulty', 'videoUrl', 'submittedBy', 'submittedAt', 'status'])
+        && request.resource.data.keys().hasAll(['name', 'difficulty', 'submittedBy', 'submittedAt', 'status'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 60
+        && (!('description' in request.resource.data)
+          || (request.resource.data.description is string
+            && request.resource.data.description.size() <= 500))
+        && request.resource.data.difficulty in ['beginner', 'intermediate', 'advanced', 'expert']
+        && (!('videoUrl' in request.resource.data)
+          || videoUrlBucketPinned(request.resource.data.videoUrl))
+        && request.resource.data.submittedBy == request.auth.uid
+        && request.resource.data.submittedAt == request.time
+        && request.resource.data.status == 'pending';
+
+      allow update: if isAdmin()
+        && resource.data.status == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'moderatedBy', 'moderatedAt'])
+        && request.resource.data.status in ['approved', 'rejected']
+        && request.resource.data.moderatedBy == request.auth.uid
+        && request.resource.data.moderatedAt == request.time;
+
+      allow delete: if false;
+    }
+
+    // One vote per user per trick, id `{uid}_{trickId}`. Only approved tricks
+    // take votes. Tallies are counted from these docs (count queries), so no
+    // client ever writes a counter on the trick itself.
+    match /trickVotes/{voteId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && notBanned()
+        && emailVerified()
+        && request.resource.data.keys().hasOnly(['trickId', 'userId', 'vote', 'createdAt'])
+        && request.resource.data.trickId is string
+        && request.resource.data.trickId.size() > 0
+        && voteId == request.auth.uid + '_' + request.resource.data.trickId
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.vote in ['up', 'down']
+        && request.resource.data.createdAt == request.time
+        && fsExists('trickLibrary', request.resource.data.trickId)
+        && fsGet('trickLibrary', request.resource.data.trickId).data.status == 'approved';
+
+      allow update: if isOwner(resource.data.userId)
+        && notBanned()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['vote', 'createdAt'])
+        && request.resource.data.vote in ['up', 'down']
+        && request.resource.data.createdAt == request.time;
+
+      allow delete: if isOwner(resource.data.userId);
+    }
   }
 }
