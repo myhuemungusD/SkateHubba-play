@@ -22,6 +22,7 @@ import { logger } from "../services/logger";
 
 export interface StartChallengeOptions {
   spotId?: string | null;
+  spotPresence?: boolean;
   judgeUid?: string | null;
   judgeUsername?: string | null;
   trickCategory?: TrickCategoryId | null;
@@ -311,6 +312,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         challengerIsVerifiedPro: activeProfile.isVerifiedPro,
         opponentIsVerifiedPro: opponentProfile.isVerifiedPro,
         spotId,
+        ...(options?.spotPresence === true && { spotPresence: true }),
         trickCategory,
         customRules,
         judgeUid: judgeAuthUid,

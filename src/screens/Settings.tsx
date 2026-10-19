@@ -23,6 +23,7 @@ import { SafetyReportsSection } from "../components/SafetyReportsSection";
 import { usePushPermission } from "./settings/usePushPermission";
 import { PrefRow, SectionHeader } from "./settings/SettingsPrimitives";
 import { BlockedPlayersList } from "./settings/BlockedPlayersList";
+import { PresenceSettings } from "./settings/PresenceSettings";
 import { isSms2faEnabled } from "../lib/featureFlags";
 
 /* ── Main Settings screen ───────────────────────────────── */
@@ -263,6 +264,8 @@ export function Settings({
         )}
 
         {/* Blocked players */}
+        <PresenceSettings uid={profile.uid} />
+
         <SectionHeader title="BLOCKED PLAYERS" count={blockedUids.size} />
         <BlockedPlayersList currentUserUid={profile.uid} blockedUids={blockedUids} onUnblock={handleUnblock} />
 

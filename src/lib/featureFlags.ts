@@ -273,6 +273,16 @@ export function isMapCheckinsEnabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_MAP_CHECKINS);
 }
 
+/**
+ * Spot presence: "Challenge here" lists only skaters checked in at the spot,
+ * day-pass auto re-check-in, and online dots on avatars. Literal "true" only;
+ * off by default. Server switch: SPOT_PRESENCE_ENABLED /
+ * SPOT_PRESENCE_TESTER_UIDS.
+ */
+export function isSpotPresenceEnabled(): boolean {
+  return flagOn(import.meta.env.VITE_FEATURE_SPOT_PRESENCE);
+}
+
 /** Admin console: bans list, user search, feature switches viewer (admin claim only). Literal "true" only; off by default; tester override turns it on. */
 export function isAdminConsoleEnabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_ADMIN_CONSOLE);

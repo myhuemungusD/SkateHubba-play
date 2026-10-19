@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AvatarImage } from "../../../components/AvatarImage";
+import { PresenceDot } from "../../../components/presence/PresenceDot";
 import { ProUsername } from "../../../components/ProUsername";
 import { AvatarPicker } from "../../../components/AvatarPicker";
 import { LevelChip } from "../../../components/LevelChip";
@@ -112,6 +113,7 @@ export function ProfileIdentityCard({
               <AvatarImage src={getAvatarFallbackUrl()} size={80} className="w-full h-full object-cover" />
             )}
           </div>
+          {uid && <PresenceDot uid={uid} className="absolute bottom-1 left-1 w-3.5 h-3.5" />}
           {isOwnProfile && uid && (
             // 44×44 hit area (Apple HIG / audit B-BLOCKER-2). The visual
             // pencil chip stays at 24×24; transparent padding around it

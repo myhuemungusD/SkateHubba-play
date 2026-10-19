@@ -4,12 +4,18 @@ import { MapPinCheck } from "lucide-react";
 import { useAuthContext } from "../../context/AuthContext";
 import { checkInAtSpot, describeCheckin, LocationError } from "../../services/mapCheckins";
 import type { Spot } from "../../types/spot";
+import { isSpotPresenceEnabled } from "../../lib/featureFlags";
+import { rememberIfPassed } from "../../services/spotPresence";
 
 /**
  * Check in at a spot. Location is asked for only on this tap, never when the
  * map opens. Signed-out visitors get a sign-in prompt instead.
  */
-export function CheckInButton({ spot }: { spot: Pick<Spot, "id" | "scope"> }) {
+export function CheckInButton({
+  spot,
+}: {
+  spot: Pick<Spot, "id" | "scope"> & Partial<Pick<Spot, "name" | "latitude" | "longitude">>;
+}) {
   const { user } = useAuthContext();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
@@ -31,7 +37,9 @@ export function CheckInButton({ spot }: { spot: Pick<Spot, "id" | "scope"> }) {
     setBusy(true);
     setMessage(null);
     try {
-      setMessage(describeCheckin(await checkInAtSpot(spot)));
+      const outcome = await checkInAtSpot(spot);
+      if (isSpotPresenceEnabled()) rememberIfPassed(spot, outcome);
+      setMessage(describeCheckin(outcome));
     } catch (err) {
       setMessage(err instanceof LocationError ? err.message : "Check-in failed. Try again.");
     } finally {

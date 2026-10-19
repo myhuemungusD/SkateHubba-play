@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router";
 import { getUidByUsername, type UserProfile } from "../services/users";
 import { fetchSpotName } from "../services/spots";
 import { analytics } from "../services/analytics";
-import { isRefereeEnabled } from "../lib/featureFlags";
+import { isRefereeEnabled, isSpotPresenceEnabled } from "../lib/featureFlags";
 import { captureException } from "../lib/sentry";
 import { getUserMessage } from "../utils/helpers";
 import type { StartChallengeOptions } from "../context/GameContext";
@@ -43,7 +43,9 @@ export function ChallengeScreen({
   /** Set of UIDs the current user has blocked (prevents challenging blocked users). */
   blockedUids?: Set<string>;
 }) {
-  const [opponent, setOpponent] = useState(initialOpponent);
+  const [searchParams] = useSearchParams();
+  // ?to=<username> pre-fills the opponent (from a spot's "Skaters here" list).
+  const [opponent, setOpponent] = useState(initialOpponent || (searchParams.get("to") ?? "").slice(0, 40));
   const [trickCategory, setTrickCategory] = useState<TrickCategoryId>("any");
   const [customRules, setCustomRules] = useState("");
   const [judge, setJudge] = useState("");
@@ -56,9 +58,11 @@ export function ChallengeScreen({
   // to onSend so the created game carries location context. Only accepted
   // if it matches the canonical UUID shape — this is client-side
   // defense-in-depth; the API enforces the same invariant server-side.
-  const [searchParams] = useSearchParams();
   const rawSpotId = searchParams.get("spot");
   const spotId = rawSpotId && UUID_SHAPE.test(rawSpotId) ? rawSpotId : null;
+  // ?here=1 comes from the spot's "Skaters here" list: both players are at
+  // the spot, and the rules check that again when the game is created.
+  const atSpot = spotId !== null && searchParams.get("here") === "1" && isSpotPresenceEnabled();
 
   // Progressive disclosure gate — spot/invite/rules stay hidden until the
   // opponent field has a plausibly valid username. The referee picker is a
@@ -176,6 +180,7 @@ export function ChallengeScreen({
 
       await onSend(uid, normalized, {
         spotId,
+        ...(atSpot && { spotPresence: true }),
         judgeUid,
         judgeUsername,
         trickCategory,

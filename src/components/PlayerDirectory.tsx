@@ -1,4 +1,5 @@
 import type { UserProfile } from "../services/users";
+import { PresenceDot } from "./presence/PresenceDot";
 import type { usePlayerDirectory } from "../hooks/usePlayerDirectory";
 import { ProUsername } from "./ProUsername";
 
@@ -77,8 +78,9 @@ export function PlayerDirectory({ players, loading, canChallenge, onViewPlayer, 
               className="flex flex-1 min-h-11 items-center gap-3 min-w-0 text-left cursor-pointer hover:opacity-80 transition-opacity focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
               aria-label={`View @${p.username}'s profile`}
             >
-              <div className="w-10 h-10 rounded-full bg-surface-alt border border-white/[0.06] flex items-center justify-center shrink-0">
+              <div className="relative w-10 h-10 rounded-full bg-surface-alt border border-white/[0.06] flex items-center justify-center shrink-0">
                 <span className="font-display text-sm text-white/80 leading-none">{p.username[0].toUpperCase()}</span>
+                <PresenceDot uid={p.uid} className="absolute -bottom-0.5 -right-0.5" />
               </div>
               <div className="min-w-0">
                 <ProUsername

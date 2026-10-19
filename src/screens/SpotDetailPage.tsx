@@ -9,7 +9,8 @@ import { useGoBack } from "../hooks/useGoBack";
 import { GnarRating } from "../components/map/GnarRating";
 import { BustRisk } from "../components/map/BustRisk";
 import { SpotChat } from "../components/SpotChat/SpotChat";
-import { isMapCheckinsEnabled, isSpotChatsEnabled } from "../lib/featureFlags";
+import { isMapCheckinsEnabled, isSpotChatsEnabled, isSpotPresenceEnabled } from "../lib/featureFlags";
+import { SkatersHere } from "../components/presence/SkatersHere";
 import { CheckInButton } from "../components/map/CheckInButton";
 
 export function SpotDetailPage() {
@@ -197,15 +198,19 @@ export function SpotDetailPage() {
           </div>
         )}
 
-        {/* Challenge button */}
-        <button
-          type="button"
-          onClick={handleChallenge}
-          className="w-full py-3 rounded-xl bg-[#F97316] text-white font-semibold
+        {/* Challenge: with spot presence on, only skaters checked in here. */}
+        {isSpotPresenceEnabled() ? (
+          <SkatersHere spot={spot} />
+        ) : (
+          <button
+            type="button"
+            onClick={handleChallenge}
+            className="w-full py-3 rounded-xl bg-[#F97316] text-white font-semibold
                      hover:bg-[#EA580C] transition-colors"
-        >
-          Challenge to S.K.A.T.E. here
-        </button>
+          >
+            Challenge to S.K.A.T.E. here
+          </button>
+        )}
 
         {/* Check in here too, not only from the map preview card. */}
         {isMapCheckinsEnabled() && <CheckInButton spot={spot} />}

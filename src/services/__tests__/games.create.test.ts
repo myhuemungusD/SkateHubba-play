@@ -270,6 +270,19 @@ describe("games service", () => {
       expect(docData.spotId).toBe(validSpotId);
     });
 
+    it("marks a spot-presence game only when it has a spot", async () => {
+      await createGame("p1", "alice", "p2", "bob", {
+        spotId: "11111111-2222-3333-4444-555555555555",
+        spotPresence: true,
+      });
+      expect(gameSetDocCall().spotPresence).toBe(true);
+    });
+
+    it("drops spotPresence without a spot", async () => {
+      await createGame("p1", "alice", "p2", "bob", { spotPresence: true });
+      expect("spotPresence" in gameSetDocCall()).toBe(false);
+    });
+
     it("omits spotId when null or undefined", async () => {
       await createGame("p1", "alice", "p2", "bob", { spotId: null });
       const docData = gameSetDocCall();
