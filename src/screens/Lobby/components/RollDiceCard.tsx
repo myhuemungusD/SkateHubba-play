@@ -7,6 +7,7 @@ export function RollDiceCard() {
     <button
       type="button"
       data-testid="roll-dice-card"
+      data-tutorial="dice-card"
       onClick={() => navigate("/dice")}
       className="mb-5 w-full rounded-2xl border border-white/[0.06] bg-surface px-4 py-4 text-left shadow-card hover:border-brand-orange/40"
     >

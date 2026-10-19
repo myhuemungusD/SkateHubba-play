@@ -24,6 +24,7 @@ import { usePushPermission } from "./settings/usePushPermission";
 import { PrefRow, SectionHeader } from "./settings/SettingsPrimitives";
 import { BlockedPlayersList } from "./settings/BlockedPlayersList";
 import { PresenceSettings } from "./settings/PresenceSettings";
+import { TipsSettings } from "./settings/TipsSettings";
 import { isSms2faEnabled } from "../lib/featureFlags";
 
 /* ── Main Settings screen ───────────────────────────────── */
@@ -292,7 +293,7 @@ export function Settings({
         <SectionHeader title="FOLLOW SKATEHUBBA" />
         <FollowLinks />
 
-        {/* Tutorial replay — re-arms Hubz's onboarding tour */}
+        {/* Tutorial replay — re-arms Hesher's onboarding tour */}
         <SectionHeader title="TUTORIAL" />
         <div className="space-y-2">
           <button
@@ -302,9 +303,10 @@ export function Settings({
             className="block w-full text-left p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <p className="font-display text-sm text-white tracking-wide">Replay onboarding</p>
-            <p className="font-body text-xs text-faint mt-1">Run Hubz&apos;s welcome tour again from the top.</p>
+            <p className="font-body text-xs text-faint mt-1">Run Hesher&apos;s welcome tour again from the top.</p>
           </button>
         </div>
+        <TipsSettings />
 
         {isClosetStudioEnabled() && <SectionHeader title="CLOSET STUDIO" />}
         {isClosetStudioEnabled() && (

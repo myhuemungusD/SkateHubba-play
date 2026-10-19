@@ -317,6 +317,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry, autoOpenAddSp
                    flex items-center justify-center text-white shadow-lg
                    hover:bg-[#EA580C] transition-colors"
           aria-label="Add a spot"
+          data-tutorial="map-add-spot"
         >
           <Plus size={24} />
         </button>

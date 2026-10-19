@@ -307,3 +307,8 @@ export function isProCommunityEnabled(): boolean {
 export function isAdminInsightsEnabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_ADMIN_INSIGHTS);
 }
+
+/** Per-screen Hesher tip bubbles (src/components/tips). Literal "true" only; off by default; tester override turns it on. */
+export function isTipsEnabled(): boolean {
+  return flagOn(import.meta.env.VITE_FEATURE_TIPS);
+}

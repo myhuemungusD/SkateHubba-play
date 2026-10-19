@@ -2,6 +2,7 @@ import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode 
 import { isShoe360Enabled } from "../lib/featureFlags";
 import { canUseWebGL } from "../runner/webgl";
 import { shoeSkinFor } from "../lib/closet/shoe360";
+import { TipZone } from "../lib/tipSignals";
 
 const Shoe360Canvas = lazy(() => import("../closet360/Shoe360Canvas"));
 
@@ -48,6 +49,7 @@ export function Shoe360({ itemDefId, imageUrl, alt }: { itemDefId: string; image
       data-testid="shoe360"
       className="relative aspect-square w-full touch-none overflow-hidden rounded-xl bg-[radial-gradient(circle_at_50%_42%,#26262a,#0e0e10)]"
     >
+      <TipZone id="shoe360" />
       <Fallback fallback={image}>
         <Suspense fallback={image}>
           <Shoe360Canvas skin={skin} autoRotate={!prefersReducedMotion()} active={active} />

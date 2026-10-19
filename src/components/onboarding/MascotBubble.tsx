@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useRef } from "react";
-import { HubzMascot, type HubzState } from "./HubzMascot";
+import { HesherMascot, type HesherState } from "./HesherMascot";
 import { playHaptic } from "../../services/haptics";
 
 interface MascotBubbleProps {
@@ -11,12 +11,16 @@ interface MascotBubbleProps {
   stepIndex: number;
   /** Total number of steps; pairs with {@link stepIndex} for the strip. */
   totalSteps: number;
-  mascotState?: HubzState;
+  mascotState?: HesherState;
   primaryCta: { label: string; onClick: () => void };
   onSkip?: () => void;
   onBack?: () => void;
   /** Explicit close affordance — surfaced as a small "x" in the top-right. */
   onClose?: () => void;
+  /** Accessible name of the close button. */
+  closeLabel?: string;
+  /** id for the title, so a parent dialog can point aria-labelledby at it. */
+  titleId?: string;
   /** Suppresses entrance / floating animations for users who prefer reduced motion. */
   reducedMotion: boolean;
 }
@@ -48,6 +52,8 @@ export function MascotBubble({
   onSkip,
   onBack,
   onClose,
+  closeLabel = "close tour",
+  titleId = "onboarding-title",
   reducedMotion,
 }: MascotBubbleProps) {
   // useId scopes the SVG filter id per component instance so two MascotBubble
@@ -102,10 +108,10 @@ export function MascotBubble({
       data-coach-bubble=""
     >
       <div className="flex items-start gap-3">
-        <HubzMascot state={mascotState} className="w-12 h-12 shrink-0 text-brand-orange" decorative />
+        <HesherMascot state={mascotState} className="w-12 h-12 shrink-0 text-brand-orange" decorative />
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline justify-between gap-2">
-            <h2 id="onboarding-title" className="font-display text-base text-white tracking-wide">
+            <h2 id={titleId} className="font-display text-base text-white tracking-wide">
               {title}
             </h2>
             <p className="font-body text-xs text-bright uppercase tracking-widest" aria-hidden="true">
@@ -121,7 +127,7 @@ export function MascotBubble({
           <button
             type="button"
             onClick={handleClose}
-            aria-label="close tour"
+            aria-label={closeLabel}
             className={`-mt-1 -mr-1 text-muted hover:text-white rounded-full ${TOUCH_TARGET} ${FOCUS_RING}`}
           >
             <span aria-hidden="true" className="font-display text-lg leading-none">

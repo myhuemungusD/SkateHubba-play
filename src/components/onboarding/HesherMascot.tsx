@@ -1,5 +1,5 @@
 /**
- * "Hubz" the chill skate buddy. Pure inline SVG so there are no asset
+ * "Hesher" the chill skate buddy. Pure inline SVG so there are no asset
  * dependencies and the mascot scales with rem-based className sizing. Each
  * `state` prop maps to a Tailwind animation class.
  *
@@ -7,16 +7,16 @@
  * single role="img" + aria-label so screen readers announce one element.
  */
 
-export type HubzState = "idle" | "talking" | "cheer";
+export type HesherState = "idle" | "talking" | "cheer";
 
-interface HubzMascotProps {
-  state?: HubzState;
+interface HesherMascotProps {
+  state?: HesherState;
   className?: string;
   /** Render purely decoratively (no aria-label) when paired with adjacent live text. */
   decorative?: boolean;
 }
 
-function stateAnimationClass(state: HubzState): string {
+function stateAnimationClass(state: HesherState): string {
   switch (state) {
     case "idle":
       return "motion-safe:animate-float";
@@ -27,18 +27,18 @@ function stateAnimationClass(state: HubzState): string {
   }
 }
 
-export function HubzMascot({ state = "idle", className, decorative = false }: HubzMascotProps) {
+export function HesherMascot({ state = "idle", className, decorative = false }: HesherMascotProps) {
   const animation = stateAnimationClass(state);
   const a11y = decorative
     ? ({ "aria-hidden": true } as const)
-    : ({ role: "img", "aria-label": "Hubz the skate buddy" } as const);
+    : ({ role: "img", "aria-label": "Hesher the skate buddy" } as const);
 
   return (
     <svg
       viewBox="0 0 120 120"
       xmlns="http://www.w3.org/2000/svg"
       className={`${className ?? ""} ${animation}`.trim()}
-      data-testid="hubz-mascot"
+      data-testid="hesher-mascot"
       data-state={state}
       {...a11y}
     >

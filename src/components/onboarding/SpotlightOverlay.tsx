@@ -20,6 +20,8 @@ interface SpotlightOverlayProps {
    * bubble pointing at empty space.
    */
   onAnchorMissing?: () => void;
+  /** "top" pins the bubble under the header instead of above the bottom nav. */
+  placement?: "top" | "bottom";
   children: ReactNode;
 }
 
@@ -46,7 +48,13 @@ function readRect(selector: string): Rect | null {
  * the relevant control. This means no `inert`, no focus trap, no
  * `aria-modal` — those would all imply blocking the page.
  */
-export function SpotlightOverlay({ targetSelector, reducedMotion, onAnchorMissing, children }: SpotlightOverlayProps) {
+export function SpotlightOverlay({
+  targetSelector,
+  reducedMotion,
+  onAnchorMissing,
+  placement = "bottom",
+  children,
+}: SpotlightOverlayProps) {
   const [rect, setRect] = useState<Rect | null>(null);
   // The highlight rect is a runtime measurement (getBoundingClientRect), so its
   // top/left/width/height can't be expressed as build-time Tailwind classes.
@@ -198,9 +206,15 @@ export function SpotlightOverlay({ targetSelector, reducedMotion, onAnchorMissin
       {/* Bubble pinned to bottom-center, above the bottom nav. pointer-events-auto
           on the bubble itself so it's tappable; the surrounding layer stays
           transparent so the rest of the page is fully interactable. */}
-      <div className="absolute inset-x-0 bottom-0 flex justify-center px-4 pb-safe pointer-events-none">
-        <div className="pointer-events-auto w-full max-w-md mb-20 sm:mb-6">{children}</div>
-      </div>
+      {placement === "top" ? (
+        <div className="absolute inset-x-0 top-0 flex justify-center px-4 pt-safe pointer-events-none">
+          <div className="pointer-events-auto w-full max-w-md mt-16">{children}</div>
+        </div>
+      ) : (
+        <div className="absolute inset-x-0 bottom-0 flex justify-center px-4 pb-safe pointer-events-none">
+          <div className="pointer-events-auto w-full max-w-md mb-20 sm:mb-6">{children}</div>
+        </div>
+      )}
     </div>
   );
 }
