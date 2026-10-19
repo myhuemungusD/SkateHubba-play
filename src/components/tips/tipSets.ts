@@ -8,6 +8,8 @@
  * the clip Edit tip when you have no pinned clips yet).
  */
 
+import { isRunnerEnabled } from "../../lib/featureFlags";
+
 export interface Tip {
   title: string;
   body: string;
@@ -156,7 +158,9 @@ const ROUTES: ReadonlyArray<[(p: string) => boolean, string]> = [
   [(p) => p.startsWith("/spots/"), "spotdetail"],
   [(p) => p === "/closet/studio", "studio"],
   [(p) => p === "/dice" || p.startsWith("/dice/"), "dice"],
-  [(p) => p === "/play/runner", "runner"],
+  // Skate Runner is off for the public until Jason signs off on it; only
+  // testers (flag on or config/featureTesters override) get its tip.
+  [(p) => p === "/play/runner" && isRunnerEnabled(), "runner"],
   [(p) => p === "/pro", "pro"],
   [(p) => p === "/settings", "settings"],
   [(p) => p === "/game", "game"],
