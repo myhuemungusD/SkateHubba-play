@@ -235,6 +235,37 @@ named database's location or the trigger will never fire. Confirm with
 Firebase Console → Functions → confirm the function's "Last deployed" timestamp
 and that the newest revision is serving.
 
+**Callables must be public at the Cloud Run layer.** Every `onCall` export
+checks auth inside its handler, but the browser can only reach it when
+`allUsers` holds the Cloud Run invoker role on its service. The Firebase CLI
+grants that only when it first creates a callable, and never re-applies it on
+later deploys (`invoker` is not an `onCall` option). If that first grant
+failed, the function answers every call, and its CORS preflight, with a bare
+Google `403 Forbidden` HTML page. The app shows that as a CORS or network error.
+`diceAction`, `proBlessing` and `decideClipModeration` were in this state on
+2026-10-19. Check from any shell:
+
+```bash
+for f in diceAction proBlessing decideClipModeration mapCheckin; do
+  printf "%s " "$f"; curl -s -o /dev/null -w "%{http_code}\n" -X OPTIONS \
+    -H "Origin: https://skatehubba.com" -H "Access-Control-Request-Method: POST" \
+    "https://us-central1-sk8hub-d7806.cloudfunctions.net/$f"
+done
+```
+
+`204` is healthy. `403` means the invoker grant is missing. Fix it once per
+service (Cloud Run service names are the export names in lowercase):
+
+```bash
+for s in diceaction problessing decideclipmoderation; do
+  gcloud run services add-iam-policy-binding "$s" --project=sk8hub-d7806 \
+    --region=us-central1 --member=allUsers --role=roles/run.invoker
+done
+```
+
+Without `gcloud`: Google Cloud Console → Cloud Run → the service → Security →
+Authentication → **Allow public access** → Save.
+
 ---
 
 ## Stats Backfill Runbook
@@ -534,6 +565,24 @@ Pitfalls, each observed in production:
   (expanded newlines, smart quotes, CRLF) and logs a
   `service_account_json_repaired` warning when it does — treat that warning
   as "re-paste the value properly", not as normal operation.
+
+- The Firebase scheduled function `pushDispatchSweep` is the referee clock
+  since 2026-10-17. It reads its own copy of `CRON_SECRET` from Google Secret
+  Manager, which must match the Vercel value exactly. From 2026-10-17 11 AM PT
+  every one of its calls got `401` (Vercel request metrics, 156 per endpoint
+  by 2026-10-19), so expired turns and disputes were not swept. Set the
+  Firebase copy to the Vercel value, then redeploy the function so it picks up
+  the new secret version:
+
+  ```bash
+  firebase functions:secrets:set CRON_SECRET --project sk8hub-d7806   # paste the Vercel value at the prompt
+  firebase deploy --only functions:pushDispatchSweep --project sk8hub-d7806
+  ```
+
+  A mismatch shows up in the function logs as `referee_unauthorized`.
+  Until the Firebase copy is fixed, run the two referee workflows by hand
+  (Actions → Sweep Expired Turns / Resolve Expired Disputes → Run workflow);
+  they use the GitHub copy, which still matches.
 
 - Vercel binds env vars at **deploy time**. After adding or changing either
   value, redeploy production (Deployments → "…" → Redeploy) or the running

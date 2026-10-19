@@ -29,7 +29,10 @@ export async function runReferees(
   fetchFn: FetchLike,
   warn: (event: string, fields: Record<string, unknown>) => void,
 ): Promise<RefereeResult[]> {
-  if (!secret) {
+  // Secret Manager values pasted with a trailing newline or space would never
+  // match the Vercel value; strip them so only a real mismatch fails.
+  const token = secret.trim();
+  if (!token) {
     warn("referee_secret_missing", {});
     return REFEREE_PATHS.map((path) => ({ path, ok: false, status: null }));
   }
@@ -38,10 +41,15 @@ export async function runReferees(
     try {
       const res = await fetchFn(`${REFEREE_BASE_URL}${path}`, {
         method: "GET",
-        headers: { Authorization: `Bearer ${secret}` },
+        headers: { Authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(240_000),
       });
-      if (!res.ok) warn("referee_failed", { path, status: res.status });
+      if (res.status === 401) {
+        // The Firebase CRON_SECRET does not match the Vercel CRON_SECRET.
+        warn("referee_unauthorized", { path, status: res.status, hint: "CRON_SECRET mismatch with Vercel" });
+      } else if (!res.ok) {
+        warn("referee_failed", { path, status: res.status });
+      }
       results.push({ path, ok: res.ok, status: res.status });
     } catch (err) {
       warn("referee_failed", { path, message: err instanceof Error ? err.message : String(err) });
