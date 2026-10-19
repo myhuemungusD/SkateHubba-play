@@ -8,6 +8,8 @@
 > - **Play Data safety → Location → Precise location:** Collected, not shared, **optional** (only when you tap Check in), purpose App functionality and Fraud prevention/security. Approximate location: same answer (Play counts precise as covering it, but tick both if asked).
 > - Location is only requested While In Use (iOS `NSLocationWhenInUseUsageDescription`; Android has no `ACCESS_BACKGROUND_LOCATION`).
 
+> **Oct 18, 2026 — spot presence and online status (behind `VITE_FEATURE_SPOT_PRESENCE`, off by default).** After a check-in, while the app is open, it sends a location heartbeat to the `mapPresence` function (about every 2 minutes, or right away when you cross the ~500 ft line). The server keeps the last heartbeat position on the same owner-only anti-spoofing record (`mapState/{uid}`) and writes only "at this spot until <time>" to `spotPresence/{spotId}/here/{uid}`, which other signed-in users can read. Exact location is never shown to anyone. The online dot stores only a last-seen server time in `onlineStatus/{uid}`, or nothing at all when "Hide my online status" is on. Answers above do not change: Precise Location stays Collected, Linked, App Functionality and Fraud prevention, optional. **Product interaction** (App Store) / **App activity → Other actions** (Play) should also be ticked for the last-seen time. Still **While In Use only**: no background location, no `NSLocationAlwaysAndWhenInUseUsageDescription`, no `ACCESS_BACKGROUND_LOCATION`. When the app is in the background, presence simply lapses after 10 minutes.
+
 **Status: DRAFT for owner review — 2026-07-30.**
 Every row below is derived from what the code actually does on branch
 `claude/skatehubba-health-check-sjv064`, with file citations. Transcribe into

@@ -1410,6 +1410,32 @@ service cloud.firestore {
         && ts < request.time + duration.value(25, 'h');
     }
 
+    // ── Spot presence ──
+    // spotPresence/{spotId}/here/{uid} { uid, spotId, username, expiresAt,
+    // updatedAt }. Written only by the mapPresence callable after a verified
+    // check-in; it never holds a location, only "at this spot until".
+    function presentAtSpot(spotId, uid) {
+      return exists(/databases/$(database)/documents/spotPresence/$(spotId)/here/$(uid))
+        && get(/databases/$(database)/documents/spotPresence/$(spotId)/here/$(uid)).data.expiresAt > request.time;
+    }
+    match /spotPresence/{spotId}/here/{uid} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // ── Online status ──
+    // onlineStatus/{uid} { lastSeen, hidden }. Owner-written heartbeat; the
+    // clock is the server's. Hidden means no lastSeen is stored at all.
+    match /onlineStatus/{uid} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['lastSeen', 'hidden'])
+        && request.resource.data.hidden is bool
+        && ((request.resource.data.hidden == true && request.resource.data.lastSeen == null)
+            || (request.resource.data.hidden == false && request.resource.data.lastSeen == request.time));
+      allow delete: if isSignedIn() && request.auth.uid == uid;
+    }
+
     // ── Games ──
     match /games/{gameId} {
       // Players AND the nominated judge can read the game document.
@@ -1451,6 +1477,18 @@ service cloud.firestore {
           !('spotId' in request.resource.data)
           || (request.resource.data.spotId is string
               && request.resource.data.spotId.size() <= 64)
+        )
+        // Spot challenge (trainer-battle style): when the game says it was
+        // made at a spot (spotPresence == true), both players must be
+        // present there right now, per spotPresence/{spotId}/here/{uid},
+        // which only the mapPresence callable writes.
+        && (
+          !('spotPresence' in request.resource.data)
+          || request.resource.data.spotPresence == false
+          || (request.resource.data.spotPresence == true
+              && 'spotId' in request.resource.data
+              && presentAtSpot(request.resource.data.spotId, request.auth.uid)
+              && presentAtSpot(request.resource.data.spotId, request.resource.data.player2Uid))
         )
         // Optional trickCategory (game-level trick filter): absent, or exactly
         // one of the known values. Mirrors spotId — set once and immutable

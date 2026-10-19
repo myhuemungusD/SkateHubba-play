@@ -13,7 +13,7 @@ import { applyGameStats } from "./applyGameStats.js";
 import { handleDiceCall } from "./dice/callable.js";
 import { sweepExpiredDiceGames } from "./dice/handlers.js";
 import { adminDiceDb } from "./dice/store.js";
-import { handleCheckinCall } from "./map/callable.js";
+import { handleCheckinCall, handlePresenceCall } from "./map/callable.js";
 import { handleBlessingCall } from "./pro/callable.js";
 import { fanOutAnnouncement } from "./admin/announce.js";
 import { handleAnalyticsCall } from "./admin/analytics.js";
@@ -187,6 +187,23 @@ export const mapCheckin = onCall({ region: "us-central1", enforceAppCheck: false
     testers: mapTesterUids.value(),
     xpEnabled: xpEnabled.value(),
     xpTesters: xpTesterUids.value(),
+    nowMs: Date.now(),
+    db: adminDiceDb(getFirestore(DATABASE_ID)),
+  }),
+);
+
+/**
+ * Spot presence (who is at a spot right now). Default off. While off, only
+ * uids in SPOT_PRESENCE_TESTER_UIDS can send heartbeats.
+ */
+const spotPresenceEnabled = defineBoolean("SPOT_PRESENCE_ENABLED", { default: false });
+const spotPresenceTesterUids = defineString("SPOT_PRESENCE_TESTER_UIDS", { default: "" });
+
+/** The only write path for spotPresence/{spotId}/here/{uid}. */
+export const mapPresence = onCall({ region: "us-central1", enforceAppCheck: false }, (request) =>
+  handlePresenceCall(request, {
+    enabled: spotPresenceEnabled.value(),
+    testers: spotPresenceTesterUids.value(),
     nowMs: Date.now(),
     db: adminDiceDb(getFirestore(DATABASE_ID)),
   }),
