@@ -243,3 +243,15 @@ Map events go into the existing feed as cards only: check-ins (opt-in), crowns t
 2. Turn it on for Jason and Mike through `config/featureTesters` and the server tester lists.
 3. Fix what they find, then turn it on for everyone.
 4. Every service ships with 100% test coverage and rules tests for every new collection.
+
+## Spot presence (Oct 18, 2026)
+
+Pokémon Go trainer-battle style challenges. Flag `VITE_FEATURE_SPOT_PRESENCE` (`isSpotPresenceEnabled`), server switch `SPOT_PRESENCE_ENABLED` / `SPOT_PRESENCE_TESTER_UIDS` (default off).
+
+- **Skaters here:** a spot's challenge button is replaced by a list of skaters checked in there right now. Nobody there means nobody to challenge. You must be there too.
+- **Server check:** a game created with `spotPresence: true` needs fresh `spotPresence/{spotId}/here/{uid}` docs for both players (firestore.rules). Only the `mapPresence` callable writes them.
+- **Day pass:** the first verified check-in of the day (its `day.<spot>.<date>` mark) lets heartbeats re-join you without checking in again. XP is paid only by `mapCheckin`, so re-entries pay nothing.
+- **Radius and expiry:** ~500 ft (152 m). Presence lapses 10 minutes after the last heartbeat. Heartbeats every 2 minutes inside, at once on crossing the line, none while away. Mock locations and teleports are refused.
+- **Auto check back in:** on by default, switch in Settings → Presence and on the spot card. Off means the watch stops the first time you leave.
+- **Online dot:** `onlineStatus/{uid}` heartbeat every 2 minutes while the app is visible: online (<4 min), active recently (<30 min), otherwise nothing. "Hide my online status" stores no time.
+- **Foreground only:** no background location plugin is installed, so iOS/Android stop the watch when the app is backgrounded and presence lapses.

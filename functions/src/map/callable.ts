@@ -4,6 +4,7 @@ import { logger } from "firebase-functions/logger";
 import { diceAccessAllowed } from "../dice/access.js";
 import type { DiceDb } from "../dice/store.js";
 import { CheckinInputError, parseCheckinRequest, performCheckin, type CheckinResult } from "./checkin.js";
+import { parsePresenceRequest, performPresence, type PresenceResult } from "./presence.js";
 
 export interface MapCallDeps {
   enabled: boolean;
@@ -43,5 +44,33 @@ export async function handleCheckinCall(request: CallableRequest, deps: MapCallD
   } catch (err) {
     logger.error("map_checkin_failed", { message: err instanceof Error ? err.message : "unknown" });
     throw new HttpsError("internal", "checkin_failed");
+  }
+}
+
+export interface PresenceCallDeps {
+  enabled: boolean;
+  testers: string;
+  nowMs: number;
+  db: DiceDb;
+}
+
+/** Spot presence heartbeat. Gated by SPOT_PRESENCE_ENABLED / SPOT_PRESENCE_TESTER_UIDS. */
+export async function handlePresenceCall(request: CallableRequest, deps: PresenceCallDeps): Promise<PresenceResult> {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "unauthenticated");
+  if (!diceAccessAllowed(uid, deps.enabled, deps.testers)) {
+    throw new HttpsError("failed-precondition", "spot_presence_disabled");
+  }
+  let req;
+  try {
+    req = parsePresenceRequest(request.data);
+  } catch (err) {
+    throw new HttpsError("invalid-argument", err instanceof CheckinInputError ? err.message : "bad_request");
+  }
+  try {
+    return await performPresence(deps.db, { uid, nowMs: deps.nowMs }, req);
+  } catch (err) {
+    logger.error("spot_presence_failed", { message: err instanceof Error ? err.message : "unknown" });
+    throw new HttpsError("internal", "presence_failed");
   }
 }

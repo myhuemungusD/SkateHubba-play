@@ -115,6 +115,7 @@ describe("v2 runtime identity", () => {
       "decideClipModeration",
       "proBlessing",
       "mapCheckin",
+      "mapPresence",
     ] as const satisfies ReadonlyArray<keyof FunctionsModule>;
 
     expect(loaded).not.toBeNull();
@@ -128,6 +129,7 @@ describe("v2 runtime identity", () => {
       decideClipModeration: RUNTIME_SERVICE_ACCOUNT,
       proBlessing: RUNTIME_SERVICE_ACCOUNT,
       mapCheckin: RUNTIME_SERVICE_ACCOUNT,
+      mapPresence: RUNTIME_SERVICE_ACCOUNT,
     });
 
     // Per-function options still win over the shared defaults.

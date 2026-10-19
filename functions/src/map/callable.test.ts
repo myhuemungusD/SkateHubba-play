@@ -45,3 +45,32 @@ describe("handleCheckinCall", () => {
     await expect(handleCheckinCall(request(body), deps)).rejects.toMatchObject({ code: "internal" });
   });
 });
+
+const presence = vi.fn();
+vi.mock("./presence.js", async (orig) => {
+  const real = await orig<typeof import("./presence.js")>();
+  return { ...real, performPresence: (...args: unknown[]) => presence(...args) };
+});
+const { handlePresenceCall } = await import("./callable.js");
+const pdeps = { enabled: false, testers: "u1", nowMs: 5, db: {} as DiceDb };
+const pbody = { spotId: "s1", lat: 1, lng: 2, accuracyM: 5, clientAt: 1 };
+
+describe("handlePresenceCall", () => {
+  it("requires auth and the tester gate", async () => {
+    await expect(handlePresenceCall(request(pbody, null), pdeps)).rejects.toMatchObject({ code: "unauthenticated" });
+    await expect(handlePresenceCall(request(pbody, "x"), pdeps)).rejects.toMatchObject({
+      message: "spot_presence_disabled",
+    });
+  });
+  it("rejects a bad body", async () => {
+    await expect(handlePresenceCall(request({}), pdeps)).rejects.toMatchObject({ message: "bad_spot" });
+  });
+  it("returns the decision and wraps failures", async () => {
+    presence.mockResolvedValueOnce({ code: "here", expiresAt: 9 });
+    await expect(handlePresenceCall(request(pbody), pdeps)).resolves.toEqual({ code: "here", expiresAt: 9 });
+    presence.mockRejectedValueOnce(new Error("boom"));
+    await expect(handlePresenceCall(request(pbody), pdeps)).rejects.toMatchObject({ code: "internal" });
+    presence.mockRejectedValueOnce("weird");
+    await expect(handlePresenceCall(request(pbody), pdeps)).rejects.toMatchObject({ code: "internal" });
+  });
+});
