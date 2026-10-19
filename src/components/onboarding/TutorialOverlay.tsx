@@ -5,9 +5,9 @@ import { TUTORIAL_STEPS } from "./tutorialSteps";
 import { MascotBubble } from "./MascotBubble";
 import { SpotlightOverlay } from "./SpotlightOverlay";
 import { Z_TUTORIAL_OVERLAY_CLASS } from "./constants";
-import type { HubzState } from "./HubzMascot";
+import type { HesherState } from "./HesherMascot";
 
-function mascotStateForStep(stepIndex: number, isFinal: boolean): HubzState {
+function mascotStateForStep(stepIndex: number, isFinal: boolean): HesherState {
   if (isFinal) return "cheer";
   if (stepIndex === 0) return "idle";
   return "talking";

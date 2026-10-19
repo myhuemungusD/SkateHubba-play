@@ -37,7 +37,12 @@ interface Props {
 export function StudioToolbar(p: Props) {
   const btn = "flex h-11 w-11 items-center justify-center rounded-xl border";
   return (
-    <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label="Studio tools">
+    <div
+      className="flex flex-wrap items-center gap-2"
+      role="toolbar"
+      aria-label="Studio tools"
+      data-tutorial="studio-tools"
+    >
       {TOOLS.map(([id, label, Icon]) => (
         <button
           key={id}

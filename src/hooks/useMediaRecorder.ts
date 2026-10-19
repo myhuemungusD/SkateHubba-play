@@ -1,3 +1,4 @@
+import { useCameraLiveSignal } from "../lib/tipSignals";
 import { useState, useRef, useCallback, useEffect, useLayoutEffect } from "react";
 import { MAX_VIDEO_DURATION_SECONDS, MIN_UPLOAD_BYTES, VIDEO_BITS_PER_SECOND } from "../constants/video";
 import { isNativePlatform, recordNativeVideo } from "../services/nativeVideo";
@@ -275,6 +276,8 @@ export function useMediaRecorder(
   const acquireGenerationRef = useRef(0);
 
   const [state, setState] = useState<CaptureState>("idle");
+  // Hesher tips stay off the screen while the camera is live.
+  useCameraLiveSignal(state === "preview" || state === "recording");
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
   // Message and diagnostic detail move together. Every failure path other than

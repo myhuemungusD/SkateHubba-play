@@ -53,6 +53,7 @@ export function CheckInButton({
         type="button"
         onClick={handleClick}
         disabled={busy}
+        data-tutorial="spot-checkin"
         className="w-full py-2.5 rounded-xl border border-[#F97316] text-[#F97316] font-semibold text-sm
                    flex items-center justify-center gap-1.5 disabled:opacity-60"
       >

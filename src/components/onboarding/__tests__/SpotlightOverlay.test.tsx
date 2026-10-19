@@ -174,3 +174,14 @@ describe("SpotlightOverlay", () => {
     vi.useRealTimers();
   });
 });
+
+describe("SpotlightOverlay placement", () => {
+  it("pins the bubble to the top when asked", () => {
+    const { getByText } = render(
+      <SpotlightOverlay reducedMotion placement="top">
+        <p>hi</p>
+      </SpotlightOverlay>,
+    );
+    expect(getByText("hi").parentElement?.className).toContain("mt-16");
+  });
+});

@@ -83,7 +83,7 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 - Sentry with PII scrubbing, ErrorBoundary, `withRetry` across reads
 - PostHog with consent gating; Vercel Analytics + Speed Insights
 - Service worker for FCM background messages, with a cron-driven drain endpoint as the sender (see §4.4)
-- Onboarding tutorial overlays (`HubzMascot`, `MascotBubble`, `SpotlightOverlay`, `TutorialOverlay`)
+- Onboarding tutorial overlays (`HesherMascot`, `MascotBubble`, `SpotlightOverlay`, `TutorialOverlay`)
 - Capacitor iOS + Android shells with store release pipeline (fastlane, signed AAB + iOS CI), Android back button, Universal/App Links, native share/network bridges
 
 ### 2.2 In review
@@ -275,7 +275,7 @@ SkateHubba-play/
 │   ├── components/map/        # Mapbox-specific
 │   ├── components/ClipsFeed/
 │   ├── components/waiting/
-│   ├── components/onboarding/ # HubzMascot, MascotBubble, SpotlightOverlay, TutorialOverlay
+│   ├── components/onboarding/ # HesherMascot, MascotBubble, SpotlightOverlay, TutorialOverlay
 │   ├── screens/               # full-page screens (Lobby, GamePlay, Profile, Map, etc.)
 │   ├── lib/                   # Sentry, PostHog, consent, env validation, mapbox helpers
 │   ├── constants/

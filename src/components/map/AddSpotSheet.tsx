@@ -14,6 +14,7 @@ import { AddSpotDetailsStep } from "./AddSpotDetailsStep";
 import { AddSpotPhotosStep } from "./AddSpotPhotosStep";
 import { SpotVisibilityPicker } from "./SpotVisibilityPicker";
 import { isMapCheckinsEnabled } from "../../lib/featureFlags";
+import { useTipZone } from "../../lib/tipSignals";
 import { createPrivateSpot, resolveCrew, type SpotVisibility } from "../../services/mapCheckins";
 
 export { safePhotoPreviewSrc } from "./addSpotHelpers";
@@ -27,6 +28,7 @@ interface AddSpotSheetProps {
 type Step = 1 | 2 | 3;
 
 export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetProps) {
+  useTipZone("addspot");
   const { user } = useAuthContext();
   const sheetRef = useRef<HTMLDivElement>(null);
   useFocusTrap(sheetRef);

@@ -42,6 +42,7 @@ export function PinnedClips({ clips, editor }: Props) {
                 type="button"
                 onClick={() => setEditing(c)}
                 aria-label={`Edit ${c.trickName}`}
+                data-tutorial="clip-edit"
                 className="absolute right-1 top-1 inline-flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg bg-black/60 text-white focus-visible:outline-2 focus-visible:outline-brand-orange"
               >
                 <Scissors size={14} aria-hidden="true" />

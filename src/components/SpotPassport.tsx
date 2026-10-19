@@ -48,7 +48,7 @@ export function SpotPassport({ uid, isOwner }: Props) {
   const legendary = stamps.filter((s) => s.legendary).length;
 
   return (
-    <section aria-label="Spot passport" data-testid="spot-passport" className="mb-6">
+    <section aria-label="Spot passport" data-tutorial="spot-passport" data-testid="spot-passport" className="mb-6">
       <div className="flex items-center justify-between mb-2">
         <h2 className="font-display text-sm tracking-wider text-bright flex items-center gap-1.5">
           <Stamp size={16} aria-hidden="true" /> SPOT PASSPORT

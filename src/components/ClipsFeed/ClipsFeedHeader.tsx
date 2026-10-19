@@ -44,6 +44,7 @@ export const ClipsFeedHeader = memo(function ClipsFeedHeader({
           type="button"
           onClick={onPostClip}
           aria-label="Post a clip to the feed"
+          data-tutorial="feed-camera"
           className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-black/50 px-3 font-display text-[11px] tracking-[0.15em] text-white backdrop-blur-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
         >
           <CameraIcon size={14} />

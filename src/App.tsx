@@ -7,6 +7,7 @@ import { NavigationProvider, useNavigationContext } from "./context/NavigationCo
 import { GameProvider, useGameContext } from "./context/GameContext";
 import { NotificationProvider, useNotifications } from "./context/NotificationContext";
 import { OnboardingProvider } from "./context/OnboardingContext";
+import { TipsProvider } from "./context/TipsContext";
 import { VerifyEmailBanner } from "./components/VerifyEmailBanner";
 import { useEmailVerifiedToast } from "./hooks/useEmailVerifiedToast";
 import { getUidByUsername } from "./services/users";
@@ -33,6 +34,7 @@ import {
   isRunnerEnabled,
   isClosetStudioEnabled,
   isMapCheckinsEnabled,
+  isTipsEnabled,
 } from "./lib/featureFlags";
 import { startCheckinQueue } from "./services/mapCheckins";
 import { PresenceRunner } from "./components/presence/PresenceRunner";
@@ -99,6 +101,7 @@ const DiceNew = lazy(() => import("./screens/Dice/DiceNew").then((m) => ({ defau
 const DiceTable = lazy(() => import("./screens/Dice/DiceTable").then((m) => ({ default: m.DiceTable })));
 // Spotlight/onboarding is not on the first-paint path. Keeping it out of the
 // App graph drops that chunk from /auth and /feed.
+const TipsHost = lazy(() => import("./components/tips/TipsHost").then((m) => ({ default: m.TipsHost })));
 const TutorialOverlay = lazy(() =>
   import("./components/onboarding/TutorialOverlay").then((m) => ({ default: m.TutorialOverlay })),
 );
@@ -219,6 +222,11 @@ function AppScreens() {
       <Suspense fallback={null}>
         <TutorialOverlay />
       </Suspense>
+      {isTipsEnabled() && (
+        <Suspense fallback={null}>
+          <TipsHost />
+        </Suspense>
+      )}
     </>
   );
 }
@@ -941,7 +949,9 @@ function AppInner() {
         <NotificationAuthBridge>
           <GameProvider>
             <OnboardingProvider>
-              <AppScreens />
+              <TipsProvider>
+                <AppScreens />
+              </TipsProvider>
             </OnboardingProvider>
           </GameProvider>
         </NotificationAuthBridge>

@@ -906,6 +906,16 @@ service cloud.firestore {
         // the string "false" would read back as opted-IN while the Settings UI
         // believed otherwise — and any future reader without that fail-open
         // coercion would inherit the ambiguity.
+        // Per-screen Hesher tips (src/services/tips.ts): ids of tip sets the
+        // user has seen, plus the Settings "don't show tips" switch.
+        function tipsOk() {
+          return (!('tipsSeen' in request.resource.data)
+              || (request.resource.data.tipsSeen is list
+                  && request.resource.data.tipsSeen.size() <= 64))
+            && (!('tipsDisabled' in request.resource.data)
+              || request.resource.data.tipsDisabled is bool);
+        }
+
         function pushEnabledOk() {
           return !('pushEnabled' in request.resource.data)
             || request.resource.data.pushEnabled is bool;
@@ -953,7 +963,9 @@ service cloud.firestore {
             'trainingConsentPolicyVersion',
             'trainingConsentUpdatedAt',
             'trainingConsentRevokedAt',
-            'trainingConsentPromptSeenAt'
+            'trainingConsentPromptSeenAt',
+            'tipsSeen',
+            'tipsDisabled'
           ]);
         }
 
@@ -964,6 +976,7 @@ service cloud.firestore {
           && onboardingCompletedAtOk()
           && onboardingSkippedAtOk()
           && pushEnabledOk()
+          && tipsOk()
           && trainingConsentOk();
         allow update: if isOwner(uid)
           && privateProfileKeysOk()
@@ -972,6 +985,7 @@ service cloud.firestore {
           && onboardingCompletedAtOk()
           && onboardingSkippedAtOk()
           && pushEnabledOk()
+          && tipsOk()
           && trainingConsentOk();
         allow delete: if isOwner(uid);
       }
