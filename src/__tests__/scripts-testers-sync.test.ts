@@ -120,7 +120,7 @@ describe("main", () => {
 
   it("reports when everything matches, honors --uids and --skip-vercel", async () => {
     const want = [JASON, MIKE].sort().join(",");
-    files[env().SKATEHUBBA_FUNCTIONS_ENV] = ["XP", "DICE", "MAP", "CLOSET", "PRO_BLESSING"]
+    files[env().SKATEHUBBA_FUNCTIONS_ENV] = ["XP", "DICE", "MAP", "CLOSET", "PRO_BLESSING", "SPOT_PRESENCE"]
       .map((k) => `${k}_TESTER_UIDS=${want}`)
       .join("\n");
     expect(await sync.main(["--uids", `${MIKE},${JASON}`, "--skip-vercel"], io, env())).toBe(0);

@@ -61,6 +61,7 @@ export const KNOWN_LISTS = {
   MAP_TESTER_UIDS: ["functions"],
   CLOSET_TESTER_UIDS: ["functions"],
   PRO_BLESSING_TESTER_UIDS: ["functions"],
+  SPOT_PRESENCE_TESTER_UIDS: ["functions"],
   // Named in src/lib/featureFlags.ts docs; no server reads it yet (WTT crons
   // are stubbed off). Kept so --check passes and it syncs once wired.
   WTT_TESTER_UIDS: [],
