@@ -103,6 +103,8 @@ interface ImportMetaEnv {
   readonly VITE_FEATURE_SPOT_CHATS_ENABLED?: string;
   /** Skate clip editor. Literal "true" only; off by default. */
   readonly VITE_FEATURE_CLIP_EDITOR?: string;
+  /** HubbaIcons custom icon set. Literal "true" only; off by default. Read via isHubbaIconsEnabled(). */
+  readonly VITE_FEATURE_HUBBA_ICONS?: string;
   /** SMS 2FA enrollment. "true" shows SMS enrollment in Settings for email/password
    *  users. Unset (default) hides it. Read via isSms2faEnabled(). */
   readonly VITE_FEATURE_SMS_2FA_ENABLED?: string;

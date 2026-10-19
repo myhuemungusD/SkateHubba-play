@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNotifications, type AppNotification } from "../context/NotificationContext";
 import { NotificationRow } from "./NotificationRow";
+import { isHubbaIconsEnabled } from "../lib/featureFlags";
 import { BellGlyph, SoundGlyph } from "./NotificationBellIcons";
 import { getNotificationGame } from "../services/notifications";
 import type { GameDoc } from "../services/games";
@@ -136,7 +137,7 @@ export function NotificationBell({
         <BellGlyph
           key={notifyKey}
           className={`text-muted hover:text-white transition-colors ${notifyKey > 0 ? "animate-bell-shake" : ""}`}
-          size="16"
+          size={isHubbaIconsEnabled() ? "20" : "16"}
         />
         {unreadCount > 0 && (
           <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 flex items-center justify-center rounded-full bg-brand-orange font-display text-xs text-black leading-none">

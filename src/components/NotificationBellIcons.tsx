@@ -1,3 +1,5 @@
+import { HubbaIcon } from "./hubbaIcons";
+import { isHubbaIconsEnabled } from "../lib/featureFlags";
 /** Inline SVG glyphs used by NotificationBell. Purely presentational. */
 
 const STROKE = {
@@ -18,6 +20,9 @@ export function BellGlyph({
   size: string;
   strokeWidth?: string;
 }) {
+  // HubbaIcons bell (flagged). The set uses one stroke weight everywhere, so
+  // strokeWidth only applies to the legacy glyph.
+  if (isHubbaIconsEnabled()) return <HubbaIcon name="bell" size={Number(size)} className={className} />;
   return (
     <svg className={className} width={size} height={size} strokeWidth={strokeWidth} {...STROKE}>
       <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />

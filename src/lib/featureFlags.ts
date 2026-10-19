@@ -312,3 +312,8 @@ export function isAdminInsightsEnabled(): boolean {
 export function isTipsEnabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_TIPS);
 }
+
+/** HubbaIcons custom skate icon set (tab bar, header, bell). Literal "true" only; off by default; tester override turns it on. Designed for SkateHubba; legacy icons render while off. */
+export function isHubbaIconsEnabled(): boolean {
+  return flagOn(import.meta.env.VITE_FEATURE_HUBBA_ICONS);
+}
