@@ -236,7 +236,7 @@ describe("VerifyEmailBanner", () => {
     mockReloadUser.mockResolvedValueOnce(true);
     render(<VerifyEmailBanner emailVerified={false} />);
 
-    const btn = screen.getByRole("button", { name: /I verified my email/ });
+    const btn = screen.getByRole("button", { name: /I verified — check now/ });
     await userEvent.click(btn);
 
     await waitFor(() => {
@@ -252,7 +252,7 @@ describe("VerifyEmailBanner", () => {
     const onManualReload = vi.fn().mockResolvedValue(true);
     render(<VerifyEmailBanner emailVerified={false} onManualReload={onManualReload} />);
 
-    const btn = screen.getByRole("button", { name: /I verified my email/ });
+    const btn = screen.getByRole("button", { name: /I verified — check now/ });
     await userEvent.click(btn);
 
     await waitFor(() => {
@@ -267,11 +267,11 @@ describe("VerifyEmailBanner", () => {
     mockReloadUser.mockRejectedValueOnce(new Error("network"));
     render(<VerifyEmailBanner emailVerified={false} />);
 
-    const btn = screen.getByRole("button", { name: /I verified my email/ });
+    const btn = screen.getByRole("button", { name: /I verified — check now/ });
     await userEvent.click(btn);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /I verified my email/ })).not.toBeDisabled();
+      expect(screen.getByRole("button", { name: /I verified — check now/ })).not.toBeDisabled();
     });
   });
 });
