@@ -157,6 +157,7 @@ jobs:
           .github/workflows/firebase-infra-setup.yml
           .github/workflows/firebase-rules-deploy.yml
           .github/workflows/ios-build.yml
+          .github/workflows/ios-preflight.yml
           .github/workflows/ios-release.yml
           .github/workflows/ios-signing-bootstrap.yml
           .github/workflows/main.yml
