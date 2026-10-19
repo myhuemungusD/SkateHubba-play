@@ -1,7 +1,7 @@
 source "https://rubygems.org"
 
 # Fastlane pin — upgrades are deliberate, not automatic.
-gem "fastlane", "~> 2.240"
+gem "fastlane", "~> 2.241"
 
 # Load the plugins declared in fastlane/Pluginfile. Bundler resolves the path
 # relative to this Gemfile. Keep it a literal string: Dependabot can only
