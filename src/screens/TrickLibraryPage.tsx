@@ -5,7 +5,7 @@
  * your own submissions, and (admin-claim only) work the review queue.
  */
 import { useEffect, useState, type FormEvent } from "react";
-import { Link } from "react-router";
+import { ScreenHeader } from "../components/ScreenHeader";
 import {
   listApprovedTricks,
   listMySubmissions,
@@ -106,11 +106,8 @@ export function TrickLibraryPage({ uid, emailVerified }: Props) {
 
   return (
     <main id="main-content" className="mx-auto min-h-dvh max-w-[430px] px-5 pb-28 pt-safe">
-      <div className="flex items-center justify-between py-4">
-        <h1 className="font-display text-2xl tracking-wider text-white">Trick Library</h1>
-        <Link to="/lobby" className="touch-target font-body text-sm text-muted hover:text-white">
-          Back
-        </Link>
+      <div className="py-4">
+        <ScreenHeader title="Trick Library" fallback="/lobby" />
       </div>
 
       {loadError && (

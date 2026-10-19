@@ -40,6 +40,7 @@ const WAY_OUT: Record<string, string[]> = {
   "/dice/:gameId": ["screens/Dice/DiceTable.tsx"],
   "/pro": ["screens/ProToolsScreen/index.tsx"],
   "/admin": ["screens/AdminScreen/index.tsx"],
+  "/tricks": ["screens/TrickLibraryPage.tsx"],
   "/404": ["screens/NotFound.tsx"],
 };
 
