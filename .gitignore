@@ -75,3 +75,5 @@ service-account*.json
 # Functions params copied in by scripts/deploy.mjs for one upload, then deleted — never commit
 functions/.env
 functions/.env.*
+# App Store / Play screenshots from npm run review:screenshots
+store-screenshots/

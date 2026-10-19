@@ -47,6 +47,8 @@
     "deploy:functions": "node scripts/deploy.mjs functions",
     "deploy:rules": "node scripts/deploy.mjs rules",
     "deploy:all": "node scripts/deploy.mjs all",
+    "review:seed": "node scripts/review-kit/seed.mjs",
+    "review:screenshots": "node scripts/review-kit/screenshots.mjs",
     "postinstall": "node scripts/patch-ios-spm.mjs",
     "capacitor:update:after": "node scripts/patch-ios-spm.mjs",
     "capacitor:sync:after": "node scripts/patch-ios-spm.mjs",
