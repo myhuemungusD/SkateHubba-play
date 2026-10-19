@@ -35,6 +35,7 @@ import {
   isMapCheckinsEnabled,
 } from "./lib/featureFlags";
 import { startCheckinQueue } from "./services/mapCheckins";
+import { PresenceRunner } from "./components/presence/PresenceRunner";
 import { prefetchLikelyRoutes } from "./lib/routePrefetch";
 import { registerCacheWorker } from "./lib/registerCacheSw";
 import {
@@ -211,6 +212,7 @@ function AppScreens() {
       <OfflineBanner />
       <DeleteAccountRetryBanner />
       <GameNotificationWatcher />
+      {queueUid && <PresenceRunner uid={queueUid} />}
       <AppEmailVerifyBanner />
       <AppRoutes />
       <ToastContainer />

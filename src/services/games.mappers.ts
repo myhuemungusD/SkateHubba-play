@@ -175,6 +175,8 @@ export interface CreateGameOptions {
   challengerIsVerifiedPro?: boolean;
   opponentIsVerifiedPro?: boolean;
   spotId?: string | null;
+  /** Made at a spot with both players present (rules check spotPresence docs). Needs spotId. */
+  spotPresence?: boolean;
   /** Trick category chosen by the challenger. Missing/null defaults to "any". */
   trickCategory?: TrickCategoryId | null;
   /** Free-text rules, only used when `trickCategory === "custom"`. */

@@ -53,6 +53,7 @@ export async function createGame(
     challengerIsVerifiedPro,
     opponentIsVerifiedPro,
     spotId,
+    spotPresence,
     trickCategory,
     customRules,
     judgeUid,
@@ -145,6 +146,7 @@ export async function createGame(
     ...(challengerIsVerifiedPro && { player1IsVerifiedPro: true }),
     ...(opponentIsVerifiedPro && { player2IsVerifiedPro: true }),
     ...(safeSpotId && { spotId: safeSpotId }),
+    ...(safeSpotId && spotPresence === true && { spotPresence: true }),
   };
 
   // F10: Force-refresh the ID token before the create write. Firestore rules

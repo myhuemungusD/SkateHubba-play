@@ -116,6 +116,10 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === "true"),
+  VITE_FEATURE_SPOT_PRESENCE: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
 
   // Sign in with Apple button. DEFAULTS TO OFF until the Firebase Apple
   // provider is enabled. Read via isAppleSignInEnabled() in featureFlags.ts.

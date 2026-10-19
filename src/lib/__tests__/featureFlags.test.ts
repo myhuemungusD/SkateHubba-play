@@ -370,6 +370,17 @@ describe("isShoe360Enabled", () => {
   });
 });
 
+describe("isSpotPresenceEnabled", () => {
+  it("is on only for the literal true", async () => {
+    const { isSpotPresenceEnabled } = await import("../featureFlags");
+    vi.stubEnv("VITE_FEATURE_SPOT_PRESENCE", "true");
+    expect(isSpotPresenceEnabled()).toBe(true);
+    vi.stubEnv("VITE_FEATURE_SPOT_PRESENCE", "1");
+    expect(isSpotPresenceEnabled()).toBe(false);
+    vi.unstubAllEnvs();
+  });
+});
+
 describe("isMapCheckinsEnabled", () => {
   it("is on only for the literal true", async () => {
     const { isMapCheckinsEnabled } = await import("../featureFlags");

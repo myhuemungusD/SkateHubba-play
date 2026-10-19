@@ -6,7 +6,8 @@ import { useFocusTrap } from "../../hooks/useFocusTrap";
 import { GnarRating } from "./GnarRating";
 import { BustRisk } from "./BustRisk";
 import { CheckInButton } from "./CheckInButton";
-import { isMapCheckinsEnabled } from "../../lib/featureFlags";
+import { isMapCheckinsEnabled, isSpotPresenceEnabled } from "../../lib/featureFlags";
+import { SkatersHere } from "../presence/SkatersHere";
 
 interface SpotPreviewCardProps {
   spot: Spot;
@@ -171,14 +172,18 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
         {/* Challenge from here — the primary action per charter 2.2:
             the map exists to serve the S.K.A.T.E. game loop, so starting
             a challenge is the dominant affordance on a spot preview. */}
-        <button
-          type="button"
-          onClick={() => navigate(`/challenge?spot=${spot.id}`)}
-          className="mt-4 w-full py-2.5 rounded-xl bg-[#F97316] text-white font-semibold text-sm
+        {isSpotPresenceEnabled() && spot.scope !== "private" ? (
+          <SkatersHere spot={spot} />
+        ) : (
+          <button
+            type="button"
+            onClick={() => navigate(`/challenge?spot=${spot.id}`)}
+            className="mt-4 w-full py-2.5 rounded-xl bg-[#F97316] text-white font-semibold text-sm
                      hover:bg-[#EA580C] transition-colors"
-        >
-          Challenge from here
-        </button>
+          >
+            Challenge from here
+          </button>
+        )}
 
         {/* Secondary actions: View + Directions, split 50/50 so neither steals
             real estate from the primary CTA. "Get directions" is the #1
