@@ -577,6 +577,9 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   }
   batch.delete(doc(db, "mapState", uid));
   batch.delete(doc(db, "passportSettings", uid));
+  // Spot presence: the online dot and the "Who's skating" entry (owner-deletable).
+  batch.delete(doc(db, "onlineStatus", uid));
+  batch.delete(doc(db, "skaterActivity", uid));
   batch.delete(doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID));
   // Customizable profile (VITE_FEATURE_PROFILE_CUSTOM); a no-op when never saved.
   batch.delete(doc(db, "users", uid, "profileCustom", "main"));

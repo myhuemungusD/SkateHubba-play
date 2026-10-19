@@ -599,6 +599,14 @@ describe("Lobby", () => {
       expect(screen.getByTestId("runner-card")).toHaveAttribute("href", "/play/runner");
     });
 
+    it("shows the Who's skating button only while the presence flag is on", () => {
+      renderLobby();
+      expect(screen.queryByTestId("whos-skating-button")).not.toBeInTheDocument();
+      vi.stubEnv("VITE_FEATURE_SPOT_PRESENCE", "true");
+      renderFlaggedLobby();
+      expect(screen.getByTestId("whos-skating-button")).toHaveTextContent("Who's skating");
+    });
+
     it("shows the Roll Dice card only while the dice flag is on", async () => {
       renderLobby();
       expect(screen.queryByTestId("roll-dice-card")).not.toBeInTheDocument();

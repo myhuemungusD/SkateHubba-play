@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { DiceDb, DiceDoc, DiceTx } from "../dice/store.js";
 import { CheckinInputError, utcDay } from "./checkin.js";
+import { activityPath } from "./activity.js";
 import {
   herePath,
   MIN_BEAT_MS,
@@ -192,5 +193,32 @@ describe("performPresence", () => {
     await performPresence(db, actor, beat());
     await performPresence(db, actor, beat({ leave: true }));
     expect((db.docs.get(herePath("s1", "u1"))?.expiresAt as Date).getTime()).toBe(NOW);
+  });
+
+  it("feeds Who's skating: spot name while here, ended on leave, hidden stays hidden", async () => {
+    const db = setup({ spot: { isActive: true, latitude: LAT, longitude: LNG, name: "Cherry Park" } });
+    await performPresence(db, actor, beat());
+    expect(db.docs.get(activityPath("u1"))).toMatchObject({
+      spotId: "s1",
+      spotName: "Cherry Park",
+      username: "jason",
+      visible: true,
+    });
+    expect(db.docs.get(activityPath("u1"))).not.toHaveProperty("lat");
+    await performPresence(db, { uid: "u1", nowMs: NOW + 5 }, beat({ leave: true }));
+    expect((db.docs.get(activityPath("u1"))?.hereUntil as Date).getTime()).toBe(NOW + 5);
+    expect((db.docs.get(activityPath("u1"))?.lastAt as Date).getTime()).toBe(NOW);
+
+    const hidden = setup();
+    hidden.seed("onlineStatus/u1", { hidden: true, lastSeen: null });
+    await performPresence(hidden, actor, beat());
+    expect(hidden.docs.get(activityPath("u1"))?.visible).toBe(false);
+  });
+  it("walking away ends 'skating now' in the feed", async () => {
+    const db = setup();
+    await performPresence(db, actor, beat());
+    const t1 = NOW + MIN_BEAT_MS + 1;
+    await performPresence(db, { uid: "u1", nowMs: t1 }, beat({ lat: LAT + 0.0027, clientAt: t1 }));
+    expect((db.docs.get(activityPath("u1"))?.hereUntil as Date).getTime()).toBe(t1);
   });
 });

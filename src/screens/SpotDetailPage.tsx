@@ -10,7 +10,7 @@ import { GnarRating } from "../components/map/GnarRating";
 import { BustRisk } from "../components/map/BustRisk";
 import { SpotChat } from "../components/SpotChat/SpotChat";
 import { isMapCheckinsEnabled, isSpotChatsEnabled, isSpotPresenceEnabled } from "../lib/featureFlags";
-import { SkatersHere } from "../components/presence/SkatersHere";
+import { WhosSkatingHere } from "../components/presence/WhosSkatingHere";
 import { CheckInButton } from "../components/map/CheckInButton";
 
 export function SpotDetailPage() {
@@ -200,7 +200,7 @@ export function SpotDetailPage() {
 
         {/* Challenge: with spot presence on, only skaters checked in here. */}
         {isSpotPresenceEnabled() ? (
-          <SkatersHere spot={spot} />
+          <WhosSkatingHere spot={spot} />
         ) : (
           <button
             type="button"

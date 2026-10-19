@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import type { UserProfile } from "../../services/users";
-import { isDiceEnabled, isRunnerEnabled } from "../../lib/featureFlags";
+import { isDiceEnabled, isRunnerEnabled, isSpotPresenceEnabled } from "../../lib/featureFlags";
 import type { GameDoc } from "../../services/games";
 import { PushPermissionBanner } from "../../components/PushPermissionBanner";
 import { useLobbyController } from "./useLobbyController";
@@ -11,6 +11,7 @@ import { CompletedSummaryLine } from "./components/CompletedSummaryLine";
 import { LoadMoreButton } from "./components/LoadMoreButton";
 import { EmptyLobbyState } from "./components/EmptyLobbyState";
 import { RunnerCard } from "./components/RunnerCard";
+import { WhosSkatingButton } from "./components/WhosSkatingButton";
 
 const RollDiceCard = lazy(() => import("./components/RollDiceCard").then((m) => ({ default: m.RollDiceCard })));
 
@@ -68,6 +69,7 @@ export function Lobby({
       </div>
 
       <div className="px-5 pt-7 max-w-[430px] mx-auto">
+        {isSpotPresenceEnabled() ? <WhosSkatingButton uid={profile.uid} /> : null}
         {isRunnerEnabled() ? <RunnerCard /> : null}
         {isDiceEnabled() ? (
           <Suspense fallback={null}>

@@ -12,6 +12,7 @@
  * The presence doc never stores a location, only "at this spot until".
  */
 import type { DiceDb } from "../dice/store.js";
+import { activityPath, isVisible, writeHere, writeLeft } from "./activity.js";
 import { CheckinInputError, distanceM, MAX_ACCURACY_M, MAX_CLOCK_SKEW_MS, MAX_SPEED_MPS, utcDay } from "./checkin.js";
 
 /** About 500 ft. */
@@ -89,8 +90,9 @@ export async function performPresence(
 
   if (req.leave) {
     return db.runTransaction(async (tx) => {
-      const cur = await tx.get(here);
+      const [cur, activity] = await Promise.all([tx.get(here), tx.get(activityPath(uid))]);
       if (cur.data) tx.set(here, { expiresAt: new Date(nowMs), updatedAt: new Date(nowMs) }, true);
+      writeLeft(tx, uid, req.spotId, activity, nowMs);
       return away();
     });
   }
@@ -101,12 +103,14 @@ export async function performPresence(
 
   return db.runTransaction(async (tx) => {
     const statePath = `mapState/${uid}`;
-    const [spotDoc, dayMark, stateDoc, userDoc, cur] = await Promise.all([
+    const [spotDoc, dayMark, stateDoc, userDoc, cur, activity, online] = await Promise.all([
       tx.get(`spots/${req.spotId}`),
       tx.get(`users/${uid}/checkins/day.${req.spotId}.${utcDay(nowMs)}`),
       tx.get(statePath),
       tx.get(`users/${uid}`),
       tx.get(here),
+      tx.get(activityPath(uid)),
+      tx.get(`onlineStatus/${uid}`),
     ]);
     const spot = spotDoc.data;
     if (!spot || spot.isActive !== true || !finite(spot.latitude) || !finite(spot.longitude)) {
@@ -150,17 +154,28 @@ export async function performPresence(
 
     if (suspect || !inside) {
       if (cur.data) tx.set(here, { expiresAt: new Date(nowMs), updatedAt: new Date(nowMs) }, true);
+      writeLeft(tx, uid, req.spotId, activity, nowMs);
       return suspect ? { code: "suspect", expiresAt: null } : away();
     }
 
     const user = userDoc.data ?? {};
     const expiresAt = nowMs + PRESENCE_TTL_MS;
+    const username = typeof user.username === "string" ? user.username.slice(0, 40) : "";
     tx.set(here, {
       uid,
       spotId: req.spotId,
-      username: typeof user.username === "string" ? user.username.slice(0, 40) : "",
+      username,
       expiresAt: new Date(expiresAt),
       updatedAt: new Date(nowMs),
+    });
+    writeHere(tx, {
+      uid,
+      username,
+      spotId: req.spotId,
+      spot,
+      nowMs,
+      hereUntilMs: expiresAt,
+      visible: isVisible(online),
     });
     return { code: "here", expiresAt };
   });

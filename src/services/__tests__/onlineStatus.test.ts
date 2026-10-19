@@ -5,12 +5,14 @@ const fs = vi.hoisted(() => ({
   Timestamp: kit.FakeTimestamp,
   onSnapshot: vi.fn(),
   setDoc: vi.fn(async () => undefined),
+  updateDoc: vi.fn(async () => undefined),
 }));
 vi.mock("../../firebase");
 vi.mock("firebase/firestore", () => ({
   doc: vi.fn((_db: unknown, ...path: string[]) => ({ path: path.join("/") })),
   onSnapshot: fs.onSnapshot,
   setDoc: fs.setDoc,
+  updateDoc: fs.updateDoc,
   serverTimestamp: vi.fn(() => "ts"),
   Timestamp: fs.Timestamp,
 }));
@@ -49,8 +51,10 @@ describe("hide + beat", () => {
     await svc.setHideOnline("u1", true);
     expect(svc.getHideOnline()).toBe(true);
     expect(fs.setDoc).toHaveBeenLastCalledWith({ path: "onlineStatus/u1" }, { lastSeen: null, hidden: true });
+    expect(fs.updateDoc).toHaveBeenLastCalledWith({ path: "skaterActivity/u1" }, { visible: false });
     await svc.setHideOnline("u1", false);
     expect(svc.getHideOnline()).toBe(false);
+    expect(fs.updateDoc).toHaveBeenLastCalledWith({ path: "skaterActivity/u1" }, { visible: true });
   });
   it("survives blocked storage", async () => {
     const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {

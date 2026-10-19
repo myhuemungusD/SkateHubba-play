@@ -1450,6 +1450,22 @@ service cloud.firestore {
       allow delete: if isSignedIn() && request.auth.uid == uid;
     }
 
+    // ── Who's skating ──
+    // skaterActivity/{uid} { uid, username, spotId, spotName, lastAt,
+    // hereUntil, visible }. Written by the mapPresence callable; never holds
+    // a location. Others can only read visible docs, so a skater who hid
+    // their online status never shows up (the list query must ask for
+    // visible == true). The owner may flip only `visible`, or delete it.
+    match /skaterActivity/{uid} {
+      allow get: if isSignedIn() && (request.auth.uid == uid || resource.data.visible == true);
+      allow list: if isSignedIn() && resource.data.visible == true && request.query.limit <= 50;
+      allow update: if isSignedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['visible'])
+        && request.resource.data.visible is bool;
+      allow create: if false;
+      allow delete: if isSignedIn() && request.auth.uid == uid;
+    }
+
     // ── Games ──
     match /games/{gameId} {
       // Players AND the nominated judge can read the game document.
