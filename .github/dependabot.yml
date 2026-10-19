@@ -30,6 +30,10 @@ updates:
     # (this also covers the tracked v3→v4 Capacitor migration, AUDIT_2026-05 F9).
     ignore:
       - dependency-name: "@sentry/react"
+      # Major jumps (vitest 5, @sentry/node 11) need a planned migration and
+      # Jason's okay; they were failing CI and piling up. Bump them by hand.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       production-dependencies:
         dependency-type: production
@@ -52,6 +56,9 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       functions-dependencies:
         patterns: ["*"]
@@ -99,6 +106,9 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       ruby-dependencies:
         patterns: ["*"]
