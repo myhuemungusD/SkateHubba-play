@@ -41,6 +41,8 @@
     "check:test-dup": "node scripts/check-test-duplication.mjs",
     "check:file-length": "node scripts/check-file-length.mjs --strict",
     "verify": "tsc -b && npm run lint && npm run test:coverage && npm run build && npm run check:test-dup",
+    "testers:sync": "node scripts/testers-sync.mjs",
+    "check:testers": "node scripts/testers-sync.mjs --check",
     "postinstall": "node scripts/patch-ios-spm.mjs",
     "capacitor:update:after": "node scripts/patch-ios-spm.mjs",
     "capacitor:sync:after": "node scripts/patch-ios-spm.mjs",
