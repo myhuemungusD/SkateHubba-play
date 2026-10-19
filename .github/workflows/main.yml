@@ -13,13 +13,18 @@ on:
   # Manual smoke-test hook for audit-nightly: schedule-triggered jobs only
   # fire from the workflow file on the default branch, so this is the only
   # way to exercise that job before (or without) waiting for the cron.
-  # Dispatch runs are audit-only — build-and-test and its dependents skip.
+  # Dispatch runs are audit-only unless the "lighthouse" input is ticked.
   # Note: workflow_dispatch runs the workflow DEFINITION from whatever branch
   # is selected in the UI (only the checkout below is pinned to main). If
   # audit-nightly's step list is being edited on a feature branch, dispatch
   # from that branch to test the pending changes, but expect the audit itself
   # to run against main's lockfile — that pinning is intentional (see below).
   workflow_dispatch:
+    inputs:
+      lighthouse:
+        description: "Also build the app and run Lighthouse (the speed check). Off = dependency audit only."
+        type: boolean
+        default: false
 
 # Least-privilege baseline: read-only across the workflow. Each job that
 # genuinely needs to write (e.g. lighthouse posting statuses/PR comments)
@@ -43,7 +48,7 @@ jobs:
   # heavy jobs are *skipped* (a skipped required check counts as passing).
   # Skips: draft PRs, and changes that only touch docs / markdown.
   changes:
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.lighthouse)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -62,6 +67,10 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD: ${{ github.sha }}
         run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "Manual Lighthouse run — building."
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
           if [ "$EVENT" = "pull_request" ] && [ "$DRAFT" = "true" ]; then
             echo "Draft PR — skipping heavy jobs until ready_for_review."
             echo "code=false" >> "$GITHUB_OUTPUT"; exit 0
@@ -221,6 +230,8 @@ jobs:
 
   e2e:
     needs: build-and-test
+    # Manual Lighthouse dispatches build the app but don't need e2e.
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -300,6 +311,10 @@ jobs:
 
   lighthouse:
     needs: build-and-test
+    # Cost (Actions budget, 2026-10-19): manual only. Not a required check, and
+    # 3 runs x 3 URLs on every PR and every main push burned minutes for no
+    # merge signal. Run it from Actions → CI → Run workflow → lighthouse.
+    if: github.event_name == 'workflow_dispatch' && inputs.lighthouse
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # LHCI uses GITHUB_TOKEN to publish commit statuses and (when configured)
