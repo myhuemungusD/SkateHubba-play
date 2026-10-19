@@ -501,3 +501,23 @@ describe("isAdminInsightsEnabled (VITE_FEATURE_ADMIN_INSIGHTS)", () => {
     expect(isAdminInsightsEnabled()).toBe(true);
   });
 });
+
+describe("isTurnLengthEnabled (VITE_FEATURE_TURN_LENGTH)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    localStorage.removeItem(FEATURE_TESTER_STORAGE_KEY);
+  });
+  it("is off by default and on only for literal true", async () => {
+    const { isTurnLengthEnabled } = await import("../featureFlags");
+    expect(isTurnLengthEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_TURN_LENGTH", "1");
+    expect(isTurnLengthEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_TURN_LENGTH", "true");
+    expect(isTurnLengthEnabled()).toBe(true);
+  });
+  it("turns on for a feature tester (Jason and Mike via config/featureTesters)", async () => {
+    const { isTurnLengthEnabled } = await import("../featureFlags");
+    localStorage.setItem(FEATURE_TESTER_STORAGE_KEY, "DVpY1kJYXsYEJN8j3jr3r0wITl72");
+    expect(isTurnLengthEnabled()).toBe(true);
+  });
+});

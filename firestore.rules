@@ -1260,7 +1260,7 @@ service cloud.firestore {
               && nxt.p1Letters == cur.p1Letters
               && nxt.p2Letters == cur.p2Letters
               && nxt.turnHistory == cur.turnHistory
-              && aboutOneDayAhead(nxt.reviewDeadline)
+              && aboutTurnLengthAhead(nxt.reviewDeadline)
               && !judgeActive(cur))
           // Judge-active landed→disputable OR Call BS→setReview — letters
           // unchanged, currentSetter + turnNumber UNCHANGED, currentTurn → judge.
@@ -1412,10 +1412,38 @@ service cloud.firestore {
         && createdAtUnchanged()
         && cronNotifyTombstonesUnchanged()
         && verifiedProBadgesUnchanged()
-        && trainingLabelPendingOk();
+        && trainingLabelPendingOk()
+        && turnLengthUnchanged();
+    }
+
+    // Turn length (src/services/turnDuration.ts): 24, 72 or 168 hours, chosen
+    // at creation. Absent on legacy games and whenever VITE_FEATURE_TURN_LENGTH
+    // is off, which reads as 24. Immutable: no update may add, change or drop it.
+    function turnLengthUnchanged() {
+      return request.resource.data.get('turnLengthHours', null) == resource.data.get('turnLengthHours', null);
+    }
+
+    // The game's turn length in hours. Read from the NEW doc: create sets it
+    // and turnLengthUnchanged() pins it on every update, so it equals the
+    // stored value on updates.
+    function gameTurnHours() {
+      return request.resource.data.get('turnLengthHours', 24);
+    }
+
+    // A turn clock (or the setter's accept/dispute window) is request.time +
+    // the game's turn length, ±1h for client clock skew. Same reasoning as
+    // aboutOneDayAhead: a shorter clock is an instant forfeit, a longer one
+    // locks the opponent out of the forfeit path.
+    function aboutTurnLengthAhead(ts) {
+      return ts is timestamp
+        && ts > request.time + duration.value(gameTurnHours() - 1, 'h')
+        && ts < request.time + duration.value(gameTurnHours() + 1, 'h');
     }
 
     // Product window is 24h (TURN_DURATION_MS). ±1h absorbs client clock skew.
+    // Used as-is for the community vote window, which stays 24h whatever the
+    // game's turn length (voters are strangers, not the two players). Turn
+    // clocks use aboutTurnLengthAhead above.
     // A shorter clock is an instant forfeit or an instant auto-accept; a longer
     // one locks the opponent out of the forfeit path.
     function aboutOneDayAhead(ts) {
@@ -1489,10 +1517,10 @@ service cloud.firestore {
         && request.resource.data.currentTurn == request.auth.uid
         && request.resource.data.phase == 'setting'
         && request.resource.data.currentSetter == request.auth.uid
-        // Play clock is request.time + 24h (±1h). A one-second deadline lets
+        // Play clock is request.time + the turn length (24h default, ±1h). A one-second deadline lets
         // either player forfeit the opponent immediately; a year-9999 deadline
         // never expires. Forfeit still requires request.time past the stored clock.
-        && aboutOneDayAhead(request.resource.data.turnDeadline)
+        && aboutTurnLengthAhead(request.resource.data.turnDeadline)
         && request.resource.data.createdAt == request.time
         // Trick/video fields must start empty
         && request.resource.data.currentTrickName == null
@@ -1523,6 +1551,11 @@ service cloud.firestore {
         // Optional trickCategory (game-level trick filter): absent, or exactly
         // one of the known values. Mirrors spotId — set once and immutable
         // thereafter (legacy clients omit it, so presence stays optional).
+        // Optional turnLengthHours: absent (24h) or one of the three choices.
+        && (
+          !('turnLengthHours' in request.resource.data)
+          || request.resource.data.turnLengthHours in [24, 72, 168]
+        )
         && (
           !('trickCategory' in request.resource.data)
           || request.resource.data.trickCategory in ['any', 'flip', 'grind', 'gap', 'air', 'manual', 'oldschool',
@@ -1650,7 +1683,7 @@ service cloud.firestore {
         // rotation in this same write.
         && autoAcceptRolePinsOk(resource.data, request.resource.data)
         // The next turn's clock is a fresh 24h, not whatever the client picks.
-        && aboutOneDayAhead(request.resource.data.turnDeadline)
+        && aboutTurnLengthAhead(request.resource.data.turnDeadline)
         // ── matchVideoUrl bucket pin (audit P2) ──
         // Auto-accept finalises the matcher's "landed" call without judge
         // intervention. The matcher's stored matchVideoUrl is now the canonical
@@ -1711,7 +1744,7 @@ service cloud.firestore {
         && request.resource.data.judgeStatus == resource.data.judgeStatus
         && request.resource.data.currentSetter == resource.data.currentSetter
         && request.resource.data.currentTurn == opponentUid(resource.data, resource.data.currentSetter)
-        && aboutOneDayAhead(request.resource.data.turnDeadline)
+        && aboutTurnLengthAhead(request.resource.data.turnDeadline)
         // No append and no content rewrite. This path does not finish a turn.
         && turnHistoryFrozenOk()
         && gameAuditTailOk();
@@ -1784,7 +1817,7 @@ service cloud.firestore {
           request.resource.data.currentTurn == resource.data.player2Uid
         )
         // New play clock on every setting-phase transition (set trick or fail-set).
-        && aboutOneDayAhead(request.resource.data.turnDeadline)
+        && aboutTurnLengthAhead(request.resource.data.turnDeadline)
         // Scores must not change during setting-phase updates.
         // Letters are only awarded via the match resolution rule below.
         && request.resource.data.p1Letters == resource.data.p1Letters
@@ -1912,7 +1945,7 @@ service cloud.firestore {
         // Game over and nothing else may leave the stored clock alone — there
         // is no next turn to time. A one-second clock is denied on both arms.
         && (
-          aboutOneDayAhead(request.resource.data.turnDeadline)
+          aboutTurnLengthAhead(request.resource.data.turnDeadline)
           || (request.resource.data.status == 'complete'
               && request.resource.data.turnDeadline == resource.data.turnDeadline)
         )
@@ -2043,7 +2076,7 @@ service cloud.firestore {
             && request.resource.data.turnNumber == resource.data.turnNumber + 1
             && (!('reviewFor' in request.resource.data) || request.resource.data.reviewFor == null)
             && (!('reviewDeadline' in request.resource.data) || request.resource.data.reviewDeadline == null)
-            && aboutOneDayAhead(request.resource.data.turnDeadline))
+            && aboutTurnLengthAhead(request.resource.data.turnDeadline))
           ||
           // (b) DISPUTE → communityReview: the game STAYS frozen. Roles,
           // turnNumber, letters and turnHistory are all pinned unchanged;
@@ -2128,7 +2161,7 @@ service cloud.firestore {
         // Continuing play gets a fresh 24h clock. A ruling that ends the game
         // may leave the stored clock unchanged.
         && (
-          aboutOneDayAhead(request.resource.data.turnDeadline)
+          aboutTurnLengthAhead(request.resource.data.turnDeadline)
           || (request.resource.data.status == 'complete'
               && request.resource.data.turnDeadline == resource.data.turnDeadline)
         )
@@ -2240,7 +2273,7 @@ service cloud.firestore {
         && request.resource.data.judgeStatus == resource.data.judgeStatus
         && request.resource.data.status == 'active'
         && request.resource.data.winner == null
-        && aboutOneDayAhead(request.resource.data.turnDeadline)
+        && aboutTurnLengthAhead(request.resource.data.turnDeadline)
         && request.resource.data.p1Letters == resource.data.p1Letters
         && request.resource.data.p2Letters == resource.data.p2Letters
         && request.resource.data.currentSetter == resource.data.currentSetter

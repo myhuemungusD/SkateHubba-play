@@ -1,5 +1,6 @@
 import type { GameDoc } from "../services/games";
 import { timestampFromMillis } from "../services/games";
+import { turnDurationMsFor, type TurnLengthHours } from "../services/turnDuration";
 import {
   normalizeTrickCategory,
   normalizeCustomRules,
@@ -39,6 +40,7 @@ export function newGameShell(
   judgeUsername: string | null = null,
   trickCategory: TrickCategoryId | null = null,
   customRules: string | null = null,
+  turnLengthHours: TurnLengthHours | null = null,
 ): GameDoc {
   return {
     id: gameId,
@@ -55,7 +57,7 @@ export function newGameShell(
     currentTrickName: null,
     currentTrickVideoUrl: null,
     matchVideoUrl: null,
-    turnDeadline: timestampFromMillis(Date.now() + 86400000),
+    turnDeadline: timestampFromMillis(Date.now() + turnDurationMsFor({ turnLengthHours })),
     turnNumber: 1,
     winner: null,
     turnHistory: [],
@@ -70,5 +72,6 @@ export function newGameShell(
     judgeUsername,
     judgeStatus: judgeUid ? "pending" : null,
     judgeReviewFor: null,
+    ...(turnLengthHours !== null && { turnLengthHours }),
   };
 }

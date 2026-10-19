@@ -13,6 +13,7 @@ import { formatTrickDisplayName, rememberRecentTrick, type TrickSelection } from
 import { useCommunityDispute } from "./useCommunityDispute";
 import { useGameReviewActions } from "./useGameReviewActions";
 import type { GamePlayController } from "./gamePlayController.types";
+import { turnDurationMsFor } from "../../services/turnDuration";
 
 export type { GamePlayController } from "./gamePlayController.types";
 
@@ -275,9 +276,9 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
   // In a frozen review phase the turnDeadline is pinned (often already past);
   // the live countdown is the review window, so surface that instead.
   const inReviewPhase = game.phase === "pendingReview" || game.phase === "communityReview";
-  // Fallback for a game with no deadline stamped yet: 24h out, captured once
+  // Fallback for a game with no deadline stamped yet: one turn length out, captured once
   // per mount (same approach as useWaitingScreen) so render stays pure.
-  const [fallbackDeadline] = useState(() => Date.now() + 86400000);
+  const [fallbackDeadline] = useState(() => Date.now() + turnDurationMsFor(game));
   const deadline =
     (inReviewPhase ? game.reviewDeadline?.toMillis?.() : game.turnDeadline?.toMillis?.()) || fallbackDeadline;
 

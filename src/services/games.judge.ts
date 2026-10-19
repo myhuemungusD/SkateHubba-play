@@ -6,7 +6,8 @@ import { writeNotificationInTx } from "./notifications";
 import { createPushDispatchOutbox, drainPushDispatchOutbox, resetPushDispatchOutbox } from "./pushDispatch";
 import { writeLandedClipsInTransaction } from "./clips";
 import { toGameDoc, isJudgeActive, type TurnRecord } from "./games.mappers";
-import { TURN_DURATION_MS, getOpponent, checkTurnActionRate, recordTurnAction } from "./games.turns";
+import { getOpponent, checkTurnActionRate, recordTurnAction } from "./games.turns";
+import { turnDurationMsFor } from "./turnDuration";
 import { clearedTrickFields, trickSnapshot } from "./trickFields";
 import { applyTrainingLabelPending } from "./trainingLabels.materialize";
 
@@ -20,7 +21,7 @@ import { applyTrainingLabelPending } from "./trainingLabels.materialize";
  *
  * Effect: phase → setReview, currentTurn routes to judge. Judge rules
  * clean (set stands, matcher must attempt) or sketchy (setter re-sets).
- * 24h timeout → clean (benefit of the doubt to setter).
+ * Turn-length timeout (24h default) → clean (benefit of the doubt to setter).
  * ──────────────────────────────────────────── */
 
 export async function callBSOnSetTrick(gameId: string): Promise<void> {
@@ -48,7 +49,7 @@ export async function callBSOnSetTrick(gameId: string): Promise<void> {
       phase: "setReview",
       currentTurn: game.judgeId, // judge rules on the set trick
       judgeReviewFor: game.currentSetter,
-      turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
+      turnDeadline: Timestamp.fromMillis(Date.now() + turnDurationMsFor(game)),
       updatedAt: serverTimestamp(),
     });
 
@@ -102,7 +103,7 @@ export async function judgeRuleSetTrick(gameId: string, clean: boolean): Promise
         phase: "matching",
         currentTurn: matcherUid,
         judgeReviewFor: null,
-        turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
+        turnDeadline: Timestamp.fromMillis(Date.now() + turnDurationMsFor(game)),
         updatedAt: serverTimestamp(),
       });
 
@@ -129,7 +130,7 @@ export async function judgeRuleSetTrick(gameId: string, clean: boolean): Promise
         currentTrickVideoUrl: null,
         matchVideoUrl: null,
         judgeReviewFor: null,
-        turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
+        turnDeadline: Timestamp.fromMillis(Date.now() + turnDurationMsFor(game)),
         updatedAt: serverTimestamp(),
       });
 
@@ -230,7 +231,7 @@ export async function resolveDispute(
       updates.phase = "setting";
       updates.currentSetter = nextSetter;
       updates.currentTurn = nextSetter;
-      updates.turnDeadline = Timestamp.fromMillis(Date.now() + TURN_DURATION_MS);
+      updates.turnDeadline = Timestamp.fromMillis(Date.now() + turnDurationMsFor(game));
       updates.turnNumber = game.turnNumber + 1;
     }
 

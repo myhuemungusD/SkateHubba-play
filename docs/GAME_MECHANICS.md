@@ -147,6 +147,15 @@ Games frozen in `pendingReview` or `communityReview` are **never** forfeited for
 - `reviewDeadline` is a **separate** 24-hour field covering `pendingReview` and `communityReview`. It is resolved only by `api/cron/resolve-expired-disputes.ts`, never by a client.
 - The Firestore rules validate the forfeit write — a client cannot claim a forfeit unless the current player's turn has genuinely expired.
 
+### Longer turns (`VITE_FEATURE_TURN_LENGTH`, default off)
+
+- With the flag on, the challenger picks **24 hours**, **3 days** or **7 days** per turn on the Challenge screen. The choice is stored once on the game as `turnLengthHours` (24, 72 or 168) and can never change.
+- Every turn clock on that game, and the setter's accept/dispute window in `pendingReview`, uses that length. The judge's review window and the "no response" auto-accepts follow it too.
+- The community LAND/BAIL vote stays **24 hours** on every game. The voters are other skaters, not the two players, so a longer vote would only freeze the game longer.
+- A game without the field (every legacy game, and every game made with the flag off) plays exactly as above: 24-hour turns.
+- Firestore rules accept only those three values at create and check every clock against the game's own length (±1 hour for clock skew). The forfeit sweep and the open-the-game check read the stored deadline, so they follow the game's length with no extra code.
+- The lobby card, the game screen and the waiting screen show a "3-day turns" style chip, and the challenge notification says so for 3- and 7-day games.
+
 ---
 
 ## Video Recording

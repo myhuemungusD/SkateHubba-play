@@ -611,4 +611,28 @@ describe("ChallengeScreen", () => {
       expect(screen.queryByRole("heading", { name: /^RULES$/ })).not.toBeInTheDocument();
     });
   });
+
+  describe("turn length picker (VITE_FEATURE_TURN_LENGTH)", () => {
+    it("is hidden and sends no length while the flag is off", async () => {
+      mockGetUidByUsername.mockResolvedValueOnce("u2");
+      const onSend = vi.fn().mockResolvedValue(undefined);
+      renderWithRouter(<ChallengeScreen {...defaultProps} onSend={onSend} />);
+      await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+      expect(screen.queryByRole("radiogroup", { name: "Time per turn" })).not.toBeInTheDocument();
+      await userEvent.click(screen.getByText(/Send Challenge/));
+      await waitFor(() => expect(onSend).toHaveBeenCalledWith("u2", "rival", sendOptions()));
+    });
+
+    it("defaults to 24 hours and forwards a 7-day pick when the flag is on", async () => {
+      vi.stubEnv("VITE_FEATURE_TURN_LENGTH", "true");
+      mockGetUidByUsername.mockResolvedValueOnce("u2");
+      const onSend = vi.fn().mockResolvedValue(undefined);
+      renderWithRouter(<ChallengeScreen {...defaultProps} onSend={onSend} />);
+      await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+      expect(screen.getByRole("radio", { name: "24 hours" })).toHaveAttribute("aria-checked", "true");
+      await userEvent.click(screen.getByRole("radio", { name: "7 days" }));
+      await userEvent.click(screen.getByText(/Send Challenge/));
+      await waitFor(() => expect(onSend).toHaveBeenCalledWith("u2", "rival", sendOptions({ turnLengthHours: 168 })));
+    });
+  });
 });

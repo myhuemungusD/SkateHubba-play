@@ -20,6 +20,7 @@ import { SetterDecisionPanel } from "./components/SetterDecisionPanel";
 import { MatcherDecisionPanel } from "./components/MatcherDecisionPanel";
 import { PendingReviewPanel } from "./components/PendingReviewPanel";
 import { ReviewStatusPanel } from "./components/ReviewStatusPanel";
+import { TurnLengthChip } from "../../components/TurnLengthChip";
 
 const TrickPicker = lazy(() => import("../../components/TrickPicker").then((m) => ({ default: m.TrickPicker })));
 
@@ -61,6 +62,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
 
       <div className="px-5 pt-5 max-w-md mx-auto">
         <JudgeStatusBadge game={game} viewerIsJudge={c.isJudge} />
+        <TurnLengthChip hours={game.turnLengthHours} className="mb-3" />
 
         <LetterScoreboard
           game={game}

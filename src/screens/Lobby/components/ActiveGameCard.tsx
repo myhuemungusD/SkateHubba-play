@@ -5,6 +5,7 @@ import { LobbyTimer } from "../../../components/LobbyTimer";
 import { ChevronRightIcon } from "../../../components/icons";
 import { ProUsername } from "../../../components/ProUsername";
 import { trickCategoryLabel } from "../../../constants/trickCategories";
+import { TurnLengthChip } from "../../../components/TurnLengthChip";
 
 interface Props {
   game: GameDoc;
@@ -101,6 +102,7 @@ export function ActiveGameCard({
               {trickCategoryLabel(game.trickCategory)}
             </span>
           )}
+          <TurnLengthChip hours={game.turnLengthHours} />
         </div>
         {judgeViewer ? (
           <div className="flex items-center gap-3 mt-2.5">

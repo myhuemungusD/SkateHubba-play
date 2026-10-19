@@ -9,7 +9,8 @@ import { writeLandedClipsInTransaction } from "./clips";
 import { toGameDoc, isJudgeActive, type TurnRecord } from "./games.mappers";
 import { clearedTrickFields, trickFieldsFromSelection, trickSnapshot } from "./trickFields";
 import { applyTrainingLabelPending } from "./trainingLabels.materialize";
-import { TURN_DURATION_MS, getOpponent, checkTurnActionRate, recordTurnAction } from "./games.turns";
+import { getOpponent, checkTurnActionRate, recordTurnAction } from "./games.turns";
+import { turnDurationMsFor } from "./turnDuration";
 import { decidePendingReviewExpiry } from "./dispute.resolution.shared";
 
 /* ────────────────────────────────────────────
@@ -65,7 +66,7 @@ export async function setTrick(
       ...picked.fields,
       currentTrickVideoUrl: videoUrl,
       currentTurn: matcherUid,
-      turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
+      turnDeadline: Timestamp.fromMillis(Date.now() + turnDurationMsFor(game)),
       updatedAt: serverTimestamp(),
     });
 
@@ -118,7 +119,7 @@ export async function failSetTrick(gameId: string): Promise<void> {
       currentTrickName: null,
       ...clearedTrickFields(),
       currentTrickVideoUrl: null,
-      turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
+      turnDeadline: Timestamp.fromMillis(Date.now() + turnDurationMsFor(game)),
       turnNumber: game.turnNumber + 1,
       updatedAt: serverTimestamp(),
     });
@@ -149,7 +150,7 @@ export async function failSetTrick(gameId: string): Promise<void> {
  *   • missed  → matcher gains a letter, setter keeps setting
  *
  * With active judge:
- *   • landed  → "disputable" phase; judge has 24h to rule (auto-accept after)
+ *   • landed  → "disputable" phase; judge has one turn length (24h default) to rule (auto-accept after)
  *   • missed  → letter applied immediately (matcher admitting a miss is never
  *               disputed — they lose by calling themselves out)
  * ──────────────────────────────────────────── */
@@ -186,7 +187,7 @@ export async function submitMatchAttempt(
           matchVideoUrl,
           currentTurn: game.judgeId, // judge reviews, never the setter
           judgeReviewFor: matcherUid,
-          turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
+          turnDeadline: Timestamp.fromMillis(Date.now() + turnDurationMsFor(game)),
           updatedAt: serverTimestamp(),
         });
 
@@ -219,7 +220,7 @@ export async function submitMatchAttempt(
       }
 
       // Honor system → FREEZE the game into pendingReview. The matcher's
-      // "landed" claim is NOT resolved here: it now faces the setter's 24h
+      // "landed" claim is NOT resolved here: it now faces the setter's turn-length
       // accept/dispute decision (docs/DISPUTE_BINDING_DESIGN.md §3.3).
       // currentSetter/currentTurn/turnNumber/letters/turnHistory stay pinned
       // (nothing is written for them). The landed clips and the RESULT
@@ -230,10 +231,10 @@ export async function submitMatchAttempt(
       tx.update(gameRef, {
         phase: "pendingReview",
         reviewFor: matcherUid,
-        reviewDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
-        // Phase change refreshes the play clock to ~24h. Rules reject a shorter
+        reviewDeadline: Timestamp.fromMillis(Date.now() + turnDurationMsFor(game)),
+        // Phase change refreshes the play clock to the game's turn length. Rules reject a shorter
         // clock, and the previous turn's remaining time is often under that floor.
-        turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
+        turnDeadline: Timestamp.fromMillis(Date.now() + turnDurationMsFor(game)),
         matchVideoUrl,
         updatedAt: serverTimestamp(),
       });
@@ -313,7 +314,7 @@ export async function submitMatchAttempt(
       updates.phase = "setting";
       updates.currentSetter = nextSetter;
       updates.currentTurn = nextSetter;
-      updates.turnDeadline = Timestamp.fromMillis(Date.now() + TURN_DURATION_MS);
+      updates.turnDeadline = Timestamp.fromMillis(Date.now() + turnDurationMsFor(game));
       updates.turnNumber = game.turnNumber + 1;
     }
 
@@ -398,7 +399,7 @@ export async function submitMatchAttempt(
  * From `pendingReview`, the setter accepts the matcher's landed claim,
  * performing the deferred honor swap. The game-state write is computed by the
  * shared `decidePendingReviewExpiry` helper so it is byte-identical to what the
- * dispute referee writes when the 24h accept window lapses — the manual accept
+ * dispute referee writes when the accept window (one turn length) lapses — the manual accept
  * and the timed auto-accept can never diverge. The landed clips and the
  * "Trick Landed" notification (deferred out of `submitMatchAttempt` so a later
  * BAIL leaves nothing behind) are written HERE, atomically with the swap.

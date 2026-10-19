@@ -6,7 +6,7 @@ import {
   trickCategoryHeadline,
   CUSTOM_CATEGORY_ID,
 } from "../constants/trickCategories";
-import { isRefereeEnabled } from "../lib/featureFlags";
+import { isRefereeEnabled, isTurnLengthEnabled } from "../lib/featureFlags";
 import { addBreadcrumb } from "../lib/sentry";
 import { withRetry } from "../utils/retry";
 import { metrics } from "./logger";
@@ -19,7 +19,8 @@ import {
   type JudgeStatus,
   type CreateGameOptions,
 } from "./games.mappers";
-import { TURN_DURATION_MS, gamesRef, checkGameCreationRate, recordGameCreation } from "./games.turns";
+import { gamesRef, checkGameCreationRate, recordGameCreation } from "./games.turns";
+import { DEFAULT_TURN_LENGTH_HOURS, isTurnLengthHours, turnDurationMsFor, turnLengthLabel } from "./turnDuration";
 
 /* ────────────────────────────────────────────
  * Create a new game (challenge)
@@ -58,6 +59,7 @@ export async function createGame(
     customRules,
     judgeUid,
     judgeUsername,
+    turnLengthHours,
   } = options;
 
   // Defense-in-depth: drop any spotId that doesn't look like a UUID before
@@ -107,7 +109,12 @@ export async function createGame(
       ? challengerProfile.username
       : challengerUsername;
 
-  const deadline = Timestamp.fromMillis(Date.now() + TURN_DURATION_MS);
+  // Turn length (VITE_FEATURE_TURN_LENGTH): stored only when the flag is on
+  // and the value is one of the three allowed lengths. Flag off → the field
+  // is never written and the game plays 24h turns exactly as before, even if
+  // a caller bypasses the UI. Rules validate the same three values.
+  const safeTurnLength = isTurnLengthEnabled() && isTurnLengthHours(turnLengthHours) ? turnLengthHours : null;
+  const deadline = Timestamp.fromMillis(Date.now() + turnDurationMsFor({ turnLengthHours: safeTurnLength }));
 
   const gameData = {
     player1Uid: challengerUid,
@@ -147,6 +154,7 @@ export async function createGame(
     ...(opponentIsVerifiedPro && { player2IsVerifiedPro: true }),
     ...(safeSpotId && { spotId: safeSpotId }),
     ...(safeSpotId && spotPresence === true && { spotPresence: true }),
+    ...(safeTurnLength !== null && { turnLengthHours: safeTurnLength }),
   };
 
   // F10: Force-refresh the ID token before the create write. Firestore rules
@@ -202,7 +210,11 @@ export async function createGame(
   //
   // Append the agreed constraint ("— Flat Bar", or the custom rules text) so
   // the invite states the game up front; "any"/legacy games announce nothing.
-  const headline = trickCategoryHeadline(safeCategory, safeCustomRules);
+  const categoryHeadline = trickCategoryHeadline(safeCategory, safeCustomRules);
+  // A longer clock is part of the deal, so the invite says it up front.
+  const lengthNote =
+    safeTurnLength !== null && safeTurnLength !== DEFAULT_TURN_LENGTH_HOURS ? turnLengthLabel(safeTurnLength) : null;
+  const headline = [categoryHeadline, lengthNote].filter(Boolean).join(" · ");
   const pending: Array<Promise<void>> = [
     writeNotification(
       {

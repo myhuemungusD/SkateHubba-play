@@ -1,6 +1,7 @@
 import { Timestamp } from "firebase/firestore";
 import type { TrickCategoryId } from "../constants/trickCategories.js";
 import type { TrickObstacle, TrickStance } from "../constants/tricks.js";
+import type { TurnLengthHours } from "./turnDuration.js";
 
 /** Re-exported so callers can pull the game trick-category type from the games barrel. */
 export type { TrickCategoryId } from "../constants/trickCategories.js";
@@ -110,6 +111,13 @@ export interface GameDoc {
    */
   customRules?: string | null;
   /**
+   * Hours per turn chosen by the challenger (24, 72 or 168). Optional because
+   * legacy docs, and every game made while VITE_FEATURE_TURN_LENGTH is off,
+   * omit it; missing = 24. Set at game creation, immutable. Read it through
+   * `turnLengthHoursOf` / `turnDurationMsFor` (turnDuration.ts).
+   */
+  turnLengthHours?: TurnLengthHours;
+  /**
    * UID of the nominated judge, or null for honor-system games.
    * Honor system: no disputable phase, no "Call BS" option.
    * With judge: dispute/BS flows route to the judge instead of the setter.
@@ -181,6 +189,8 @@ export interface CreateGameOptions {
   trickCategory?: TrickCategoryId | null;
   /** Free-text rules, only used when `trickCategory === "custom"`. */
   customRules?: string | null;
+  /** Hours per turn (24, 72 or 168). Written only when VITE_FEATURE_TURN_LENGTH is on. */
+  turnLengthHours?: TurnLengthHours | null;
   /** Optional judge UID — must be different from both players. */
   judgeUid?: string | null;
   /** Denormalized judge username (for UI). Required when judgeUid is set. */
