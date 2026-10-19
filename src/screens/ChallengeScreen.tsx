@@ -44,7 +44,7 @@ export function ChallengeScreen({
   blockedUids?: Set<string>;
 }) {
   const [searchParams] = useSearchParams();
-  // ?to=<username> pre-fills the opponent (from a spot's "Skaters here" list).
+  // ?to=<username> pre-fills the opponent (from a spot's "Who's skating" list).
   const [opponent, setOpponent] = useState(initialOpponent || (searchParams.get("to") ?? "").slice(0, 40));
   const [trickCategory, setTrickCategory] = useState<TrickCategoryId>("any");
   const [customRules, setCustomRules] = useState("");
@@ -60,7 +60,7 @@ export function ChallengeScreen({
   // defense-in-depth; the API enforces the same invariant server-side.
   const rawSpotId = searchParams.get("spot");
   const spotId = rawSpotId && UUID_SHAPE.test(rawSpotId) ? rawSpotId : null;
-  // ?here=1 comes from the spot's "Skaters here" list: both players are at
+  // ?here=1 comes from the spot's "Who's skating" list: both players are at
   // the spot, and the rules check that again when the game is created.
   const atSpot = spotId !== null && searchParams.get("here") === "1" && isSpotPresenceEnabled();
 

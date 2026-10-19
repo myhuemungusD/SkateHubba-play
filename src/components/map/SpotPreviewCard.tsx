@@ -7,7 +7,7 @@ import { GnarRating } from "./GnarRating";
 import { BustRisk } from "./BustRisk";
 import { CheckInButton } from "./CheckInButton";
 import { isMapCheckinsEnabled, isSpotPresenceEnabled } from "../../lib/featureFlags";
-import { SkatersHere } from "../presence/SkatersHere";
+import { WhosSkatingHere } from "../presence/WhosSkatingHere";
 
 interface SpotPreviewCardProps {
   spot: Spot;
@@ -173,7 +173,7 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
             the map exists to serve the S.K.A.T.E. game loop, so starting
             a challenge is the dominant affordance on a spot preview. */}
         {isSpotPresenceEnabled() && spot.scope !== "private" ? (
-          <SkatersHere spot={spot} />
+          <WhosSkatingHere spot={spot} />
         ) : (
           <button
             type="button"

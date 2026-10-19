@@ -6,6 +6,7 @@
 import { doc, onSnapshot, serverTimestamp, setDoc, Timestamp } from "firebase/firestore";
 import * as firebase from "../firebase";
 import { logger } from "./logger";
+import { setActivityVisible } from "./whosSkating";
 
 export const HIDE_ONLINE_KEY = "sh_hide_online";
 export const ONLINE_BEAT_MS = 2 * 60 * 1000;
@@ -42,7 +43,7 @@ export async function setHideOnline(uid: string, hide: boolean): Promise<void> {
   } catch {
     // Storage blocked: the server doc still reflects the choice.
   }
-  await beatOnline(uid, hide);
+  await Promise.all([beatOnline(uid, hide), setActivityVisible(uid, !hide)]);
 }
 
 /** Beat now, every ONLINE_BEAT_MS while visible, and on return to the app. Returns stop. */

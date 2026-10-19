@@ -40,7 +40,7 @@ export interface ActiveSpot {
   day: string;
 }
 
-export interface SkaterHere {
+export interface SpotSkater {
   uid: string;
   username: string;
 }
@@ -173,9 +173,9 @@ function toMillis(v: unknown): number {
  * Live list of skaters present at a spot (excluding lapsed docs). Re-filters
  * on a timer so someone whose presence lapses drops off without a new write.
  */
-export function subscribeSkatersHere(
+export function subscribeSpotSkaters(
   spotId: string,
-  onChange: (skaters: SkaterHere[]) => void,
+  onChange: (skaters: SpotSkater[]) => void,
   now: () => number = Date.now,
 ): () => void {
   const db = firebase.requireDb();

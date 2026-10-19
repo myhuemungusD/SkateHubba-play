@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "skaterActivity",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "visible", "order": "ASCENDING" },
+        { "fieldPath": "lastAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "spots",
       "queryScope": "COLLECTION",
       "fields": [

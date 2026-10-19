@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const auth = vi.hoisted(() => ({ value: { user: { uid: "me" } as { uid: string } | null } }));
 const flag = vi.hoisted(() => ({ on: true }));
 const presence = vi.hoisted(() => ({
-  subscribeSkatersHere: vi.fn(),
+  subscribeSpotSkaters: vi.fn(),
   leaveSpot: vi.fn(async () => ({ code: "away", expiresAt: null })),
   readActiveSpot: vi.fn(),
   startSpotPresence: vi.fn(),
@@ -24,7 +24,7 @@ vi.mock("../../../services/onlineStatus", () => online);
 
 import { PresenceDot } from "../PresenceDot";
 import { PresenceRunner } from "../PresenceRunner";
-import { SkatersHere } from "../SkatersHere";
+import { WhosSkatingHere } from "../WhosSkatingHere";
 
 function Where() {
   const loc = useLocation();
@@ -35,7 +35,7 @@ function renderHere() {
   return render(
     <MemoryRouter>
       <Routes>
-        <Route path="/" element={<SkatersHere spot={SPOT} />} />
+        <Route path="/" element={<WhosSkatingHere spot={SPOT} />} />
         <Route path="/challenge" element={<Where />} />
       </Routes>
     </MemoryRouter>,
@@ -47,19 +47,19 @@ beforeEach(() => {
   vi.clearAllMocks();
   flag.on = true;
   auth.value = { user: { uid: "me" } };
-  presence.subscribeSkatersHere.mockImplementation((_id: string, cb: typeof emitHere) => {
+  presence.subscribeSpotSkaters.mockImplementation((_id: string, cb: typeof emitHere) => {
     emitHere = cb;
     return vi.fn();
   });
   online.subscribeOnline.mockImplementation(() => vi.fn());
 });
 
-describe("SkatersHere", () => {
+describe("WhosSkatingHere", () => {
   it("shows nobody to challenge when the spot is empty", () => {
     renderHere();
     expect(screen.getByText("Looking around…")).toBeInTheDocument();
     act(() => emitHere([{ uid: "me", username: "jason" }]));
-    expect(screen.getByTestId("skaters-here-empty")).toHaveTextContent("Nobody's here right now");
+    expect(screen.getByTestId("whos-skating-here-empty")).toHaveTextContent("Nobody's here right now");
     expect(screen.getByText("You're here")).toBeInTheDocument();
   });
   it("lists only skaters here and challenges with spot presence", async () => {

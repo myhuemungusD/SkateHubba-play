@@ -111,7 +111,7 @@ describe("sendPresence / leaveSpot", () => {
   });
 });
 
-describe("subscribeSkatersHere", () => {
+describe("subscribeSpotSkaters", () => {
   it("lists live skaters and drops lapsed ones", () => {
     vi.useFakeTimers();
     let t = NOW;
@@ -122,7 +122,7 @@ describe("subscribeSkatersHere", () => {
       return unsub;
     });
     const seen = vi.fn();
-    const stop = svc.subscribeSkatersHere("s1", seen, () => t);
+    const stop = svc.subscribeSpotSkaters("s1", seen, () => t);
     next({
       docs: [
         { id: "a", data: () => ({ username: "mike", expiresAt: fs.Timestamp.fromMillis(NOW + 60_000) }) },
@@ -147,7 +147,7 @@ describe("subscribeSkatersHere", () => {
       return vi.fn();
     });
     const seen = vi.fn();
-    svc.subscribeSkatersHere("s1", seen)();
+    svc.subscribeSpotSkaters("s1", seen)();
     expect(seen).toHaveBeenCalledWith([]);
     expect(logger.warn).toHaveBeenCalledWith("spot_presence_list_failed", { code: "permission-denied" });
   });

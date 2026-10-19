@@ -6,26 +6,26 @@ import {
   getAutoRejoin,
   leaveSpot,
   setAutoRejoin,
-  subscribeSkatersHere,
-  type SkaterHere,
+  subscribeSpotSkaters,
+  type SpotSkater,
 } from "../../services/spotPresence";
 import { PresenceDot } from "./PresenceDot";
 
 /**
- * "Skaters here": the only people you can challenge from a spot, like a
+ * "Who's skating": the only people you can challenge from a spot, like a
  * trainer battle. You must be checked in here yourself to challenge, and
  * nobody here means nobody to challenge.
  */
-export function SkatersHere({ spot }: { spot: { id: string; name: string } }) {
+export function WhosSkatingHere({ spot }: { spot: { id: string; name: string } }) {
   const { user } = useAuthContext();
   const navigate = useNavigate();
-  const [skaters, setSkaters] = useState<SkaterHere[] | null>(null);
+  const [skaters, setSkaters] = useState<SpotSkater[] | null>(null);
   const [auto, setAuto] = useState(getAutoRejoin);
   const uid = user?.uid ?? null;
 
   useEffect(() => {
     if (!uid) return;
-    return subscribeSkatersHere(spot.id, setSkaters);
+    return subscribeSpotSkaters(spot.id, setSkaters);
   }, [spot.id, uid]);
 
   if (!uid) return null;
@@ -33,11 +33,11 @@ export function SkatersHere({ spot }: { spot: { id: string; name: string } }) {
   const others = (skaters ?? []).filter((s) => s.uid !== uid && s.username);
 
   return (
-    <section className="mt-4" aria-label={`Skaters at ${spot.name}`} data-testid="skaters-here">
+    <section className="mt-4" aria-label={`Who's skating at ${spot.name}`} data-testid="whos-skating-here">
       <div className="flex items-center justify-between">
         <h3 className="flex items-center gap-1.5 font-semibold text-sm text-white">
           <Users size={14} aria-hidden="true" />
-          Skaters here
+          Who&apos;s skating
         </h3>
         <span className="text-xs text-muted">{meHere ? "You're here" : "You're not checked in here"}</span>
       </div>
@@ -45,7 +45,7 @@ export function SkatersHere({ spot }: { spot: { id: string; name: string } }) {
       {skaters === null ? (
         <p className="mt-2 text-xs text-muted">Looking around…</p>
       ) : others.length === 0 ? (
-        <p className="mt-2 text-sm text-[#CCC]" data-testid="skaters-here-empty">
+        <p className="mt-2 text-sm text-[#CCC]" data-testid="whos-skating-here-empty">
           Nobody&apos;s here right now, so there&apos;s no one to challenge. Anyone who checks in shows up here.
         </p>
       ) : (

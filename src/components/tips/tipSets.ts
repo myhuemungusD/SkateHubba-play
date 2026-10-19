@@ -125,6 +125,17 @@ export const TIP_SETS: Record<string, TipSet> = {
     placement: "top",
     tips: [{ title: "skate runner", body: "tap to pop over stuff. see how far you can push." }],
   },
+  whosskating: {
+    id: "whosskating",
+    placement: "top",
+    tips: [
+      {
+        title: "who's skating",
+        body: "heads at a spot right now, then who was out lately. tap a name for their page, a spot to roll there.",
+      },
+      { title: "stay lowkey", body: "hide your online status in settings and you're off this list." },
+    ],
+  },
   pro: {
     id: "pro",
     tips: [{ title: "pro tools", body: "your pro stuff lives here: calls, challenges and featured clips." }],
