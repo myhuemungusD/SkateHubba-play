@@ -27,6 +27,7 @@
  *   node scripts/ios-preflight.mjs                 # npm run ios:preflight
  *   node scripts/ios-preflight.mjs --plugin-dir D  # use a pristine plugin dir
  *   node scripts/ios-preflight.mjs --swift FILE    # validate one Swift file
+ *   add --no-swiftc to skip the (slow) swiftc -parse step
  * Exit 0 = safe to spend a Mac build; 1 = problems printed.
  */
 
@@ -203,7 +204,7 @@ export function main(argv = process.argv.slice(2)) {
       console.log("[ios-preflight] patches applied cleanly to a pristine plugin copy");
     }
     const errors = validateSwift(readFileSync(swiftFile, "utf-8"));
-    const parse = swiftParse(swiftFile);
+    const parse = argv.includes("--no-swiftc") ? { skipped: true } : swiftParse(swiftFile);
     if (parse.skipped) console.log("[ios-preflight] swiftc not found — syntax parse skipped (static rules still ran)");
     else if (!parse.ok) errors.push(`swiftc -parse failed:\n${parse.out}`);
     else console.log("[ios-preflight] swiftc -parse OK");

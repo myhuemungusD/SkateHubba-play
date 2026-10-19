@@ -58,7 +58,7 @@ describe("ios-preflight", () => {
 
   it("main() validates a single file and returns 1 on problems", () => {
     const file = resolve(FIX, "bug3-public-witness/scripts/ios-patches/video-recorder-pro.swift.txt");
-    expect(main(["--swift", file])).toBe(1);
-    expect(main(["--plugin-dir", PRISTINE])).toBe(0);
+    expect(main(["--swift", file, "--no-swiftc"])).toBe(1);
+    expect(main(["--plugin-dir", PRISTINE, "--no-swiftc"])).toBe(0);
   });
 });
