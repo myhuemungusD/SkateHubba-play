@@ -10,16 +10,9 @@ on:
         description: 'Upload the built AAB to the Google Play internal track via fastlane'
         type: boolean
         default: false
-  push:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'android/**'
-      - 'package.json'
-      - 'capacitor.config.ts'
-      - '.github/workflows/android-aab.yml'
-    tags:
-      - 'v*'
+  # Cost (Actions budget, 2026-10-19): manual only. The old push-to-main and
+  # v* tag triggers ran a ~15-minute Android build on almost every merge.
+  # Start it by hand from the Actions tab when a Play upload is needed.
 
 concurrency:
   group: android-aab-${{ github.ref }}
