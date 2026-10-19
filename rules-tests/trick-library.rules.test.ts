@@ -1,20 +1,9 @@
 /** trickLibrary + trickVotes: verified users submit pending tricks, admins decide, one vote per user per approved trick. */
 import { describe, it } from "vitest";
 import { assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  getCountFromServer,
-  getDoc,
-  getDocs,
-  query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  where,
-} from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getCountFromServer } from "firebase/firestore";
+import { getDoc, getDocs, query, serverTimestamp } from "firebase/firestore";
+import { setDoc, updateDoc, where } from "firebase/firestore";
 import { setupRulesTestEnv } from "./_fixtures";
 
 const getEnv = setupRulesTestEnv("demo-skatehubba-rules-trick-library", async (env) => {
