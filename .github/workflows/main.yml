@@ -53,6 +53,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       code: ${{ steps.diff.outputs.code }}
+      dice: ${{ steps.diff.outputs.dice }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -76,9 +77,15 @@ jobs:
             echo "code=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
           if ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
-            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "dice=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           files=$(git diff --name-only "$BASE...$HEAD" 2>/dev/null || git diff --name-only "$BASE" "$HEAD")
+          # The dice e2e (job e2e-dice) costs ~10 runner minutes, so it runs only
+          # when something the dice loop depends on changed, and on every push to main.
+          if [ "$EVENT" = "push" ] || echo "$files" | grep -qiE '(dice|^functions/src/(index|push/)|^firestore\.rules$|^firebase\.json$|^package-lock\.json$|^functions/package-lock\.json$|^\.github/workflows/main\.yml$|^playwright\.config\.ts$|^e2e/helpers/)'; then
+            echo "dice=true" >> "$GITHUB_OUTPUT"
+          fi
           # functions/ is skipped here too: pr-gate.yml's "Build and test Cloud
           # Functions" job covers it, and the web build never imports it.
           if [ -z "$files" ] || echo "$files" | grep -qvE '(\.md$|^docs/|^design/|^functions/|^LICENSE|^\.github/ISSUE_TEMPLATE/)'; then
@@ -307,6 +314,86 @@ jobs:
           path: |
             playwright-report/
             e2e-output.log
+          retention-days: 14
+
+  # Roll Dice end to end: both seats, every game, on the emulators WITH the
+  # functions emulator (the diceAction callable rolls every die). The dice
+  # switches are on for this run only (scripts/e2e-dice.mjs); nothing deploys.
+  e2e-dice:
+    needs: [changes, build-and-test]
+    if: ${{ !cancelled() && needs.changes.outputs.dice == 'true' && needs.build-and-test.result != 'failure' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: npm ci
+
+      - run: npm --prefix functions ci
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Cache Firebase emulator binaries
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps (browser cached)
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Run dice E2E
+        id: e2e_run
+        continue-on-error: true
+        # pipefail so a red suite isn't hidden behind tee's exit code (see the e2e job).
+        shell: bash -eo pipefail {0}
+        env:
+          DICE_TIMEOUT: "900000"
+        run: npm run test:e2e:dice 2>&1 | tee e2e-dice-output.log
+
+      - name: Dump dice E2E output to summary
+        if: always()
+        run: |
+          echo "### Dice E2E Results" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          grep -E 'passed|failed|flaky|timed out|Error|\[dice\]|✓|✘|›' e2e-dice-output.log >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "No relevant output" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if dice E2E failed
+        if: steps.e2e_run.outcome == 'failure'
+        run: exit 1
+
+      - name: Upload dice Playwright report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dice-playwright-report
+          path: |
+            playwright-report/
+            e2e-dice-output.log
           retention-days: 14
 
   lighthouse:

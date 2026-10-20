@@ -6,6 +6,11 @@
  * Run it with emulators for auth, firestore, storage AND functions, the
  * functions env DICE_ENABLED=true, and the app built with
  * VITE_FEATURE_DICE_ENABLED=true. Set DICE_SHOTS=<dir> to save screenshots.
+ * `npm run test:e2e:dice` does all of that, and CI runs it as the e2e-dice job.
+ *
+ * Deterministic on purpose: the bot waits out the server's cooldowns (one new
+ * challenge per 10s per skater, 0.7s between one skater's rolls) instead of
+ * retrying into them, and any rejected dice call fails the test.
  */
 import { test, expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { clearAll, createProfile, createUser, verifyAuthUser } from "./helpers/emulator";
@@ -19,11 +24,64 @@ const PHONE = { width: 390, height: 844 };
 const A = { email: "dice-a@test.com", password: "password123", username: "kickflipkid" };
 const B = { email: "dice-b@test.com", password: "password123", username: "nollienina" };
 
+/** Server cooldowns (functions/src/dice/engine.ts) plus a little slack. */
+const CREATE_WAIT_MS = 10_000 + 400;
+const ROLL_WAIT_MS = 700 + 150;
+
+const FS_DOCS = "http://localhost:8080/v1/projects/demo-skatehubba/databases/skatehubba/documents";
+const uids: Record<string, string> = {};
+/** Every diceAction call the server turned down, per test. */
+let rejected: string[] = [];
+const lastCreate = new Map<string, number>();
+const lastRoll = new WeakMap<Page, number>();
+
+async function pause(ms: number): Promise<void> {
+  if (ms > 0) await new Promise((r) => setTimeout(r, ms));
+}
+
+/** Wait out this skater's create cooldown before the next challenge. */
+async function createCooldown(who: string): Promise<void> {
+  await pause((lastCreate.get(who) ?? 0) + CREATE_WAIT_MS - Date.now());
+  lastCreate.set(who, Date.now());
+}
+
+/** Wait out this seat's roll cooldown. Banking doesn't throw dice, so it never waits. */
+async function rollCooldown(page: Page): Promise<void> {
+  await pause((lastRoll.get(page) ?? 0) + ROLL_WAIT_MS - Date.now());
+  lastRoll.set(page, Date.now());
+}
+
+interface NoticeRow {
+  recipientUid: string;
+  type: string;
+  body: string;
+  gameId: string;
+}
+
+/** The in-app notification docs the callable wrote for one match. */
+async function noticesFor(gameId: string): Promise<NoticeRow[]> {
+  const res = await fetch(`${FS_DOCS}/notifications?pageSize=300`, { headers: { Authorization: "Bearer owner" } });
+  if (!res.ok) throw new Error(`notifications read failed: ${res.status}`);
+  const body = (await res.json()) as { documents?: { fields: Record<string, { stringValue?: string }> }[] };
+  return (body.documents ?? [])
+    .map((d) => ({
+      recipientUid: d.fields.recipientUid?.stringValue ?? "",
+      type: d.fields.type?.stringValue ?? "",
+      body: d.fields.body?.stringValue ?? "",
+      gameId: d.fields.gameId?.stringValue ?? "",
+    }))
+    .filter((n) => n.gameId === gameId);
+}
+
+async function expectNotice(gameId: string, to: typeof A, type: string, body: string | RegExp): Promise<void> {
+  await expect
+    .poll(async () => (await noticesFor(gameId)).filter((n) => n.recipientUid === uids[to.username] && n.type === type))
+    .toContainEqual(expect.objectContaining({ body: typeof body === "string" ? body : expect.stringMatching(body) }));
+}
+
 /** Back-date a dice match's turn clock (only that field). */
 async function expireDiceTurn(gameId: string): Promise<void> {
-  const url =
-    "http://localhost:8080/v1/projects/demo-skatehubba/databases/skatehubba/documents/diceGames/" +
-    `${gameId}?updateMask.fieldPaths=turnDeadline`;
+  const url = `${FS_DOCS}/diceGames/${gameId}?updateMask.fieldPaths=turnDeadline`;
   const res = await fetch(url, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", Authorization: "Bearer owner" },
@@ -48,6 +106,7 @@ async function seed(): Promise<void> {
     const user = await createUser(p.email, p.password);
     await verifyAuthUser(p.email, user.idToken);
     await createProfile(user.uid, p.username, p.email, true, false);
+    uids[p.username] = user.uid;
   }
 }
 
@@ -58,12 +117,13 @@ async function open(browser: Browser, who: typeof A, quick: boolean): Promise<Se
     localStorage.setItem("skate_dice_quick_rolls", q ? "1" : "0");
     localStorage.setItem("skate_sound_enabled", "false");
   }, quick);
-  // Surface any rejected dice call in the test log, with the request that caused it.
+  // Record any rejected dice call, with the request that caused it; afterEach fails on them.
   page.on("response", async (res) => {
     if (!res.url().includes("diceAction") || res.ok()) return;
-    console.log(
-      `[dice] ${who.username} ${res.status()} ${res.request().postData() ?? ""} -> ${await res.text().catch(() => "")}`,
-    );
+    const line = `${who.username} ${res.status()} ${res.request().postData() ?? ""} -> ${await res.text().catch(() => "")}`;
+    console.log(`[dice] ${line}`);
+    // Two open tables racing to close the same expired turn: one wins, the other hears game_over.
+    if (!(line.includes('"claimTimeout"') && line.includes("game_over"))) rejected.push(line);
   });
   await signInViaUI(page, who.email, who.password);
   await page.waitForTimeout(1500);
@@ -75,11 +135,8 @@ async function challenge(page: Page, mode: string, opponent: string, long = fals
   await page.goto("/dice/new");
   await page.getByRole("radio", { name: new RegExp(`^${mode}`) }).check({ force: true });
   if (long) await page.getByRole("radio", { name: /^Long/ }).check({ force: true });
-  // The server allows one new challenge per 10 seconds per skater; wait it out.
-  for (let attempt = 0; attempt < 8 && page.url().endsWith("/dice/new"); attempt++) {
-    await page.getByRole("button", { name: `Challenge @${opponent}` }).click();
-    await page.waitForURL(/\/dice\/(?!new$)[^/]+$/, { timeout: 2_500 }).catch(() => undefined);
-  }
+  await createCooldown(opponent === B.username ? A.username : B.username);
+  await page.getByRole("button", { name: `Challenge @${opponent}` }).click();
   await expect(page).toHaveURL(/\/dice\/(?!new$)[^/]+$/, { timeout: 15_000 });
   const id = page.url().split("/").pop() ?? "";
   await expect(page.getByTestId("dice-waiting")).toContainText("to accept");
@@ -121,15 +178,21 @@ async function step(page: Page, mode: string): Promise<boolean> {
       const total = Number(((await bank.textContent()) ?? "").replace(/\D/g, ""));
       const left = n - keepers(faces).length;
       const roll = actions.getByRole("button", { name: /^(Roll|Hot dice)/ });
-      if (left === 0 && (await roll.isEnabled())) await roll.click();
-      else if (total >= 350 || left <= 2) await bank.click();
-      else await roll.click();
+      if (left === 0 && (await roll.isEnabled())) {
+        await rollCooldown(page);
+        await roll.click();
+      } else if (total >= 350 || left <= 2) await bank.click();
+      else {
+        await rollCooldown(page);
+        await roll.click();
+      }
       await page.waitForTimeout(400);
       return true;
     }
   }
   const roll = actions.getByRole("button", { name: /^(Roll|Hot dice)/ });
   if ((await roll.count()) === 0 || !(await roll.isEnabled())) return false;
+  await rollCooldown(page);
   await roll.click();
   await page.waitForTimeout(400);
   return true;
@@ -166,6 +229,7 @@ test.describe("Roll Dice", () => {
   let b: Seat;
 
   test.beforeEach(async ({ browser }) => {
+    rejected = [];
     await clearAll();
     await seed();
     a = await open(browser, A, true);
@@ -175,6 +239,7 @@ test.describe("Roll Dice", () => {
   test.afterEach(async () => {
     await a.ctx.close();
     await b.ctx.close();
+    expect(rejected, "the server turned down a dice call").toEqual([]);
   });
 
   for (const [mode, slug] of [
@@ -191,16 +256,27 @@ test.describe("Roll Dice", () => {
       await shot(a.page, `${slug}-02-new`);
       const id = await challenge(a.page, mode, B.username);
       await shot(a.page, `${slug}-03-pending-challenger`);
+      await expectNotice(
+        id,
+        B,
+        "dice_challenge",
+        `@${A.username} challenged you to ${mode}, race to ${mode === "10,000" ? "5,000" : "5"}.`,
+      );
       await b.page.goto("/dice");
       await expect(b.page.getByTestId("dice-match-row").first()).toContainText("Challenged you");
       await shot(b.page, `${slug}-04-hub-incoming`);
       await accept(b.page, id);
+      await expectNotice(id, A, "dice_turn", `@${B.username} accepted. Your roll.`);
       await a.page.goto(`/dice/${id}`);
       await expect(
         dock(a.page).getByRole("button", { name: /^Roll/ }).or(a.page.getByTestId("dice-waiting")),
       ).toBeVisible();
 
       await playOut(a.page, b.page, mode, slug);
+      // Turn passes and the result reach both skaters' notifications (push rides on the same docs).
+      await expectNotice(id, B, "dice_turn", /Your (roll|turn)\.$/);
+      await expectNotice(id, A, "dice_result", /won /);
+      await expectNotice(id, B, "dice_result", /won /);
       await expect(a.page.getByTestId("dice-result")).toContainText(/You (won|lost)/);
       await expect(a.page.getByTestId("dice-result")).toContainText("Rep");
       await shot(a.page, `${slug}-05-result-a`);
@@ -249,6 +325,8 @@ test.describe("Roll Dice", () => {
       .getByRole("button", { name: /^Nudge/ })
       .click();
     await expect(dock(waiter).getByRole("button", { name: "Nudged" })).toBeDisabled();
+    const [waiterSkater, rollerSkater] = waiter === a.page ? [A, B] : [B, A];
+    await expectNotice(forfeit, rollerSkater, "dice_turn", `@${waiterSkater.username} is waiting on your roll.`);
     await shot(waiter, "flow-04-nudged");
     await roller.getByRole("button", { name: "Forfeit match" }).click();
     await shot(roller, "flow-05-forfeit-confirm");
