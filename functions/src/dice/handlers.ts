@@ -328,7 +328,9 @@ async function moveDice(db: DiceDb, actor: Actor, gameId: string, move: RollKind
   const committed = await db.runTransaction(async (tx) => {
     const loaded = await loadGame(tx, gameId, actor.uid);
     const last = loaded.data.lastRollAt;
-    if (typeof last === "number" && actor.nowMs - last < ROLL_COOLDOWN_MS) throw new DiceActionError("slow_down");
+    // Banking throws no dice, so only a roll waits out the cooldown.
+    const cooling = move.kind === "roll" && typeof last === "number" && actor.nowMs - last < ROLL_COOLDOWN_MS;
+    if (cooling) throw new DiceActionError("slow_down");
     const applied = guard(() => play(loaded.state, actor.uid, move));
     const rep = await writeStats(tx, applied.state, actor.nowMs);
     const built = noticesForRoll(

@@ -237,6 +237,14 @@ describe("4-5-6, craps and 10,000 through the handler", () => {
     expect(banked).toMatchObject({ label: "Banked 150", scores: { u1: 150, u2: 0 }, currentTurn: "u2" });
     await expect(bankDice(db, actor("u2", t + 2_000), "game-1", [])).rejects.toMatchObject({ code: "bad_keep" });
   });
+
+  it("10,000: banking right after a roll skips the roll cooldown", async () => {
+    const t = await started(db, "ten");
+    queueDice(1, 5, 2, 3, 3, 6);
+    await rollDice(db, actor("u1", t + 2_000), "game-1");
+    await expect(rollDice(db, actor("u1", t + 2_100), "game-1", [0])).rejects.toMatchObject({ code: "slow_down" });
+    expect(await bankDice(db, actor("u1", t + 2_100), "game-1", [0, 1])).toMatchObject({ label: "Banked 150" });
+  });
 });
 
 describe("leaving, declining and timeouts", () => {

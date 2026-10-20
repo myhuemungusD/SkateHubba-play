@@ -103,7 +103,9 @@ async function step(page: Page, mode: string): Promise<boolean> {
       const faces: number[] = [];
       for (let i = 0; i < n; i++)
         faces.push(Number(await toggles.nth(i).locator("[data-face]").getAttribute("data-face")));
-      for (const i of keepers(faces)) await toggles.nth(i).click();
+      for (const i of keepers(faces)) {
+        if ((await toggles.nth(i).getAttribute("aria-pressed")) !== "true") await toggles.nth(i).click();
+      }
       const bank = actions.getByRole("button", { name: /^Bank/ });
       const total = Number(((await bank.textContent()) ?? "").replace(/\D/g, ""));
       const left = n - keepers(faces).length;
@@ -226,6 +228,9 @@ test.describe("Roll Dice", () => {
     const forfeit = await challenge(a.page, "C-Lo", B.username);
     await accept(b.page, forfeit);
     await a.page.goto(`/dice/${forfeit}`);
+    await expect(
+      dock(a.page).getByRole("button", { name: /^Roll/ }).or(a.page.getByTestId("dice-waiting")),
+    ).toBeVisible();
     const waiter = (await dock(a.page).getByRole("button", { name: /^Roll/ }).count()) > 0 ? b.page : a.page;
     const roller = waiter === a.page ? b.page : a.page;
     await waiter.goto(`/dice/${forfeit}`);

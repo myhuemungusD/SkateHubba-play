@@ -1,8 +1,8 @@
 # Roll Dice
 
-Street dice (C-Lo) between two skaters. A match is round after round until someone quits or a turn times out. It is not S.K.A.T.E.: games live in `diceGames`, lifetime wins and losses live in `diceStats`, and `onGameCompleted` never sees them.
+Street dice between two skaters: C-Lo, 4-5-6, Craps and 10,000. A match is a race to a target score. It is not S.K.A.T.E.: games live in `diceGames`, records and Rep live in `diceStats`, and `onGameCompleted` never sees them.
 
-There are no chips and no wallets in this version.
+There is no gambling: no chips, no wallets, nothing to buy or cash out. Points only decide the match.
 
 ## What is off until you turn it on
 
@@ -48,8 +48,36 @@ Redeploy that preview. Production stays on the default (flag unset) until you ar
 
 App Check on `diceAction` is monitor-only (`enforceAppCheck: false`), matching `docs/APPCHECK_ROLLOUT.md`. A missing token is logged as `dice_appcheck` and the call still runs.
 
+## How a match runs
+
+1. **Challenge.** The challenger picks a game and a length on `/dice/new` (or from a profile's Roll Dice button). The match starts `pending`. The opponent gets a notification and can accept or decline. The challenger can call it off. A pending challenge expires after 24 hours. None of these touch records or Rep.
+2. **Play.** Both seats roll on the server through `diceAction`. Turns last 24 hours with one reminder 3 hours before the deadline. The waiting player can nudge once an hour.
+3. **End.** First to the target wins (`complete`, end reason `target`). Leaving after the match started, or running out of time, is a `forfeit`. Both count for records and Rep.
+4. **After.** Either player can send a rematch: same game, same length. A second tap opens the same rematch instead of making another.
+
+## Points
+
+| Game   | Dice | Targets         | How points come                                                                                                                                                      |
+| ------ | ---- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C-Lo   | 3    | 5 or 9          | Both roll each round; best hand takes it. 4-5-6 = 3, trips = 2, winning on a point = 1. A tie replays the round.                                                     |
+| 4-5-6  | 3    | 5 or 9          | C-Lo hands, but 4-5-6 or trips win on the spot (3 / 2) and 1-2-3 loses on the spot (1 to the other skater). Points still have to be beaten. Round openers alternate. |
+| Craps  | 2    | 5 or 9          | One hand each, alternating. Natural 7/11 = 1, making your point = 2, making a hard 4 or 10 = 3. Craps or seven-out = 0.                                              |
+| 10,000 | 6    | 5,000 or 10,000 | Standard farkle scoring. Set aside scoring dice, roll the rest or bank. A farkle loses the turn's points. Hot dice rolls all six again.                              |
+
+**Equal turns.** In Craps and 10,000 the first shooter can reach the target first, so the other skater always gets the same number of hands. If both are at or over the target after equal hands, the higher score wins; a tie plays on.
+
+**Rep** is an Elo rating: everyone starts at 1,000, K = 32, floor 100, and a winner always gains at least 1. Only decided matches move it (`complete`, or `forfeit` after the match started). `diceStats` also keeps wins, losses, games played, peak Rep, the current win streak and the best streak, plus per-game counts.
+
+**Old matches.** v1 documents (endless C-Lo rounds) load on both client and server as C-Lo races to 5, with rounds already won counted as points.
+
 ## Rules of the table
 
-C-Lo scoring is the Got Em implementation (`functions/src/dice/clo.ts`), copied unchanged. 4-5-6 does not win the round until the other player has rolled, and a tie clears only the tied dice.
+Hand scoring is the Got Em implementation (`clo.ts`, `craps.ts`, `farkle.ts` in `functions/src/dice/`), copied unchanged. The server rolls every die with a secure random source, scores every hand and owns every score; the client's copies in `src/screens/Dice/diceRules.ts` only drive labels and the 10,000 keep preview.
 
 Turns last 24 hours, same as S.K.A.T.E. Challenges use the same verified-email, ban, and block checks. The server rolls the dice. Clients cannot write `diceGames`, `diceStats`, or `diceCreateLimits`.
+
+## Testing
+
+- Unit: `functions/src/dice/*.test.ts` (engine, scoring, Rep, transitions, handlers) and `src/**/__tests__` for the screens.
+- Rules: `npm run test:rules`.
+- End to end: `e2e/dice.spec.ts` plays every game as both players at 390×844. It needs the functions emulator, so it skips unless `E2E_DICE=true`. Start auth, firestore, storage and functions emulators with `DICE_ENABLED=true` in `functions/.env.demo-skatehubba`, run the app with `VITE_FEATURE_DICE_ENABLED=true`, then `E2E_DICE=true npx playwright test e2e/dice.spec.ts`. `DICE_SHOTS=<dir>` saves screenshots.

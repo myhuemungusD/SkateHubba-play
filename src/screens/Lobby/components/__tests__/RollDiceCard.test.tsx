@@ -17,4 +17,13 @@ describe("RollDiceCard", () => {
     await userEvent.click(screen.getByTestId("roll-dice-card"));
     expect(screen.getByText("dice hub")).toBeInTheDocument();
   });
+
+  it("names the four games and the Rep system", () => {
+    render(
+      <MemoryRouter>
+        <RollDiceCard />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("roll-dice-card")).toHaveTextContent("build your Rep");
+  });
 });
