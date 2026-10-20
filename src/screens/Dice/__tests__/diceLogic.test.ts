@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { DiceCallResult } from "../../../services/dice";
 import { diceGame, diceRoll } from "../../../__tests__/harness/diceFixtures";
 import { cloLabel, cloPoints, needLine, tenLiveDice, tenScore, tenSelection } from "../diceRules";
 import {
@@ -189,42 +190,21 @@ describe("table state", () => {
     expect(shownRoll(diceGame({ lastRoll: diceRoll({ rollId: "new" }) }), local)?.rollId).toBe("new");
     expect(shownRoll(diceGame({ lastRoll: diceRoll({ rollId: "later" }) }), local)?.rollId).toBe("later");
     expect(shownRoll(game, null)?.rollId).toBe("old");
-    expect(
-      localFromResult(
-        {
-          gameId: "g",
-          status: "active",
-          label: null,
-          outcome: null,
-          callout: null,
-          dice: null,
-          rollId: null,
-          currentTurn: null,
-          scores: {},
-          winner: null,
-          applied: true,
-        },
-        "u1",
-        null,
-      ),
-    ).toBeNull();
-    const bare = localFromResult(
-      {
-        gameId: "g",
-        status: "active",
-        label: null,
-        outcome: null,
-        callout: null,
-        dice: [1],
-        rollId: "x",
-        currentTurn: null,
-        scores: {},
-        winner: null,
-        applied: true,
-      },
-      "u1",
-      null,
-    );
+    const blank = (dice: number[] | null, rollId: string | null): DiceCallResult => ({
+      gameId: "g",
+      status: "active",
+      label: null,
+      outcome: null,
+      callout: null,
+      dice,
+      rollId,
+      currentTurn: null,
+      scores: {},
+      winner: null,
+      applied: true,
+    });
+    expect(localFromResult(blank(null, null), "u1", null)).toBeNull();
+    const bare = localFromResult(blank([1], "x"), "u1", null);
     expect(bare?.roll).toMatchObject({ label: "", outcome: "" });
   });
 
