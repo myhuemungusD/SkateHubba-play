@@ -176,7 +176,7 @@ describe("a full C-Lo match", () => {
 
   it("rejects the wrong player, a stranger, a keep list, and a second roll inside the cooldown", async () => {
     const t = await started(db);
-    queueDice(1, 3, 5, 1, 1, 2);
+    queueDice(1, 3, 5, 1, 3, 5);
     await expect(rollDice(db, actor("u2", t + 2_000), "game-1")).rejects.toMatchObject({ code: "not_your_turn" });
     await expect(rollDice(db, actor("zz", t + 2_000), "game-1")).rejects.toMatchObject({ code: "not_a_player" });
     await expect(rollDice(db, actor("u1", t + 2_000), "game-1", [0])).rejects.toMatchObject({ code: "bad_keep" });
