@@ -32,6 +32,8 @@ const FS_DOCS = "http://localhost:8080/v1/projects/demo-skatehubba/databases/ska
 const uids: Record<string, string> = {};
 /** Every diceAction call the server turned down, per test. */
 let rejected: string[] = [];
+/** Codes a test provokes on purpose. */
+let provoked: string[] = [];
 const lastCreate = new Map<string, number>();
 const lastRoll = new WeakMap<Page, number>();
 
@@ -123,7 +125,8 @@ async function open(browser: Browser, who: typeof A, quick: boolean): Promise<Se
     const line = `${who.username} ${res.status()} ${res.request().postData() ?? ""} -> ${await res.text().catch(() => "")}`;
     console.log(`[dice] ${line}`);
     // Two open tables racing to close the same expired turn: one wins, the other hears game_over.
-    if (!(line.includes('"claimTimeout"') && line.includes("game_over"))) rejected.push(line);
+    const raced = line.includes('"claimTimeout"') && line.includes("game_over");
+    if (!raced && !provoked.some((code) => line.includes(`"${code}"`))) rejected.push(line);
   });
   await signInViaUI(page, who.email, who.password);
   await page.waitForTimeout(1500);
@@ -230,6 +233,7 @@ test.describe("Roll Dice", () => {
 
   test.beforeEach(async ({ browser }) => {
     rejected = [];
+    provoked = [];
     await clearAll();
     await seed();
     a = await open(browser, A, true);
@@ -281,6 +285,14 @@ test.describe("Roll Dice", () => {
       await expect(a.page.getByTestId("dice-result")).toContainText("Rep");
       await shot(a.page, `${slug}-05-result-a`);
       await shot(b.page, `${slug}-06-result-b`);
+      for (const [page, seat] of [
+        [a.page, "a"],
+        [b.page, "b"],
+      ] as const) {
+        await page.getByTestId("dice-round-row").first().scrollIntoViewIfNeeded();
+        await shot(page, `fix-${slug}-hand-log-${seat}`);
+        await page.evaluate(() => window.scrollTo(0, 0));
+      }
 
       await a.page.getByRole("button", { name: "Rematch" }).click();
       await expect(a.page).not.toHaveURL(new RegExp(`/dice/${id}$`), { timeout: 15_000 });
@@ -296,6 +308,15 @@ test.describe("Roll Dice", () => {
   test("decline, call off, forfeit, timeout, nudge, info sheet, offline", async () => {
     // Decline
     const declined = await challenge(a.page, "C-Lo", B.username);
+    // Too soon for another challenge: the new-match screen counts the cooldown down.
+    provoked = ["create_cooldown"];
+    await a.page.goto("/dice/new");
+    await a.page.getByRole("button", { name: `Challenge @${B.username}` }).click();
+    await expect(a.page.getByTestId("dice-new-cooldown")).toHaveText(
+      /^You just started a match\. Try again in \d+s\.$/,
+    );
+    await shot(a.page, "fix-new-cooldown");
+    await a.page.goto(`/dice/${declined}`);
     await b.page.goto(`/dice/${declined}`);
     await shot(b.page, "flow-01-accept-or-decline");
     await dock(b.page).getByRole("button", { name: "Decline" }).click();
