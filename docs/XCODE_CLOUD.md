@@ -99,7 +99,7 @@ the eye icon) or from the Firebase console.
 | `GOOGLE_SERVICE_INFO_PLIST_BASE64`  | Yes            | Firebase console > Project settings > iOS app `com.skatehubba.app` > download `GoogleService-Info.plist`, then paste its base64 (or the raw XML) |
 
 Public App Store flags are hard-coded on in `ci_post_clone.sh` (same as
-`ios-release.yml`): `EXTRAS`, `MAP_CHECKINS`, `SPOT_PRESENCE`, `TIPS`,
+`ios-release.yml`): `EXTRAS`, `MAP_CHECKINS`, `TIPS`,
 Apple Sign-In, pro blessing/profiles. Optional tester toggles (leave unset
 for store builds; `true` turns the screen on for everyone who installs the
 build): `VITE_FEATURE_DICE_ENABLED`, `VITE_FEATURE_CLIP_EDITOR`,

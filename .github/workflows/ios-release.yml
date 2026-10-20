@@ -170,12 +170,11 @@ jobs:
           VITE_FEATURE_PROFILE_BANNER: ${{ inputs.profile_banner && 'true' || 'false' }}
           # Public: Map tab, Clips feed, Verified Pro (matches store screenshots).
           VITE_FEATURE_EXTRAS_ENABLED: "true"
-          # Public: spot passport / verified check-ins UI. Server still gates
-          # writes with MAP_CHECKINS_ENABLED / MAP_TESTER_UIDS.
+          # Public: spot passport / verified check-ins. Server MAP_CHECKINS_ENABLED=true.
           VITE_FEATURE_MAP_CHECKINS: "true"
-          # Public: Who's skating + online dots. Server still gates writes with
-          # SPOT_PRESENCE_ENABLED / SPOT_PRESENCE_TESTER_UIDS.
-          VITE_FEATURE_SPOT_PRESENCE: "true"
+          # Testers only (Jason + Mike via config/featureTesters): Who's skating +
+          # online dots. Server SPOT_PRESENCE_ENABLED stays false.
+          VITE_FEATURE_SPOT_PRESENCE: "false"
           # Public: Hesher tip bubbles (client-only, never on camera).
           VITE_FEATURE_TIPS: "true"
           # Map key required now that Map is public (and for testers).
