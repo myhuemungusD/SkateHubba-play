@@ -25,9 +25,23 @@ interface Props {
   canChallenge: boolean;
   onViewPlayer?: (uid: string) => void;
   onChallengeUser: (username: string) => void;
+  /**
+   * Seconds left on a challenge cooldown. While set, every Challenge button
+   * is disabled and shows the countdown in its text and accessible name.
+   */
+  waitSeconds?: number | null;
 }
 
-export function PlayerDirectory({ players, loading, canChallenge, onViewPlayer, onChallengeUser }: Props) {
+export function PlayerDirectory({
+  players,
+  loading,
+  canChallenge,
+  onViewPlayer,
+  onChallengeUser,
+  waitSeconds = null,
+}: Props) {
+  const waiting = waitSeconds !== null && waitSeconds > 0;
+  const enabled = canChallenge && !waiting;
   if (loading) {
     return (
       <div className="mb-6" role="status" aria-busy="true" aria-label="Loading skaters">
@@ -97,11 +111,13 @@ export function PlayerDirectory({ players, loading, canChallenge, onViewPlayer, 
             <button
               type="button"
               onClick={() => onChallengeUser(p.username)}
-              disabled={!canChallenge}
-              className={`font-display text-xs shrink-0 min-h-[44px] px-3 inline-flex items-center justify-center rounded-lg border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${canChallenge ? "text-brand-orange border-brand-orange/30 hover:bg-brand-orange/10 cursor-pointer" : "text-subtle border-border cursor-not-allowed opacity-60"}`}
-              aria-label={`Challenge @${p.username}`}
+              disabled={!enabled}
+              className={`font-display text-xs shrink-0 min-h-[44px] px-3 inline-flex items-center justify-center rounded-lg border transition-colors tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${enabled ? "text-brand-orange border-brand-orange/30 hover:bg-brand-orange/10 cursor-pointer" : "text-subtle border-border cursor-not-allowed opacity-60"}`}
+              aria-label={
+                waiting ? `Challenge @${p.username}, available in ${waitSeconds}s` : `Challenge @${p.username}`
+              }
             >
-              Challenge
+              {waiting ? `Wait ${waitSeconds}s` : "Challenge"}
             </button>
           </div>
         ))}

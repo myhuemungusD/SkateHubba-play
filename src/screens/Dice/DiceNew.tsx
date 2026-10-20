@@ -180,7 +180,12 @@ export function DiceNew() {
             @{preset.username}
           </p>
         ) : (
-          <OpponentPicker viewerUid={user.uid} collapsed={busy} onSelect={(username) => void send({ username })} />
+          <OpponentPicker
+            viewerUid={user.uid}
+            collapsed={busy}
+            waitSeconds={retryAt !== null ? Math.max(1, Math.ceil(waitMs / 1000)) : null}
+            onSelect={(username) => void send({ username })}
+          />
         )}
       </section>
 

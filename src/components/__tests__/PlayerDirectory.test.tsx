@@ -101,6 +101,21 @@ describe("PlayerDirectory", () => {
     expect(onChallengeUser).toHaveBeenCalledWith("kickflip_king");
   });
 
+  it("waits out a challenge cooldown with the seconds in the button and its name", async () => {
+    const onChallengeUser = vi.fn();
+    const players = [player({ uid: "u2", username: "kickflip_king" })];
+    const { rerender } = render(
+      <PlayerDirectory {...base} players={players} waitSeconds={7} onChallengeUser={onChallengeUser} />,
+    );
+    const waiting = screen.getByRole("button", { name: "Challenge @kickflip_king, available in 7s" });
+    expect(waiting).toBeDisabled();
+    expect(waiting).toHaveTextContent("Wait 7s");
+    await userEvent.click(waiting);
+    expect(onChallengeUser).not.toHaveBeenCalled();
+    rerender(<PlayerDirectory {...base} players={players} waitSeconds={0} onChallengeUser={onChallengeUser} />);
+    expect(screen.getByRole("button", { name: "Challenge @kickflip_king" })).toBeEnabled();
+  });
+
   it("disables every Challenge button when canChallenge is false", async () => {
     const onChallengeUser = vi.fn();
     const players = [

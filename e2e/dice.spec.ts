@@ -317,7 +317,10 @@ test.describe("Roll Dice", () => {
     await expect(a.page.getByTestId("dice-new-cooldown")).toHaveText(
       /^You just started a match\. Try again in \d+s\.$/,
     );
-    await shot(a.page, "fix-new-cooldown");
+    await expect(
+      a.page.getByRole("button", { name: new RegExp(`^Challenge @${B.username}, available in \\d+s$`) }),
+    ).toBeDisabled();
+    await shot(a.page, "fix-hub-cooldown");
     await a.page.goto(`/dice/${declined}`);
     await b.page.goto(`/dice/${declined}`);
     await shot(b.page, "flow-01-accept-or-decline");

@@ -14,9 +14,15 @@ const env = vi.hoisted(() => ({
 vi.mock("../../../context/AuthContext", () => ({ useAuthContext: () => ({ user: env.user }) }));
 vi.mock("../../../hooks/useDice", () => ({ useMyDiceGames: () => env.hub }));
 vi.mock("../../../components/OpponentPicker", () => ({
-  OpponentPicker: ({ onSelect }: { onSelect: (username: string) => void }) => (
-    <button type="button" onClick={() => onSelect("fox")}>
-      Pick fox
+  OpponentPicker: ({
+    onSelect,
+    waitSeconds,
+  }: {
+    onSelect: (username: string) => void;
+    waitSeconds?: number | null;
+  }) => (
+    <button type="button" onClick={() => onSelect("fox")} disabled={Boolean(waitSeconds)}>
+      {waitSeconds ? `Pick fox in ${waitSeconds}s` : "Pick fox"}
     </button>
   ),
 }));
@@ -154,6 +160,15 @@ describe("DiceNew", () => {
     await userEvent.click(screen.getByRole("button", { name: "Send challenge" }));
     expect(createDiceGame).toHaveBeenCalledWith("u2", "craps", 5);
     expect(getUidByUsername).not.toHaveBeenCalled();
+  });
+
+  it("holds the skater list's Challenge buttons during the cooldown", async () => {
+    vi.mocked(getUidByUsername).mockResolvedValue("u2");
+    vi.mocked(createDiceGame).mockRejectedValueOnce({ retryAfterMs: 1_400 });
+    renderAt("/dice/new");
+    await userEvent.click(screen.getByRole("button", { name: "Pick fox" }));
+    expect(await screen.findByRole("button", { name: "Pick fox in 2s" })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Pick fox" })).toBeEnabled(), { timeout: 3_000 });
   });
 
   it("counts down the create cooldown, then lets you send again", async () => {
