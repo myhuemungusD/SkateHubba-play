@@ -98,14 +98,11 @@ the eye icon) or from the Firebase console.
 | `VITE_MAPBOX_STYLE_URL`             | No (optional)  | Vercel Production, if set                                                                                                                        |
 | `GOOGLE_SERVICE_INFO_PLIST_BASE64`  | Yes            | Firebase console > Project settings > iOS app `com.skatehubba.app` > download `GoogleService-Info.plist`, then paste its base64 (or the raw XML) |
 
-Public App Store flags are hard-coded on in `ci_post_clone.sh` (same as
-`ios-release.yml`): `EXTRAS`, `MAP_CHECKINS`, `SPOT_PRESENCE`, `TIPS`,
-Apple Sign-In, pro blessing/profiles. Optional tester toggles (leave unset
-for store builds; `true` turns the screen on for everyone who installs the
-build): `VITE_FEATURE_DICE_ENABLED`, `VITE_FEATURE_CLIP_EDITOR`,
-`VITE_FEATURE_PRO_CAMERA`, `VITE_FEATURE_WTT_ENABLED`,
-`VITE_FEATURE_PROFILE_BANNER`. Jason and Mike already see every feature
-through the `config/featureTesters` override. See [FEATURE_FLAGS.md](FEATURE_FLAGS.md).
+Every finished feature is hard-coded on in `ci_post_clone.sh` (same list as
+`ios-release.yml`; see [FEATURE_FLAGS.md](FEATURE_FLAGS.md)). Skate Runner,
+buying Hubba Bucks and SMS two-step sign-in stay off. `VITE_FEATURE_WTT_ENABLED`
+is the only optional toggle; leave it unset for store builds. Jason and Mike
+see every feature through the `config/featureTesters` override.
 
 Not needed on Xcode Cloud: `ASC_KEY_*`, `MATCH_*`, `APPLE_TEAM_ID`. Apple
 signs with cloud-managed certificates and uploads with the team's own access.

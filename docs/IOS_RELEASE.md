@@ -9,7 +9,7 @@ Every iPhone build runs on a rented Mac and costs money (about $0.50 a try on Gi
 - No merge starts a Mac build. `ios-release.yml` (TestFlight) and `ios-signing-bootstrap.yml` run only when someone clicks **Run workflow**. Xcode Cloud is set to **Manual Start** ([XCODE_CLOUD.md](XCODE_CLOUD.md)).
 - `ios-build.yml` (the unsigned simulator check) also runs when a GitHub release is published or a `v*` tag is pushed. Merging the release-please PR does both, so treat that merge as a paid build.
 - Batch changes and build rarely. Run `npm run ios:preflight` first: it checks the native patches for free on Linux and catches the mistakes that broke builds before. The TestFlight workflow runs it again before it rents the Mac, and `ios-preflight.yml` runs it on PRs that touch the patches.
-- Leave the workflow's tester tick boxes unticked. Testers in `config/featureTesters` already get every feature through the runtime override ([FEATURE_FLAGS.md](FEATURE_FLAGS.md)).
+- Leave the workflow's What's That Trick tick box unticked. Testers in `config/featureTesters` already get every feature through the runtime override ([FEATURE_FLAGS.md](FEATURE_FLAGS.md)).
 
 ## First-time setup
 
@@ -98,7 +98,7 @@ Open the SkateHubba repo → **Settings** → **Secrets and variables** → **Ac
 
 Leave `MATCH_GIT_URL` unset. The workflows already use `https://github.com/myhuemungusD/skatehubba-certs.git`. Set `MATCH_GIT_URL` only if you created the cert repo at a different address, and use an `https://` URL with no token in it.
 
-The TestFlight workflow forces public App Store flags on (`EXTRAS`, `MAP_CHECKINS`, `SPOT_PRESENCE`, `TIPS`, Apple Sign-In, pro blessing/profiles) and keeps Dice / Runner / WTT / Closet Studio / admin / XP off unless a tester tick box is used. Do not add a secret that turns Roll Dice on for a store build. See [FEATURE_FLAGS.md](FEATURE_FLAGS.md).
+The TestFlight workflow turns every finished feature on (the full list is in [FEATURE_FLAGS.md](FEATURE_FLAGS.md)). Only Skate Runner, What's That Trick (tick box for testers), buying Hubba Bucks and SMS two-step sign-in stay off. Do not turn on Hubba Bucks purchases until the in-app purchase products exist in App Store Connect.
 
 ## 6. Run the bootstrap once
 
