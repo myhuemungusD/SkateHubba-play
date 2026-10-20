@@ -41,10 +41,13 @@ async function pause(ms: number): Promise<void> {
   if (ms > 0) await new Promise((r) => setTimeout(r, ms));
 }
 
-/** Wait out this skater's create cooldown before the next challenge. */
+/**
+ * Wait out this skater's create cooldown before the next challenge. The clock
+ * restarts once the server has made the match (see challenge), since the
+ * server stamps the create when it runs, which can be well after the click.
+ */
 async function createCooldown(who: string): Promise<void> {
   await pause((lastCreate.get(who) ?? 0) + CREATE_WAIT_MS - Date.now());
-  lastCreate.set(who, Date.now());
 }
 
 /** Wait out this seat's roll cooldown. Banking doesn't throw dice, so it never waits. */
@@ -138,9 +141,11 @@ async function challenge(page: Page, mode: string, opponent: string, long = fals
   await page.goto("/dice/new");
   await page.getByRole("radio", { name: new RegExp(`^${mode}`) }).check({ force: true });
   if (long) await page.getByRole("radio", { name: /^Long/ }).check({ force: true });
-  await createCooldown(opponent === B.username ? A.username : B.username);
+  const challenger = opponent === B.username ? A.username : B.username;
+  await createCooldown(challenger);
   await page.getByRole("button", { name: `Challenge @${opponent}` }).click();
   await expect(page).toHaveURL(/\/dice\/(?!new$)[^/]+$/, { timeout: 15_000 });
+  lastCreate.set(challenger, Date.now());
   const id = page.url().split("/").pop() ?? "";
   await expect(page.getByTestId("dice-waiting")).toContainText("to accept");
   return id;
