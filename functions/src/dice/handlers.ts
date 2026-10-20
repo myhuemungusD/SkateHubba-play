@@ -40,10 +40,18 @@ import { writeStats } from "./stats.js";
 import type { DiceDb, DiceTx } from "./store.js";
 
 export class DiceActionError extends Error {
-  constructor(readonly code: string) {
+  /** `retryAfterMs` rides along on cooldowns so the app can say when to try again. */
+  constructor(
+    readonly code: string,
+    readonly details?: { retryAfterMs: number },
+  ) {
     super(code);
     this.name = "DiceActionError";
   }
+}
+
+function cooldown(code: string, windowMs: number, sinceMs: number): DiceActionError {
+  return new DiceActionError(code, { retryAfterMs: Math.max(1, windowMs - sinceMs) });
 }
 
 export interface DiceActionResult {
@@ -82,6 +90,9 @@ const ENGINE_CODES: Record<string, string> = {
   BAD_KEEP: "bad_keep",
   NOTHING_TO_BANK: "bad_keep",
   WRONG_MODE: "wrong_mode",
+  // A doc missing a seat or a roll it should have: unreadable, not a server fault.
+  NO_OPPONENT: "bad_doc",
+  MISSING_ROLL: "bad_doc",
 };
 
 function mapEngineError(err: unknown): never {
@@ -240,7 +251,9 @@ async function openChallenge(
   const committed = await db.runTransaction(async (tx) => {
     const limit = await tx.get(`diceCreateLimits/${actor.uid}`);
     const last = limit.data?.lastCreateAt;
-    if (typeof last === "number" && actor.nowMs - last < CREATE_COOLDOWN_MS) throw new DiceActionError("slow_down");
+    if (typeof last === "number" && actor.nowMs - last < CREATE_COOLDOWN_MS) {
+      throw cooldown("create_cooldown", CREATE_COOLDOWN_MS, actor.nowMs - last);
+    }
     if ((await countOpen(tx, actor.uid)) >= ACTIVE_GAME_CAP) throw new DiceActionError("too_many_active");
     if (rematchOf) {
       const old = await tx.get(`diceGames/${rematchOf}`);
@@ -333,7 +346,7 @@ async function moveDice(db: DiceDb, actor: Actor, gameId: string, move: RollKind
     const lastRoll = loaded.data.lastRoll as { uid?: unknown } | null | undefined;
     const mine = lastRoll?.uid === actor.uid;
     const cooling = move.kind === "roll" && mine && typeof last === "number" && actor.nowMs - last < ROLL_COOLDOWN_MS;
-    if (cooling) throw new DiceActionError("slow_down");
+    if (cooling) throw cooldown("slow_down", ROLL_COOLDOWN_MS, actor.nowMs - last);
     const applied = guard(() => play(loaded.state, actor.uid, move));
     const rep = await writeStats(tx, applied.state, actor.nowMs);
     const built = noticesForRoll(
@@ -445,7 +458,9 @@ export async function nudgeDice(db: DiceDb, actor: Actor, gameId: string): Promi
     if (state.status !== "active") throw new DiceActionError("game_over");
     if (state.seats[state.current] === actor.uid) throw new DiceActionError("your_turn");
     const last = loaded.data.nudgedAt;
-    if (typeof last === "number" && actor.nowMs - last < NUDGE_COOLDOWN_MS) throw new DiceActionError("nudge_cooldown");
+    if (typeof last === "number" && actor.nowMs - last < NUDGE_COOLDOWN_MS) {
+      throw cooldown("nudge_cooldown", NUDGE_COOLDOWN_MS, actor.nowMs - last);
+    }
     const built = noticeForNudge(gameId, state, actor.uid, actor.nowMs, namesFrom(loaded.data, state));
     stageNotices(tx, built);
     tx.update(`diceGames/${gameId}`, { nudgedAt: actor.nowMs });

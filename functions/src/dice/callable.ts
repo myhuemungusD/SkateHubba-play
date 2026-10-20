@@ -27,13 +27,15 @@ export interface DiceCallDeps {
   db: DiceDb;
 }
 
+/** The message is the dice code; `details` repeats it and adds `retryAfterMs` on cooldowns. */
 function httpsFromAction(err: DiceActionError): HttpsError {
-  if (err.code === "not_a_player") return new HttpsError("permission-denied", err.code);
-  if (err.code === "not_found") return new HttpsError("not-found", err.code);
+  const details = { code: err.code, ...err.details };
+  if (err.code === "not_a_player") return new HttpsError("permission-denied", err.code, details);
+  if (err.code === "not_found") return new HttpsError("not-found", err.code, details);
   if (["self_challenge", "bad_dice", "bad_doc", "bad_mode", "bad_keep", "wrong_mode"].includes(err.code)) {
-    return new HttpsError("invalid-argument", err.code);
+    return new HttpsError("invalid-argument", err.code, details);
   }
-  return new HttpsError("failed-precondition", err.code);
+  return new HttpsError("failed-precondition", err.code, details);
 }
 
 /** 10,000 keep choice: up to six distinct die indexes. Anything else is a bad request. */

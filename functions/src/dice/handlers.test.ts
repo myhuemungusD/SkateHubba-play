@@ -98,7 +98,10 @@ describe("challenge", () => {
 
   it("refuses a second create inside the cooldown and an eleventh open match (pending counts)", async () => {
     await createDiceGame(db, actor("u1"), "u2");
-    await expect(createDiceGame(db, actor("u1", NOW + 1_000), "u2")).rejects.toMatchObject({ code: "slow_down" });
+    await expect(createDiceGame(db, actor("u1", NOW + 1_000), "u2")).rejects.toMatchObject({
+      code: "create_cooldown",
+      details: { retryAfterMs: 9_000 },
+    });
     for (let i = 0; i < 9; i++) db.seed(`diceGames/x${i}`, { player2Uid: "u1", status: i % 2 ? "active" : "pending" });
     await expect(createDiceGame(db, actor("u1", NOW + 60_000), "u2")).rejects.toMatchObject({
       code: "too_many_active",
@@ -181,7 +184,10 @@ describe("a full C-Lo match", () => {
     await expect(rollDice(db, actor("zz", t + 2_000), "game-1")).rejects.toMatchObject({ code: "not_a_player" });
     await expect(rollDice(db, actor("u1", t + 2_000), "game-1", [0])).rejects.toMatchObject({ code: "bad_keep" });
     expect(await rollDice(db, actor("u1", t + 2_000), "game-1")).toMatchObject({ currentTurn: "u1" });
-    await expect(rollDice(db, actor("u1", t + 2_100), "game-1")).rejects.toMatchObject({ code: "slow_down" });
+    await expect(rollDice(db, actor("u1", t + 2_100), "game-1")).rejects.toMatchObject({
+      code: "slow_down",
+      details: { retryAfterMs: 600 },
+    });
   });
 
   it("refuses missing and unreadable games", async () => {
@@ -308,7 +314,10 @@ describe("nudge", () => {
     await expect(nudgeDice(db, actor("u1", NOW + 2_000), "game-1")).rejects.toMatchObject({ code: "your_turn" });
     await nudgeDice(db, actor("u2", NOW + 2_000), "game-1");
     expect(notices(db).some((n) => n.body === "@remy is waiting on your roll." && n.recipientUid === "u1")).toBe(true);
-    await expect(nudgeDice(db, actor("u2", NOW + 60_000), "game-1")).rejects.toMatchObject({ code: "nudge_cooldown" });
+    await expect(nudgeDice(db, actor("u2", NOW + 60_000), "game-1")).rejects.toMatchObject({
+      code: "nudge_cooldown",
+      details: { retryAfterMs: 3600_000 - 58_000 },
+    });
     await nudgeDice(db, actor("u2", NOW + 2_000 + 3600_000), "game-1");
   });
 

@@ -164,7 +164,8 @@ export function noticesForRoll(
     case "round": {
       const next = effect.nextUid;
       if (MODE_RULES[after.mode].alternating) {
-        const what = effect.points > 0 ? `${label} (+${plural(effect.points)})` : label;
+        // A 10,000 bank already names its points ("Banked 1,050"); don't say it twice.
+        const what = effect.points > 0 && after.mode !== "ten" ? `${label} (+${plural(effect.points)})` : label;
         return [
           notice(gameId, key, actorUid, next, "dice_turn", `@${actor}: ${what}. ${scoreFor(after, next)}. Your turn.`),
         ];

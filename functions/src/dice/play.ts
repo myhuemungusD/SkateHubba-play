@@ -19,6 +19,11 @@ import { ten10kScoreCombo } from "./farkle.js";
 import { cloHandPoints, crapsHandPoints } from "./points.js";
 import { EMPTY_TEN, assertTurn, otherSeat, seatIndex, settleMatch, type DiceMatch, type TenState } from "./engine.js";
 
+/** 1,050 rather than 1050 in labels people read. */
+function fmt(n: number): string {
+  return n.toLocaleString("en-US");
+}
+
 export interface HandView {
   dice: number[];
   label: string;
@@ -306,14 +311,14 @@ export function applyTenRoll(
   const rollCount = state.rollCount + 1;
   const best = ten10kScoreCombo(dice).score;
   if (best === 0) {
-    const label = taken.turnScore > 0 ? `Farkle · lost ${taken.turnScore}` : "Farkle";
+    const label = taken.turnScore > 0 ? `Farkle · lost ${fmt(taken.turnScore)}` : "Farkle";
     const ended = endHand(state, uid, 0, label, dice, rollCount);
     return { ...ended, label, outcome: "farkle", callout: "Bail", dice };
   }
   return {
     state: { ...state, ten: { turnScore: taken.turnScore, kept: taken.kept, rolled: [...dice] }, rollCount },
     effect: { type: "again" },
-    label: taken.hot ? "Hot dice" : `Up to ${best} on the table`,
+    label: taken.hot ? "Hot dice" : `Up to ${fmt(best)} on the table`,
     outcome: taken.hot ? "hot" : "rolled",
     callout: taken.hot ? "Hot dice" : null,
     dice,
@@ -326,7 +331,7 @@ export function applyTenBank(state: DiceMatch, uid: string, keep: readonly numbe
   if (state.mode !== "ten") throw new Error("WRONG_MODE");
   if (state.ten.rolled.length === 0) throw new Error("NOTHING_TO_BANK");
   const taken = takeKeep(state.ten, keep);
-  const label = `Banked ${taken.turnScore}`;
+  const label = `Banked ${fmt(taken.turnScore)}`;
   const dice = keep.map((idx) => state.ten.rolled[idx] ?? 0);
   const ended = endHand(state, uid, taken.turnScore, label, dice, state.rollCount);
   return { ...ended, label, outcome: "banked", callout: null, dice };

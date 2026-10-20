@@ -159,7 +159,7 @@ describe("10,000", () => {
   it("a fresh turn throws six dice and waits for a keep choice", () => {
     expect(tenRollCount(start(), "a", [])).toBe(6);
     const r = applyTenRoll(start(), "a", [], [1, 5, 2, 3, 4, 6]);
-    expect(r).toMatchObject({ outcome: "rolled", label: "Up to 1500 on the table", effect: { type: "again" } });
+    expect(r).toMatchObject({ outcome: "rolled", label: "Up to 1,500 on the table", effect: { type: "again" } });
     const plain = applyTenRoll(start(), "a", [], [1, 5, 2, 3, 3, 6]);
     expect(plain).toMatchObject({ outcome: "rolled", label: "Up to 150 on the table", callout: null });
     expect(plain.state.ten.rolled).toEqual([1, 5, 2, 3, 3, 6]);

@@ -98,7 +98,17 @@ describe("noticesForRoll", () => {
       NAMES,
       {},
     );
-    expect(n?.body).toBe("@jason: Banked 450 (+450 pts). 400–1,250. Your turn.");
+    expect(n?.body).toBe("@jason: Banked 450. 400–1,250. Your turn.");
+    const [made] = noticesForRoll(
+      "g",
+      { ...after, mode: "craps", target: 5, scores: { a: 3, b: 1 } },
+      { type: "round", winnerUid: "a", points: 2, nextUid: "b" },
+      "a",
+      "Made the 6",
+      NAMES,
+      {},
+    );
+    expect(made?.body).toBe("@jason: Made the 6 (+2 pts). 1–3. Your turn.");
     const [miss] = noticesForRoll(
       "g",
       after,

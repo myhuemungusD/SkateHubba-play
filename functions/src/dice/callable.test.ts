@@ -29,7 +29,10 @@ vi.mock("./handlers.js", () => ({
   nudgeDice: (...args: unknown[]) => nudgeDice(...args),
   rematchDice: (...args: unknown[]) => rematchDice(...args),
   DiceActionError: class DiceActionError extends Error {
-    constructor(readonly code: string) {
+    constructor(
+      readonly code: string,
+      readonly details?: { retryAfterMs: number },
+    ) {
       super(code);
       this.name = "DiceActionError";
     }
@@ -159,6 +162,18 @@ describe("handleDiceCall", () => {
     expect(await codeOf(() => handleDiceCall(request(), deps()))).toBe("bad_keep");
     rollDice.mockRejectedValue(new DiceActionError("slow_down"));
     expect(await codeOf(() => handleDiceCall(request(), deps()))).toBe("slow_down");
+  });
+
+  it("passes the code and the cooldown left in details", async () => {
+    rollDice.mockRejectedValue(new DiceActionError("create_cooldown", { retryAfterMs: 4_200 }));
+    const err = await handleDiceCall(request(), deps()).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(HttpsError);
+    expect((err as HttpsError).code).toBe("failed-precondition");
+    expect((err as HttpsError).details).toEqual({ code: "create_cooldown", retryAfterMs: 4_200 });
+    rollDice.mockRejectedValue(new DiceActionError("bad_keep"));
+    expect(((await handleDiceCall(request(), deps()).catch((e: unknown) => e)) as HttpsError).details).toEqual({
+      code: "bad_keep",
+    });
   });
 
   it("hides unexpected failures", async () => {
