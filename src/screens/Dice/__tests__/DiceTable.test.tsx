@@ -266,7 +266,7 @@ describe("10,000", () => {
 
   it("picks scoring dice, previews the bank, and rolls the rest", async () => {
     show(ten());
-    expect(screen.getByRole("button", { name: "Set aside a scoring die" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Pick scoring dice" })).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "Die showing 2" }));
     expect(screen.getByRole("button", { name: "Those dice don't score" })).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "Die showing 2, set aside" }));

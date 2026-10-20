@@ -45,7 +45,7 @@ function Waiting({ line, clock }: { line: string; clock: string }) {
 
 function tenRollLabel(plan: TenPlan | null, game: DiceGameDoc): string {
   if (game.ten.rolled.length === 0) return game.ten.turnScore > 0 ? "Roll all six" : "Roll six dice";
-  if (!plan || plan.keep.length === 0) return "Set aside a scoring die";
+  if (!plan || plan.keep.length === 0) return "Pick scoring dice";
   if (!plan.valid) return "Those dice don't score";
   return plan.nextCount === 6
     ? "Hot dice: roll all six"

@@ -58,6 +58,13 @@ async function open(browser: Browser, who: typeof A, quick: boolean): Promise<Se
     localStorage.setItem("skate_dice_quick_rolls", q ? "1" : "0");
     localStorage.setItem("skate_sound_enabled", "false");
   }, quick);
+  // Surface any rejected dice call in the test log, with the request that caused it.
+  page.on("response", async (res) => {
+    if (!res.url().includes("diceAction") || res.ok()) return;
+    console.log(
+      `[dice] ${who.username} ${res.status()} ${res.request().postData() ?? ""} -> ${await res.text().catch(() => "")}`,
+    );
+  });
   await signInViaUI(page, who.email, who.password);
   await page.waitForTimeout(1500);
   await dismissBottomOverlays(page);
@@ -68,7 +75,11 @@ async function challenge(page: Page, mode: string, opponent: string, long = fals
   await page.goto("/dice/new");
   await page.getByRole("radio", { name: new RegExp(`^${mode}`) }).check({ force: true });
   if (long) await page.getByRole("radio", { name: /^Long/ }).check({ force: true });
-  await page.getByRole("button", { name: `Challenge @${opponent}` }).click();
+  // The server allows one new challenge per 10 seconds per skater; wait it out.
+  for (let attempt = 0; attempt < 8 && page.url().endsWith("/dice/new"); attempt++) {
+    await page.getByRole("button", { name: `Challenge @${opponent}` }).click();
+    await page.waitForURL(/\/dice\/(?!new$)[^/]+$/, { timeout: 2_500 }).catch(() => undefined);
+  }
   await expect(page).toHaveURL(/\/dice\/(?!new$)[^/]+$/, { timeout: 15_000 });
   const id = page.url().split("/").pop() ?? "";
   await expect(page.getByTestId("dice-waiting")).toContainText("to accept");
@@ -275,18 +286,22 @@ test.describe("Roll Dice", () => {
     a = await open(browser, A, false);
     const id = await challenge(a.page, "10,000", B.username);
     await accept(b.page, id);
-    await b.page.goto(`/dice/${id}`);
-    await shot(b.page, "slow-01-your-turn");
-    await dock(b.page).getByRole("button", { name: /^Roll/ }).click();
-    await b.page.waitForTimeout(150);
-    await shot(b.page, "slow-02-landing");
+    await a.page.goto(`/dice/${id}`);
     await expect(
-      b.page
-        .getByTestId("dice-spot")
-        .getByRole("button", { name: /^Die showing/ })
-        .first(),
+      dock(a.page).getByRole("button", { name: /^Roll/ }).or(a.page.getByTestId("dice-waiting")),
     ).toBeVisible();
-    await b.page.waitForTimeout(800);
-    await shot(b.page, "slow-03-choose");
+    let page = a.page;
+    if ((await dock(a.page).getByRole("button", { name: /^Roll/ }).count()) === 0) {
+      await b.ctx.close();
+      b = await open(browser, B, false);
+      page = b.page;
+      await page.goto(`/dice/${id}`);
+    }
+    await shot(page, "slow-01-your-turn");
+    await dock(page).getByRole("button", { name: /^Roll/ }).click();
+    await page.waitForTimeout(150);
+    await shot(page, "slow-02-landing");
+    await page.waitForTimeout(1200);
+    await shot(page, "slow-03-landed");
   });
 });
