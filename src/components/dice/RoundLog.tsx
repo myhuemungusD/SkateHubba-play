@@ -36,7 +36,7 @@ export function RoundLog({ rounds, uid, names, unit }: RoundLogProps) {
   const who = (id: string): string => (id === uid ? "You" : `@${names[id] || "them"}`);
 
   return (
-    <section aria-labelledby="dice-rounds-title" className="mt-6">
+    <section aria-labelledby="dice-rounds-title" className="mt-6 scroll-mt-4" data-testid="dice-rounds">
       <h2 id="dice-rounds-title" className="mb-2 font-display text-sm tracking-[0.18em] text-muted">
         {unit === "Round" ? "Rounds" : "Hands"} · {rounds.length}
       </h2>

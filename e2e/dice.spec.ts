@@ -289,7 +289,9 @@ test.describe("Roll Dice", () => {
         [a.page, "a"],
         [b.page, "b"],
       ] as const) {
-        await page.getByTestId("dice-round-row").first().scrollIntoViewIfNeeded();
+        await page.evaluate(() =>
+          document.querySelector('[data-testid="dice-rounds"]')?.scrollIntoView({ block: "start" }),
+        );
         await shot(page, `fix-${slug}-hand-log-${seat}`);
         await page.evaluate(() => window.scrollTo(0, 0));
       }
