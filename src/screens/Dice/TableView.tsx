@@ -5,7 +5,7 @@ import { ScreenHeader } from "../../components/ScreenHeader";
 import { ConfirmSheet } from "../../components/dice/ConfirmSheet";
 import { DiceSpot } from "../../components/dice/DiceSpot";
 import { MatchResult } from "../../components/dice/MatchResult";
-import { RoundLog } from "../../components/dice/RoundLog";
+import { RoundLog, handName } from "../../components/dice/RoundLog";
 import { Scoreboard } from "../../components/dice/Scoreboard";
 import { useReveal } from "../../components/dice/useReveal";
 import { useDiceStats } from "../../hooks/useDice";
@@ -161,7 +161,7 @@ export function TableView({ game, uid }: { game: DiceGameDoc; uid: string }) {
   const won = game.winner === uid;
   const played = game.status === "complete" || game.status === "forfeit";
   const repDelta = game.repChange?.[uid] ?? null;
-  const caption = roll ? `${roll.uid === uid ? "You" : `@${name}`}: ${roll.label}` : null;
+  const caption = roll ? `${roll.uid === uid ? "You" : `@${name}`}: ${handName(roll.label)}` : null;
 
   return (
     <div className="mx-auto min-h-dvh max-w-[430px] bg-background px-4 pb-[calc(12rem+env(safe-area-inset-bottom))] pt-[max(env(safe-area-inset-top),1.25rem)]">

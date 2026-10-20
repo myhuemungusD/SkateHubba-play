@@ -59,32 +59,54 @@ describe("RoundLog", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("lists rounds newest first and expands past four", async () => {
+  it("names each hand by who threw it, newest first, and expands past four", async () => {
+    const hand = (by: string, label: string, o: Partial<DiceRoundView> = {}) =>
+      round({ winner: o.points === 0 ? null : by, label, hands: { [by]: { dice: [1, 5], label } }, ...o });
     const rounds = [
-      round(),
-      round({ round: 2, winner: "u2", points: 1 }),
-      round({ round: 3, winner: null, points: 0, label: "Tie" }),
-      round({ round: 4, winner: null, points: 0, label: "Seven out" }),
-      round({ round: 5, winner: "u3" }),
+      hand("u1", "Banked 1050", { points: 1050 }),
+      hand("u2", "Farkle · lost 200", { points: 0 }),
+      hand("u1", "Seven out", { round: 2, points: 0 }),
+      hand("u2", "Made the 6", { round: 2, points: 2 }),
+      hand("u3", "Natural 7", { round: 3, points: 1 }),
+      round({ round: 3, winner: null, points: 0, hands: {} }),
     ];
     render(<RoundLog rounds={rounds} uid="u1" names={{ u1: "kit", u2: "fox" }} unit="Hand" />);
-    expect(screen.getByText("Hands · 5")).toBeInTheDocument();
-    expect(screen.getByText("Tie, replayed")).toBeInTheDocument();
-    expect(screen.getByText("No score · Seven out")).toBeInTheDocument();
-    expect(screen.getByText("@them · Trips 3s")).toBeInTheDocument();
-    expect(screen.queryByText("You · Trips 3s")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Show all 5" }));
-    expect(screen.getByText("You · Trips 3s")).toBeInTheDocument();
-    expect(screen.getByText("@fox · Trips 3s")).toBeInTheDocument();
+    expect(screen.getByText("Hands · 6")).toBeInTheDocument();
+    const rows = () => screen.getAllByTestId("dice-round-row").map((row) => row.textContent);
+    expect(rows()).toEqual([
+      "No scoreHand 30",
+      "@themHand 3+1@them:Natural 7",
+      "@foxHand 2+2@fox:Made the 6",
+      "YouHand 20You:Seven out",
+    ]);
+    await userEvent.click(screen.getByRole("button", { name: "Show all 6" }));
+    expect(rows().slice(4)).toEqual(["@foxHand 10@fox:Farkle, lost 200", "YouHand 1+1,050You:Banked 1,050"]);
     await userEvent.click(screen.getByRole("button", { name: "Show fewer" }));
-    expect(screen.queryByText("You · Trips 3s")).not.toBeInTheDocument();
+    expect(rows()).toHaveLength(4);
   });
 
-  it("titles C-Lo rounds", () => {
+  it("titles C-Lo rounds with both hands and the winner", () => {
     render(
-      <RoundLog rounds={[round({ hands: { u9: { dice: [1], label: "x" } } })]} uid="u1" names={{}} unit="Round" />,
+      <RoundLog
+        rounds={[
+          round(),
+          round({ round: 2, winner: "u2", points: 1 }),
+          round({ round: 3, winner: null, points: 0, label: "Tie" }),
+          round({ round: 4, winner: null, points: 0, label: "Void" }),
+        ]}
+        uid="u1"
+        names={{ u2: "fox" }}
+        unit="Round"
+      />,
     );
-    expect(screen.getByText("Rounds · 1")).toBeInTheDocument();
+    expect(screen.getByText("Rounds · 4")).toBeInTheDocument();
+    const rows = screen.getAllByTestId("dice-round-row").map((row) => row.textContent);
+    expect(rows).toEqual([
+      "No winnerRound 40YouTrips 3s@foxPoint 5",
+      "Tie, replayedRound 30YouTrips 3s@foxPoint 5",
+      "@fox took itRound 2+1YouTrips 3s@foxPoint 5",
+      "You took itRound 1+2YouTrips 3s@foxPoint 5",
+    ]);
   });
 });
 
