@@ -62,6 +62,9 @@ const FIRESTORE_HANDLED_FCM_TYPES = new Set([
  */
 const LOCALLY_HANDLED_NOTIFICATION_TYPES = new Set(["game_won", "game_lost"]);
 
+/** Dice notification types, written by the diceAction callable. */
+const DICE_NOTIFICATION_TYPES = new Set(["dice_challenge", "dice_turn", "dice_result"]);
+
 type Notify = ReturnType<typeof useNotifications>["notify"];
 type Hydrate = ReturnType<typeof useNotifications>["hydrate"];
 
@@ -80,6 +83,12 @@ function useNotificationDocListener(uid: string | null, gated: boolean, notify: 
       uid,
       (notif) => {
         if (LOCALLY_HANDLED_NOTIFICATION_TYPES.has(notif.type)) return;
+        // Already at that dice table: the table shows the roll and plays its own
+        // cue, so a banner over the header would only cover the score. Bell only.
+        if (DICE_NOTIFICATION_TYPES.has(notif.type) && window.location.pathname === `/dice/${notif.gameId}`) {
+          hydrate([notif]);
+          return;
+        }
         notify({
           type: "game_event",
           title: notif.title,

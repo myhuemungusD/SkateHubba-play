@@ -208,6 +208,35 @@ describe("notifications collection listener", () => {
   );
 });
 
+describe("dice notifications at the open table", () => {
+  afterEach(() => window.history.replaceState(null, "", "/"));
+
+  it("goes to the bell, not a toast, when you're already at that table", () => {
+    window.history.replaceState(null, "", "/dice/g1");
+    render(<GameNotificationWatcher />);
+    const cb = vi.mocked(subscribeToNotifications).mock.calls[0]?.[1];
+    const notif = {
+      firestoreId: "fs1",
+      type: "dice_turn",
+      title: "Roll Dice",
+      body: "Your roll.",
+      gameId: "g1",
+      createdAtMs: 1,
+    };
+    cb!(notif);
+    expect(mockNotify).not.toHaveBeenCalled();
+    expect(mockHydrate).toHaveBeenCalledWith([notif]);
+  });
+
+  it("still toasts a dice notice for another match", () => {
+    window.history.replaceState(null, "", "/dice/g2");
+    render(<GameNotificationWatcher />);
+    const cb = vi.mocked(subscribeToNotifications).mock.calls[0]?.[1];
+    cb!({ firestoreId: "fs1", type: "dice_challenge", title: "Roll Dice", body: "B", gameId: "g1", createdAtMs: 1 });
+    expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ chime: "new_challenge", gameId: "g1" }));
+  });
+});
+
 /* ── /nudges listener ───────────────────────── */
 
 describe("nudge listener", () => {

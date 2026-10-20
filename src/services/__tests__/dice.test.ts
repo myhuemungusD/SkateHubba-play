@@ -38,27 +38,39 @@ vi.mock("firebase/firestore", () => ({
   onSnapshot: (...args: unknown[]) => snaps.onSnapshot(...args),
 }));
 
+const net = vi.hoisted(() => ({ online: true }));
+vi.mock("../nativeBridge", () => ({ getNetworkSnapshot: () => net.online }));
+
 import {
+  acceptDice,
+  bankDice,
   claimDiceTimeout,
   createDiceGame,
   declineDice,
+  createCooldownLine,
   diceErrorCode,
+  diceErrorInfo,
   diceErrorMessage,
+  nudgeDice,
   quitDice,
+  rematchDice,
   rollDice,
   subscribeToDiceGame,
   subscribeToDiceStats,
   subscribeToMyDiceGames,
-  toDiceGame,
-  toDiceStats,
 } from "../dice";
+import { toDiceStats } from "../dice.mappers";
 
 const RESULT = {
   gameId: "g1",
   status: "active",
-  label: "POINT 5",
+  label: "Point 5",
+  outcome: "point",
+  callout: null,
+  dice: [2, 2, 5],
+  rollId: "r1",
   currentTurn: "u2",
-  roundsWon: { u1: 0, u2: 0 },
+  scores: { u1: 0, u2: 0 },
   winner: null,
   applied: true,
 };
@@ -78,79 +90,55 @@ function raw(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     endReason: "quit",
     updatedAt: 10,
     turnDeadline: 20,
-    lastRoll: { uid: "u1", dice: [2, 2, 5], outcome: "point", label: "POINT 5" },
+    lastRoll: { uid: "u1", dice: [2, 2, 5], outcome: "point", label: "Point 5" },
     ...overrides,
   };
 }
-
-describe("dice mappers", () => {
-  it.each(["active", "forfeit", "declined", "expired"] as const)("reads a %s match", (status) => {
-    const game = toDiceGame("g1", raw({ status }));
-    expect(game?.status).toBe(status);
-    expect(game?.lastRoll?.dice).toEqual([2, 2, 5]);
-    expect(game?.roundsWon).toEqual({ u1: 1, u2: 0 });
-  });
-
-  it.each(["quit", "timeout", "decline"] as const)("reads a %s ending", (endReason) => {
-    expect(toDiceGame("g1", raw({ endReason }))?.endReason).toBe(endReason);
-  });
-
-  it("drops a document that is not a match", () => {
-    expect(toDiceGame("g1", undefined)).toBeNull();
-    expect(toDiceGame("g1", raw({ player1Uid: "" }))).toBeNull();
-    expect(toDiceGame("g1", raw({ player1Uid: 1 }))).toBeNull();
-    expect(toDiceGame("g1", raw({ player2Uid: "" }))).toBeNull();
-    expect(toDiceGame("g1", raw({ status: "complete" }))).toBeNull();
-  });
-
-  it("defaults missing optional fields", () => {
-    const game = toDiceGame(
-      "g1",
-      raw({
-        player1Username: 1,
-        currentTurn: 4,
-        round: "two",
-        roundsWon: null,
-        rollCount: Number.NaN,
-        winner: null,
-        endReason: "nope",
-        updatedAt: "x",
-        turnDeadline: undefined,
-        lastRoll: null,
-      }),
-    );
-    expect(game).toMatchObject({
-      player1Username: "",
-      currentTurn: null,
-      round: 1,
-      roundsWon: { u1: 0, u2: 0 },
-      rollCount: 0,
-      winner: null,
-      endReason: null,
-      updatedAt: 0,
-      turnDeadline: 0,
-      lastRoll: null,
-    });
-  });
-
-  it("ignores a last roll that is not three numbers", () => {
-    expect(toDiceGame("g1", raw({ lastRoll: { dice: [1, 2] } }))?.lastRoll).toBeNull();
-    expect(toDiceGame("g1", raw({ lastRoll: { dice: [1, 2, "6"] } }))?.lastRoll).toBeNull();
-    expect(toDiceGame("g1", raw({ lastRoll: "nope" }))?.lastRoll).toBeNull();
-  });
-
-  it("reads lifetime dice stats, including a missing doc", () => {
-    expect(toDiceStats(undefined)).toEqual({ wins: 0, losses: 0, gamesPlayed: 0 });
-    expect(toDiceStats({ wins: 2, losses: "no", gamesPlayed: 3 })).toEqual({ wins: 2, losses: 0, gamesPlayed: 3 });
-  });
-});
 
 describe("dice errors", () => {
   it("maps known callable messages and hides the rest", () => {
     expect(diceErrorCode(new Error("slow_down"))).toBe("slow_down");
     expect(diceErrorMessage(new Error("email_unverified"))).toBe("Verify your email first.");
     expect(diceErrorCode("nope")).toBe("dice_failed");
-    expect(diceErrorMessage(new Error("boom"))).toBe("That didn't work. Try again.");
+    expect(diceErrorCode(null)).toBe("dice_failed");
+    expect(diceErrorCode({ message: 404, code: 7 })).toBe("dice_failed");
+    expect(diceErrorMessage(new Error("boom"))).toBe("Something went wrong at the table. Try again.");
+  });
+
+  // Regression: the SDK reports the server's code as "slow_down [400]", which
+  // never matched, so every rejection showed the generic line.
+  it("reads the code from a real callable error, status suffix and all", async () => {
+    const { FunctionsError } = await vi.importActual<typeof import("firebase/functions")>("firebase/functions");
+    const rejected = (message: string, details?: unknown) =>
+      new FunctionsError("failed-precondition", `${message} [400]`, details);
+    expect(diceErrorCode(rejected("slow_down"))).toBe("slow_down");
+    expect(diceErrorMessage(rejected("bad_keep"))).toBe("Those dice changed. Pick your scoring dice again.");
+    expect(diceErrorMessage(rejected("not_your_turn"))).toBe("It's their roll now.");
+    expect(diceErrorCode(rejected("whatever", { code: "game_over" }))).toBe("game_over");
+  });
+
+  it("says how long the create and nudge cooldowns have left", async () => {
+    const { FunctionsError } = await vi.importActual<typeof import("firebase/functions")>("firebase/functions");
+    const cool = (code: string, retryAfterMs: unknown) =>
+      new FunctionsError("failed-precondition", `${code} [400]`, { code, retryAfterMs });
+    expect(diceErrorMessage(cool("create_cooldown", 6_200))).toBe("You just started a match. Try again in 7s.");
+    expect(diceErrorInfo(cool("create_cooldown", 6_200))).toEqual({ code: "create_cooldown", retryAfterMs: 6_200 });
+    expect(diceErrorMessage(cool("create_cooldown", "soon"))).toBe(
+      "You just started a match. Try again in a few seconds.",
+    );
+    expect(diceErrorMessage(cool("nudge_cooldown", 125_000))).toBe("You already nudged. Try again in 3 min.");
+    expect(diceErrorMessage(cool("nudge_cooldown", 0))).toBe("You already nudged. Try again in a bit.");
+    expect(createCooldownLine(200)).toBe("You just started a match. Try again in 1s.");
+  });
+
+  it("words transport failures instead of the generic line", async () => {
+    const { FunctionsError } = await vi.importActual<typeof import("firebase/functions")>("firebase/functions");
+    expect(diceErrorMessage(new FunctionsError("unavailable", "unavailable"))).toBe(
+      "Couldn't reach the table. Check your signal and try again.",
+    );
+    expect(diceErrorCode(new FunctionsError("deadline-exceeded", "deadline-exceeded"))).toBe("network");
+    expect(diceErrorCode(new FunctionsError("unauthenticated", "x"))).toBe("unauthenticated");
+    expect(diceErrorCode(new FunctionsError("internal", "internal"))).toBe("dice_failed");
   });
 });
 
@@ -243,9 +231,9 @@ describe("dice subscriptions", () => {
       return vi.fn();
     });
     subscribeToDiceStats("u1", onUpdate);
-    expect(onUpdate).toHaveBeenNthCalledWith(1, { wins: 1, losses: 2, gamesPlayed: 3 });
-    expect(onUpdate).toHaveBeenNthCalledWith(2, { wins: 0, losses: 0, gamesPlayed: 0 });
-    expect(onUpdate).toHaveBeenLastCalledWith({ wins: 0, losses: 0, gamesPlayed: 0 });
+    expect(onUpdate).toHaveBeenNthCalledWith(1, expect.objectContaining({ wins: 1, losses: 2, gamesPlayed: 3 }));
+    expect(onUpdate).toHaveBeenNthCalledWith(2, toDiceStats(undefined));
+    expect(onUpdate).toHaveBeenLastCalledWith(toDiceStats(undefined));
   });
 });
 
@@ -265,10 +253,37 @@ describe("dice callable", () => {
     fns.callable.mockResolvedValue({ data: RESULT });
     await expect(createDiceGame("u2")).resolves.toEqual(RESULT);
     await expect(rollDice("g1")).resolves.toEqual(RESULT);
-    expect(trackEvent).toHaveBeenCalledWith("dice_challenge_created", { gameId: "g1" });
+    expect(trackEvent).toHaveBeenCalledWith("dice_challenge_created", { gameId: "g1", mode: "clo" });
     expect(trackEvent).toHaveBeenCalledWith("dice_rolled", { gameId: "g1" });
     expect(fns.connectFunctionsEmulator).not.toHaveBeenCalled();
     expect(addBreadcrumb).toHaveBeenCalled();
+  });
+
+  it("sends the mode, target and keep list the server expects", async () => {
+    fns.callable.mockResolvedValue({ data: RESULT });
+    await createDiceGame("u2", "ten", 10000);
+    expect(fns.callable).toHaveBeenLastCalledWith({ action: "create", opponentUid: "u2", mode: "ten", target: 10000 });
+    await rollDice("g1", [0, 2]);
+    expect(fns.callable).toHaveBeenLastCalledWith({ action: "roll", gameId: "g1", keep: [0, 2] });
+    await bankDice("g1", [1]);
+    expect(fns.callable).toHaveBeenLastCalledWith({ action: "bank", gameId: "g1", keep: [1] });
+    await acceptDice("g1");
+    expect(fns.callable).toHaveBeenLastCalledWith({ action: "accept", gameId: "g1" });
+    await nudgeDice("g1");
+    expect(fns.callable).toHaveBeenLastCalledWith({ action: "nudge", gameId: "g1" });
+    fns.callable.mockResolvedValueOnce({ data: { ...RESULT, gameId: "g2", status: "pending" } });
+    await rematchDice("g1");
+    expect(trackEvent).toHaveBeenCalledWith("dice_rematch", { gameId: "g2" });
+    expect(trackEvent).toHaveBeenCalledWith("dice_banked", { gameId: "g1" });
+    expect(trackEvent).toHaveBeenCalledWith("dice_challenge_accepted", { gameId: "g1" });
+  });
+
+  it("fails fast while offline without calling the server", async () => {
+    net.online = false;
+    await expect(rollDice("g1")).rejects.toThrow("offline");
+    expect(fns.callable).not.toHaveBeenCalled();
+    expect(diceErrorMessage(new Error("offline"))).toBe("You're offline. Reconnect to roll.");
+    net.online = true;
   });
 
   it("connects the functions emulator in emulator mode", async () => {
@@ -284,6 +299,8 @@ describe("dice callable", () => {
     fns.callable.mockResolvedValueOnce({ data: { ...RESULT, status: "declined" } });
     await declineDice("g1");
     fns.callable.mockResolvedValueOnce({ data: RESULT });
+    await claimDiceTimeout("g1");
+    fns.callable.mockResolvedValueOnce({ data: { ...RESULT, status: "pending" } });
     await claimDiceTimeout("g1");
     expect(trackEvent).toHaveBeenCalledWith("dice_game_completed", { gameId: "g1", status: "forfeit" });
     expect(trackEvent).toHaveBeenCalledWith("dice_game_completed", { gameId: "g1", status: "declined" });

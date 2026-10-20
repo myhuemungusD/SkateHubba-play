@@ -1,167 +1,132 @@
 /**
  * Firestore wiring for Roll Dice. Every mutation runs in one transaction.
  * The phone never writes a dice document; this module is the only writer
- * besides account-deletion cleanup.
+ * besides account-deletion cleanup. The server rolls every die and scores
+ * every hand, so a client can't forge a roll, a point, or Rep.
  */
 import { FieldValue } from "firebase-admin/firestore";
 import { logger } from "firebase-functions/logger";
-import { cloResolve } from "./clo.js";
 import { rollN } from "./dice.js";
+import { appendCapped, currentTurnOf, matchFromData, namesFrom, stateFields } from "./docs.js";
 import {
   ACTIVE_GAME_CAP,
   CREATE_COOLDOWN_MS,
   HISTORY_CAP,
+  NUDGE_COOLDOWN_MS,
+  REMINDER_LEAD_MS,
   ROLL_COOLDOWN_MS,
+  ROUNDS_CAP,
   TURN_DURATION_MS,
-  applyCloRoll,
+  applyAccept,
   applyDecline,
   applyQuit,
   applyTimeout,
   freshMatch,
-  statsDelta,
-  type AppliedRoll,
   type DiceMatch,
   type DiceStatus,
 } from "./engine.js";
-import { noticesForEnd, noticesForRoll, type DiceNotice } from "./notify.js";
+import { defaultTarget, isAllowedTarget, isDiceMode, MODE_RULES, type DiceMode } from "./modes.js";
+import {
+  noticeForAccept,
+  noticeForChallenge,
+  noticeForNudge,
+  noticeForReminder,
+  noticesForEnd,
+  noticesForRoll,
+  type DiceNotice,
+} from "./notify.js";
+import { applyCloRoll, applyCrapsRoll, applyTenBank, applyTenRoll, tenRollCount, type AppliedRoll } from "./play.js";
+import { writeStats } from "./stats.js";
 import type { DiceDb, DiceTx } from "./store.js";
 
 export class DiceActionError extends Error {
-  constructor(readonly code: string) {
+  /** `retryAfterMs` rides along on cooldowns so the app can say when to try again. */
+  constructor(
+    readonly code: string,
+    readonly details?: { retryAfterMs: number },
+  ) {
     super(code);
     this.name = "DiceActionError";
   }
+}
+
+function cooldown(code: string, windowMs: number, sinceMs: number): DiceActionError {
+  return new DiceActionError(code, { retryAfterMs: Math.max(1, windowMs - sinceMs) });
 }
 
 export interface DiceActionResult {
   gameId: string;
   status: DiceStatus;
   label: string | null;
+  outcome: string | null;
+  callout: string | null;
+  dice: number[] | null;
+  rollId: string | null;
   currentTurn: string | null;
-  roundsWon: Record<string, number>;
+  scores: Record<string, number>;
   winner: string | null;
   applied: boolean;
 }
 
-interface Actor {
+export interface Actor {
   uid: string;
   emailVerified: boolean;
   nowMs: number;
 }
 
-function num(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+export interface CreateOptions {
+  mode?: unknown;
+  target?: unknown;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
-  return null;
-}
+const ENGINE_CODES: Record<string, string> = {
+  NOT_YOUR_TURN: "not_your_turn",
+  NOT_IN_PROGRESS: "game_over",
+  NOT_A_PLAYER: "not_a_player",
+  NOT_DECLINABLE: "not_declinable",
+  NOT_PENDING: "not_pending",
+  NOT_ACCEPTABLE: "not_acceptable",
+  BAD_DICE: "bad_dice",
+  BAD_KEEP: "bad_keep",
+  NOTHING_TO_BANK: "bad_keep",
+  WRONG_MODE: "wrong_mode",
+  // A doc missing a seat or a roll it should have: unreadable, not a server fault.
+  NO_OPPONENT: "bad_doc",
+  MISSING_ROLL: "bad_doc",
+};
 
 function mapEngineError(err: unknown): never {
   if (err instanceof DiceActionError) throw err;
-  if (err instanceof Error) {
-    switch (err.message) {
-      case "NOT_YOUR_TURN":
-        throw new DiceActionError("not_your_turn");
-      case "NOT_IN_PROGRESS":
-        throw new DiceActionError("game_over");
-      case "NOT_A_PLAYER":
-        throw new DiceActionError("not_a_player");
-      case "NOT_DECLINABLE":
-        throw new DiceActionError("not_declinable");
-      case "BAD_DICE":
-        throw new DiceActionError("bad_dice");
-      default:
-        break;
-    }
-  }
+  const code = err instanceof Error ? ENGINE_CODES[err.message] : undefined;
+  if (code) throw new DiceActionError(code);
   throw err;
 }
 
-function rollsFromResults(raw: unknown): Record<string, readonly number[]> {
-  const record = asRecord(raw);
-  if (!record) return {};
-  const rolls: Record<string, readonly number[]> = {};
-  for (const [uid, value] of Object.entries(record)) {
-    const dice = asRecord(value)?.dice;
-    if (Array.isArray(dice) && dice.every((face) => typeof face === "number")) {
-      rolls[uid] = dice as number[];
-    }
+function guard<T>(fn: () => T): T {
+  try {
+    return fn();
+  } catch (err) {
+    mapEngineError(err);
   }
-  return rolls;
 }
 
-function roundsFrom(raw: unknown, seats: readonly string[]): Record<string, number> {
-  const record = asRecord(raw) ?? {};
-  const rounds: Record<string, number> = {};
-  for (const seat of seats) rounds[seat] = num(record[seat]);
-  return rounds;
-}
-
-export function matchFromData(data: Record<string, unknown>): DiceMatch | null {
-  const p1 = data.player1Uid;
-  const p2 = data.player2Uid;
-  if (typeof p1 !== "string" || typeof p2 !== "string" || p1.length === 0 || p2.length === 0) return null;
-  const status = data.status;
-  if (status !== "active" && status !== "forfeit" && status !== "declined" && status !== "expired") return null;
-  const seats: readonly string[] = [p1, p2];
-  const turn = data.currentTurn;
-  const found = typeof turn === "string" ? seats.indexOf(turn) : -1;
-  const endReason = data.endReason;
-  return {
-    status,
-    seats,
-    current: found >= 0 ? found : 0,
-    round: Math.max(1, num(data.round) || 1),
-    roundsWon: roundsFrom(data.roundsWon, seats),
-    rolls: rollsFromResults(data.results),
-    rollCount: num(data.rollCount),
-    winner: typeof data.winner === "string" ? data.winner : null,
-    endReason: endReason === "quit" || endReason === "timeout" || endReason === "decline" ? endReason : null,
-  };
-}
-
-function resultsFromRolls(rolls: Readonly<Record<string, readonly number[]>>): Record<string, unknown> {
-  const results: Record<string, unknown> = {};
-  for (const [uid, dice] of Object.entries(rolls)) {
-    const resolved = cloResolve(dice);
-    if (resolved.rank === null) continue;
-    results[uid] = { dice: [...dice], outcome: resolved.outcome, label: resolved.label, rank: resolved.rank };
-  }
-  return results;
-}
-
-function stateFields(state: DiceMatch, nowMs: number): Record<string, unknown> {
-  return {
-    status: state.status,
-    currentTurn: state.status === "active" ? (state.seats[state.current] ?? null) : null,
-    round: state.round,
-    roundsWon: { ...state.roundsWon },
-    results: resultsFromRolls(state.rolls),
-    rollCount: state.rollCount,
-    winner: state.winner,
-    endReason: state.endReason,
-    updatedAt: nowMs,
-  };
-}
-
-function namesFrom(data: Record<string, unknown>, state: DiceMatch): Record<string, string> {
-  const names: Record<string, string> = {};
-  const p1 = state.seats[0];
-  const p2 = state.seats[1];
-  if (p1 && typeof data.player1Username === "string") names[p1] = data.player1Username;
-  if (p2 && typeof data.player2Username === "string") names[p2] = data.player2Username;
-  return names;
-}
-
-function resultOf(gameId: string, state: DiceMatch, label: string | null, applied: boolean): DiceActionResult {
+function resultOf(
+  gameId: string,
+  state: DiceMatch,
+  applied: boolean,
+  roll?: AppliedRoll,
+  rollId?: string,
+): DiceActionResult {
   return {
     gameId,
     status: state.status,
-    label,
-    currentTurn: state.status === "active" ? (state.seats[state.current] ?? null) : null,
-    roundsWon: { ...state.roundsWon },
+    label: roll?.label ?? null,
+    outcome: roll?.outcome ?? null,
+    callout: roll?.callout ?? null,
+    dice: roll ? [...roll.dice] : null,
+    rollId: rollId ?? null,
+    currentTurn: currentTurnOf(state),
+    scores: { ...state.scores },
     winner: state.winner,
     applied,
   };
@@ -182,36 +147,13 @@ function stageNotices(tx: DiceTx, notices: DiceNotice[]): void {
   }
 }
 
-async function writeStats(tx: DiceTx, state: DiceMatch, nowMs: number): Promise<void> {
-  const delta = statsDelta(state);
-  if (!delta) return;
-  const rows: Array<{ uid: string; field: "wins" | "losses" }> = [
-    { uid: delta.winnerUid, field: "wins" },
-    { uid: delta.loserUid, field: "losses" },
-  ];
-  // Admin SDK transactions reject a read after a write. Read both stats
-  // docs, then write both.
-  const snaps = await Promise.all(rows.map((row) => tx.get(`diceStats/${row.uid}`)));
-  rows.forEach((row, index) => {
-    const data = snaps[index]?.data ?? {};
-    tx.set(
-      `diceStats/${row.uid}`,
-      {
-        wins: num(data.wins) + (row.field === "wins" ? 1 : 0),
-        losses: num(data.losses) + (row.field === "losses" ? 1 : 0),
-        gamesPlayed: num(data.gamesPlayed) + 1,
-        updatedAt: nowMs,
-      },
-      true,
-    );
-  });
-}
-
-function appendHistory(existing: unknown, entry: Record<string, unknown>): unknown[] {
-  const list = Array.isArray(existing) ? existing.slice() : [];
-  list.push(entry);
-  if (list.length <= HISTORY_CAP) return list;
-  return list.slice(list.length - HISTORY_CAP);
+/** Clock fields for whoever moves next. */
+function clock(state: DiceMatch, nowMs: number): Record<string, unknown> {
+  const deadline = nowMs + TURN_DURATION_MS;
+  return {
+    turnDeadline: deadline,
+    remindAt: state.status === "active" ? deadline - REMINDER_LEAD_MS : null,
+  };
 }
 
 async function usernameOf(db: DiceDb, uid: string): Promise<string | null> {
@@ -233,70 +175,130 @@ async function isBlocked(db: DiceDb, a: string, b: string): Promise<boolean> {
   return ab.data !== undefined || ba.data !== undefined;
 }
 
-async function countActive(tx: DiceTx, uid: string): Promise<number> {
-  const [asP1, asP2] = await Promise.all([
-    tx.query({
-      collection: "diceGames",
-      filters: [
-        { field: "player1Uid", op: "==", value: uid },
-        { field: "status", op: "==", value: "active" },
-      ],
-    }),
-    tx.query({
-      collection: "diceGames",
-      filters: [
-        { field: "player2Uid", op: "==", value: uid },
-        { field: "status", op: "==", value: "active" },
-      ],
-    }),
-  ]);
-  const ids = new Set([...asP1, ...asP2].map((doc) => doc.id));
-  return ids.size;
+/** Open matches (pending or active) the player is in. */
+async function countOpen(tx: DiceTx, uid: string): Promise<number> {
+  const queries = ["player1Uid", "player2Uid"].flatMap((field) =>
+    ["active", "pending"].map((status) =>
+      tx.query({
+        collection: "diceGames",
+        filters: [
+          { field, op: "==", value: uid },
+          { field: "status", op: "==", value: status },
+        ],
+      }),
+    ),
+  );
+  const rows = (await Promise.all(queries)).flat();
+  return new Set(rows.map((doc) => doc.id)).size;
 }
 
-export async function createDiceGame(db: DiceDb, actor: Actor, opponentUid: string): Promise<DiceActionResult> {
+async function checkPair(db: DiceDb, actor: Actor, opponentUid: string): Promise<{ me: string; them: string }> {
   if (!actor.emailVerified) throw new DiceActionError("email_unverified");
   if (opponentUid.length === 0 || opponentUid === actor.uid) throw new DiceActionError("self_challenge");
-  const [myName, theirName, iAmBanned, theyAreBanned, blocked] = await Promise.all([
+  const [me, them, iAmBanned, theyAreBanned, blocked] = await Promise.all([
     usernameOf(db, actor.uid),
     usernameOf(db, opponentUid),
     isBanned(db, actor.uid),
     isBanned(db, opponentUid),
     isBlocked(db, actor.uid, opponentUid),
   ]);
-  if (!myName || !theirName) throw new DiceActionError("not_found");
+  if (!me || !them) throw new DiceActionError("not_found");
   if (iAmBanned || theyAreBanned) throw new DiceActionError("banned");
   if (blocked) throw new DiceActionError("blocked");
+  return { me, them };
+}
 
+function newGameDoc(
+  actor: Actor,
+  opponentUid: string,
+  names: { me: string; them: string },
+  state: DiceMatch,
+  rematchOf: string | null,
+): Record<string, unknown> {
+  return {
+    playerUids: [actor.uid, opponentUid],
+    player1Uid: actor.uid,
+    player2Uid: opponentUid,
+    player1Username: names.me,
+    player2Username: names.them,
+    ...stateFields(state, actor.nowMs),
+    lastRoll: null,
+    history: [],
+    rounds: [],
+    turnDeadline: actor.nowMs + TURN_DURATION_MS,
+    remindAt: null,
+    createdAt: actor.nowMs,
+    stake: null,
+    lastRollAt: null,
+    nudgedAt: null,
+    repChange: null,
+    rematchOf,
+    rematchGameId: null,
+  };
+}
+
+async function openChallenge(
+  db: DiceDb,
+  actor: Actor,
+  opponentUid: string,
+  mode: DiceMode,
+  target: number,
+  rematchOf: string | null,
+): Promise<DiceActionResult> {
+  const names = await checkPair(db, actor, opponentUid);
   const gameId = db.newId("diceGames");
-  const state = freshMatch([actor.uid, opponentUid]);
-  await db.runTransaction(async (tx) => {
+  const state = freshMatch([actor.uid, opponentUid], mode, target);
+  const committed = await db.runTransaction(async (tx) => {
     const limit = await tx.get(`diceCreateLimits/${actor.uid}`);
     const last = limit.data?.lastCreateAt;
     if (typeof last === "number" && actor.nowMs - last < CREATE_COOLDOWN_MS) {
-      throw new DiceActionError("slow_down");
+      throw cooldown("create_cooldown", CREATE_COOLDOWN_MS, actor.nowMs - last);
     }
-    const active = await countActive(tx, actor.uid);
-    if (active >= ACTIVE_GAME_CAP) throw new DiceActionError("too_many_active");
-    tx.set(`diceGames/${gameId}`, {
-      v: 1,
-      game: "clo",
-      playerUids: [actor.uid, opponentUid],
-      player1Uid: actor.uid,
-      player2Uid: opponentUid,
-      player1Username: myName,
-      player2Username: theirName,
-      ...stateFields(state, actor.nowMs),
-      lastRoll: null,
-      history: [],
-      turnDeadline: actor.nowMs + TURN_DURATION_MS,
-      createdAt: actor.nowMs,
-      stake: null,
-      lastRollAt: null,
-    });
+    if ((await countOpen(tx, actor.uid)) >= ACTIVE_GAME_CAP) throw new DiceActionError("too_many_active");
+    if (rematchOf) {
+      const old = await tx.get(`diceGames/${rematchOf}`);
+      const existing = old.data?.rematchGameId;
+      if (typeof existing === "string" && existing.length > 0) return { reuse: existing, notices: [] };
+      tx.update(`diceGames/${rematchOf}`, { rematchGameId: gameId });
+    }
+    const built = noticeForChallenge(gameId, state, { [actor.uid]: names.me, [opponentUid]: names.them });
+    tx.set(`diceGames/${gameId}`, newGameDoc(actor, opponentUid, names, state, rematchOf));
     tx.set(`diceCreateLimits/${actor.uid}`, { lastCreateAt: actor.nowMs }, true);
+    stageNotices(tx, built);
+    return { reuse: null, notices: built };
   });
-  return resultOf(gameId, state, null, true);
+  if (committed.reuse) return { ...resultOf(committed.reuse, state, false), status: "pending" };
+  await deliverDicePushes(db, committed.notices);
+  return resultOf(gameId, state, true);
+}
+
+export async function createDiceGame(
+  db: DiceDb,
+  actor: Actor,
+  opponentUid: string,
+  options: CreateOptions = {},
+): Promise<DiceActionResult> {
+  const mode = options.mode === undefined ? "clo" : options.mode;
+  if (!isDiceMode(mode)) throw new DiceActionError("bad_mode");
+  const target = options.target === undefined ? defaultTarget(mode) : options.target;
+  if (!isAllowedTarget(mode, target)) throw new DiceActionError("bad_mode");
+  return openChallenge(db, actor, opponentUid, mode, target, null);
+}
+
+/** Same opponent, same game and length. A second tap (from either player) reopens the same rematch. */
+export async function rematchDice(db: DiceDb, actor: Actor, gameId: string): Promise<DiceActionResult> {
+  const snap = await db.get(`diceGames/${gameId}`);
+  if (!snap.data) throw new DiceActionError("not_found");
+  const old = matchFromData(snap.data);
+  if (!old) throw new DiceActionError("bad_doc");
+  if (!old.seats.includes(actor.uid)) throw new DiceActionError("not_a_player");
+  if (old.status === "active" || old.status === "pending") throw new DiceActionError("still_playing");
+  const existing = snap.data.rematchGameId;
+  if (typeof existing === "string" && existing.length > 0) {
+    return { ...resultOf(existing, old, false), status: "pending" };
+  }
+  const opponent = old.seats.find((seat) => seat !== actor.uid) ?? "";
+  return openChallenge(db, actor, opponent, old.mode, old.target, gameId);
 }
 
 async function loadGame(
@@ -312,56 +314,88 @@ async function loadGame(
   return { data: snap.data, state };
 }
 
-export async function rollDice(db: DiceDb, actor: Actor, gameId: string): Promise<DiceActionResult> {
+export async function acceptDice(db: DiceDb, actor: Actor, gameId: string): Promise<DiceActionResult> {
+  const committed = await db.runTransaction(async (tx) => {
+    const loaded = await loadGame(tx, gameId, actor.uid);
+    const after = guard(() => applyAccept(loaded.state, actor.uid));
+    const built = noticeForAccept(gameId, after, namesFrom(loaded.data, loaded.state));
+    stageNotices(tx, built);
+    tx.update(`diceGames/${gameId}`, { ...stateFields(after, actor.nowMs), ...clock(after, actor.nowMs) });
+    return { result: resultOf(gameId, after, true), notices: built };
+  });
+  await deliverDicePushes(db, committed.notices);
+  return committed.result;
+}
+
+type RollKind = { kind: "roll"; keep: readonly number[] } | { kind: "bank"; keep: readonly number[] };
+
+function play(state: DiceMatch, uid: string, move: RollKind): AppliedRoll {
+  if (move.kind === "bank") return applyTenBank(state, uid, move.keep);
+  if (state.mode === "ten") return applyTenRoll(state, uid, move.keep, rollN(tenRollCount(state, uid, move.keep)));
+  if (move.keep.length > 0) throw new Error("BAD_KEEP");
+  if (state.mode === "craps") return applyCrapsRoll(state, uid, rollN(MODE_RULES.craps.dice));
+  return applyCloRoll(state, uid, rollN(3));
+}
+
+async function moveDice(db: DiceDb, actor: Actor, gameId: string, move: RollKind): Promise<DiceActionResult> {
   const committed = await db.runTransaction(async (tx) => {
     const loaded = await loadGame(tx, gameId, actor.uid);
     const last = loaded.data.lastRollAt;
-    if (typeof last === "number" && actor.nowMs - last < ROLL_COOLDOWN_MS) {
-      throw new DiceActionError("slow_down");
-    }
-    const dice = rollN(3);
-    let applied: AppliedRoll;
-    try {
-      applied = applyCloRoll(loaded.state, actor.uid, dice);
-    } catch (err) {
-      mapEngineError(err);
-    }
+    // The cooldown stops one skater spamming rolls. Banking throws no dice, and
+    // the other skater answering right away is normal play, so neither waits.
+    const lastRoll = loaded.data.lastRoll as { uid?: unknown } | null | undefined;
+    const mine = lastRoll?.uid === actor.uid;
+    const cooling = move.kind === "roll" && mine && typeof last === "number" && actor.nowMs - last < ROLL_COOLDOWN_MS;
+    if (cooling) throw cooldown("slow_down", ROLL_COOLDOWN_MS, actor.nowMs - last);
+    const applied = guard(() => play(loaded.state, actor.uid, move));
+    const rep = await writeStats(tx, applied.state, actor.nowMs);
     const built = noticesForRoll(
       gameId,
-      loaded.state,
       applied.state,
       applied.effect,
       actor.uid,
       applied.label,
       namesFrom(loaded.data, loaded.state),
+      rep,
     );
-    const history = appendHistory(loaded.data.history, {
+    const rollId = crypto.randomUUID();
+    const entry = {
       uid: actor.uid,
-      dice: [...dice],
+      dice: [...applied.dice],
       label: applied.label,
+      outcome: applied.outcome,
       round: loaded.state.round,
       at: actor.nowMs,
-    });
-    await writeStats(tx, applied.state, actor.nowMs);
+    };
     stageNotices(tx, built);
     tx.update(`diceGames/${gameId}`, {
       ...stateFields(applied.state, actor.nowMs),
-      lastRoll: {
-        uid: actor.uid,
-        dice: [...dice],
-        outcome: applied.outcome,
-        label: applied.label,
-        rollId: crypto.randomUUID(),
-        at: actor.nowMs,
-      },
-      history,
+      ...clock(applied.state, actor.nowMs),
+      lastRoll: { ...entry, callout: applied.callout, rollId, kind: move.kind },
+      history: appendCapped(loaded.data.history, entry, HISTORY_CAP),
+      rounds: applied.record
+        ? appendCapped(loaded.data.rounds, { ...applied.record, at: actor.nowMs }, ROUNDS_CAP)
+        : (loaded.data.rounds ?? []),
       lastRollAt: actor.nowMs,
-      turnDeadline: actor.nowMs + TURN_DURATION_MS,
+      ...(Object.keys(rep).length > 0 ? { repChange: rep } : {}),
     });
-    return { result: resultOf(gameId, applied.state, applied.label, true), notices: built };
+    return { result: resultOf(gameId, applied.state, true, applied, rollId), notices: built };
   });
   await deliverDicePushes(db, committed.notices);
   return committed.result;
+}
+
+export function rollDice(
+  db: DiceDb,
+  actor: Actor,
+  gameId: string,
+  keep: readonly number[] = [],
+): Promise<DiceActionResult> {
+  return moveDice(db, actor, gameId, { kind: "roll", keep });
+}
+
+export function bankDice(db: DiceDb, actor: Actor, gameId: string, keep: readonly number[]): Promise<DiceActionResult> {
+  return moveDice(db, actor, gameId, { kind: "bank", keep });
 }
 
 async function endMatch(
@@ -372,17 +406,16 @@ async function endMatch(
 ): Promise<DiceActionResult> {
   const committed = await db.runTransaction(async (tx) => {
     const loaded = await loadGame(tx, gameId, actor.uid);
-    let after: DiceMatch;
-    try {
-      after = nextOf(loaded.state);
-    } catch (err) {
-      mapEngineError(err);
-    }
-    const built = noticesForEnd(gameId, after, actor.uid, namesFrom(loaded.data, loaded.state));
-    await writeStats(tx, after, actor.nowMs);
+    const after = guard(() => nextOf(loaded.state));
+    const rep = await writeStats(tx, after, actor.nowMs);
+    const built = noticesForEnd(gameId, after, actor.uid, namesFrom(loaded.data, loaded.state), rep);
     stageNotices(tx, built);
-    tx.update(`diceGames/${gameId}`, stateFields(after, actor.nowMs));
-    return { result: resultOf(gameId, after, null, true), notices: built };
+    tx.update(`diceGames/${gameId}`, {
+      ...stateFields(after, actor.nowMs),
+      remindAt: null,
+      ...(Object.keys(rep).length > 0 ? { repChange: rep } : {}),
+    });
+    return { result: resultOf(gameId, after, true), notices: built };
   });
   await deliverDicePushes(db, committed.notices);
   return committed.result;
@@ -401,35 +434,100 @@ export async function claimDiceTimeout(db: DiceDb, actor: Actor, gameId: string)
     const loaded = await loadGame(tx, gameId, actor.uid);
     const deadline = loaded.data.turnDeadline;
     const deadlineMs = typeof deadline === "number" ? deadline : Number.POSITIVE_INFINITY;
-    let after: DiceMatch | null;
-    try {
-      after = applyTimeout(loaded.state, actor.nowMs, deadlineMs);
-    } catch (err) {
-      mapEngineError(err);
-    }
-    if (!after) return { result: resultOf(gameId, loaded.state, null, false), notices: [] as DiceNotice[] };
-    const built = noticesForEnd(gameId, after, actor.uid, namesFrom(loaded.data, loaded.state));
-    await writeStats(tx, after, actor.nowMs);
+    const after = guard(() => applyTimeout(loaded.state, actor.nowMs, deadlineMs));
+    if (!after) return { result: resultOf(gameId, loaded.state, false), notices: [] as DiceNotice[] };
+    const rep = await writeStats(tx, after, actor.nowMs);
+    const built = noticesForEnd(gameId, after, actor.uid, namesFrom(loaded.data, loaded.state), rep);
     stageNotices(tx, built);
-    tx.update(`diceGames/${gameId}`, stateFields(after, actor.nowMs));
-    return { result: resultOf(gameId, after, null, true), notices: built };
+    tx.update(`diceGames/${gameId}`, {
+      ...stateFields(after, actor.nowMs),
+      remindAt: null,
+      ...(Object.keys(rep).length > 0 ? { repChange: rep } : {}),
+    });
+    return { result: resultOf(gameId, after, true), notices: built };
   });
   await deliverDicePushes(db, committed.notices);
   return committed.result;
 }
 
-/** How many expired games one sweep invocation will close. The next run gets the rest. */
+/** The waiting player pokes the roller. One nudge per match per hour. */
+export async function nudgeDice(db: DiceDb, actor: Actor, gameId: string): Promise<DiceActionResult> {
+  const committed = await db.runTransaction(async (tx) => {
+    const loaded = await loadGame(tx, gameId, actor.uid);
+    const state = loaded.state;
+    if (state.status !== "active") throw new DiceActionError("game_over");
+    if (state.seats[state.current] === actor.uid) throw new DiceActionError("your_turn");
+    const last = loaded.data.nudgedAt;
+    if (typeof last === "number" && actor.nowMs - last < NUDGE_COOLDOWN_MS) {
+      throw cooldown("nudge_cooldown", NUDGE_COOLDOWN_MS, actor.nowMs - last);
+    }
+    const built = noticeForNudge(gameId, state, actor.uid, actor.nowMs, namesFrom(loaded.data, state));
+    stageNotices(tx, built);
+    tx.update(`diceGames/${gameId}`, { nudgedAt: actor.nowMs });
+    return { result: resultOf(gameId, state, true), notices: built };
+  });
+  await deliverDicePushes(db, committed.notices);
+  return committed.result;
+}
+
+/** How many games one sweep invocation will touch per pass. The next run gets the rest. */
 const SWEEP_LIMIT = 50;
 
-export async function sweepExpiredDiceGames(db: DiceDb, nowMs: number): Promise<number> {
+async function sendReminders(db: DiceDb, nowMs: number): Promise<number> {
   const due = await db.query({
     collection: "diceGames",
     filters: [
       { field: "status", op: "==", value: "active" },
-      { field: "turnDeadline", op: "<", value: nowMs },
+      { field: "remindAt", op: "<", value: nowMs },
     ],
     limit: SWEEP_LIMIT,
   });
+  let sent = 0;
+  for (const doc of due) {
+    try {
+      const notices = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(`diceGames/${doc.id}`);
+        const data = snap.data;
+        const state = data ? matchFromData(data) : null;
+        if (
+          !data ||
+          !state ||
+          state.status !== "active" ||
+          typeof data.remindAt !== "number" ||
+          data.remindAt >= nowMs
+        ) {
+          return [] as DiceNotice[];
+        }
+        const deadline = typeof data.turnDeadline === "number" ? data.turnDeadline : nowMs;
+        const built = deadline > nowMs ? noticeForReminder(doc.id, state, deadline, namesFrom(data, state)) : [];
+        stageNotices(tx, built);
+        tx.update(`diceGames/${doc.id}`, { remindAt: null });
+        return built;
+      });
+      if (notices.length > 0) sent += 1;
+      await deliverDicePushes(db, notices);
+    } catch (err) {
+      logger.warn("dice_remind_skip", { gameId: doc.id, message: err instanceof Error ? err.message : "unknown" });
+    }
+  }
+  return sent;
+}
+
+export async function sweepExpiredDiceGames(db: DiceDb, nowMs: number): Promise<number> {
+  const due = (
+    await Promise.all(
+      ["active", "pending"].map((status) =>
+        db.query({
+          collection: "diceGames",
+          filters: [
+            { field: "status", op: "==", value: status },
+            { field: "turnDeadline", op: "<", value: nowMs },
+          ],
+          limit: SWEEP_LIMIT,
+        }),
+      ),
+    )
+  ).flat();
   let closed = 0;
   for (const doc of due) {
     const seat = doc.data?.player1Uid;
@@ -438,12 +536,10 @@ export async function sweepExpiredDiceGames(db: DiceDb, nowMs: number): Promise<
       const result = await claimDiceTimeout(db, { uid: seat, emailVerified: true, nowMs }, doc.id);
       if (result.applied) closed += 1;
     } catch (err) {
-      logger.warn("dice_sweep_skip", {
-        gameId: doc.id,
-        code: err instanceof DiceActionError ? err.code : "unknown",
-      });
+      logger.warn("dice_sweep_skip", { gameId: doc.id, code: err instanceof DiceActionError ? err.code : "unknown" });
     }
   }
+  await sendReminders(db, nowMs);
   return closed;
 }
 
@@ -467,12 +563,7 @@ export async function deliverDicePushes(db: DiceDb, notices: DiceNotice[]): Prom
       await db.add("push_dispatch", {
         tokens,
         notification: { title: item.title, body: item.body },
-        data: {
-          gameId: item.gameId,
-          type: item.type,
-          kind: "dice",
-          click_action: `/dice/${item.gameId}`,
-        },
+        data: { gameId: item.gameId, type: item.type, kind: "dice", click_action: `/dice/${item.gameId}` },
         senderUid: item.senderUid,
         recipientUid: item.recipientUid,
         gameId: item.gameId,

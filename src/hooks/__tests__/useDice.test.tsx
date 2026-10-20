@@ -1,6 +1,8 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DiceGameDoc } from "../../services/dice";
+import type { DiceGameDoc, DiceStatsDoc } from "../../services/dice";
+import { toDiceStats } from "../../services/dice.mappers";
+import { diceGame } from "../../__tests__/harness/diceFixtures";
 
 const subs = vi.hoisted(() => ({
   games: vi.fn(),
@@ -8,31 +10,16 @@ const subs = vi.hoisted(() => ({
   game: vi.fn(),
 }));
 
-vi.mock("../../services/dice", () => ({
+vi.mock("../../services/dice", async () => ({
   subscribeToMyDiceGames: (...args: unknown[]) => subs.games(...args),
   subscribeToDiceStats: (...args: unknown[]) => subs.stats(...args),
   subscribeToDiceGame: (...args: unknown[]) => subs.game(...args),
+  toDiceStats: (await import("../../services/dice.mappers")).toDiceStats,
 }));
 
-import { useDiceGame, useMyDiceGames } from "../useDice";
+import { useDiceGame, useDiceStats, useMyDiceGames } from "../useDice";
 
-const MATCH: DiceGameDoc = {
-  id: "g1",
-  player1Uid: "u1",
-  player2Uid: "u2",
-  player1Username: "ace",
-  player2Username: "bee",
-  status: "active",
-  currentTurn: "u1",
-  round: 4,
-  roundsWon: { u1: 2, u2: 1 },
-  rollCount: 7,
-  winner: null,
-  endReason: null,
-  updatedAt: 9,
-  turnDeadline: 2,
-  lastRoll: null,
-};
+const MATCH: DiceGameDoc = diceGame({ round: 4, rollCount: 7 });
 
 describe("useMyDiceGames", () => {
   beforeEach(() => {
@@ -44,13 +31,14 @@ describe("useMyDiceGames", () => {
     const { result } = renderHook(() => useMyDiceGames(null));
     expect(result.current.loading).toBe(false);
     expect(result.current.games).toEqual([]);
-    expect(result.current.stats).toEqual({ wins: 0, losses: 0, gamesPlayed: 0 });
+    expect(result.current.stats).toEqual(toDiceStats(undefined));
+    expect(result.current.error).toBe(false);
     expect(subs.games).not.toHaveBeenCalled();
   });
 
   it("publishes games and stats, then clears them when the uid goes away", () => {
     let onGames: (games: DiceGameDoc[]) => void = () => {};
-    let onStats: (stats: { wins: number; losses: number; gamesPlayed: number }) => void = () => {};
+    let onStats: (stats: DiceStatsDoc) => void = () => {};
     const unsub = vi.fn();
     subs.games.mockImplementation((_uid: string, next: typeof onGames) => {
       onGames = next;
@@ -66,7 +54,7 @@ describe("useMyDiceGames", () => {
     expect(result.current.loading).toBe(true);
     act(() => {
       onGames([MATCH]);
-      onStats({ wins: 2, losses: 1, gamesPlayed: 3 });
+      onStats({ ...toDiceStats(undefined), wins: 2, losses: 1, gamesPlayed: 3 });
     });
     expect(result.current.loading).toBe(false);
     expect(result.current.games).toEqual([MATCH]);
@@ -77,24 +65,51 @@ describe("useMyDiceGames", () => {
     expect(result.current.stats.wins).toBe(0);
   });
 
-  it("stops loading when the games listener errors", () => {
+  it("reports a listener error and retries with a fresh listener", () => {
     let onError: () => void = () => {};
-    subs.games.mockImplementation((_uid: string, _next: unknown, err: () => void) => {
+    let onGames: (games: DiceGameDoc[]) => void = () => {};
+    subs.games.mockImplementation((_uid: string, next: typeof onGames, err: () => void) => {
       onError = err;
+      onGames = next;
       return vi.fn();
     });
     const { result } = renderHook(() => useMyDiceGames("u1"));
     act(() => onError());
+    expect(result.current.error).toBe(true);
+    expect(result.current.loading).toBe(false);
+    act(() => result.current.retry());
+    expect(subs.games).toHaveBeenCalledTimes(2);
+    expect(result.current.error).toBe(false);
     expect(result.current.loading).toBe(true);
     act(() => {
-      const statsCb = subs.stats.mock.calls[0]?.[1] as (stats: {
-        wins: number;
-        losses: number;
-        gamesPlayed: number;
-      }) => void;
-      statsCb({ wins: 0, losses: 0, gamesPlayed: 0 });
+      onGames([MATCH]);
+      const statsCb = subs.stats.mock.calls[0]?.[1] as (stats: DiceStatsDoc) => void;
+      statsCb(toDiceStats(undefined));
     });
     expect(result.current.loading).toBe(false);
+    expect(result.current.games).toEqual([MATCH]);
+  });
+});
+
+describe("useDiceStats", () => {
+  beforeEach(() => {
+    subs.stats.mockReset().mockReturnValue(vi.fn());
+  });
+
+  it("defaults without a uid, then shows the live record", () => {
+    let onStats: (stats: DiceStatsDoc) => void = () => {};
+    subs.stats.mockImplementation((_uid: string, next: typeof onStats) => {
+      onStats = next;
+      return vi.fn();
+    });
+    const { result, rerender } = renderHook(({ uid }: { uid: string | null }) => useDiceStats(uid), {
+      initialProps: { uid: null as string | null },
+    });
+    expect(result.current.rep).toBe(1000);
+    expect(subs.stats).not.toHaveBeenCalled();
+    rerender({ uid: "u1" });
+    act(() => onStats({ ...toDiceStats(undefined), rep: 1040 }));
+    expect(result.current.rep).toBe(1040);
   });
 });
 
