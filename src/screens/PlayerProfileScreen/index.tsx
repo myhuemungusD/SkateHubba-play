@@ -328,7 +328,9 @@ export function PlayerProfileScreen({
           profile.isVerifiedPro !== true &&
           !c.isBlocked && <BlessProButton targetUid={profile.uid} username={profile.username} />}
 
-        {isDiceEnabled() && !isOwnProfile && hasViewer && !c.isBlocked && <RollDiceButton opponentUid={profile.uid} />}
+        {isDiceEnabled() && !isOwnProfile && hasViewer && !c.isBlocked && (
+          <RollDiceButton opponentUid={profile.uid} opponentUsername={profile.username} />
+        )}
 
         {!hasViewer && onSignUp && <SignUpToChallengeCta username={profile.username} onSignUp={onSignUp} />}
 

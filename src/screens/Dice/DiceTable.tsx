@@ -1,150 +1,55 @@
-import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ActionDock } from "../../components/ActionDock";
-import { Btn } from "../../components/ui/Btn";
 import { ScreenHeader } from "../../components/ScreenHeader";
-import { Die } from "../../components/dice/Die";
 import { useAuthContext } from "../../context/AuthContext";
 import { useDiceGame } from "../../hooks/useDice";
-import {
-  claimDiceTimeout,
-  createDiceGame,
-  declineDice,
-  diceErrorMessage,
-  quitDice,
-  rollDice,
-} from "../../services/dice";
-import { diceEndLine, opponentName, opponentUid } from "./diceCopy";
+import { TableView } from "./TableView";
 
-/** /dice/:gameId — one C-Lo match, round after round, until somebody leaves. */
+function Shell({ children }: { children: ReactNode }) {
+  return (
+    <div className="mx-auto min-h-dvh max-w-[430px] bg-background px-4 pt-[max(env(safe-area-inset-top),1.25rem)]">
+      <ScreenHeader title="Roll Dice" fallback="/dice" />
+      {children}
+    </div>
+  );
+}
+
+/** /dice/:gameId — loads the match, then hands it to the table. */
 export function DiceTable() {
   const { gameId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuthContext();
-  const uid = user?.uid ?? "";
   const { game, loading, missing } = useDiceGame(gameId);
-  const [error, setError] = useState<string | null>(null);
-  const [rolling, setRolling] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const claimed = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!game || game.status !== "active" || game.turnDeadline > Date.now()) return;
-    const key = `${game.id}:${game.turnDeadline}`;
-    if (claimed.current === key) return;
-    claimed.current = key;
-    void claimDiceTimeout(game.id).catch((err) => setError(diceErrorMessage(err)));
-  }, [game]);
-
-  async function run(action: () => Promise<unknown>, spin: boolean): Promise<void> {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    if (spin) setRolling(true);
-    try {
-      await action();
-    } catch (err) {
-      setError(diceErrorMessage(err));
-    } finally {
-      setRolling(false);
-      setBusy(false);
-    }
-  }
 
   if (loading) {
     return (
-      <div className="mx-auto min-h-dvh max-w-[430px] bg-background px-5 pt-[max(env(safe-area-inset-top),2rem)]">
-        <ScreenHeader title="Roll Dice" fallback="/dice" />
-        <p className="mt-4 font-body text-sm text-muted">Loading the table…</p>
-      </div>
+      <Shell>
+        <div
+          className="mt-4 space-y-2"
+          aria-busy="true"
+          aria-label="Loading the match"
+          data-testid="dice-table-loading"
+        >
+          <div className="h-[68px] animate-pulse rounded-2xl bg-white/[0.05]" />
+          <div className="h-[68px] animate-pulse rounded-2xl bg-white/[0.05]" />
+          <div className="mt-4 h-48 animate-pulse rounded-[20px] bg-white/[0.05]" />
+        </div>
+      </Shell>
     );
   }
-  if (missing || !game) {
+  if (missing || !game || !user) {
     return (
-      <div className="mx-auto min-h-dvh max-w-[430px] bg-background px-5 pt-[max(env(safe-area-inset-top),2rem)]">
-        <ScreenHeader title="Roll Dice" fallback="/dice" />
-        <p className="mt-4 font-body text-sm text-muted">That match is gone.</p>
+      <Shell>
+        <p className="mt-6 font-body text-sm text-bright">This match isn't here anymore, or you're not in it.</p>
         <button
           type="button"
           onClick={() => navigate("/dice")}
-          className="mt-4 inline-flex min-h-11 items-center font-body text-sm text-brand-orange"
+          className="mt-3 inline-flex min-h-11 items-center font-body text-sm text-brand-orange"
         >
           Back to Roll Dice
         </button>
-      </div>
+      </Shell>
     );
   }
-
-  const mine = uid === game.currentTurn && game.status === "active";
-  const name = opponentName(game.player1Uid, game.player1Username, game.player2Username, uid);
-  const canDecline =
-    game.status === "active" && uid === game.player2Uid && game.round === 1 && game.rollCount === 0 && !game.lastRoll;
-  const banner = diceEndLine(game.status, game.endReason, game.winner, uid);
-  const faces = game.lastRoll?.dice ?? [1, 1, 1];
-  const scoreLeft = game.roundsWon[game.player1Uid] ?? 0;
-  const scoreRight = game.roundsWon[game.player2Uid] ?? 0;
-
-  return (
-    <div className="mx-auto min-h-dvh max-w-[430px] bg-background px-5 pb-[calc(14rem+env(safe-area-inset-bottom))] pt-[max(env(safe-area-inset-top),2rem)]">
-      <ScreenHeader title="Roll Dice" fallback="/dice" />
-      <p className="mt-2 font-body text-sm text-muted">
-        vs @{name || "skater"} · round {game.round} · {scoreLeft}–{scoreRight}
-      </p>
-      {banner ? <p className="mt-4 font-display text-lg tracking-wider text-brand-orange">{banner}</p> : null}
-      <div className="mt-8 flex justify-center gap-3" aria-label={game.lastRoll ? game.lastRoll.label : "No roll yet"}>
-        {faces.map((face, index) => (
-          <Die key={`${game.lastRoll?.label ?? "blank"}-${index}`} face={face} tumbling={rolling} />
-        ))}
-      </div>
-      {game.lastRoll ? (
-        <p className="mt-4 text-center font-display tracking-wider text-white">{game.lastRoll.label}</p>
-      ) : null}
-      {error ? (
-        <p role="alert" className="mt-4 font-body text-sm text-brand-red">
-          {error}
-        </p>
-      ) : null}
-      {game.status === "active" && !mine ? (
-        <p className="mt-8 text-center font-body text-sm text-muted">Waiting on @{name || "them"}.</p>
-      ) : null}
-      <ActionDock testId="dice-actions">
-        {mine ? (
-          <Btn onClick={() => void run(() => rollDice(game.id), true)} disabled={busy}>
-            ROLL
-          </Btn>
-        ) : null}
-        {canDecline ? (
-          <button
-            type="button"
-            className="mt-2 inline-flex min-h-11 w-full items-center justify-center font-body text-sm text-bright"
-            onClick={() => void run(() => declineDice(game.id), false)}
-          >
-            Decline
-          </button>
-        ) : null}
-        {game.status === "active" ? (
-          <button
-            type="button"
-            className="mt-1 inline-flex min-h-11 w-full items-center justify-center font-body text-sm text-bright"
-            onClick={() => void run(() => quitDice(game.id), false)}
-          >
-            Leave the match
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-white/20 py-3 font-display tracking-wider text-white"
-            onClick={() =>
-              void run(async () => {
-                const next = await createDiceGame(opponentUid(game.player1Uid, game.player2Uid, uid));
-                navigate(`/dice/${next.gameId}`, { replace: true });
-              }, false)
-            }
-          >
-            Run it back
-          </button>
-        )}
-      </ActionDock>
-    </div>
-  );
+  return <TableView key={game.id} game={game} uid={user.uid} />;
 }

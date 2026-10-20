@@ -85,6 +85,10 @@
     radial-gradient(at 0% 50%, rgba(0, 230, 118, 0.03) 0px, transparent 50%);
   --background-image-noise: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
 
+  /* Roll Dice materials: fine griptape grit for the dice, poured concrete for the ledge. */
+  --background-image-grip: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='2.1' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.62 0 0 0 0 0.62 0 0 0 0 0.62 0 0 0 -13 7'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.22'/%3E%3C/svg%3E");
+  --background-image-concrete: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='c'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23c)' opacity='0.22'/%3E%3C/svg%3E");
+
   /* ── Border radius ───────────────────────────────── */
   --radius-2xl: 1rem;
   --radius-3xl: 1.5rem;
@@ -815,19 +819,75 @@ input:-webkit-autofill {
   animation: graffiti-drip 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-/* Roll Dice: one tumble while the callable is in flight. The die snaps to
- * the face when prefers-reduced-motion is set (the class is not applied). */
-@keyframes dice-tumble {
+/* Roll Dice. The server decides the roll; the client only stages it. While
+ * the call is in flight the dice rattle in hand, then each die drops onto
+ * the ledge in turn and settles at its own slight angle (--tilt). Under
+ * prefers-reduced-motion (or the in-app Quick rolls setting, which skips
+ * these classes) the dice simply fade in face-up. */
+@keyframes dice-land {
   0% {
-    transform: rotateX(0deg) rotateY(0deg);
+    transform: translate3d(0, -44px, 0) rotate(var(--spin, -140deg)) scale(1.06);
+    opacity: 0;
+  }
+  45% {
+    opacity: 1;
+  }
+  62% {
+    transform: translate3d(0, 2px, 0) rotate(calc(var(--tilt, 0deg) + 7deg)) scale(1);
+  }
+  82% {
+    transform: translate3d(0, -1px, 0) rotate(calc(var(--tilt, 0deg) - 2deg));
   }
   100% {
-    transform: rotateX(360deg) rotateY(360deg);
+    transform: translate3d(0, 0, 0) rotate(var(--tilt, 0deg));
+    opacity: 1;
   }
 }
-
-.animate-dice-tumble {
-  animation: dice-tumble 0.6s ease-in-out;
+.animate-dice-land {
+  animation: dice-land 560ms cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+@keyframes dice-rattle {
+  0%,
+  100% {
+    transform: translate3d(-1px, -5px, 0) rotate(-6deg);
+  }
+  50% {
+    transform: translate3d(1px, -8px, 0) rotate(6deg);
+  }
+}
+.animate-dice-rattle {
+  animation: dice-rattle 190ms ease-in-out infinite;
+}
+@keyframes dice-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-dice-fade {
+  animation: dice-fade 180ms ease-out both;
+}
+@keyframes dice-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-dice-rise {
+  animation: dice-rise 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-dice-land,
+  .animate-dice-rattle,
+  .animate-dice-rise {
+    animation: dice-fade 180ms ease-out both !important;
+  }
 }
 
 /* Native (Capacitor) capture renders the camera behind the web view. While a
