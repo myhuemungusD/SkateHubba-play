@@ -42,14 +42,15 @@ export function AccountActions({ onDownloadData, onDeleteAccount }: Props): Reac
           type="button"
           onClick={handleDownload}
           disabled={downloading}
-          aria-label="Download my data"
+          aria-labelledby="download-data-title"
+          aria-describedby="download-data-desc"
           className="block w-full text-left p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:opacity-60 disabled:cursor-wait"
         >
-          <p className="font-display text-sm text-white tracking-wide">
-            {downloading ? "Preparing your data…" : "Download my data"}
+          <p id="download-data-title" className="font-display text-sm text-white tracking-wide">
+            Download my data
           </p>
-          <p className="font-body text-xs text-faint mt-1">
-            Exports your profile and game history as a file you can keep.
+          <p id="download-data-desc" className="font-body text-xs text-faint mt-1">
+            {downloading ? "Preparing your data…" : "Exports your profile and game history as a file you can keep."}
           </p>
           {downloadError && (
             <p role="alert" className="font-body text-xs text-brand-red mt-2">
