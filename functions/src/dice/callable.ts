@@ -6,11 +6,15 @@ import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions/logger";
 import { diceAccessAllowed } from "./access.js";
 import {
+  acceptDice,
+  bankDice,
   claimDiceTimeout,
   createDiceGame,
   declineDice,
   DiceActionError,
+  nudgeDice,
   quitDice,
+  rematchDice,
   rollDice,
   type DiceActionResult,
 } from "./handlers.js";
@@ -26,10 +30,19 @@ export interface DiceCallDeps {
 function httpsFromAction(err: DiceActionError): HttpsError {
   if (err.code === "not_a_player") return new HttpsError("permission-denied", err.code);
   if (err.code === "not_found") return new HttpsError("not-found", err.code);
-  if (err.code === "self_challenge" || err.code === "bad_dice" || err.code === "bad_doc") {
+  if (["self_challenge", "bad_dice", "bad_doc", "bad_mode", "bad_keep", "wrong_mode"].includes(err.code)) {
     return new HttpsError("invalid-argument", err.code);
   }
   return new HttpsError("failed-precondition", err.code);
+}
+
+/** 10,000 keep choice: up to six distinct die indexes. Anything else is a bad request. */
+function parseKeep(raw: unknown): number[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw) || raw.length > 6 || raw.some((idx) => !Number.isInteger(idx))) {
+    throw new HttpsError("invalid-argument", "bad_request");
+  }
+  return raw as number[];
 }
 
 /**
@@ -47,7 +60,14 @@ export async function handleDiceCall(request: CallableRequest, deps: DiceCallDep
 
   const raw = request.data;
   if (!raw || typeof raw !== "object") throw new HttpsError("invalid-argument", "bad_request");
-  const body = raw as { action?: unknown; opponentUid?: unknown; gameId?: unknown };
+  const body = raw as {
+    action?: unknown;
+    opponentUid?: unknown;
+    gameId?: unknown;
+    mode?: unknown;
+    target?: unknown;
+    keep?: unknown;
+  };
   const actor = {
     uid,
     emailVerified: request.auth?.token.email_verified === true,
@@ -55,22 +75,31 @@ export async function handleDiceCall(request: CallableRequest, deps: DiceCallDep
   };
 
   try {
+    if (body.action === "create") {
+      if (typeof body.opponentUid !== "string") throw new HttpsError("invalid-argument", "bad_request");
+      return await createDiceGame(deps.db, actor, body.opponentUid, { mode: body.mode, target: body.target });
+    }
+    if (typeof body.gameId !== "string" || body.gameId.length === 0) {
+      throw new HttpsError("invalid-argument", "bad_request");
+    }
+    const gameId = body.gameId;
     switch (body.action) {
-      case "create":
-        if (typeof body.opponentUid !== "string") throw new HttpsError("invalid-argument", "bad_request");
-        return await createDiceGame(deps.db, actor, body.opponentUid);
       case "roll":
+        return await rollDice(deps.db, actor, gameId, parseKeep(body.keep));
+      case "bank":
+        return await bankDice(deps.db, actor, gameId, parseKeep(body.keep));
+      case "accept":
+        return await acceptDice(deps.db, actor, gameId);
+      case "rematch":
+        return await rematchDice(deps.db, actor, gameId);
+      case "nudge":
+        return await nudgeDice(deps.db, actor, gameId);
       case "quit":
+        return await quitDice(deps.db, actor, gameId);
       case "decline":
-      case "claimTimeout": {
-        if (typeof body.gameId !== "string" || body.gameId.length === 0) {
-          throw new HttpsError("invalid-argument", "bad_request");
-        }
-        if (body.action === "roll") return await rollDice(deps.db, actor, body.gameId);
-        if (body.action === "quit") return await quitDice(deps.db, actor, body.gameId);
-        if (body.action === "decline") return await declineDice(deps.db, actor, body.gameId);
-        return await claimDiceTimeout(deps.db, actor, body.gameId);
-      }
+        return await declineDice(deps.db, actor, gameId);
+      case "claimTimeout":
+        return await claimDiceTimeout(deps.db, actor, gameId);
       default:
         throw new HttpsError("invalid-argument", "bad_request");
     }

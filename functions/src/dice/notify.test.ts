@@ -1,99 +1,192 @@
 import { describe, expect, it } from "vitest";
-import { applyCloRoll, applyDecline, applyQuit, applyTimeout, freshMatch } from "./engine.js";
-import { noticesForEnd, noticesForRoll } from "./notify.js";
+import { freshMatch, type DiceMatch } from "./engine.js";
+import {
+  noticeForAccept,
+  noticeForChallenge,
+  noticeForNudge,
+  noticeForReminder,
+  noticesForEnd,
+  noticesForRoll,
+} from "./notify.js";
 
-const names = { u1: "jason", u2: "remy" };
+const NAMES = { a: "jason", b: "remy" };
+
+function m(overrides: Partial<DiceMatch> = {}): DiceMatch {
+  return { ...freshMatch(["a", "b"], "clo", 5), status: "active", accepted: true, ...overrides };
+}
+
+describe("challenge and accept", () => {
+  it("tells the opponent about a new challenge with the game and target", () => {
+    const [n] = noticeForChallenge("g", freshMatch(["a", "b"], "ten", 10000), NAMES);
+    expect(n).toMatchObject({ recipientUid: "b", senderUid: "a", type: "dice_challenge" });
+    expect(n?.body).toBe("@jason challenged you to 10,000, race to 10,000.");
+    expect(n?.dedupeKey).toBe("dice_g_challenge_dice_challenge_b");
+  });
+
+  it("tells the challenger it's their roll once accepted", () => {
+    const [n] = noticeForAccept("g", m(), NAMES);
+    expect(n).toMatchObject({ recipientUid: "a", type: "dice_turn", body: "@remy accepted. Your roll." });
+  });
+
+  it("skips a malformed match", () => {
+    const broken = { ...m(), seats: ["a"] };
+    expect(noticeForChallenge("g", broken, NAMES)).toEqual([]);
+    expect(noticeForAccept("g", broken, NAMES)).toEqual([]);
+    expect(noticesForEnd("g", broken, "a", NAMES, {})).toEqual([]);
+  });
+});
 
 describe("noticesForRoll", () => {
-  it("stays quiet on a re-roll", () => {
-    const before = freshMatch(["u1", "u2"]);
-    const applied = applyCloRoll(before, "u1", [1, 3, 5]);
-    expect(noticesForRoll("g1", before, applied.state, applied.effect, "u1", applied.label, names)).toEqual([]);
+  it("stays quiet when the same player keeps rolling", () => {
+    expect(noticesForRoll("g", m(), { type: "again" }, "a", "No point", NAMES, {})).toEqual([]);
   });
 
-  it("sends the opponent a challenge the first time a result lands", () => {
-    const before = freshMatch(["u1", "u2"]);
-    const applied = applyCloRoll(before, "u1", [2, 2, 5]);
-    const notices = noticesForRoll("g1", before, applied.state, applied.effect, "u1", applied.label, names);
-    expect(notices).toHaveLength(1);
-    expect(notices[0]).toMatchObject({
-      recipientUid: "u2",
-      type: "dice_challenge",
-      body: "@jason rolled POINT 5 — your roll",
+  it("passes the roll and calls a tie", () => {
+    const [adv] = noticesForRoll(
+      "g",
+      m({ rollCount: 2 }),
+      { type: "advance", nextUid: "b" },
+      "a",
+      "Point 5",
+      NAMES,
+      {},
+    );
+    expect(adv).toMatchObject({ recipientUid: "b", body: "@jason rolled Point 5. Your roll." });
+    const [tie] = noticesForRoll("g", m(), { type: "tie", nextUid: "a" }, "b", "Point 5", NAMES, {});
+    expect(tie?.body).toBe("Tied on Point 5. Roll again.");
+  });
+
+  it("tells both C-Lo players who took the round, with the score from each side", () => {
+    const after = m({ scores: { a: 3, b: 1 }, rollCount: 6 });
+    const out = noticesForRoll(
+      "g",
+      after,
+      { type: "round", winnerUid: "a", points: 3, nextUid: "a" },
+      "a",
+      "4-5-6",
+      NAMES,
+      {},
+    );
+    expect(out).toHaveLength(2);
+    expect(out[0]).toMatchObject({ recipientUid: "a", body: "@jason took the round (+3 pts). 3–1. Your roll." });
+    expect(out[1]).toMatchObject({
+      recipientUid: "b",
+      type: "dice_result",
+      body: "@jason took the round (+3 pts). 1–3.",
     });
-    expect(notices[0]?.dedupeKey.startsWith("dice_g1_")).toBe(true);
+    const solo = noticesForRoll(
+      "g",
+      after,
+      { type: "round", winnerUid: null, points: 1, nextUid: "b" },
+      "a",
+      "x",
+      NAMES,
+      {},
+    );
+    expect(solo).toHaveLength(1);
+    expect(solo[0]?.body).toContain("+1 pt)");
   });
 
-  it("uses a turn notice after the opening roll", () => {
-    let state = freshMatch(["u1", "u2"]);
-    state = applyCloRoll(state, "u1", [2, 2, 3]).state;
-    state = applyCloRoll(state, "u2", [2, 2, 6]).state;
-    const before = state;
-    const applied = applyCloRoll(before, "u1", [1, 1, 4]);
-    const notices = noticesForRoll("g1", before, applied.state, applied.effect, "u1", applied.label, names);
-    expect(notices[0]?.type).toBe("dice_turn");
+  it("alternating games tell the next player what happened and that it's their turn", () => {
+    const after = m({ mode: "ten", target: 5000, scores: { a: 1250, b: 400 } });
+    const [n] = noticesForRoll(
+      "g",
+      after,
+      { type: "round", winnerUid: "a", points: 450, nextUid: "b" },
+      "a",
+      "Banked 450",
+      NAMES,
+      {},
+    );
+    expect(n?.body).toBe("@jason: Banked 450 (+450 pts). 400–1,250. Your turn.");
+    const [miss] = noticesForRoll(
+      "g",
+      after,
+      { type: "round", winnerUid: null, points: 0, nextUid: "b" },
+      "a",
+      "Farkle",
+      NAMES,
+      {},
+    );
+    expect(miss?.body).toBe("@jason: Farkle. 400–1,250. Your turn.");
   });
 
-  it("tells both players when a round is taken", () => {
-    const before = applyCloRoll(freshMatch(["u1", "u2"]), "u1", [2, 2, 3]).state;
-    const applied = applyCloRoll(before, "u2", [4, 5, 6]);
-    const notices = noticesForRoll("g1", before, applied.state, applied.effect, "u2", applied.label, names);
-    expect(notices.map((n) => n.type).sort()).toEqual(["dice_result", "dice_turn"]);
-    expect(notices.find((n) => n.recipientUid === "u1")?.body).toContain("Your roll");
-    expect(notices.find((n) => n.recipientUid === "u2")?.body).toContain("took the round");
+  it("announces a finished race with Rep to both players", () => {
+    const done = m({ status: "complete", winner: "b", scores: { a: 3, b: 6 } });
+    const out = noticesForRoll(
+      "g",
+      done,
+      { type: "round", winnerUid: "b", points: 3, nextUid: "a" },
+      "b",
+      "4-5-6",
+      NAMES,
+      { a: -16, b: 16 },
+    );
+    expect(out.map((n) => n.body)).toEqual(["You won C-Lo 6–3. Rep +16.", "@remy won C-Lo 6–3. Rep −16."]);
+    const noRep = noticesForRoll("g", done, { type: "again" }, "b", "x", NAMES, { b: 0 });
+    expect(noRep.map((n) => n.body)).toEqual(["You won C-Lo 6–3.", "@remy won C-Lo 6–3."]);
+    expect(noticesForRoll("g", { ...done, winner: null }, { type: "again" }, "b", "x", NAMES, {})).toEqual([]);
+    expect(noticesForRoll("g", { ...done, seats: ["b"] }, { type: "again" }, "b", "x", NAMES, {})).toEqual([]);
   });
 
-  it("tells the first tied seat to roll again", () => {
-    const before = applyCloRoll(freshMatch(["u1", "u2"]), "u1", [2, 2, 5]).state;
-    const applied = applyCloRoll(before, "u2", [3, 3, 5]);
-    const notices = noticesForRoll("g1", before, applied.state, applied.effect, "u2", applied.label, names);
-    expect(applied.effect.type).toBe("tie");
-    expect(notices).toHaveLength(1);
-    expect(notices[0]).toMatchObject({
-      recipientUid: "u1",
-      type: "dice_turn",
-      body: "Tied on POINT 5 — roll again",
-    });
-  });
-
-  it("clips a very long body", () => {
-    const before = freshMatch(["u1", "u2"]);
-    const applied = applyCloRoll(before, "u1", [2, 2, 5]);
-    const longNames = { u1: "j".repeat(300), u2: "remy" };
-    const notices = noticesForRoll("g1", before, applied.state, applied.effect, "u1", applied.label, longNames);
-    expect(notices[0]?.body.length).toBeLessThanOrEqual(200);
-    expect(notices[0]?.title.length).toBeLessThanOrEqual(80);
+  it("clips a long body and names unknown players", () => {
+    const [n] = noticesForRoll("g", m(), { type: "advance", nextUid: "b" }, "a", "x".repeat(400), {}, {});
+    expect(n?.body.length).toBe(200);
+    expect(n?.body.startsWith("@Someone")).toBe(true);
   });
 });
 
 describe("noticesForEnd", () => {
-  it("tells the challenger about a decline and nobody else", () => {
-    const state = applyDecline(freshMatch(["u1", "u2"]), "u2");
-    const notices = noticesForEnd("g1", state, "u2", names);
-    expect(notices).toHaveLength(1);
-    expect(notices[0]).toMatchObject({ recipientUid: "u1", body: "@remy declined." });
+  it("decline, cancel and expiry each reach the right person", () => {
+    expect(noticesForEnd("g", m({ status: "declined" }), "b", NAMES, {})[0]).toMatchObject({
+      recipientUid: "a",
+      body: "@remy passed on your challenge.",
+    });
+    expect(noticesForEnd("g", m({ status: "expired", endReason: "cancel" }), "a", NAMES, {})[0]).toMatchObject({
+      recipientUid: "b",
+      body: "@jason called off the challenge.",
+    });
+    expect(noticesForEnd("g", m({ status: "expired", endReason: "timeout" }), "a", NAMES, {})[0]).toMatchObject({
+      recipientUid: "a",
+      body: "Your challenge expired before it started.",
+    });
   });
 
-  it("tells both players who won a forfeit", () => {
-    const started = applyCloRoll(freshMatch(["u1", "u2"]), "u1", [2, 2, 5]).state;
-    const state = applyQuit(started, "u1");
-    const notices = noticesForEnd("g1", state, "u1", names);
-    expect(notices.map((n) => n.recipientUid).sort()).toEqual(["u1", "u2"]);
-    expect(notices.find((n) => n.recipientUid === "u2")?.body).toBe("You got the win.");
-    expect(notices.find((n) => n.recipientUid === "u1")?.body).toBe("You left the match.");
+  it("words a timeout and a quit, with Rep", () => {
+    const quit = noticesForEnd("g", m({ status: "forfeit", winner: "a", endReason: "quit" }), "b", NAMES, {
+      a: 16,
+      b: -16,
+    });
+    expect(quit.map((n) => n.body)).toEqual([
+      "@remy left the match. You win. Rep +16.",
+      "You left the match. Counted as a loss. Rep −16.",
+    ]);
+    const timeout = noticesForEnd("g", m({ status: "forfeit", winner: "b", endReason: "timeout" }), "b", NAMES, {});
+    expect(timeout.map((n) => n.body)).toEqual([
+      "@jason ran out of time. You win.",
+      "Your turn ran out. Counted as a loss.",
+    ]);
   });
 
-  it("words a timeout differently from a quit", () => {
-    const started = applyCloRoll(freshMatch(["u1", "u2"]), "u1", [1, 3, 5]).state;
-    const state = applyTimeout(started, 10, 10);
-    expect(state).not.toBeNull();
-    const notices = noticesForEnd("g1", state!, "u2", names);
-    expect(notices.find((n) => n.recipientUid === "u2")?.body).toBe("Their turn expired. You got the win.");
-    expect(notices.find((n) => n.recipientUid === "u1")?.body).toBe("Your turn expired.");
+  it("sends nothing for an active or winnerless match", () => {
+    expect(noticesForEnd("g", m(), "a", NAMES, {})).toEqual([]);
+    expect(noticesForEnd("g", m({ status: "forfeit", winner: null }), "a", NAMES, {})).toEqual([]);
+    expect(noticesForEnd("g", m({ status: "forfeit", winner: "a", seats: ["a", "a"] }), "a", NAMES, {})).toEqual([]);
   });
+});
 
-  it("sends nothing when a match expires before anyone rolls", () => {
-    const state = applyTimeout(freshMatch(["u1", "u2"]), 10, 10);
-    expect(noticesForEnd("g1", state!, "u1", names)).toEqual([]);
+describe("nudge and reminder", () => {
+  it("nudges the roller and reminds them before the deadline", () => {
+    const [n] = noticeForNudge("g", m({ current: 1 }), "a", 99, NAMES);
+    expect(n).toMatchObject({
+      recipientUid: "b",
+      body: "@jason is waiting on your roll.",
+      dedupeKey: "dice_g_nudge99_dice_turn_b",
+    });
+    const [r] = noticeForReminder("g", m({ current: 0 }), 500, NAMES);
+    expect(r).toMatchObject({ recipientUid: "a", senderUid: "b", body: "About 3 hours left on your roll vs @remy." });
+    expect(noticeForNudge("g", m({ current: 5 }), "a", 1, NAMES)).toEqual([]);
+    expect(noticeForReminder("g", m({ current: 5 }), 1, NAMES)).toEqual([]);
+    expect(noticeForReminder("g", { ...m(), seats: ["a"] }, 1, NAMES)[0]?.senderUid).toBe("a");
   });
 });

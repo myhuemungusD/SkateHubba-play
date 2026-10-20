@@ -1,209 +1,156 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyCloRoll,
+  applyAccept,
   applyDecline,
   applyQuit,
   applyTimeout,
   decideDiceTimeout,
   freshMatch,
   matchHasStarted,
+  otherSeat,
+  seatIndex,
+  settleMatch,
   statsDelta,
-  TURN_DURATION_MS,
+  type DiceMatch,
 } from "./engine.js";
-import type { DiceMatch } from "./engine.js";
 
-const P1 = "u1";
-const P2 = "u2";
-const P3 = "u3";
+const SEATS = ["a", "b"] as const;
 
-function two(): DiceMatch {
-  return freshMatch([P1, P2]);
+function active(overrides: Partial<DiceMatch> = {}): DiceMatch {
+  return { ...freshMatch(SEATS, "clo", 5), status: "active", accepted: true, ...overrides };
 }
 
-describe("applyCloRoll — Got Em rollClo semantics, match continues", () => {
-  it("reroll outcome rolls again on the same turn", () => {
-    const next = applyCloRoll(two(), P1, [1, 3, 5]);
-    expect(next.effect).toEqual({ type: "reroll" });
-    expect(next.state.current).toBe(0);
-    expect(next.state.rolls[P1]).toBeUndefined();
-    expect(next.label).toBe("RE-ROLL");
-    expect(next.state.status).toBe("active");
-  });
-
-  it("records a determinate roll and advances to the next player", () => {
-    const next = applyCloRoll(two(), P1, [2, 2, 5]);
-    expect(next.state.rolls[P1]).toEqual([2, 2, 5]);
-    expect(next.state.current).toBe(1);
-    expect(next.effect).toEqual({ type: "advance", nextUid: P2 });
-    expect(next.label).toBe("POINT 5");
-  });
-
-  it("a challenger's 4-5-6 does not win the round before the opponent rolls", () => {
-    const next = applyCloRoll(two(), P1, [4, 5, 6]);
-    expect(next.state.status).toBe("active");
-    expect(next.state.winner).toBeNull();
-    expect(next.state.current).toBe(1);
-    expect(next.state.roundsWon[P1]).toBe(0);
-  });
-
-  it("when both have rolled the higher rank wins the round and the match stays open", () => {
-    const afterP1 = applyCloRoll(two(), P1, [2, 2, 3]).state;
-    const next = applyCloRoll(afterP1, P2, [2, 2, 6]);
-    expect(next.effect).toEqual({ type: "round", roundWinnerUid: P2, nextUid: P1 });
-    expect(next.state.status).toBe("active");
-    expect(next.state.winner).toBeNull();
-    expect(next.state.roundsWon[P2]).toBe(1);
-    expect(next.state.roundsWon[P1]).toBe(0);
-    expect(next.state.rolls).toEqual({});
-    expect(next.state.round).toBe(2);
-    expect(next.state.current).toBe(0);
-  });
-
-  it("4-5-6 (rank 1000) beats a point and the next round returns to the challenger", () => {
-    const afterP1 = applyCloRoll(two(), P1, [2, 2, 6]).state;
-    const next = applyCloRoll(afterP1, P2, [4, 5, 6]);
-    expect(next.effect.type).toBe("round");
-    if (next.effect.type !== "round") throw new Error("expected a round");
-    expect(next.effect.roundWinnerUid).toBe(P2);
-    expect(next.state.roundsWon[P2]).toBe(1);
-    expect(next.state.current).toBe(0);
-  });
-
-  it("tie on top rank clears tied rolls and resets to the first tied seat", () => {
-    const afterP1 = applyCloRoll(two(), P1, [3, 3, 5]).state;
-    const next = applyCloRoll(afterP1, P2, [1, 1, 5]);
-    expect(next.state.status).toBe("active");
-    expect(next.state.rolls[P1]).toBeUndefined();
-    expect(next.state.rolls[P2]).toBeUndefined();
-    expect(next.state.current).toBe(0);
-    expect(next.state.round).toBe(2);
-    expect(next.state.roundsWon[P1]).toBe(0);
-    expect(next.effect).toEqual({ type: "tie", nextUid: P1 });
-  });
-
-  it("advances to the next un-rolled tied seat, skipping a valid roll", () => {
-    let state = freshMatch([P1, P2, P3]);
-    state = applyCloRoll(state, P1, [2, 2, 5]).state;
-    state = applyCloRoll(state, P2, [1, 1, 3]).state;
-    const tied = applyCloRoll(state, P3, [3, 3, 5]);
-    expect(tied.state.current).toBe(0);
-    expect(tied.state.status).toBe("active");
-    expect(tied.state.rolls[P2]).toEqual([1, 1, 3]);
-    expect(tied.state.rolls[P1]).toBeUndefined();
-    expect(tied.state.rolls[P3]).toBeUndefined();
-
-    const after = applyCloRoll(tied.state, P1, [4, 5, 6]);
-    expect(after.state.current).toBe(2);
-    expect(after.state.status).toBe("active");
-    expect(after.effect).toEqual({ type: "advance", nextUid: P3 });
-  });
-
-  it("rejects a roll when it is not the caller's turn", () => {
-    expect(() => applyCloRoll(two(), P2, [2, 2, 5])).toThrow("NOT_YOUR_TURN");
-  });
-
-  it("rejects a roll when the match is not in progress", () => {
-    const done = applyQuit(two(), P1);
-    expect(() => applyCloRoll(done, P1, [2, 2, 5])).toThrow("NOT_IN_PROGRESS");
-  });
-
-  it("rejects dice that are not three faces in 1..6", () => {
-    expect(() => applyCloRoll(two(), P1, [1, 2])).toThrow("BAD_DICE");
-    expect(() => applyCloRoll(two(), P1, [0, 1, 2])).toThrow("BAD_DICE");
-  });
-
-  it("a second round can be won by the other player and both round counts stick", () => {
-    let state = applyCloRoll(two(), P1, [2, 2, 3]).state;
-    state = applyCloRoll(state, P2, [2, 2, 6]).state;
-    state = applyCloRoll(state, P1, [6, 6, 6]).state;
-    state = applyCloRoll(state, P2, [1, 1, 2]).state;
-    expect(state.roundsWon).toEqual({ [P1]: 1, [P2]: 1 });
-    expect(state.round).toBe(3);
-    expect(state.status).toBe("active");
+describe("freshMatch", () => {
+  it("opens a pending race with zeroed scores", () => {
+    const m = freshMatch(SEATS, "ten", 5000);
+    expect(m).toMatchObject({ status: "pending", mode: "ten", target: 5000, current: 0, round: 1, accepted: false });
+    expect(m.scores).toEqual({ a: 0, b: 0 });
+    expect(m.turns).toEqual({ a: 0, b: 0 });
+    expect(matchHasStarted(m)).toBe(false);
   });
 });
 
-describe("quit, decline, and timeout", () => {
-  it("a challenger who quits before rolling voids the match with no stats", () => {
-    const next = applyQuit(two(), P1);
-    expect(next.status).toBe("expired");
-    expect(next.winner).toBeNull();
-    expect(statsDelta(next)).toBeNull();
+describe("matchHasStarted", () => {
+  it("is true after accept, a roll, a later round, a settled roll, or any score", () => {
+    const base = freshMatch(SEATS, "clo", 5);
+    expect(matchHasStarted({ ...base, accepted: true })).toBe(true);
+    expect(matchHasStarted({ ...base, rollCount: 1 })).toBe(true);
+    expect(matchHasStarted({ ...base, round: 2 })).toBe(true);
+    expect(matchHasStarted({ ...base, rolls: { a: [1, 1, 2] } })).toBe(true);
+    expect(matchHasStarted({ ...base, scores: { a: 0, b: 1 } })).toBe(true);
+  });
+});
+
+describe("accept", () => {
+  it("lets only the opponent accept a pending challenge, and the challenger opens", () => {
+    const m = freshMatch(SEATS, "clo", 5);
+    expect(() => applyAccept(m, "a")).toThrow("NOT_ACCEPTABLE");
+    const after = applyAccept(m, "b");
+    expect(after).toMatchObject({ status: "active", accepted: true, current: 0 });
+    expect(() => applyAccept(after, "b")).toThrow("NOT_PENDING");
+  });
+});
+
+describe("decline, cancel, quit", () => {
+  it("opponent declines a pending challenge; challenger cannot", () => {
+    const m = freshMatch(SEATS, "clo", 5);
+    expect(applyDecline(m, "b")).toMatchObject({ status: "declined", endReason: "decline", winner: null });
+    expect(() => applyDecline(m, "a")).toThrow("NOT_DECLINABLE");
   });
 
-  it("an opponent who declines before the match starts writes no stats", () => {
-    const next = applyDecline(two(), P2);
-    expect(next.status).toBe("declined");
-    expect(next.endReason).toBe("decline");
-    expect(statsDelta(next)).toBeNull();
+  it("legacy active matches can still be declined until someone rolls", () => {
+    const legacy = { ...freshMatch(SEATS, "clo", 5), status: "active" as const };
+    expect(applyDecline(legacy, "b").status).toBe("declined");
+    expect(() => applyDecline({ ...legacy, rollCount: 1 }, "b")).toThrow("NOT_DECLINABLE");
+    expect(() => applyDecline(active(), "b")).toThrow("NOT_DECLINABLE");
   });
 
-  it("the challenger cannot decline", () => {
-    expect(() => applyDecline(two(), P1)).toThrow("NOT_DECLINABLE");
+  it("challenger leaving before play cancels; opponent leaving declines", () => {
+    const m = freshMatch(SEATS, "clo", 5);
+    expect(applyQuit(m, "a")).toMatchObject({ status: "expired", endReason: "cancel" });
+    expect(applyQuit(m, "b")).toMatchObject({ status: "declined", endReason: "decline" });
+    const legacy = { ...m, status: "active" as const };
+    expect(applyQuit(legacy, "a").endReason).toBe("cancel");
   });
 
-  it("decline is refused once anyone has rolled", () => {
-    const started = applyCloRoll(two(), P1, [1, 2, 4]).state;
-    expect(() => applyDecline(started, P2)).toThrow("NOT_DECLINABLE");
+  it("leaving after play started forfeits to the player who stayed", () => {
+    expect(applyQuit(active(), "a")).toMatchObject({ status: "forfeit", winner: "b", endReason: "quit" });
   });
 
-  it("quitting after play starts forfeits the match to the player who stayed", () => {
-    const started = applyCloRoll(two(), P1, [2, 2, 5]).state;
-    const next = applyQuit(started, P1);
-    expect(next.status).toBe("forfeit");
-    expect(next.winner).toBe(P2);
-    expect(next.endReason).toBe("quit");
-    expect(statsDelta(next)).toEqual({ winnerUid: P2, loserUid: P1 });
+  it("refuses a stranger and a finished match", () => {
+    expect(() => applyQuit(active(), "z")).toThrow("NOT_A_PLAYER");
+    expect(() => applyQuit(active({ status: "complete" }), "a")).toThrow("NOT_IN_PROGRESS");
+  });
+});
+
+describe("timeouts", () => {
+  it("does nothing before the deadline or on a finished match", () => {
+    expect(decideDiceTimeout(active(), 5, 10)).toEqual({ action: "none" });
+    expect(decideDiceTimeout(active({ status: "forfeit" }), 50, 10)).toEqual({ action: "none" });
+    expect(applyTimeout(active(), 5, 10)).toBeNull();
   });
 
-  it("an opponent who quits before anyone rolls is a decline, not a forfeit", () => {
-    const next = applyQuit(two(), P2);
-    expect(next.status).toBe("declined");
-    expect(statsDelta(next)).toBeNull();
+  it("expires an unanswered challenge and an unplayed legacy match", () => {
+    expect(applyTimeout(freshMatch(SEATS, "clo", 5), 10, 10)).toMatchObject({
+      status: "expired",
+      endReason: "timeout",
+    });
+    const legacy = { ...freshMatch(SEATS, "clo", 5), status: "active" as const };
+    expect(applyTimeout(legacy, 10, 10)?.status).toBe("expired");
   });
 
-  it("a stranger cannot quit", () => {
-    expect(() => applyQuit(two(), "nope")).toThrow("NOT_A_PLAYER");
+  it("forfeits a started match to whoever was waiting", () => {
+    expect(applyTimeout(active({ current: 1 }), 10, 10)).toMatchObject({ status: "forfeit", winner: "a" });
+    expect(applyTimeout(active({ current: 0 }), 10, 10)).toMatchObject({ status: "forfeit", winner: "b" });
   });
 
-  it("an unstarted turn that times out expires with no winner", () => {
-    const deadline = 1_000;
-    const decision = decideDiceTimeout(two(), deadline, deadline);
-    expect(decision).toEqual({ action: "expired" });
-    const next = applyTimeout(two(), deadline + 1, deadline);
-    expect(next?.status).toBe("expired");
-    expect(next?.winner).toBeNull();
-    expect(statsDelta(next!)).toBeNull();
+  it("throws when the roller seat is missing", () => {
+    expect(() => decideDiceTimeout(active({ current: 5 }), 10, 10)).toThrow("NO_OPPONENT");
+  });
+});
+
+describe("settleMatch", () => {
+  it("ends C-Lo as soon as someone reaches the target", () => {
+    expect(settleMatch(active({ scores: { a: 5, b: 3 } }))).toMatchObject({
+      status: "complete",
+      winner: "a",
+      endReason: "target",
+    });
+    expect(settleMatch(active({ scores: { a: 4, b: 6 } })).winner).toBe("b");
+    expect(settleMatch(active({ scores: { a: 4, b: 4 } })).status).toBe("active");
   });
 
-  it("a timeout before the deadline changes nothing", () => {
-    expect(decideDiceTimeout(two(), 500, 1_000)).toEqual({ action: "none" });
-    expect(applyTimeout(two(), 500, 1_000)).toBeNull();
+  it("gives the second player their hand in alternating games", () => {
+    const craps = active({ mode: "craps", scores: { a: 5, b: 3 }, turns: { a: 4, b: 3 } });
+    expect(settleMatch(craps).status).toBe("active");
+    expect(settleMatch({ ...craps, turns: { a: 4, b: 4 } }).winner).toBe("a");
   });
 
-  it("a timeout after a re-roll forfeits to the waiting player", () => {
-    const started = applyCloRoll(two(), P1, [1, 3, 5]).state;
-    expect(matchHasStarted(started)).toBe(true);
-    const deadline = 5_000;
-    const next = applyTimeout(started, deadline, deadline);
-    expect(next?.status).toBe("forfeit");
-    expect(next?.winner).toBe(P2);
-    expect(next?.endReason).toBe("timeout");
+  it("plays on when tied at or over the target", () => {
+    expect(
+      settleMatch(active({ mode: "ten", target: 5000, scores: { a: 5200, b: 5200 }, turns: { a: 9, b: 9 } })).status,
+    ).toBe("active");
   });
 
-  it("a timeout on the opponent's turn forfeits to the challenger", () => {
-    const started = applyCloRoll(two(), P1, [2, 2, 5]).state;
-    const next = applyTimeout(started, 10, 10);
-    expect(next?.winner).toBe(P1);
-    expect(statsDelta(next!)).toEqual({ winnerUid: P1, loserUid: P2 });
+  it("leaves a finished match alone and needs two seats", () => {
+    const done = active({ status: "forfeit" });
+    expect(settleMatch(done)).toBe(done);
+    expect(() => settleMatch({ ...active(), seats: ["a"] })).toThrow("NO_OPPONENT");
+  });
+});
+
+describe("helpers and stats", () => {
+  it("finds seats and the opponent", () => {
+    expect(otherSeat(active(), "a")).toBe("b");
+    expect(seatIndex(active(), "b")).toBe(1);
+    expect(() => seatIndex(active(), "z")).toThrow("NOT_A_PLAYER");
+    expect(() => otherSeat({ ...active(), seats: ["a"] }, "a")).toThrow("NO_OPPONENT");
   });
 
-  it("a finished match is not timed out again", () => {
-    const done = applyQuit(two(), P1);
-    expect(decideDiceTimeout(done, 99, 1)).toEqual({ action: "none" });
-  });
-
-  it("uses the same 24h window as S.K.A.T.E.", () => {
-    expect(TURN_DURATION_MS).toBe(24 * 60 * 60 * 1000);
+  it("only a decided match moves records", () => {
+    expect(statsDelta(active({ status: "complete", winner: "b" }))).toEqual({ winnerUid: "b", loserUid: "a" });
+    expect(statsDelta(active({ status: "forfeit", winner: "a" }))).toEqual({ winnerUid: "a", loserUid: "b" });
+    expect(statsDelta(active({ status: "expired" }))).toBeNull();
+    expect(statsDelta(active({ status: "complete", winner: null }))).toBeNull();
   });
 });

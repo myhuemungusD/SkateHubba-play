@@ -1,199 +1,155 @@
 /**
- * Pure C-Lo turn engine for a SkateHubba Roll Dice match.
+ * Pure Roll Dice match engine: types, match lifecycle (challenge, accept,
+ * decline, cancel, quit, timeout) and the end-of-match check. The per-game
+ * roll rules live in play.ts.
  *
- * Scoring is {@link cloResolve} (vendored from Got Em). Turn rules follow
- * Got Em's `rollClo` (gameplay.ts @ ea14902): a re-roll keeps the turn, a
- * settled roll is recorded and the turn passes, and when every seat has a
- * roll the highest rank wins. A tie clears only the tied rolls and the turn
- * returns to the first tied seat, skipping anyone who still has a valid roll.
+ * A match is a race to `target` points between two seats. Seat 0 is the
+ * challenger. A new match starts `pending` until the opponent accepts.
  *
- * One product difference, decided for SkateHubba: a round winner does not
- * end the match. The match is round after round until somebody quits or a
- * turn times out. `roundsWon` counts rounds inside the match. Lifetime
- * wins and losses are applied by the caller only when the match ends in a
- * forfeit (quit or timeout) — never as S.K.A.T.E. stats.
+ * Fairness rule for the alternating games (craps, 10,000): the match is only
+ * decided after both players have had the same number of hands. If the
+ * challenger reaches the target first, the opponent still gets their hand.
+ * A tie at or over the target plays another pair of hands.
  */
-import { cloResolve, type CloResult } from "./clo.js";
+import { MODE_RULES, type DiceMode } from "./modes.js";
 
-export const HISTORY_CAP = 30;
+export const HISTORY_CAP = 40;
+export const ROUNDS_CAP = 60;
 export const TURN_DURATION_MS = 24 * 60 * 60 * 1000;
-export const ROLL_COOLDOWN_MS = 1_000;
+export const ROLL_COOLDOWN_MS = 700;
 export const CREATE_COOLDOWN_MS = 10_000;
 export const ACTIVE_GAME_CAP = 10;
+export const NUDGE_COOLDOWN_MS = 60 * 60 * 1000;
+export const REMINDER_LEAD_MS = 3 * 60 * 60 * 1000;
 
-export type DiceStatus = "active" | "forfeit" | "declined" | "expired";
-export type DiceEndReason = "quit" | "timeout" | "decline";
+export type DiceStatus = "pending" | "active" | "complete" | "forfeit" | "declined" | "expired";
+export type DiceEndReason = "target" | "quit" | "timeout" | "decline" | "cancel";
+
+export interface TenState {
+  /** Points set aside so far this turn (not yet banked). */
+  turnScore: number;
+  /** Face values set aside this turn. Six kept means hot dice: all six roll again. */
+  kept: readonly number[];
+  /** Dice on the table waiting for a keep choice. Empty at the start of a turn. */
+  rolled: readonly number[];
+}
 
 export interface DiceMatch {
+  mode: DiceMode;
+  target: number;
   status: DiceStatus;
-  /** Seat order. Index 0 is the challenger and opens every new round. */
+  /** Seat order. Index 0 is the challenger. */
   seats: readonly string[];
   current: number;
   round: number;
+  scores: Readonly<Record<string, number>>;
+  /** Rounds (C-Lo, 4-5-6) or scoring hands (craps, 10,000) won. */
   roundsWon: Readonly<Record<string, number>>;
-  /** Settled dice for the current round, keyed by uid. */
+  /** C-Lo / 4-5-6: settled dice for the current round, keyed by uid. */
   rolls: Readonly<Record<string, readonly number[]>>;
+  /** Craps: the shooter's point, or null on the come-out. */
+  point: number | null;
+  ten: TenState;
+  /** Completed hands per seat (craps, 10,000). */
+  turns: Readonly<Record<string, number>>;
   rollCount: number;
-  /** Match winner. Set only when the match ends by quit or timeout. */
+  accepted: boolean;
   winner: string | null;
   endReason: DiceEndReason | null;
 }
 
-export type RollEffect =
-  | { type: "reroll" }
-  | { type: "advance"; nextUid: string }
-  | { type: "tie"; nextUid: string }
-  | { type: "round"; roundWinnerUid: string; nextUid: string };
+export const EMPTY_TEN: TenState = { turnScore: 0, kept: [], rolled: [] };
 
-export interface AppliedRoll {
-  state: DiceMatch;
-  effect: RollEffect;
-  label: string;
-  outcome: CloResult["outcome"];
-  dice: readonly number[];
+function zeroed(seats: readonly string[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const uid of seats) out[uid] = 0;
+  return out;
 }
 
-export function freshMatch(seats: readonly string[]): DiceMatch {
-  const roundsWon: Record<string, number> = {};
-  for (const uid of seats) roundsWon[uid] = 0;
+export function freshMatch(seats: readonly string[], mode: DiceMode, target: number): DiceMatch {
   return {
-    status: "active",
+    mode,
+    target,
+    status: "pending",
     seats,
     current: 0,
     round: 1,
-    roundsWon,
+    scores: zeroed(seats),
+    roundsWon: zeroed(seats),
     rolls: {},
+    point: null,
+    ten: EMPTY_TEN,
+    turns: zeroed(seats),
     rollCount: 0,
+    accepted: false,
     winner: null,
     endReason: null,
   };
 }
 
-/** True once anyone has rolled, a round has been won, or a tie restarted the round. */
+/** True once the opponent accepted or anyone has rolled. Legacy matches had no accept step. */
 export function matchHasStarted(state: DiceMatch): boolean {
-  if (state.round > 1 || state.rollCount > 0) return true;
+  if (state.accepted || state.round > 1 || state.rollCount > 0) return true;
   if (Object.keys(state.rolls).length > 0) return true;
-  return Object.values(state.roundsWon).some((n) => n > 0);
+  return Object.values(state.scores).some((n) => n > 0);
 }
 
-function assertActive(state: DiceMatch): void {
+export function assertActive(state: DiceMatch): void {
   if (state.status !== "active") throw new Error("NOT_IN_PROGRESS");
 }
 
-function assertDice(dice: readonly number[]): void {
-  if (dice.length !== 3 || dice.some((n) => !Number.isInteger(n) || n < 1 || n > 6)) {
-    throw new Error("BAD_DICE");
-  }
+export function assertTurn(state: DiceMatch, uid: string): void {
+  assertActive(state);
+  if (!state.seats.includes(uid)) throw new Error("NOT_A_PLAYER");
+  if (state.seats[state.current] !== uid) throw new Error("NOT_YOUR_TURN");
 }
 
-function otherSeat(state: DiceMatch, uid: string): string {
+export function otherSeat(state: DiceMatch, uid: string): string {
   const other = state.seats.find((seat) => seat !== uid);
   if (!other) throw new Error("NO_OPPONENT");
   return other;
 }
 
-/**
- * Next seat that still owes a settled roll, scanning forward from `current`.
- * During a tie re-roll this skips a seat whose roll was kept.
- */
-function nextUnrolled(state: DiceMatch, rolls: Readonly<Record<string, readonly number[]>>): number {
-  const count = state.seats.length;
-  for (let step = 1; step <= count; step++) {
-    const idx = (state.current + step) % count;
-    const uid = state.seats[idx];
-    if (uid && rolls[uid] === undefined) return idx;
-  }
-  return state.current;
+export function seatIndex(state: DiceMatch, uid: string): number {
+  const idx = state.seats.indexOf(uid);
+  if (idx < 0) throw new Error("NOT_A_PLAYER");
+  return idx;
 }
 
-export function applyCloRoll(state: DiceMatch, uid: string, dice: readonly number[]): AppliedRoll {
-  assertActive(state);
-  if (state.seats[state.current] !== uid) throw new Error("NOT_YOUR_TURN");
-  assertDice(dice);
+/**
+ * Decide the match if it is over. Simultaneous games (C-Lo, 4-5-6) end the
+ * moment a round winner reaches the target. Alternating games wait until
+ * both seats have played the same number of hands.
+ */
+export function settleMatch(state: DiceMatch): DiceMatch {
+  if (state.status !== "active") return state;
+  const [a, b] = state.seats;
+  if (!a || !b) throw new Error("NO_OPPONENT");
+  if (MODE_RULES[state.mode].alternating && (state.turns[a] ?? 0) !== (state.turns[b] ?? 0)) return state;
+  const sa = state.scores[a] ?? 0;
+  const sb = state.scores[b] ?? 0;
+  if (Math.max(sa, sb) < state.target || sa === sb) return state;
+  return { ...state, status: "complete", winner: sa > sb ? a : b, endReason: "target" };
+}
 
-  const result = cloResolve(dice);
-  const rollCount = state.rollCount + 1;
-  const base = { label: result.label, outcome: result.outcome, dice };
-
-  if (result.outcome === "reroll" || result.rank === null) {
-    return { state: { ...state, rollCount }, effect: { type: "reroll" }, ...base };
-  }
-
-  const rolls: Record<string, readonly number[]> = { ...state.rolls, [uid]: dice };
-  const allDone = state.seats.every((seat) => rolls[seat] !== undefined);
-  if (!allDone) {
-    const next = nextUnrolled(state, rolls);
-    const nextUid = state.seats[next];
-    if (!nextUid) throw new Error("NO_OPPONENT");
-    return {
-      state: { ...state, rolls, current: next, rollCount },
-      effect: { type: "advance", nextUid },
-      ...base,
-    };
-  }
-
-  const ranked = state.seats
-    .map((seat) => {
-      const settled = rolls[seat];
-      if (!settled) throw new Error("MISSING_ROLL");
-      const rank = cloResolve(settled).rank ?? Number.NEGATIVE_INFINITY;
-      return { uid: seat, rank };
-    })
-    .sort((a, b) => b.rank - a.rank);
-
-  const top = ranked[0];
-  if (!top) throw new Error("MISSING_ROLL");
-  const tied = ranked.filter((row) => row.rank === top.rank);
-
-  if (tied.length > 1) {
-    const tiedUids = new Set(tied.map((row) => row.uid));
-    const kept: Record<string, readonly number[]> = {};
-    for (const [seat, settled] of Object.entries(rolls)) {
-      if (!tiedUids.has(seat)) kept[seat] = settled;
-    }
-    const firstTied = state.seats.findIndex((seat) => tiedUids.has(seat));
-    if (firstTied < 0) throw new Error("TIE_RESOLVE_FAILED");
-    const nextUid = state.seats[firstTied];
-    if (!nextUid) throw new Error("TIE_RESOLVE_FAILED");
-    return {
-      state: { ...state, rolls: kept, current: firstTied, round: state.round + 1, rollCount },
-      effect: { type: "tie", nextUid },
-      ...base,
-    };
-  }
-
-  const roundsWon = { ...state.roundsWon, [top.uid]: (state.roundsWon[top.uid] ?? 0) + 1 };
-  const opener = state.seats[0];
-  if (!opener) throw new Error("NO_OPPONENT");
-  return {
-    state: {
-      ...state,
-      rolls: {},
-      roundsWon,
-      current: 0,
-      round: state.round + 1,
-      rollCount,
-      status: "active",
-      winner: null,
-      endReason: null,
-    },
-    effect: { type: "round", roundWinnerUid: top.uid, nextUid: opener },
-    ...base,
-  };
+export function applyAccept(state: DiceMatch, uid: string): DiceMatch {
+  if (state.status !== "pending") throw new Error("NOT_PENDING");
+  if (uid !== state.seats[1]) throw new Error("NOT_ACCEPTABLE");
+  return { ...state, status: "active", accepted: true, current: 0 };
 }
 
 export type TimeoutDecision = { action: "none" } | { action: "expired" } | { action: "forfeit"; winnerUid: string };
 
 /**
  * Shared by the callable's claimTimeout action and the scheduled sweep so
- * the two paths cannot disagree. A match the challenger never rolled in
- * (round 1, no rolls at all) expires with no stats. Any later expiry is a
- * forfeit: the player who was waiting wins the match.
+ * the two paths cannot disagree. An unanswered challenge, or a match nobody
+ * played in, expires with no stats. Any later expiry is a forfeit: the
+ * player who was waiting wins.
  */
 export function decideDiceTimeout(state: DiceMatch, nowMs: number, deadlineMs: number): TimeoutDecision {
-  if (state.status !== "active") return { action: "none" };
+  if (state.status !== "active" && state.status !== "pending") return { action: "none" };
   if (!(nowMs >= deadlineMs)) return { action: "none" };
-  if (!matchHasStarted(state)) return { action: "expired" };
+  if (state.status === "pending" || !matchHasStarted(state)) return { action: "expired" };
   const actor = state.seats[state.current];
   if (!actor) throw new Error("NO_OPPONENT");
   return { action: "forfeit", winnerUid: otherSeat(state, actor) };
@@ -209,33 +165,29 @@ export function applyTimeout(state: DiceMatch, nowMs: number, deadlineMs: number
 }
 
 /**
- * Either player can leave. Before anyone has rolled, the challenger leaving
- * voids the match and the opponent leaving declines it — neither writes a
- * win or a loss. After play has started, leaving forfeits the match to the
- * player who stayed.
+ * Either player can leave. Before play starts, the challenger leaving
+ * cancels the challenge and the opponent leaving declines it; neither moves
+ * a record. After play has started, leaving forfeits to the player who stayed.
  */
 export function applyQuit(state: DiceMatch, uid: string): DiceMatch {
-  assertActive(state);
+  if (state.status !== "active" && state.status !== "pending") throw new Error("NOT_IN_PROGRESS");
   if (!state.seats.includes(uid)) throw new Error("NOT_A_PLAYER");
-  if (!matchHasStarted(state)) {
-    if (uid === state.seats[0]) {
-      return { ...state, status: "expired", winner: null, endReason: "quit" };
-    }
+  if (state.status === "pending" || !matchHasStarted(state)) {
+    if (uid === state.seats[0]) return { ...state, status: "expired", winner: null, endReason: "cancel" };
     return { ...state, status: "declined", winner: null, endReason: "decline" };
   }
   return { ...state, status: "forfeit", winner: otherSeat(state, uid), endReason: "quit" };
 }
 
-/** Opponent-only, and only before the match has started. */
+/** Opponent-only, and only before play has started. */
 export function applyDecline(state: DiceMatch, uid: string): DiceMatch {
-  assertActive(state);
-  if (uid !== state.seats[1] || matchHasStarted(state)) throw new Error("NOT_DECLINABLE");
+  const open = state.status === "pending" || (state.status === "active" && !matchHasStarted(state));
+  if (!open || uid !== state.seats[1]) throw new Error("NOT_DECLINABLE");
   return { ...state, status: "declined", winner: null, endReason: "decline" };
 }
 
-/** A forfeit is the only ending that moves lifetime dice wins and losses. */
+/** A decided match (target reached or forfeit) is the only ending that moves records and Rep. */
 export function statsDelta(state: DiceMatch): { winnerUid: string; loserUid: string } | null {
-  if (state.status !== "forfeit" || !state.winner) return null;
-  const loserUid = otherSeat(state, state.winner);
-  return { winnerUid: state.winner, loserUid };
+  if ((state.status !== "forfeit" && state.status !== "complete") || !state.winner) return null;
+  return { winnerUid: state.winner, loserUid: otherSeat(state, state.winner) };
 }
