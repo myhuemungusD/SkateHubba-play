@@ -94,7 +94,7 @@ describe("AccountActions", () => {
 
       pending.resolve();
       await waitFor(() => expect(downloadBtn()).not.toBeDisabled());
-      expect(downloadBtn()).toHaveTextContent("Download my data");
+      expect(downloadBtn()).toHaveTextContent("Exports your profile");
       expect(onDownloadData).toHaveBeenCalledTimes(1);
     });
   });
