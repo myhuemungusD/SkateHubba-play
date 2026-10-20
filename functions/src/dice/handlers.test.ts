@@ -176,12 +176,12 @@ describe("a full C-Lo match", () => {
 
   it("rejects the wrong player, a stranger, a keep list, and a second roll inside the cooldown", async () => {
     const t = await started(db);
-    queueDice(1, 1, 2, 1, 1, 2);
+    queueDice(1, 3, 5, 1, 1, 2);
     await expect(rollDice(db, actor("u2", t + 2_000), "game-1")).rejects.toMatchObject({ code: "not_your_turn" });
     await expect(rollDice(db, actor("zz", t + 2_000), "game-1")).rejects.toMatchObject({ code: "not_a_player" });
     await expect(rollDice(db, actor("u1", t + 2_000), "game-1", [0])).rejects.toMatchObject({ code: "bad_keep" });
-    await rollDice(db, actor("u1", t + 2_000), "game-1");
-    await expect(rollDice(db, actor("u2", t + 2_100), "game-1")).rejects.toMatchObject({ code: "slow_down" });
+    expect(await rollDice(db, actor("u1", t + 2_000), "game-1")).toMatchObject({ currentTurn: "u1" });
+    await expect(rollDice(db, actor("u1", t + 2_100), "game-1")).rejects.toMatchObject({ code: "slow_down" });
   });
 
   it("refuses missing and unreadable games", async () => {
@@ -236,6 +236,14 @@ describe("4-5-6, craps and 10,000 through the handler", () => {
     const banked = await bankDice(db, at(), "game-1", [0]);
     expect(banked).toMatchObject({ label: "Banked 150", scores: { u1: 150, u2: 0 }, currentTurn: "u2" });
     await expect(bankDice(db, actor("u2", t + 2_000), "game-1", [])).rejects.toMatchObject({ code: "bad_keep" });
+  });
+
+  it("the cooldown only holds back the skater who just rolled", async () => {
+    const t = await started(db, "clo");
+    queueDice(2, 2, 5);
+    await rollDice(db, actor("u1", t + 2_000), "game-1");
+    queueDice(3, 3, 6);
+    expect(await rollDice(db, actor("u2", t + 2_100), "game-1")).toMatchObject({ applied: true });
   });
 
   it("10,000: banking right after a roll skips the roll cooldown", async () => {

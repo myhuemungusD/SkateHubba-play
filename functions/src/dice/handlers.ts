@@ -328,8 +328,11 @@ async function moveDice(db: DiceDb, actor: Actor, gameId: string, move: RollKind
   const committed = await db.runTransaction(async (tx) => {
     const loaded = await loadGame(tx, gameId, actor.uid);
     const last = loaded.data.lastRollAt;
-    // Banking throws no dice, so only a roll waits out the cooldown.
-    const cooling = move.kind === "roll" && typeof last === "number" && actor.nowMs - last < ROLL_COOLDOWN_MS;
+    // The cooldown stops one skater spamming rolls. Banking throws no dice, and
+    // the other skater answering right away is normal play, so neither waits.
+    const lastRoll = loaded.data.lastRoll as { uid?: unknown } | null | undefined;
+    const mine = lastRoll?.uid === actor.uid;
+    const cooling = move.kind === "roll" && mine && typeof last === "number" && actor.nowMs - last < ROLL_COOLDOWN_MS;
     if (cooling) throw new DiceActionError("slow_down");
     const applied = guard(() => play(loaded.state, actor.uid, move));
     const rep = await writeStats(tx, applied.state, actor.nowMs);
