@@ -15,7 +15,7 @@ interface TableDockProps {
   now: number;
   online: boolean;
   busy: TableAction | null;
-  /** Dice are still landing; the next move waits for them. */
+  /** Dice are still landing, or the table is catching up with the server; the next move waits. */
   landing: boolean;
   plan: TenPlan | null;
   onAction: (action: TableAction) => void;

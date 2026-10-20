@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,6 +36,11 @@ vi.mock("../../../services/dice", async () => {
     DICE_TARGETS: m.DICE_TARGETS,
     createDiceGame: vi.fn(),
     diceErrorMessage: (err: unknown) => (err instanceof Error ? err.message : "failed"),
+    diceErrorInfo: (err: unknown) => {
+      const wait = (err as { retryAfterMs?: number }).retryAfterMs;
+      return wait ? { code: "create_cooldown", retryAfterMs: wait } : { code: "dice_failed", retryAfterMs: null };
+    },
+    createCooldownLine: (ms: number) => `Try again in ${Math.max(1, Math.ceil(ms / 1000))}s.`,
   };
 });
 
@@ -149,6 +154,18 @@ describe("DiceNew", () => {
     await userEvent.click(screen.getByRole("button", { name: "Send challenge" }));
     expect(createDiceGame).toHaveBeenCalledWith("u2", "craps", 5);
     expect(getUidByUsername).not.toHaveBeenCalled();
+  });
+
+  it("counts down the create cooldown, then lets you send again", async () => {
+    vi.mocked(createDiceGame).mockRejectedValueOnce({ retryAfterMs: 1_400 });
+    renderAt("/dice/new", { opponent: { uid: "u2", username: "fox" } });
+    await userEvent.click(screen.getByRole("button", { name: "Send challenge" }));
+    expect(await screen.findByTestId("dice-new-cooldown")).toHaveTextContent("Try again in 2s.");
+    expect(screen.getByRole("button", { name: "Send challenge" })).toBeDisabled();
+    await waitFor(() => expect(screen.queryByTestId("dice-new-cooldown")).toBeNull(), { timeout: 3_000 });
+    vi.mocked(createDiceGame).mockResolvedValueOnce({ gameId: "g9" } as never);
+    await userEvent.click(screen.getByRole("button", { name: "Send challenge" }));
+    expect(await screen.findByText("table")).toBeInTheDocument();
   });
 
   it("ignores a malformed hand-off and asks signed-out users to sign in", () => {

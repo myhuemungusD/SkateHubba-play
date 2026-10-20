@@ -51,6 +51,7 @@ const DICE_CODES = [
   "banned",
   "blocked",
   "slow_down",
+  "create_cooldown",
   "too_many_active",
   "not_your_turn",
   "game_over",
@@ -69,9 +70,12 @@ const DICE_CODES = [
   "your_turn",
   "nudge_cooldown",
   "offline",
+  "network",
 ] as const;
 
-const DICE_MESSAGES: Record<(typeof DICE_CODES)[number], string> = {
+export type DiceErrorCode = (typeof DICE_CODES)[number];
+
+const DICE_MESSAGES: Record<DiceErrorCode, string> = {
   unauthenticated: "Sign in to roll.",
   dice_disabled: "Roll Dice is turned off.",
   email_unverified: "Verify your email first.",
@@ -80,37 +84,81 @@ const DICE_MESSAGES: Record<(typeof DICE_CODES)[number], string> = {
   banned: "That challenge isn't available.",
   blocked: "That challenge isn't available.",
   slow_down: "Give it a second.",
-  too_many_active: "You already have 10 open dice matches.",
-  not_your_turn: "Wait for their roll.",
+  create_cooldown: "You just started a match. Try again in a few seconds.",
+  too_many_active: "You already have 10 open dice matches. Finish one first.",
+  not_your_turn: "It's their roll now.",
   game_over: "This match is already over.",
   not_a_player: "You're not in this match.",
   not_declinable: "This match can't be declined.",
-  bad_dice: "That roll didn't count. Try again.",
-  bad_doc: "That match is unreadable.",
-  bad_request: "That didn't work. Try again.",
-  dice_failed: "That didn't work. Try again.",
+  bad_dice: "That roll didn't count. Roll again.",
+  bad_doc: "This match can't be loaded. Head back to Roll Dice.",
+  bad_request: "That move didn't go through. Try again.",
+  dice_failed: "Something went wrong at the table. Try again.",
   not_pending: "That challenge was already answered.",
   not_acceptable: "Only the skater you challenged can accept.",
-  bad_keep: "Set aside only dice that score.",
+  bad_keep: "Those dice changed. Pick your scoring dice again.",
   bad_mode: "Pick a game and a length.",
   wrong_mode: "That move isn't part of this game.",
   still_playing: "Finish this match first.",
   your_turn: "It's your roll.",
-  nudge_cooldown: "You can nudge again in a bit.",
+  nudge_cooldown: "You already nudged. Try again in a bit.",
   offline: "You're offline. Reconnect to roll.",
+  network: "Couldn't reach the table. Check your signal and try again.",
 };
 
-function isDiceCode(value: string): value is (typeof DICE_CODES)[number] {
-  return (DICE_CODES as readonly string[]).includes(value);
+/** Callable transport failures that aren't a dice rule, by Firebase error code. */
+const TRANSPORT_CODES: Readonly<Record<string, DiceErrorCode>> = {
+  "functions/unavailable": "network",
+  "functions/deadline-exceeded": "network",
+  "functions/unauthenticated": "unauthenticated",
+  "functions/resource-exhausted": "slow_down",
+};
+
+function isDiceCode(value: unknown): value is DiceErrorCode {
+  return typeof value === "string" && (DICE_CODES as readonly string[]).includes(value);
 }
 
-export function diceErrorCode(err: unknown): (typeof DICE_CODES)[number] {
-  if (!(err instanceof Error) || !isDiceCode(err.message)) return "dice_failed";
-  return err.message;
+export interface DiceErrorInfo {
+  code: DiceErrorCode;
+  /** On cooldowns, how long the server says to wait. */
+  retryAfterMs: number | null;
+}
+
+/**
+ * Read a dice failure. The server's code arrives two ways: in `details.code`,
+ * and as the message, which the Firebase SDK suffixes with the HTTP status
+ * ("slow_down [400]"). Matching the bare message used to miss every code, so
+ * every rejection read as the generic line.
+ */
+export function diceErrorInfo(err: unknown): DiceErrorInfo {
+  if (!err || typeof err !== "object") return { code: "dice_failed", retryAfterMs: null };
+  const { message, code, details } = err as { message?: unknown; code?: unknown; details?: unknown };
+  const extra = (details && typeof details === "object" ? details : {}) as { code?: unknown; retryAfterMs?: unknown };
+  const wait = extra.retryAfterMs;
+  const retryAfterMs = typeof wait === "number" && Number.isFinite(wait) && wait > 0 ? wait : null;
+  const bare = typeof message === "string" ? message.replace(/\s*\[\d+\]$/, "").trim() : "";
+  if (isDiceCode(extra.code)) return { code: extra.code, retryAfterMs };
+  if (isDiceCode(bare)) return { code: bare, retryAfterMs };
+  const transport = typeof code === "string" ? TRANSPORT_CODES[code] : undefined;
+  return { code: transport ?? "dice_failed", retryAfterMs: null };
+}
+
+export function diceErrorCode(err: unknown): DiceErrorCode {
+  return diceErrorInfo(err).code;
+}
+
+/** "Try again in 7s." The create cooldown, worded from the time left. */
+export function createCooldownLine(ms: number): string {
+  return `You just started a match. Try again in ${Math.max(1, Math.ceil(ms / 1000))}s.`;
 }
 
 export function diceErrorMessage(err: unknown): string {
-  return DICE_MESSAGES[diceErrorCode(err)];
+  const { code, retryAfterMs } = diceErrorInfo(err);
+  if (retryAfterMs !== null && code === "create_cooldown") return createCooldownLine(retryAfterMs);
+  if (retryAfterMs !== null && code === "nudge_cooldown") {
+    return `You already nudged. Try again in ${Math.max(1, Math.ceil(retryAfterMs / 60_000))} min.`;
+  }
+  return DICE_MESSAGES[code];
 }
 
 function watch(start: () => Unsubscribe, onError?: (err: unknown) => void): Unsubscribe {

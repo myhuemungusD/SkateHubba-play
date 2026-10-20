@@ -16,6 +16,7 @@ import {
   bankDice,
   claimDiceTimeout,
   declineDice,
+  diceErrorCode,
   diceErrorMessage,
   nudgeDice,
   quitDice,
@@ -66,6 +67,8 @@ export function TableView({ game, uid }: { game: DiceGameDoc; uid: string }) {
   const [sheet, setSheet] = useState<Sheet>(null);
   const [announce, setAnnounce] = useState("");
   const claimed = useRef<string | null>(null);
+  // State updates land a render late; a ref stops a double tap sending two moves.
+  const inFlight = useRef(false);
 
   const name = opponentName(game.player1Uid, game.player1Username, game.player2Username, uid) || "skater";
   const them = opponentUid(game.player1Uid, game.player2Uid, uid);
@@ -97,11 +100,15 @@ export function TableView({ game, uid }: { game: DiceGameDoc; uid: string }) {
     const key = `${game.id}:${game.turnDeadline}`;
     if (claimed.current === key) return;
     claimed.current = key;
-    void claimDiceTimeout(game.id).catch((err) => setError(diceErrorMessage(err)));
+    // Losing the race to the other seat or the sweep is fine: the snapshot shows the result.
+    void claimDiceTimeout(game.id).catch((err) => {
+      if (diceErrorCode(err) !== "game_over") setError(diceErrorMessage(err));
+    });
   }, [game.id, game.status, game.turnDeadline, now, online]);
 
   async function run(action: TableAction, call: () => Promise<DiceCallResult | void>): Promise<void> {
-    if (busy) return;
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(action);
     setError(null);
     const base = game.lastRoll?.rollId ?? null;
@@ -112,6 +119,7 @@ export function TableView({ game, uid }: { game: DiceGameDoc; uid: string }) {
     } catch (err) {
       setError(diceErrorMessage(err));
     } finally {
+      inFlight.current = false;
       setBusy(null);
     }
   }
@@ -271,7 +279,7 @@ export function TableView({ game, uid }: { game: DiceGameDoc; uid: string }) {
         now={now}
         online={online}
         busy={busy}
-        landing={landing}
+        landing={landing || !synced}
         plan={plan}
         onAction={act}
       />

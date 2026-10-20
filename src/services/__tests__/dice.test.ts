@@ -47,7 +47,9 @@ import {
   claimDiceTimeout,
   createDiceGame,
   declineDice,
+  createCooldownLine,
   diceErrorCode,
+  diceErrorInfo,
   diceErrorMessage,
   nudgeDice,
   quitDice,
@@ -98,7 +100,45 @@ describe("dice errors", () => {
     expect(diceErrorCode(new Error("slow_down"))).toBe("slow_down");
     expect(diceErrorMessage(new Error("email_unverified"))).toBe("Verify your email first.");
     expect(diceErrorCode("nope")).toBe("dice_failed");
-    expect(diceErrorMessage(new Error("boom"))).toBe("That didn't work. Try again.");
+    expect(diceErrorCode(null)).toBe("dice_failed");
+    expect(diceErrorCode({ message: 404, code: 7 })).toBe("dice_failed");
+    expect(diceErrorMessage(new Error("boom"))).toBe("Something went wrong at the table. Try again.");
+  });
+
+  // Regression: the SDK reports the server's code as "slow_down [400]", which
+  // never matched, so every rejection showed the generic line.
+  it("reads the code from a real callable error, status suffix and all", async () => {
+    const { FunctionsError } = await vi.importActual<typeof import("firebase/functions")>("firebase/functions");
+    const rejected = (message: string, details?: unknown) =>
+      new FunctionsError("failed-precondition", `${message} [400]`, details);
+    expect(diceErrorCode(rejected("slow_down"))).toBe("slow_down");
+    expect(diceErrorMessage(rejected("bad_keep"))).toBe("Those dice changed. Pick your scoring dice again.");
+    expect(diceErrorMessage(rejected("not_your_turn"))).toBe("It's their roll now.");
+    expect(diceErrorCode(rejected("whatever", { code: "game_over" }))).toBe("game_over");
+  });
+
+  it("says how long the create and nudge cooldowns have left", async () => {
+    const { FunctionsError } = await vi.importActual<typeof import("firebase/functions")>("firebase/functions");
+    const cool = (code: string, retryAfterMs: unknown) =>
+      new FunctionsError("failed-precondition", `${code} [400]`, { code, retryAfterMs });
+    expect(diceErrorMessage(cool("create_cooldown", 6_200))).toBe("You just started a match. Try again in 7s.");
+    expect(diceErrorInfo(cool("create_cooldown", 6_200))).toEqual({ code: "create_cooldown", retryAfterMs: 6_200 });
+    expect(diceErrorMessage(cool("create_cooldown", "soon"))).toBe(
+      "You just started a match. Try again in a few seconds.",
+    );
+    expect(diceErrorMessage(cool("nudge_cooldown", 125_000))).toBe("You already nudged. Try again in 3 min.");
+    expect(diceErrorMessage(cool("nudge_cooldown", 0))).toBe("You already nudged. Try again in a bit.");
+    expect(createCooldownLine(200)).toBe("You just started a match. Try again in 1s.");
+  });
+
+  it("words transport failures instead of the generic line", async () => {
+    const { FunctionsError } = await vi.importActual<typeof import("firebase/functions")>("firebase/functions");
+    expect(diceErrorMessage(new FunctionsError("unavailable", "unavailable"))).toBe(
+      "Couldn't reach the table. Check your signal and try again.",
+    );
+    expect(diceErrorCode(new FunctionsError("deadline-exceeded", "deadline-exceeded"))).toBe("network");
+    expect(diceErrorCode(new FunctionsError("unauthenticated", "x"))).toBe("unauthenticated");
+    expect(diceErrorCode(new FunctionsError("internal", "internal"))).toBe("dice_failed");
   });
 });
 

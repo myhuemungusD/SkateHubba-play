@@ -44,6 +44,8 @@ vi.mock("../../../services/dice", async () => {
     rematchDice: vi.fn(),
     rollDice: vi.fn(),
     diceErrorMessage: (err: unknown) => (err instanceof Error ? err.message : "failed"),
+    diceErrorCode: (err: unknown) =>
+      err instanceof Error && err.message === "game_over" ? "game_over" : "dice_failed",
   };
 });
 
@@ -174,6 +176,38 @@ describe("live match", () => {
     show(diceGame());
     await userEvent.click(screen.getByRole("button", { name: "Roll" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Give it a second.");
+  });
+
+  it("sends one move for a double tap", async () => {
+    let finish: (r: DiceCallResult) => void = () => undefined;
+    vi.mocked(rollDice).mockReturnValueOnce(new Promise((r) => (finish = r)));
+    show(diceGame({ lastRoll: diceRoll({ rollId: "r1" }) }));
+    const button = screen.getByRole("button", { name: "Roll" });
+    act(() => {
+      button.click();
+      button.click();
+    });
+    expect(rollDice).toHaveBeenCalledTimes(1);
+    await act(async () => finish(result({ currentTurn: "u1", outcome: "none", label: "No point" })));
+  });
+
+  it("holds the next roll until the snapshot has the last one", async () => {
+    const before = diceGame({ lastRoll: diceRoll({ rollId: "r1" }) });
+    const view = show(before);
+    vi.mocked(rollDice).mockResolvedValueOnce(result({ currentTurn: "u1", outcome: "none", label: "No point" }));
+    await userEvent.click(screen.getByRole("button", { name: "Roll" }));
+    expect(await screen.findByText(/You: No point/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Roll" })).toBeDisabled();
+    env.table = { ...env.table, game: { ...before, lastRoll: diceRoll({ rollId: "r2", label: "No point" }) } };
+    refresh(view);
+    expect(screen.getByRole("button", { name: "Roll" })).toBeEnabled();
+  });
+
+  it("stays quiet when someone else already closed the expired turn", async () => {
+    vi.mocked(claimDiceTimeout).mockRejectedValueOnce(new Error("game_over"));
+    show(diceGame({ turnDeadline: Date.now() - 1 }));
+    await wait(0);
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("waits on the other skater and nudges once", async () => {

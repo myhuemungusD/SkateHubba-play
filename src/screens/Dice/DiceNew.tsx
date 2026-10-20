@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { CircleHelp } from "lucide-react";
 import { ActionDock } from "../../components/ActionDock";
@@ -7,7 +7,15 @@ import { ScreenHeader } from "../../components/ScreenHeader";
 import { Btn } from "../../components/ui/Btn";
 import { Die } from "../../components/dice/Die";
 import { useAuthContext } from "../../context/AuthContext";
-import { DICE_MODES, DICE_TARGETS, createDiceGame, diceErrorMessage, type DiceMode } from "../../services/dice";
+import {
+  DICE_MODES,
+  DICE_TARGETS,
+  createCooldownLine,
+  createDiceGame,
+  diceErrorInfo,
+  diceErrorMessage,
+  type DiceMode,
+} from "../../services/dice";
 import { getUidByUsername } from "../../services/users";
 import { DiceInfoSheet } from "./DiceInfoSheet";
 import { MODE_COPY, fmt } from "./diceCopy";
@@ -43,6 +51,20 @@ export function DiceNew() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState(false);
+  // When the server's create cooldown is running: the time it ends, and the clock that counts it down.
+  const [retryAt, setRetryAt] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const waitMs = retryAt === null ? 0 : retryAt - now;
+
+  useEffect(() => {
+    if (retryAt === null) return;
+    const id = setInterval(() => {
+      const t = Date.now();
+      setNow(t);
+      if (t >= retryAt) setRetryAt(null);
+    }, 250);
+    return () => clearInterval(id);
+  }, [retryAt]);
 
   function chooseMode(next: DiceMode): void {
     setMode(next);
@@ -50,7 +72,7 @@ export function DiceNew() {
   }
 
   async function send(opponent: { uid?: string; username: string }): Promise<void> {
-    if (!user || busy) return;
+    if (!user || busy || retryAt !== null) return;
     setBusy(true);
     setError(null);
     try {
@@ -62,7 +84,11 @@ export function DiceNew() {
       const result = await createDiceGame(uid, mode, target);
       navigate(`/dice/${result.gameId}`, { replace: true });
     } catch (err) {
-      setError(diceErrorMessage(err));
+      const { code, retryAfterMs } = diceErrorInfo(err);
+      if (code === "create_cooldown" && retryAfterMs !== null) {
+        setNow(Date.now());
+        setRetryAt(Date.now() + retryAfterMs);
+      } else setError(diceErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -158,7 +184,11 @@ export function DiceNew() {
         )}
       </section>
 
-      {error ? (
+      {retryAt !== null ? (
+        <p role="status" className="mt-4 font-body text-sm text-bright" data-testid="dice-new-cooldown">
+          {createCooldownLine(waitMs)}
+        </p>
+      ) : error ? (
         <p role="alert" className="mt-4 font-body text-sm text-brand-red">
           {error}
         </p>
@@ -166,7 +196,7 @@ export function DiceNew() {
 
       {preset && user ? (
         <ActionDock testId="dice-new-actions">
-          <Btn onClick={() => void send(preset)} disabled={busy}>
+          <Btn onClick={() => void send(preset)} disabled={busy || retryAt !== null}>
             {busy ? "Sending…" : "Send challenge"}
           </Btn>
         </ActionDock>
