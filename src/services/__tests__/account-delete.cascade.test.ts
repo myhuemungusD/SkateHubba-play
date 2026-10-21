@@ -26,8 +26,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const fp = vi.hoisted(() => ({ documentId: { __fieldPath: "__name__" } }));
 
-// FieldPath is the only runtime import the cascade takes from firebase-admin.
-vi.mock("firebase-admin/firestore", () => ({ FieldPath: { documentId: () => fp.documentId } }));
+// FieldPath and Timestamp (a held trade's refund row) are the only runtime
+// imports the cascade takes from firebase-admin.
+vi.mock("firebase-admin/firestore", () => ({
+  FieldPath: { documentId: () => fp.documentId },
+  Timestamp: { fromMillis: (ms: number) => ({ ms }) },
+}));
 
 import { deleteUserDataAsAdmin, readUsername } from "../../../api/account/_deleteUserData";
 import {
@@ -42,6 +46,34 @@ import {
 
 const UID = "u1";
 const OTHER = "u2";
+
+/** Summary block for an account with no spot, chat, pro or media data. */
+const EMPTY_CONTENT = {
+  spotMessages: 0,
+  comments: 0,
+  spotPresence: 0,
+  mapDocs: 0,
+  privateSpots: 0,
+  spotsAnonymized: 0,
+  crewListsUpdated: 0,
+  spotMessageReports: 0,
+  wttVotes: 0,
+  proContent: 0,
+  rateLimits: 0,
+  mediaObjects: 0,
+};
+
+/**
+ * Summary fields added with dice anonymization, closet and owned-content
+ * erasure, for an account that has none of that data. `mapDocs` is 4 because
+ * the per-uid map docs are deleted blind (attempted, not found).
+ */
+const EMPTY_NEW_PHASES = {
+  diceGamesAnonymized: 0,
+  diceGamesDeleted: 0,
+  closet: { tradesSettled: 0, tradesAnonymized: 0, tradesDeleted: 0, serials: 0, dropRecords: 0 },
+  content: { ...EMPTY_CONTENT, mapDocs: 4 },
+};
 
 /**
  * One account with something in every collection the cascade touches, next to a
@@ -139,6 +171,8 @@ describe("full cascade over a populated account", () => {
       diceCreateLimits: 0,
       trainingLabels: 0,
       trainingRevocations: 0,
+      userSubcollectionDocs: 1,
+      ...EMPTY_NEW_PHASES,
     });
   });
 
@@ -301,7 +335,29 @@ describe("ownership fields", () => {
     ["trainingLabels", "ownerUid"],
     ["moderationStatements", "subjectUid"],
     ["appeals", "appellantUid"],
+    ["trades", "fromUid"],
+    ["trades", "toUid"],
+    ["serials", "ownerUid"],
+    ["group:messages", "userId"],
+    ["group:comments", "userId"],
+    ["group:here", "uid"],
+    ["privateSpots", "createdBy"],
+    ["spotMessageReports", "reportedBy"],
+    ["wttVotes", "uid"],
+    ["proReviews", "uid"],
+    ["proChallengeEntries", "uid"],
+    ["proChallenges", "proUid"],
+    ["proFeatured", "proUid"],
+    ["proProps", "fromUid"],
+    ["proProps", "toUid"],
+    ["notification_limits", "senderUid"],
+    ["push_dispatch_limits", "senderUid"],
+    ["nudge_limits", "senderUid"],
+    ["reports_limits", "reporterUid"],
+    ["spots", "createdBy"],
   ];
+  /** Crew lists are the one array membership filter. */
+  const MEMBERSHIP: [string, string][] = [["privateSpots", "crewUids"]];
 
   it.each(OWNERSHIP)("queries %s on %s", async (collection, field) => {
     // A wrong field here is invisible in the summary — it just silently reports
@@ -314,10 +370,12 @@ describe("ownership fields", () => {
   it("never filters on anything but the erased uid", async () => {
     const store = fixture();
     await deleteUserDataAsAdmin(store.deps, UID);
-    expect(store.wheres.map((w) => `${w.collection}.${w.field}`).sort()).toEqual(
-      OWNERSHIP.map(([c, f]) => `${c}.${f}`).sort(),
-    );
-    expect(store.wheres.every((w) => w.op === "==" && w.value === UID)).toBe(true);
+    const eq = store.wheres.filter((w) => w.op === "==");
+    const member = store.wheres.filter((w) => w.op === "array-contains");
+    expect(eq.map((w) => `${w.collection}.${w.field}`).sort()).toEqual(OWNERSHIP.map(([c, f]) => `${c}.${f}`).sort());
+    expect(member.map((w) => `${w.collection}.${w.field}`)).toEqual(MEMBERSHIP.map(([c, f]) => `${c}.${f}`));
+    expect(eq.length + member.length).toBe(store.wheres.length);
+    expect(store.wheres.every((w) => w.value === UID)).toBe(true);
   });
 });
 
@@ -737,6 +795,8 @@ describe("idempotency", () => {
       diceCreateLimits: 0,
       trainingLabels: 0,
       trainingRevocations: 0,
+      userSubcollectionDocs: 0,
+      ...EMPTY_NEW_PHASES,
     });
   });
 
