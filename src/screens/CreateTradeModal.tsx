@@ -1,4 +1,9 @@
-/** New-trade flow: pick your items, then name the skater to send the offer to. */
+/**
+ * New-trade flow: pick your items, name the skater, then pick what you want
+ * from their closet. The server takes 1-4 items per side (item-for-item
+ * only, functions/src/closet/trading.rules.ts copyIdList), so an offer
+ * with nothing asked for back would always be refused.
+ */
 import { useEffect, useRef, useState } from "react";
 import { useFocusTrap } from "../hooks/useFocusTrap";
 import type { LockerItem } from "../services/locker";
@@ -15,9 +20,11 @@ interface CreateTradeModalProps {
 export function CreateTradeModal({ onClose, currentUid }: CreateTradeModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(panelRef, true, onClose);
-  const [step, setStep] = useState<"select-items" | "find-partner" | "confirm">("select-items");
+  const [step, setStep] = useState<"select-items" | "find-partner" | "their-items">("select-items");
   const [myItems, setMyItems] = useState<LockerItem[]>([]);
   const [selectedMyItems, setSelectedMyItems] = useState<string[]>([]);
+  const [theirItems, setTheirItems] = useState<LockerItem[]>([]);
+  const [selectedTheirItems, setSelectedTheirItems] = useState<string[]>([]);
   const [recipientUid, setRecipientUid] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -28,13 +35,21 @@ export function CreateTradeModal({ onClose, currentUid }: CreateTradeModalProps)
     })();
   }, [currentUid]);
 
+  const loadTheirItems = async () => {
+    setLoading(true);
+    setSelectedTheirItems([]);
+    setTheirItems(await fetchLockerItems(recipientUid.trim()));
+    setLoading(false);
+    setStep("their-items");
+  };
+
   const handleSubmit = async () => {
     setLoading(true);
     try {
       await proposeTrade({
-        recipientUid,
+        recipientUid: recipientUid.trim(),
         proposerCopyIds: selectedMyItems,
-        recipientCopyIds: [], // Partner will counter with their items
+        recipientCopyIds: selectedTheirItems,
       });
       onClose();
     } catch (err) {
@@ -68,28 +83,7 @@ export function CreateTradeModal({ onClose, currentUid }: CreateTradeModalProps)
         {step === "select-items" && (
           <>
             <p className="text-subtle text-sm mb-4">Select items you want to trade away:</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-              {myItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() =>
-                    setSelectedMyItems((prev) =>
-                      prev.includes(item.id) ? prev.filter((id) => id !== item.id) : [...prev, item.id],
-                    )
-                  }
-                  className={`aspect-square rounded-lg border p-2 flex flex-col items-center justify-center ${
-                    selectedMyItems.includes(item.id) ? "border-brand-orange bg-brand-orange/20" : "border-border"
-                  }`}
-                >
-                  {item.imageUrl ? (
-                    <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover rounded" />
-                  ) : (
-                    <div className="text-faint">?</div>
-                  )}
-                  <span className="text-xs mt-2 text-center truncate w-full">{item.name}</span>
-                </button>
-              ))}
-            </div>
+            <ItemPicker items={myItems} selected={selectedMyItems} onChange={setSelectedMyItems} />
             <button
               onClick={() => setStep("find-partner")}
               disabled={selectedMyItems.length === 0}
@@ -118,8 +112,31 @@ export function CreateTradeModal({ onClose, currentUid }: CreateTradeModalProps)
                 BACK
               </button>
               <button
+                onClick={() => void loadTheirItems()}
+                disabled={!recipientUid.trim() || loading}
+                className="flex-1 px-6 py-3 bg-brand-orange text-surface-dark rounded-lg font-display hover:bg-brand-orange/90 disabled:opacity-50"
+              >
+                {loading ? "Loading..." : "NEXT"}
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === "their-items" && (
+          <>
+            <p className="text-subtle text-sm mb-4">Pick what you want from their closet:</p>
+            {theirItems.length === 0 && <p className="text-faint text-sm mb-6">They have nothing to trade yet.</p>}
+            <ItemPicker items={theirItems} selected={selectedTheirItems} onChange={setSelectedTheirItems} />
+            <div className="flex gap-3">
+              <button
+                onClick={() => setStep("find-partner")}
+                className="flex-1 px-6 py-3 bg-surface-alt text-foreground rounded-lg font-display hover:bg-surface"
+              >
+                BACK
+              </button>
+              <button
                 onClick={handleSubmit}
-                disabled={!recipientUid || loading}
+                disabled={selectedTheirItems.length === 0 || loading}
                 className="flex-1 px-6 py-3 bg-brand-orange text-surface-dark rounded-lg font-display hover:bg-brand-orange/90 disabled:opacity-50"
               >
                 {loading ? "Sending..." : "SEND OFFER"}
@@ -128,6 +145,42 @@ export function CreateTradeModal({ onClose, currentUid }: CreateTradeModalProps)
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Matches the server's per-side cap (functions/src/closet/economy.ts TRADE_MAX_ITEMS). */
+const MAX_ITEMS_PER_SIDE = 4;
+
+interface ItemPickerProps {
+  items: LockerItem[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}
+
+function ItemPicker({ items, selected, onChange }: ItemPickerProps) {
+  const toggle = (id: string) => {
+    if (selected.includes(id)) onChange(selected.filter((s) => s !== id));
+    else if (selected.length < MAX_ITEMS_PER_SIDE) onChange([...selected, id]);
+  };
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+      {items.map((item) => (
+        <button
+          key={item.id}
+          onClick={() => toggle(item.id)}
+          className={`aspect-square rounded-lg border p-2 flex flex-col items-center justify-center ${
+            selected.includes(item.id) ? "border-brand-orange bg-brand-orange/20" : "border-border"
+          }`}
+        >
+          {item.imageUrl ? (
+            <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover rounded" />
+          ) : (
+            <div className="text-faint">?</div>
+          )}
+          <span className="text-xs mt-2 text-center truncate w-full">{item.name}</span>
+        </button>
+      ))}
     </div>
   );
 }

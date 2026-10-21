@@ -3790,10 +3790,14 @@ service cloud.firestore {
     // ── Closet: trades (item-for-item swaps) ──
     // Both parties can read the trade; only the closet callables write.
     // Public history would reveal who's trading what and leak inventory.
+    // Party fields are the ones the callables write (functions/src/closet/
+    // trading.ts): fromUid proposes, toUid receives. A client list query must
+    // filter on one of them (where('fromUid','==',me) / where('toUid','==',me))
+    // so the rule can prove every result is theirs.
     match /trades/{tradeId} {
       allow read: if isSignedIn()
-        && (request.auth.uid == resource.data.proposerUid
-          || request.auth.uid == resource.data.recipientUid);
+        && (request.auth.uid == resource.data.fromUid
+          || request.auth.uid == resource.data.toUid);
       allow write: if false;
     }
 
