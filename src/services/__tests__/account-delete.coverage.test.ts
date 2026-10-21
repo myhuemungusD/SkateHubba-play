@@ -174,6 +174,14 @@ describe("erasing an account with data everywhere", () => {
       ownerUid: DELETED_UID,
       history: [{ uid: OTHER }, { uid: DELETED_UID }],
     });
+    // Traded away: still scrubbed so the uid is gone from history.
+    expect(store.docs.get("serials/wheels_3")).toEqual({
+      ownerUid: OTHER,
+      history: [
+        { uid: DELETED_UID, at: 1, reason: "mint" },
+        { uid: OTHER, at: 2, reason: "trade", tradeId: "tDone" },
+      ],
+    });
     expect(store.docs.get("spots/sMine")).toEqual({ createdBy: DELETED_UID, name: "Hubba", checkinCount: 9 });
     expect(store.docs.get("privateSpots/pCrew")).toEqual({ createdBy: OTHER, crewUids: ["u3"] });
     expect(store.docs.has("privateSpots/pMine")).toBe(false);
@@ -185,7 +193,7 @@ describe("erasing an account with data everywhere", () => {
       tradesSettled: 1,
       tradesAnonymized: 2,
       tradesDeleted: 0,
-      serials: 1,
+      serials: 2,
       dropRecords: 2,
     });
     expect(summary.content).toEqual({
@@ -234,15 +242,27 @@ describe("Roll Dice anonymization", () => {
 
   it("reads the winner's stats before writing anything in the transaction", async () => {
     const store = makeFakeStore({
-      diceGames: { live: { player1Uid: UID, player2Uid: OTHER, status: "active", rollCount: 2 } },
-      diceStats: { [OTHER]: { wins: 1, losses: 0, gamesPlayed: 1 } },
+      diceGames: { live: { player1Uid: UID, player2Uid: OTHER, status: "active", rollCount: 2, mode: "clo" } },
+      diceStats: { [OTHER]: { wins: 1, losses: 0, gamesPlayed: 1 }, [UID]: { wins: 0, losses: 2, rep: 1000 } },
     });
     await deleteUserDataAsAdmin(store.deps, UID);
     const statsRead = store.events.indexOf("tx:get:diceStats/u2");
     const firstWrite = store.events.findIndex((e) => /^tx:(set|update|delete):/.test(e));
     expect(statsRead).toBeGreaterThanOrEqual(0);
     expect(statsRead).toBeLessThan(firstWrite);
-    expect(store.docs.get("diceStats/u2")).toMatchObject({ wins: 2, gamesPlayed: 2 });
+    // Mirrors writeStats: streak, bestStreak, byMode and Rep move too (not just wins).
+    expect(store.docs.get("diceStats/u2")).toMatchObject({
+      wins: 2,
+      gamesPlayed: 2,
+      streak: 1,
+      bestStreak: 1,
+      byMode: { clo: { wins: 1, losses: 0 } },
+      rep: 1016,
+      peakRep: 1016,
+    });
+    // Reads both sides before any write (survivor + departing, for the Rep swing).
+    expect(store.events.indexOf("tx:get:diceStats/u1")).toBeGreaterThanOrEqual(0);
+    expect(store.events.indexOf("tx:get:diceStats/u1")).toBeLessThan(firstWrite);
   });
 
   it("deletes a match when the other seat already belongs to a deleted account", async () => {
@@ -280,6 +300,16 @@ describe("Roll Dice anonymization", () => {
     };
     const summary = await deleteUserDataAsAdmin(store.deps, UID);
     expect(summary.diceGamesAnonymized + summary.diceGamesDeleted).toBe(0);
+  });
+});
+
+describe("TRADE_FEE stays in sync with the closet economy", () => {
+  it("matches functions/src/closet/economy.ts", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(resolve(process.cwd(), "functions/src/closet/economy.ts"), "utf8");
+    const match = src.match(/export const TRADE_FEE = (\d+);/);
+    expect(match?.[1]).toBe(String(TRADE_FEE));
   });
 });
 

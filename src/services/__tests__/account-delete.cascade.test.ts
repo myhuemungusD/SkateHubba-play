@@ -337,7 +337,6 @@ describe("ownership fields", () => {
     ["appeals", "appellantUid"],
     ["trades", "fromUid"],
     ["trades", "toUid"],
-    ["serials", "ownerUid"],
     ["group:messages", "userId"],
     ["group:comments", "userId"],
     ["group:here", "uid"],
@@ -376,6 +375,36 @@ describe("ownership fields", () => {
     expect(member.map((w) => `${w.collection}.${w.field}`)).toEqual(MEMBERSHIP.map(([c, f]) => `${c}.${f}`));
     expect(eq.length + member.length).toBe(store.wheres.length);
     expect(store.wheres.every((w) => w.value === UID)).toBe(true);
+  });
+
+  it("scrubs a traded-away serial without an ownerUid filter (full scan)", async () => {
+    // Serials are scanned whole: a history entry keeps the uid after the item
+    // leaves this account, and ownerUid alone would miss it.
+    const store = makeFakeStore({
+      serials: {
+        kept: {
+          ownerUid: OTHER,
+          history: [
+            { uid: UID, at: 1, reason: "mint" },
+            { uid: OTHER, at: 2, reason: "trade", tradeId: "t1" },
+          ],
+        },
+        theirs: { ownerUid: OTHER, history: [{ uid: OTHER, at: 1, reason: "mint" }] },
+      },
+    });
+    await deleteUserDataAsAdmin(store.deps, UID);
+    expect(store.wheres.filter((w) => w.collection === "serials")).toEqual([]);
+    expect(store.docs.get("serials/kept")).toEqual({
+      ownerUid: OTHER,
+      history: [
+        { uid: "deleted-user", at: 1, reason: "mint" },
+        { uid: OTHER, at: 2, reason: "trade", tradeId: "t1" },
+      ],
+    });
+    expect(store.docs.get("serials/theirs")).toEqual({
+      ownerUid: OTHER,
+      history: [{ uid: OTHER, at: 1, reason: "mint" }],
+    });
   });
 });
 

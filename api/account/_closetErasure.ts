@@ -124,6 +124,16 @@ async function settleTrade(
   });
 }
 
+/** True when ownerUid or any history[].uid is this account. */
+function serialNamesUid(data: Record<string, unknown>, uid: string): boolean {
+  if (data.ownerUid === uid) return true;
+  const history = data.history;
+  if (!Array.isArray(history)) return false;
+  return history.some(
+    (entry) => typeof entry === "object" && entry !== null && (entry as { uid?: unknown }).uid === uid,
+  );
+}
+
 export function emptyClosetCounts(): ClosetErasureCounts {
   return { tradesSettled: 0, tradesAnonymized: 0, tradesDeleted: 0, serials: 0, dropRecords: 0 };
 }
@@ -149,11 +159,20 @@ export async function eraseCloset(db: Firestore, uid: string, nowMs: number): Pr
 
   // Serial rows are public provenance for a numbered item. The copy itself
   // leaves with the locker; the row stays so the serial's history is intact,
-  // but the owner and every history entry naming this account are anonymized.
-  const serials = await scanAll(db.collection("serials").where("ownerUid", "==", uid));
+  // but the owner and every history entry naming this account are anonymized —
+  // including rows for items this account already traded away (trading.swap.ts
+  // appends {uid, at, reason, tradeId} to history and never removes it).
+  //
+  // Choice: scan the whole collection rather than add a pastOwnerUids array.
+  // Serials is small pre-launch (one row per Limited/Grail copy), so a full
+  // scan is cheap and needs no mint/swap change or backfill. If the catalog
+  // grows large post-launch, switch to pastOwnerUids maintained by mint and
+  // swap, queried with array-contains, and backfill existing history.
+  const serials = await scanAll(db.collection("serials"));
+  const named = serials.filter((s) => serialNamesUid(s.data(), uid));
   counts.serials = await commitWrites(
     db,
-    serials.map((s) => ({
+    named.map((s) => ({
       ref: s.ref,
       kind: "set" as const,
       data: scrubUid(s.data(), uid) as Record<string, unknown>,

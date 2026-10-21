@@ -45,7 +45,19 @@ export const SAMPLES: Record<string, Seed> = {
     },
     "users/u2/locker": { wheels_1: { lockedByTrade: "tHeld" } },
   },
-  serials: { serials: { deck_7: { ownerUid: UID, history: [{ uid: OTHER }, { uid: UID }] } } },
+  serials: {
+    serials: {
+      deck_7: { ownerUid: UID, history: [{ uid: OTHER }, { uid: UID }] },
+      // Owned by someone else after a trade; history still names this account.
+      wheels_3: {
+        ownerUid: OTHER,
+        history: [
+          { uid: UID, at: 1, reason: "mint" },
+          { uid: OTHER, at: 2, reason: "trade", tradeId: "tDone" },
+        ],
+      },
+    },
+  },
   "drops/{}/claims": { drops: { w42: { name: "week 42" } }, "drops/w42/claims": { [UID]: {}, [OTHER]: {} } },
   "drops/{}/entries": { "drops/w42/entries": { [UID]: {} } },
   games: { games: { gDone: { player1Uid: UID, player2Uid: OTHER, status: "completed" } } },

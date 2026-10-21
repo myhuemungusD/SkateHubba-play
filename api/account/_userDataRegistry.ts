@@ -48,7 +48,10 @@ export const FIRESTORE_ERASURE: Readonly<Record<string, ErasureEntry>> = {
     action: "anonymize",
     why: "the other skater's trade history; open trades are cancelled, held ones unwound and refunded first",
   },
-  serials: { action: "anonymize", why: "public provenance of a numbered item other skaters may own later" },
+  serials: {
+    action: "anonymize",
+    why: "public provenance of a numbered item; ownerUid and every history entry naming this account are scrubbed, including items they traded away",
+  },
   "drops/{}/claims": { action: "delete", why: "own drop claim" },
   "drops/{}/entries": { action: "delete", why: "own drop raffle entry" },
   catalog: { action: "none", why: "item definitions" },
@@ -126,7 +129,7 @@ export const FIRESTORE_ERASURE: Readonly<Record<string, ErasureEntry>> = {
   proFeatured: { action: "delete", why: "clips this pro featured" },
   proGold: {
     action: "retain",
-    why: "a pro's answer key for a quiz clip, copied into wttGold; no personal content beyond the pro's uid. Follow-up",
+    why: "a pro's answer key for a quiz clip, copied into wttGold; no personal content beyond the pro's uid. Follow-up: anonymize once WTT quiz lifecycle is settled",
   },
   proBlessings: {
     action: "retain",

@@ -1,6 +1,6 @@
 /**
  * Shared building blocks for the account-erasure cascade
- * (`_deleteUserData.ts`, `_sharedRecords.ts`, `_ownedContent.ts`).
+ * (`_deleteUserData.ts`, `_diceErasure.ts`, `_closetErasure.ts`, `_ownedContent.ts`).
  *
  * Split out of `_deleteUserData.ts` so the newer phases can reuse the same
  * paginated scan, chunked batch delete and retrying Storage delete without
