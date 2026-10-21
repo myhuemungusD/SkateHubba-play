@@ -80,7 +80,9 @@ async function renderAt(initialPath: string): Promise<RenderResult> {
   // route-agnostic readiness signal (rather than the global "Loading"
   // spinner) keeps the helper insensitive to per-screen status overlays
   // (e.g. MapPage's "Loading map" while tiles initialize).
-  await screen.findByRole("navigation", { name: "Primary navigation" });
+  // The first render in this file cold-loads App's lazy chunks; under CI's
+  // coverage instrumentation that can take longer than findBy's 1s default.
+  await screen.findByRole("navigation", { name: "Primary navigation" }, { timeout: 10_000 });
   return result;
 }
 

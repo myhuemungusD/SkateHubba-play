@@ -43,13 +43,13 @@ export const FEATURES = [
   },
   {
     icon: <ClockIcon size={24} className={BRAND_ICON_CLASS} />,
-    title: "24hr Turns",
-    desc: "Play when you want. You got a full day to get out there and film.",
+    title: "Your Clock",
+    desc: "Play when you want. Pick 24 hours, 3 days or 7 days a turn to get out there and film.",
   },
   {
     icon: <FlameIcon size={24} className={BRAND_ICON_CLASS} />,
-    title: "No Trick Farming",
-    desc: "Can't spam kickflips all day. Step it up or get spelled out.",
+    title: "No Farming",
+    desc: "Rewards cap out at 3 games a day against the same skater. Want to climb? Take on somebody new.",
   },
   {
     icon: <ShieldIcon size={24} className={BRAND_ICON_CLASS} />,
