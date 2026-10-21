@@ -37,7 +37,19 @@ export function parseFlag(raw: unknown): boolean {
  */
 export const FEATURE_TESTER_STORAGE_KEY = "sh_feature_tester_uid";
 
+/**
+ * True inside the Capacitor iOS/Android shell. Capacitor's native bridge sets
+ * window.Capacitor before the app loads, so no plugin import is needed here.
+ */
+function isNativeShell(): boolean {
+  const cap = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+  return Boolean(cap?.isNativePlatform?.());
+}
+
 export function isFeatureTesterOverrideActive(): boolean {
+  // App Store guideline 2.3.1: a store build must not unlock hidden features
+  // at runtime. Native builds only show what their VITE_* flags were built with.
+  if (isNativeShell()) return false;
   try {
     return Boolean(globalThis.localStorage?.getItem(FEATURE_TESTER_STORAGE_KEY));
   } catch {
@@ -45,7 +57,7 @@ export function isFeatureTesterOverrideActive(): boolean {
   }
 }
 
-/** A VITE_FEATURE_* value is on when it is the literal "true" or this browser is a tester's. */
+/** A VITE_FEATURE_* value is on when it is the literal "true" or this browser (web only) is a tester's. */
 function flagOn(raw: unknown): boolean {
   return parseFlag(raw) || isFeatureTesterOverrideActive();
 }
