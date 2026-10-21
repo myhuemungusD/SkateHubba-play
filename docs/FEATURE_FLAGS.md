@@ -22,9 +22,10 @@ Every new feature ships **off**. Testers (today Jason and Mike) see everything t
 Rule (Jason, 2026-10-20): every finished feature is on for everyone. A flag stays off only when the feature is unfinished or needs something outside the code first.
 
 - **Code default:** everything off, so a brand-new feature never leaks before it's done.
-- **Website (Vercel Production + Preview), iPhone store/TestFlight build (`ios-release.yml`, Xcode Cloud `ci_post_clone.sh`) and server switches (`functions.sk8hub-d7806.env`):** every finished feature on. That covers Map, check-ins, spot presence, tips, Verified Pro (blessing, profiles, showcase, calls, community), Dice, XP, referee, turn length, trick picker, clip editor, pro camera, clip moderation, feed modes, post makes, profile banner and custom profile, spot chats, Closet (drops, trading, studio, 360 shoes, Hubba icons), and Apple Sign-In on iPhone.
+- **Website (Vercel Production + Preview), iPhone store/TestFlight build (`ios-release.yml`, Xcode Cloud `ci_post_clone.sh`) and server switches (`functions.sk8hub-d7806.env`):** every finished feature on. That covers Map, check-ins, spot presence, tips, Verified Pro (blessing, profiles, showcase, calls, community), Dice (website and server only), XP, referee, turn length, trick picker, clip editor, pro camera, clip moderation, feed modes, post makes, profile banner and custom profile, spot chats, Closet (drops, trading, studio, 360 shoes, Hubba icons), and Apple Sign-In on iPhone.
 - **Still off for the public, and why:**
   - Skate Runner: waits for Jason's sign-off.
+  - Roll Dice in the iPhone build (Jason, 2026-10-20): off for the App Store launch so the listing needs no Simulated Gambling rating. Still on for the website and the server. With it off the iOS app hides the lobby tile, profile Challenge button and `/dice` routes (they redirect), and drops dice toasts and bell rows. Turning it on later means an app update through review.
   - What's That Trick: its scoring jobs are still stubs.
   - Buying Hubba Bucks (`CLOSET_BUCKS_PURCHASE_ENABLED`): needs in-app purchase products set up in App Store Connect first.
   - SMS two-step sign-in: not built for iPhone yet.

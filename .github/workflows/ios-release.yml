@@ -146,7 +146,7 @@ jobs:
           VITE_FEATURE_PRO_SHOWCASE: "true"
           VITE_FEATURE_PRO_CALLS: "true"
           VITE_FEATURE_PRO_COMMUNITY: "true"
-          VITE_FEATURE_DICE_ENABLED: "true"
+          VITE_FEATURE_DICE_ENABLED: "false"
           VITE_FEATURE_XP_ENABLED: "true"
           VITE_FEATURE_REFEREE_ENABLED: "true"
           VITE_FEATURE_TURN_LENGTH: "true"

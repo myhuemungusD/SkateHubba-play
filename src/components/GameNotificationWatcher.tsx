@@ -9,6 +9,7 @@ import { subscribeToNativePushOpens } from "../services/pushNotifications";
 import { subscribeToDeepLinks } from "../services/nativeApp";
 import type { GameDoc } from "../services/games";
 import type { ChimeType } from "../services/sounds";
+import { isDiceEnabled } from "../lib/featureFlags";
 
 /**
  * CustomEvent name used by the service-worker deep-link bridge.
@@ -65,6 +66,15 @@ const LOCALLY_HANDLED_NOTIFICATION_TYPES = new Set(["game_won", "game_lost"]);
 /** Dice notification types, written by the diceAction callable. */
 const DICE_NOTIFICATION_TYPES = new Set(["dice_challenge", "dice_turn", "dice_result"]);
 
+/**
+ * A build with Roll Dice off (the iOS store build) must not mention it: no
+ * toast, no bell row. The server still writes these for web players, so
+ * filter them here.
+ */
+function hiddenByFlag(type: string): boolean {
+  return DICE_NOTIFICATION_TYPES.has(type) && !isDiceEnabled();
+}
+
 type Notify = ReturnType<typeof useNotifications>["notify"];
 type Hydrate = ReturnType<typeof useNotifications>["hydrate"];
 
@@ -82,7 +92,7 @@ function useNotificationDocListener(uid: string | null, gated: boolean, notify: 
     return subscribeToNotifications(
       uid,
       (notif) => {
-        if (LOCALLY_HANDLED_NOTIFICATION_TYPES.has(notif.type)) return;
+        if (LOCALLY_HANDLED_NOTIFICATION_TYPES.has(notif.type) || hiddenByFlag(notif.type)) return;
         // Already at that dice table: the table shows the roll and plays its own
         // cue, so a banner over the header would only cover the score. Bell only.
         if (DICE_NOTIFICATION_TYPES.has(notif.type) && window.location.pathname === `/dice/${notif.gameId}`) {
@@ -104,8 +114,9 @@ function useNotificationDocListener(uid: string | null, gated: boolean, notify: 
       // LOCALLY_HANDLED_NOTIFICATION_TYPES: that set exists to stop a completion
       // being TOASTED twice (once here, once by useGameCompletionWatcher). A
       // finished game still belongs in the bell, and hydrate's own dedupe
-      // handles the overlap with a locally-surfaced completion.
-      hydrate,
+      // handles the overlap with a locally-surfaced completion. Dice rows are
+      // dropped when this build has Roll Dice off.
+      (seed) => hydrate(seed.filter((n) => !hiddenByFlag(n.type))),
     );
   }, [uid, gated, notify, hydrate]);
 }

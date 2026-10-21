@@ -100,7 +100,7 @@ the eye icon) or from the Firebase console.
 
 Every finished feature is hard-coded on in `ci_post_clone.sh` (same list as
 `ios-release.yml`; see [FEATURE_FLAGS.md](FEATURE_FLAGS.md)). Skate Runner,
-buying Hubba Bucks and SMS two-step sign-in stay off. `VITE_FEATURE_WTT_ENABLED`
+Roll Dice, buying Hubba Bucks and SMS two-step sign-in stay off. `VITE_FEATURE_WTT_ENABLED`
 is the only optional toggle; leave it unset for store builds. Jason and Mike
 see every feature through the `config/featureTesters` override.
 

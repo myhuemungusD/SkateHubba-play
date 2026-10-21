@@ -98,7 +98,7 @@ Open the SkateHubba repo → **Settings** → **Secrets and variables** → **Ac
 
 Leave `MATCH_GIT_URL` unset. The workflows already use `https://github.com/myhuemungusD/skatehubba-certs.git`. Set `MATCH_GIT_URL` only if you created the cert repo at a different address, and use an `https://` URL with no token in it.
 
-The TestFlight workflow turns every finished feature on (the full list is in [FEATURE_FLAGS.md](FEATURE_FLAGS.md)). Only Skate Runner, What's That Trick (tick box for testers), buying Hubba Bucks and SMS two-step sign-in stay off. Do not turn on Hubba Bucks purchases until the in-app purchase products exist in App Store Connect.
+The TestFlight workflow turns every finished feature on (the full list is in [FEATURE_FLAGS.md](FEATURE_FLAGS.md)). Only Skate Runner, Roll Dice (website only for now), What's That Trick (tick box for testers), buying Hubba Bucks and SMS two-step sign-in stay off. Do not turn on Hubba Bucks purchases until the in-app purchase products exist in App Store Connect.
 
 ## 6. Run the bootstrap once
 
