@@ -13,6 +13,10 @@ const rollDice = vi.fn();
 const quitDice = vi.fn();
 const declineDice = vi.fn();
 const claimDiceTimeout = vi.fn();
+const acceptDice = vi.fn();
+const bankDice = vi.fn();
+const nudgeDice = vi.fn();
+const rematchDice = vi.fn();
 
 vi.mock("./handlers.js", () => ({
   createDiceGame: (...args: unknown[]) => createDiceGame(...args),
@@ -20,8 +24,15 @@ vi.mock("./handlers.js", () => ({
   quitDice: (...args: unknown[]) => quitDice(...args),
   declineDice: (...args: unknown[]) => declineDice(...args),
   claimDiceTimeout: (...args: unknown[]) => claimDiceTimeout(...args),
+  acceptDice: (...args: unknown[]) => acceptDice(...args),
+  bankDice: (...args: unknown[]) => bankDice(...args),
+  nudgeDice: (...args: unknown[]) => nudgeDice(...args),
+  rematchDice: (...args: unknown[]) => rematchDice(...args),
   DiceActionError: class DiceActionError extends Error {
-    constructor(readonly code: string) {
+    constructor(
+      readonly code: string,
+      readonly details?: { retryAfterMs: number },
+    ) {
       super(code);
       this.name = "DiceActionError";
     }
@@ -60,6 +71,10 @@ describe("handleDiceCall", () => {
     quitDice.mockReset();
     declineDice.mockReset();
     claimDiceTimeout.mockReset();
+    acceptDice.mockReset();
+    bankDice.mockReset();
+    nudgeDice.mockReset();
+    rematchDice.mockReset();
   });
 
   it("rejects a signed-out caller", async () => {
@@ -103,6 +118,39 @@ describe("handleDiceCall", () => {
     expect(claimDiceTimeout).toHaveBeenCalledOnce();
   });
 
+  it("dispatches accept, bank, nudge and rematch, and forwards mode, target and keep", async () => {
+    for (const fn of [acceptDice, bankDice, nudgeDice, rematchDice, rollDice, createDiceGame]) fn.mockResolvedValue({});
+    await handleDiceCall(request({ data: { action: "accept", gameId: "g1" } }), deps());
+    await handleDiceCall(request({ data: { action: "bank", gameId: "g1", keep: [0, 2] } }), deps());
+    await handleDiceCall(request({ data: { action: "nudge", gameId: "g1" } }), deps());
+    await handleDiceCall(request({ data: { action: "rematch", gameId: "g1" } }), deps());
+    await handleDiceCall(request({ data: { action: "roll", gameId: "g1", keep: [1] } }), deps());
+    await handleDiceCall(request({ data: { action: "create", opponentUid: "u2", mode: "ten", target: 5000 } }), deps());
+    expect(acceptDice).toHaveBeenCalledWith(db, expect.objectContaining({ uid: "u1" }), "g1");
+    expect(bankDice).toHaveBeenCalledWith(db, expect.anything(), "g1", [0, 2]);
+    expect(nudgeDice).toHaveBeenCalledOnce();
+    expect(rematchDice).toHaveBeenCalledOnce();
+    expect(rollDice).toHaveBeenCalledWith(db, expect.anything(), "g1", [1]);
+    expect(createDiceGame).toHaveBeenCalledWith(db, expect.anything(), "u2", { mode: "ten", target: 5000 });
+  });
+
+  it("rejects a malformed keep list", async () => {
+    expect(
+      await codeOf(() => handleDiceCall(request({ data: { action: "roll", gameId: "g1", keep: "0" } }), deps())),
+    ).toBe("bad_request");
+    expect(
+      await codeOf(() => handleDiceCall(request({ data: { action: "bank", gameId: "g1", keep: [0.5] } }), deps())),
+    ).toBe("bad_request");
+    expect(
+      await codeOf(() =>
+        handleDiceCall(request({ data: { action: "bank", gameId: "g1", keep: [0, 1, 2, 3, 4, 5, 6] } }), deps()),
+      ),
+    ).toBe("bad_request");
+    rollDice.mockResolvedValue({});
+    await handleDiceCall(request({ data: { action: "roll", gameId: "g1", keep: null } }), deps());
+    expect(rollDice).toHaveBeenCalledWith(db, expect.anything(), "g1", []);
+  });
+
   it("maps action errors onto callable codes", async () => {
     rollDice.mockRejectedValue(new DiceActionError("not_a_player"));
     expect(await codeOf(() => handleDiceCall(request(), deps()))).toBe("not_a_player");
@@ -110,8 +158,22 @@ describe("handleDiceCall", () => {
     expect(await codeOf(() => handleDiceCall(request(), deps()))).toBe("not_found");
     rollDice.mockRejectedValue(new DiceActionError("self_challenge"));
     expect(await codeOf(() => handleDiceCall(request(), deps()))).toBe("self_challenge");
+    rollDice.mockRejectedValue(new DiceActionError("bad_keep"));
+    expect(await codeOf(() => handleDiceCall(request(), deps()))).toBe("bad_keep");
     rollDice.mockRejectedValue(new DiceActionError("slow_down"));
     expect(await codeOf(() => handleDiceCall(request(), deps()))).toBe("slow_down");
+  });
+
+  it("passes the code and the cooldown left in details", async () => {
+    rollDice.mockRejectedValue(new DiceActionError("create_cooldown", { retryAfterMs: 4_200 }));
+    const err = await handleDiceCall(request(), deps()).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(HttpsError);
+    expect((err as HttpsError).code).toBe("failed-precondition");
+    expect((err as HttpsError).details).toEqual({ code: "create_cooldown", retryAfterMs: 4_200 });
+    rollDice.mockRejectedValue(new DiceActionError("bad_keep"));
+    expect(((await handleDiceCall(request(), deps()).catch((e: unknown) => e)) as HttpsError).details).toEqual({
+      code: "bad_keep",
+    });
   });
 
   it("hides unexpected failures", async () => {

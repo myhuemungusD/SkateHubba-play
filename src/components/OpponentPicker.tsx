@@ -10,6 +10,8 @@ interface Props {
   /** Fills the opponent field with the tapped skater's username. */
   onSelect: (username: string) => void;
   onViewPlayer?: (uid: string) => void;
+  /** Seconds left on a challenge cooldown; the Challenge buttons wait it out. */
+  waitSeconds?: number | null;
 }
 
 /**
@@ -17,7 +19,13 @@ interface Props {
  * out. Expanded by default while the opponent field is empty, then folded to a
  * "Browse skaters" toggle so the rest of the form owns the screen.
  */
-export function OpponentPicker({ viewerUid, collapsed, onSelect, onViewPlayer }: Props): React.ReactElement {
+export function OpponentPicker({
+  viewerUid,
+  collapsed,
+  onSelect,
+  onViewPlayer,
+  waitSeconds = null,
+}: Props): React.ReactElement {
   const [reopened, setReopened] = useState(false);
   const { players, loading } = usePlayerDirectory(viewerUid);
 
@@ -42,6 +50,7 @@ export function OpponentPicker({ viewerUid, collapsed, onSelect, onViewPlayer }:
       // buttons are always enabled here — the gate lives upstream in App.tsx.
       canChallenge
       onViewPlayer={onViewPlayer}
+      waitSeconds={waitSeconds}
       onChallengeUser={(username) => {
         onSelect(username);
         setReopened(false);

@@ -18,6 +18,10 @@ async function scan(page: Page) {
   expect(summary).toEqual([]);
 }
 
+// Scan finished frames, not entrance animations: axe reads a fading-in
+// bubble's partial opacity as low contrast. The app honors this setting.
+test.use({ reducedMotion: "reduce" });
+
 test.beforeEach(async () => {
   await clearAll();
 });

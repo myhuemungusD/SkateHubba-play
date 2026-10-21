@@ -12,7 +12,9 @@ export function RollDiceCard() {
       className="mb-5 w-full rounded-2xl border border-white/[0.06] bg-surface px-4 py-4 text-left shadow-card hover:border-brand-orange/40"
     >
       <span className="block font-display tracking-wider text-white">Roll Dice</span>
-      <span className="mt-1 block font-body text-xs text-muted">Street dice. Wins and losses only.</span>
+      <span className="mt-1 block font-body text-xs text-muted">
+        C-Lo, 4-5-6, craps and 10,000. Race to the target, build your Rep.
+      </span>
     </button>
   );
 }
