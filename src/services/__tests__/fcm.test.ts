@@ -418,28 +418,33 @@ describe("removeFcmToken", () => {
   });
 });
 
-it("drops stale platform tags when registering a new token", async () => {
-  mockGetToken.mockResolvedValue("fresh-token");
-  mockGetDoc.mockResolvedValueOnce({
-    data: () => ({
-      tokens: ["keep-me"],
-      platforms: { "keep-me": "web", "stale-gone": "ios", "also-gone": "android" },
-    }),
+describe("platform tag prune on register", () => {
+  it("drops stale platform tags when registering a new token", async () => {
+    mockGetToken.mockResolvedValue("fresh-token");
+    mockGetDoc.mockResolvedValueOnce({
+      data: () => ({
+        tokens: ["keep-me"],
+        platforms: { "keep-me": "web", "stale-gone": "ios", "also-gone": "android" },
+      }),
+    });
+    await requestPushPermission("u1");
+    const mirrorWrite = mockSetDoc.mock.calls.find((c) => {
+      const path = c[0];
+      const body = c[1] as { tokens?: { _op?: string }; platforms?: Record<string, unknown> } | undefined;
+      return path === "pushTargets/u1" && body?.tokens?._op === "arrayUnion";
+    });
+    const body = mirrorWrite?.[1] as { platforms?: Record<string, unknown> };
+    expect(body).toMatchObject({
+      tokens: { _op: "arrayUnion", value: "fresh-token" },
+      platforms: {
+        "fresh-token": "web",
+        "stale-gone": "DELETE_FIELD",
+        "also-gone": "DELETE_FIELD",
+      },
+    });
+    // keep-me is still in the token list, so its tag is left alone (merge keeps it).
+    expect(body.platforms).not.toHaveProperty("keep-me");
   });
-  await requestPushPermission("u1");
-  const mirrorWrite = mockSetDoc.mock.calls.find(
-    (c) => c[0] === "pushTargets/u1" && c[1]?.tokens?._op === "arrayUnion",
-  );
-  expect(mirrorWrite?.[1]).toMatchObject({
-    tokens: { _op: "arrayUnion", value: "fresh-token" },
-    platforms: {
-      "fresh-token": "web",
-      "stale-gone": "DELETE_FIELD",
-      "also-gone": "DELETE_FIELD",
-    },
-  });
-  // keep-me is still in the token list, so its tag is left alone (merge keeps it).
-  expect(mirrorWrite?.[1].platforms).not.toHaveProperty("keep-me");
 });
 
 describe("removeCurrentFcmToken", () => {

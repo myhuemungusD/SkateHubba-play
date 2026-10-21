@@ -109,6 +109,8 @@ interface DrainSummary {
   malformed: number;
   /** Dead tokens removed from the recipient's mirror + private profile. */
   pruned: number;
+  /** Dice pushes dropped because no android/web token remained. */
+  filtered: number;
   /** Docs left in place for the next run after a transient failure. */
   errors: number;
   dryRun: boolean;
