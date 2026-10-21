@@ -38,7 +38,7 @@ import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { PRIVATE_PROFILE_DOC_ID, getPushEnabled } from "./users";
-import { tagToken, untagToken } from "./pushPlatform";
+import { tagFromMirror, untagToken } from "./pushPlatform";
 import { PUSH_TARGETS_COLLECTION } from "./pushDispatch";
 
 /**
@@ -302,19 +302,11 @@ async function persistToken(uid: string, token: string): Promise<void> {
     // list stays owner-only, the mirror unlocks cross-user delivery.
     const mirrorRef = doc(db, PUSH_TARGETS_COLLECTION, uid);
     const snap = await getDoc(mirrorRef);
-    const data = snap.data() ?? {};
-    const existingTokens = Array.isArray(data.tokens)
-      ? data.tokens.filter((t): t is string => typeof t === "string")
-      : [];
-    const existingPlatforms =
-      data.platforms && typeof data.platforms === "object" && !Array.isArray(data.platforms)
-        ? (data.platforms as Record<string, unknown>)
-        : {};
     await setDoc(
       mirrorRef,
       {
         tokens: arrayUnion(token),
-        ...tagToken(token, existingTokens, existingPlatforms),
+        ...tagFromMirror(token, snap.data()),
         updatedAt: serverTimestamp(),
       },
       { merge: true },

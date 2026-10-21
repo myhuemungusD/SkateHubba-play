@@ -4,7 +4,7 @@ const mockGetPlatform = vi.hoisted(() => vi.fn<() => string>(() => "web"));
 vi.mock("@capacitor/core", () => ({ Capacitor: { getPlatform: () => mockGetPlatform() } }));
 vi.mock("firebase/firestore", () => ({ deleteField: () => "DELETE_FIELD" }));
 
-import { currentPushPlatform, tagToken, untagAll, untagToken } from "../pushPlatform";
+import { currentPushPlatform, tagFromMirror, tagToken, untagAll, untagToken } from "../pushPlatform";
 
 describe("pushPlatform", () => {
   beforeEach(() => mockGetPlatform.mockReset());
@@ -32,6 +32,15 @@ describe("pushPlatform", () => {
         stale: "DELETE_FIELD",
         gone: "DELETE_FIELD",
       },
+    });
+  });
+
+  it("tags from mirror data, tolerating a missing doc or malformed fields", () => {
+    mockGetPlatform.mockReturnValue("android");
+    expect(tagFromMirror("t", undefined)).toEqual({ platforms: { t: "android" } });
+    expect(tagFromMirror("t", { tokens: "nope", platforms: ["x"] })).toEqual({ platforms: { t: "android" } });
+    expect(tagFromMirror("t", { tokens: ["t", 7, "keep"], platforms: { keep: "web", old: "ios" } })).toEqual({
+      platforms: { t: "android", old: "DELETE_FIELD" },
     });
   });
 

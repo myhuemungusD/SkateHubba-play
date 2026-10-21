@@ -43,6 +43,23 @@ export function tagToken(
   return { platforms };
 }
 
+/**
+ * `tagToken` driven by the current mirror doc data (`snap.data()`), tolerating
+ * a missing doc or malformed `tokens` / `platforms` fields.
+ */
+export function tagFromMirror(
+  token: string,
+  mirror: Readonly<Record<string, unknown>> | undefined,
+): { platforms: Record<string, PushPlatform | FieldValue> } {
+  const data = mirror ?? {};
+  const tokens = Array.isArray(data.tokens) ? data.tokens.filter((t): t is string => typeof t === "string") : [];
+  const platforms =
+    data.platforms && typeof data.platforms === "object" && !Array.isArray(data.platforms)
+      ? (data.platforms as Record<string, unknown>)
+      : {};
+  return tagToken(token, tokens, platforms);
+}
+
 /** Mirror fields that drop `token`'s tag. Merge alongside `arrayRemove(token)`. */
 export function untagToken(token: string): { platforms: Record<string, FieldValue> } {
   return { platforms: { [token]: deleteField() } };
