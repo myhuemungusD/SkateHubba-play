@@ -33,6 +33,7 @@ import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { PRIVATE_PROFILE_DOC_ID } from "./users";
 import { PUSH_TARGETS_COLLECTION } from "./pushDispatch";
+import { untagAll } from "./pushPlatform";
 import { isPushSupported, registerPushTokenIfGranted } from "./pushNotifications";
 import { refreshWebPushTokenIfGranted } from "./fcm";
 
@@ -89,7 +90,7 @@ async function clearPushTargets(uid: string): Promise<void> {
   try {
     await setDoc(
       doc(requireDb(), PUSH_TARGETS_COLLECTION, uid),
-      { tokens: [], updatedAt: serverTimestamp() },
+      { tokens: [], ...untagAll(), updatedAt: serverTimestamp() },
       { merge: true },
     );
   } catch (err) {

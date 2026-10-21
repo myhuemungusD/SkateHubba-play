@@ -129,7 +129,11 @@ describe("requestPushPermission", () => {
     expect(mockSetDoc).toHaveBeenNthCalledWith(
       2,
       "pushTargets/u1",
-      { tokens: { _op: "arrayUnion", value: "fcm-token-123" }, updatedAt: "SERVER_TS" },
+      {
+        tokens: { _op: "arrayUnion", value: "fcm-token-123" },
+        platforms: { "fcm-token-123": "web" },
+        updatedAt: "SERVER_TS",
+      },
       { merge: true },
     );
   });
@@ -157,7 +161,7 @@ describe("requestPushPermission", () => {
     expect(mockSetDoc).toHaveBeenNthCalledWith(
       4,
       "pushTargets/u1",
-      { tokens: { _op: "arrayUnion", value: "new-token" }, updatedAt: "SERVER_TS" },
+      { tokens: { _op: "arrayUnion", value: "new-token" }, platforms: { "new-token": "web" }, updatedAt: "SERVER_TS" },
       { merge: true },
     );
     // Stale removes follow (best-effort, allSettled).
@@ -170,7 +174,11 @@ describe("requestPushPermission", () => {
     expect(mockSetDoc).toHaveBeenNthCalledWith(
       6,
       "pushTargets/u1",
-      { tokens: { _op: "arrayRemove", value: "old-token" }, updatedAt: "SERVER_TS" },
+      {
+        tokens: { _op: "arrayRemove", value: "old-token" },
+        platforms: { "old-token": "DELETE_FIELD" },
+        updatedAt: "SERVER_TS",
+      },
       { merge: true },
     );
   });
@@ -224,7 +232,11 @@ describe("requestPushPermission", () => {
     expect(mockSetDoc).toHaveBeenNthCalledWith(
       4,
       "pushTargets/u1",
-      { tokens: { _op: "arrayUnion", value: "same-token" }, updatedAt: "SERVER_TS" },
+      {
+        tokens: { _op: "arrayUnion", value: "same-token" },
+        platforms: { "same-token": "web" },
+        updatedAt: "SERVER_TS",
+      },
       { merge: true },
     );
   });
@@ -318,7 +330,11 @@ describe("refreshWebPushTokenIfGranted", () => {
     expect(mockSetDoc).toHaveBeenNthCalledWith(
       2,
       "pushTargets/u1",
-      { tokens: { _op: "arrayUnion", value: "fcm-token-refresh-123" }, updatedAt: "SERVER_TS" },
+      {
+        tokens: { _op: "arrayUnion", value: "fcm-token-refresh-123" },
+        platforms: { "fcm-token-refresh-123": "web" },
+        updatedAt: "SERVER_TS",
+      },
       { merge: true },
     );
   });
@@ -387,7 +403,11 @@ describe("removeFcmToken", () => {
     expect(mockSetDoc).toHaveBeenNthCalledWith(
       2,
       "pushTargets/u1",
-      { tokens: { _op: "arrayRemove", value: "token-abc" }, updatedAt: "SERVER_TS" },
+      {
+        tokens: { _op: "arrayRemove", value: "token-abc" },
+        platforms: { "token-abc": "DELETE_FIELD" },
+        updatedAt: "SERVER_TS",
+      },
       { merge: true },
     );
   });
@@ -424,7 +444,11 @@ describe("removeCurrentFcmToken", () => {
     expect(mockSetDoc).toHaveBeenNthCalledWith(
       4,
       "pushTargets/u1",
-      { tokens: { _op: "arrayRemove", value: "device-token-xyz" }, updatedAt: "SERVER_TS" },
+      {
+        tokens: { _op: "arrayRemove", value: "device-token-xyz" },
+        platforms: { "device-token-xyz": "DELETE_FIELD" },
+        updatedAt: "SERVER_TS",
+      },
       { merge: true },
     );
 

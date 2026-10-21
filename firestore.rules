@@ -2709,16 +2709,29 @@ service cloud.firestore {
       allow list: if false;
 
       // Allowlist of accepted keys. setDoc(..., merge:true) is the only
-      // legitimate writer (src/services/fcm.ts + pushNotifications.ts), and
-      // every write touches both fields together — keep this in lockstep
-      // with the writers if you add a field.
+      // legitimate writer (src/services/fcm.ts + pushNotifications.ts +
+      // pushPreferences.ts), and every write touches tokens and updatedAt
+      // together — keep this in lockstep with the writers if you add a field.
+      // `platforms` (optional) tags each token with ios/android/web so the
+      // server can keep Roll Dice pushes off iPhones while dice is off in the
+      // iOS build (functions/src/push/platforms.ts). Keyed by token; not
+      // tied to the token list, so an older build's arrayRemove that leaves a
+      // stale tag behind is still accepted.
       function pushTargetsKeysOk() {
-        return request.resource.data.keys().hasOnly(['tokens', 'updatedAt']);
+        return request.resource.data.keys().hasOnly(['tokens', 'updatedAt', 'platforms']);
+      }
+
+      function pushTargetsPlatformsOk() {
+        return !('platforms' in request.resource.data)
+          || (request.resource.data.platforms is map
+            && request.resource.data.platforms.size() <= 20
+            && request.resource.data.platforms.values().hasOnly(['ios', 'android', 'web']));
       }
 
       function pushTargetsShapeOk() {
         return request.resource.data.tokens is list
           && request.resource.data.tokens.size() <= 10
+          && pushTargetsPlatformsOk()
           // updatedAt MUST equal server time — without this, a client could
           // backfill an old timestamp and we'd lose stale-token-cleanup
           // semantics elsewhere (the Extension uses updatedAt to skip

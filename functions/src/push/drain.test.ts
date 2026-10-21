@@ -17,6 +17,7 @@ function deps(over: Partial<Parameters<typeof deliverDispatch>[1]> = {}) {
     nowMs: NOW,
     warn: vi.fn(),
     prune: vi.fn(async () => {}),
+    pushTarget: vi.fn(async (): Promise<Record<string, unknown> | undefined> => undefined),
     send: vi.fn(async () => ({ failureCount: 0, responses: [{ success: true }, { success: true }] })),
     ...over,
   };
@@ -121,6 +122,52 @@ describe("deliverDispatch", () => {
   });
 });
 
+describe("dice pushes and the iOS build", () => {
+  const dice = (over: Record<string, unknown> = {}) =>
+    good({ tokens: ["iphone", "laptop", "legacy"], data: { gameId: "g", kind: "dice", type: "dice_turn" }, ...over });
+  const mirror = { tokens: ["iphone", "laptop", "legacy"], platforms: { iphone: "ios", laptop: "web" } };
+
+  it("sends a dice push only to android and web tokens; untagged counts as iOS", async () => {
+    const d = doc(dice());
+    const dp = deps({
+      pushTarget: vi.fn(async () => mirror),
+      send: vi.fn(async () => ({
+        failureCount: 1,
+        responses: [{ success: false, error: { code: "messaging/registration-token-not-registered" } }],
+      })),
+    });
+    expect(await deliverDispatch(d, dp)).toBe("sent");
+    expect(dp.pushTarget).toHaveBeenCalledWith("u1");
+    expect(dp.send).toHaveBeenCalledWith(expect.objectContaining({ tokens: ["laptop"] }));
+    // Dead-token pruning maps back to the filtered list, not the original one.
+    expect(dp.prune).toHaveBeenCalledWith("u1", ["laptop"]);
+  });
+
+  it("drops a dice push with no eligible token without sending", async () => {
+    const d = doc(dice({ data: { gameId: "g", type: "dice_challenge" } }));
+    const dp = deps({ pushTarget: vi.fn(async () => ({ tokens: ["iphone"], platforms: { iphone: "ios" } })) });
+    expect(await deliverDispatch(d, dp)).toBe("filtered");
+    expect(dp.send).not.toHaveBeenCalled();
+    expect(d.delete).toHaveBeenCalled();
+  });
+
+  it("leaves non-dice pushes alone, even to iOS tokens", async () => {
+    const d = doc(good({ tokens: ["iphone"], data: { gameId: "g", type: "your_turn" } }));
+    const dp = deps({ send: vi.fn(async () => ({ failureCount: 0, responses: [{ success: true }] })) });
+    expect(await deliverDispatch(d, dp)).toBe("sent");
+    expect(dp.pushTarget).not.toHaveBeenCalled();
+    expect(dp.send).toHaveBeenCalledWith(expect.objectContaining({ tokens: ["iphone"] }));
+  });
+
+  it("keeps a dice push queued for retry when the platform lookup fails", async () => {
+    const d = doc(dice());
+    const dp = deps({ pushTarget: vi.fn(async () => Promise.reject(new Error("down"))) });
+    expect(await deliverDispatch(d, dp)).toBe("error");
+    expect(dp.send).not.toHaveBeenCalled();
+    expect(d.delete).not.toHaveBeenCalled();
+  });
+});
+
 describe("drainQueue", () => {
   it("skips fresh docs and tallies outcomes", async () => {
     const old = NOW - RETRY_MIN_AGE_MS - 1;
@@ -137,6 +184,12 @@ describe("drainQueue", () => {
       ],
       dp,
     );
-    expect(s).toEqual({ scanned: 5, sent: 1, expired: 1, malformed: 1, errors: 1, skippedFresh: 1 });
+    expect(s).toEqual({ scanned: 5, sent: 1, expired: 1, malformed: 1, filtered: 0, errors: 1, skippedFresh: 1 });
+  });
+
+  it("tallies dice pushes dropped by the platform check", async () => {
+    const old = NOW - RETRY_MIN_AGE_MS - 1;
+    const s = await drainQueue([doc(good({ createdAt: ts(old), data: { kind: "dice" } }), old)], deps());
+    expect(s).toMatchObject({ scanned: 1, filtered: 1, sent: 0 });
   });
 });

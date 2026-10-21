@@ -5,6 +5,7 @@ import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { PRIVATE_PROFILE_DOC_ID, getPushEnabled } from "./users";
 import { PUSH_TARGETS_COLLECTION } from "./pushDispatch";
+import { tagToken, untagToken } from "./pushPlatform";
 import { claimMessagingWorker } from "../lib/swClaim";
 
 /**
@@ -140,7 +141,7 @@ async function acquireAndStoreToken(uid: string): Promise<string | null> {
   );
   await setDoc(
     doc(db, PUSH_TARGETS_COLLECTION, uid),
-    { tokens: arrayUnion(token), updatedAt: serverTimestamp() },
+    { tokens: arrayUnion(token), ...tagToken(token), updatedAt: serverTimestamp() },
     { merge: true },
   );
 
@@ -161,7 +162,7 @@ async function acquireAndStoreToken(uid: string): Promise<string | null> {
       ),
       setDoc(
         doc(db, PUSH_TARGETS_COLLECTION, uid),
-        { tokens: arrayRemove(staleToken), updatedAt: serverTimestamp() },
+        { tokens: arrayRemove(staleToken), ...untagToken(staleToken), updatedAt: serverTimestamp() },
         { merge: true },
       ),
     ]);
@@ -234,7 +235,7 @@ export async function removeFcmToken(uid: string, token: string): Promise<void> 
     // would route pushes to a revoked device after sign-out.
     await setDoc(
       doc(db, PUSH_TARGETS_COLLECTION, uid),
-      { tokens: arrayRemove(token), updatedAt: serverTimestamp() },
+      { tokens: arrayRemove(token), ...untagToken(token), updatedAt: serverTimestamp() },
       { merge: true },
     );
     if (activeFcmToken === token) {

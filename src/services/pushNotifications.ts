@@ -38,6 +38,7 @@ import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { PRIVATE_PROFILE_DOC_ID, getPushEnabled } from "./users";
+import { tagToken, untagToken } from "./pushPlatform";
 import { PUSH_TARGETS_COLLECTION } from "./pushDispatch";
 
 /**
@@ -301,7 +302,7 @@ async function persistToken(uid: string, token: string): Promise<void> {
     // list stays owner-only, the mirror unlocks cross-user delivery.
     await setDoc(
       doc(db, PUSH_TARGETS_COLLECTION, uid),
-      { tokens: arrayUnion(token), updatedAt: serverTimestamp() },
+      { tokens: arrayUnion(token), ...tagToken(token), updatedAt: serverTimestamp() },
       { merge: true },
     );
     activePushToken = token;
@@ -394,7 +395,7 @@ export async function unregisterPushToken(uid: string): Promise<void> {
       // pushes to the device after sign-out / account swap.
       await setDoc(
         doc(db, PUSH_TARGETS_COLLECTION, uid),
-        { tokens: arrayRemove(token), updatedAt: serverTimestamp() },
+        { tokens: arrayRemove(token), ...untagToken(token), updatedAt: serverTimestamp() },
         { merge: true },
       );
       activePushToken = null;

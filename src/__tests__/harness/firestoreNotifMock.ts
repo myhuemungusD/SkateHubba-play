@@ -32,6 +32,8 @@ export const firestoreNotifMocks = {
   // real Firestore SDK returns a FieldValue marker that's only resolved on
   // the server, so neither value is comparable beyond identity.
   serverTimestamp: vi.fn<() => unknown>(() => "SERVER_TS"),
+  // deleteField() drops a token's platform tag (src/services/pushPlatform.ts).
+  deleteField: vi.fn<() => unknown>(() => "DELETE_FIELD"),
 };
 
 export const notifFirestoreModule = {
@@ -40,4 +42,5 @@ export const notifFirestoreModule = {
   arrayUnion: (v: string) => firestoreNotifMocks.arrayUnion(v),
   arrayRemove: (v: string) => firestoreNotifMocks.arrayRemove(v),
   serverTimestamp: () => firestoreNotifMocks.serverTimestamp(),
+  deleteField: () => firestoreNotifMocks.deleteField(),
 };

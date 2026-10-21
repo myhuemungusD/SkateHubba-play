@@ -13,7 +13,18 @@
  */
 import { describe, it } from "vitest";
 import { assertSucceeds, assertFails, type RulesTestContext } from "@firebase/rules-unit-testing";
-import { collection, doc, getDoc, getDocs, setDoc, serverTimestamp, Timestamp } from "firebase/firestore";
+import {
+  arrayRemove,
+  arrayUnion,
+  collection,
+  deleteField,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  serverTimestamp,
+  Timestamp,
+} from "firebase/firestore";
 import { setupRulesTestEnv } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-pushtargets-redteam";
@@ -77,6 +88,63 @@ describe("pushTargets — owner writes", () => {
         smuggled: "payload",
       }),
     );
+  });
+});
+
+describe("pushTargets — platform tags (dice stays off iPhones)", () => {
+  const mirrorRef = () => doc(asUser(OWNER_UID).firestore(), "pushTargets", OWNER_UID);
+
+  it("legitimate: a token can be registered with its platform tag", async () => {
+    await assertSucceeds(
+      setDoc(
+        mirrorRef(),
+        { tokens: arrayUnion("t1"), platforms: { t1: "ios" }, updatedAt: serverTimestamp() },
+        { merge: true },
+      ),
+    );
+    await assertSucceeds(
+      setDoc(
+        mirrorRef(),
+        { tokens: arrayUnion("t2"), platforms: { t2: "web" }, updatedAt: serverTimestamp() },
+        { merge: true },
+      ),
+    );
+  });
+
+  it("legitimate: a token and its tag can be removed together, and all tags cleared", async () => {
+    await setDoc(mirrorRef(), {
+      tokens: ["t1", "t2"],
+      platforms: { t1: "android", t2: "web" },
+      updatedAt: serverTimestamp(),
+    });
+    await assertSucceeds(
+      setDoc(
+        mirrorRef(),
+        { tokens: arrayRemove("t1"), platforms: { t1: deleteField() }, updatedAt: serverTimestamp() },
+        { merge: true },
+      ),
+    );
+    await assertSucceeds(
+      setDoc(mirrorRef(), { tokens: [], platforms: deleteField(), updatedAt: serverTimestamp() }, { merge: true }),
+    );
+  });
+
+  it("legitimate: an older build that only touches tokens still works on a tagged mirror", async () => {
+    await setDoc(mirrorRef(), { tokens: ["t1"], platforms: { t1: "web" }, updatedAt: serverTimestamp() });
+    await assertSucceeds(
+      setDoc(mirrorRef(), { tokens: arrayRemove("t1"), updatedAt: serverTimestamp() }, { merge: true }),
+    );
+  });
+
+  it("attack: owner CANNOT tag a token with an unknown platform", async () => {
+    await assertFails(setDoc(mirrorRef(), { ...validMirror(), platforms: { t1: "watch" } }));
+    await assertFails(setDoc(mirrorRef(), { ...validMirror(), platforms: { t1: 1 } }));
+  });
+
+  it("attack: owner CANNOT store platforms as anything but a map, or grow it past 20", async () => {
+    await assertFails(setDoc(mirrorRef(), { ...validMirror(), platforms: ["ios"] }));
+    const many = Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`t${i}`, "web"]));
+    await assertFails(setDoc(mirrorRef(), { ...validMirror(), platforms: many }));
   });
 });
 

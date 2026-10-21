@@ -27,6 +27,7 @@ async function courier(db: MemoryDb): Promise<Sent[]> {
       return { failureCount: 0, responses: msg.tokens.map(() => ({ success: true })) };
     },
     prune: async () => undefined,
+    pushTarget: async (uid) => db.docs.get(`pushTargets/${uid}`),
     warn: () => undefined,
     nowMs: NOW,
   };
@@ -52,8 +53,8 @@ let db: MemoryDb;
 beforeEach(() => {
   db = new MemoryDb();
   seedPlayers(db);
-  db.seed("pushTargets/u1", { tokens: ["phone-jason"] });
-  db.seed("pushTargets/u2", { tokens: ["phone-remy"] });
+  db.seed("pushTargets/u1", { tokens: ["phone-jason"], platforms: { "phone-jason": "android" } });
+  db.seed("pushTargets/u2", { tokens: ["phone-remy"], platforms: { "phone-remy": "web" } });
 });
 
 afterEach(() => resetDieSource());
@@ -81,6 +82,21 @@ describe("dice push payloads reach the courier intact", () => {
     const remindAt = NOW + 2_000 + DAY - 3 * 3600_000;
     await sweepExpiredDiceGames(db, remindAt + 1);
     expectDicePush((await courier(db))[0], "phone-remy", "dice_turn", "About 3 hours left on your roll vs @jason.");
+  });
+
+  it("never queues a dice push for an iPhone or an untagged (older) token", async () => {
+    db.seed("pushTargets/u2", { tokens: ["iphone", "old"], platforms: { iphone: "ios" } });
+    await createDiceGame(db, actor("u1"), "u2");
+    expect(await courier(db)).toEqual([]);
+  });
+
+  it("sends only to the dice-capable devices of a skater with several", async () => {
+    db.seed("pushTargets/u2", {
+      tokens: ["iphone", "laptop", "pixel"],
+      platforms: { iphone: "ios", laptop: "web", pixel: "android" },
+    });
+    await createDiceGame(db, actor("u1"), "u2");
+    expect((await courier(db))[0]?.tokens).toEqual(["laptop", "pixel"]);
   });
 
   it("queues nothing for a skater who turned push off", async () => {
