@@ -20,6 +20,7 @@ const h = vi.hoisted(() => ({
   getMessagingMock: vi.fn(),
   serverTimestampSentinel: { __srv: true },
   arrayRemoveMock: vi.fn((...v: unknown[]) => ({ __arrayRemove: v })),
+  deleteSentinel: { __delete: true },
 }));
 
 vi.mock("firebase-admin/app", () => ({
@@ -33,6 +34,7 @@ vi.mock("firebase-admin/firestore", () => ({
   FieldValue: {
     serverTimestamp: () => h.serverTimestampSentinel,
     arrayRemove: h.arrayRemoveMock,
+    delete: () => h.deleteSentinel,
   },
 }));
 
@@ -78,7 +80,11 @@ interface Recorder {
   deletes: string[];
 }
 
-function makeDb(docs: FakeDoc[], rec: Recorder, opts: { queryThrows?: boolean } = {}) {
+function makeDb(
+  docs: FakeDoc[],
+  rec: Recorder,
+  opts: { queryThrows?: boolean; mirrors?: Record<string, Record<string, unknown>> } = {},
+) {
   const privateDoc = (uid: string) => ({
     set: vi.fn((data: unknown) => {
       rec.privateSets.push({ uid, data });
@@ -100,6 +106,7 @@ function makeDb(docs: FakeDoc[], rec: Recorder, opts: { queryThrows?: boolean } 
       if (name === "pushTargets") {
         return {
           doc: (uid: string) => ({
+            get: () => Promise.resolve({ data: () => opts.mirrors?.[uid] }),
             set: vi.fn((data: unknown) => {
               rec.pushTargetSets.push({ uid, data });
               return Promise.resolve();
@@ -446,6 +453,8 @@ describe("dead-token pruning", () => {
 
     expect(h.arrayRemoveMock).toHaveBeenCalledWith("dead");
     expect(rec.pushTargetSets).toHaveLength(1);
+    // The dead token's platform tag goes with it, so the map tracks the list.
+    expect(rec.pushTargetSets[0]?.data).toMatchObject({ platforms: { dead: h.deleteSentinel } });
     expect(rec.privateSets).toHaveLength(1);
     expect(out.body).toMatchObject({ pruned: 1, failedTokens: 1 });
   });
@@ -603,5 +612,50 @@ describe("error reporting (server-side Sentry)", () => {
     expect(calls[0][1].extra).toEqual({ dispatchId: "d1" });
     // Device tokens never leave the function.
     expect(JSON.stringify(calls)).not.toContain("tok-a");
+  });
+});
+
+describe("dice pushes and the iOS build", () => {
+  const dice = (tokens: string[]) =>
+    dispatchDoc({ tokens, data: { gameId: "dg1", type: "dice_your_turn", kind: "dice" } });
+
+  it("sends a dice push only to android/web-tagged tokens", async () => {
+    const doc = makeFakeDoc("d1", dice(["ios-1", "web-1", "untagged"]), rec);
+    h.getFirestoreMock.mockReturnValue(
+      makeDb([doc], rec, { mirrors: { u1: { platforms: { "ios-1": "ios", "web-1": "web" } } } }),
+    );
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: AUTH }), res);
+    expect(sendEachForMulticast).toHaveBeenCalledWith(expect.objectContaining({ tokens: ["web-1"] }));
+    expect(out.body).toMatchObject({ sent: 1, filtered: 0 });
+    expect(rec.deletes).toEqual(["d1"]);
+  });
+
+  it("drops a dice push with no eligible token and never calls FCM", async () => {
+    const doc = makeFakeDoc("d1", dice(["ios-1", "untagged"]), rec);
+    h.getFirestoreMock.mockReturnValue(makeDb([doc], rec, { mirrors: { u1: { platforms: { "ios-1": "ios" } } } }));
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: AUTH }), res);
+    expect(sendEachForMulticast).not.toHaveBeenCalled();
+    expect(out.body).toMatchObject({ sent: 0, filtered: 1 });
+    expect(rec.deletes).toEqual(["d1"]);
+  });
+
+  it("leaves a filtered dice doc in place on a dry run", async () => {
+    const doc = makeFakeDoc("d1", dice(["ios-1"]), rec);
+    h.getFirestoreMock.mockReturnValue(makeDb([doc], rec, { mirrors: { u1: { platforms: { "ios-1": "ios" } } } }));
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: AUTH, query: { dryRun: "1" } }), res);
+    expect(out.body).toMatchObject({ filtered: 1, dryRun: true });
+    expect(rec.deletes).toEqual([]);
+  });
+
+  it("does not filter a non-dice push to an iPhone", async () => {
+    const doc = makeFakeDoc("d1", dispatchDoc({ tokens: ["ios-1"] }), rec);
+    h.getFirestoreMock.mockReturnValue(makeDb([doc], rec, { mirrors: { u1: { platforms: { "ios-1": "ios" } } } }));
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: AUTH }), res);
+    expect(sendEachForMulticast).toHaveBeenCalledWith(expect.objectContaining({ tokens: ["ios-1"] }));
+    expect(out.body).toMatchObject({ sent: 1, filtered: 0 });
   });
 });

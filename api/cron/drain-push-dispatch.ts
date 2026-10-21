@@ -14,7 +14,11 @@
  *
  * This handler is that consumer. It reads the oldest pending dispatch docs,
  * sends them through the FCM API with admin credentials, prunes tokens FCM
- * reports as dead, and deletes what it processed.
+ * reports as dead (and drops their platform tags), re-checks Roll Dice pushes
+ * against the recipient's platform tags so an iPhone never gets one while dice
+ * is off there, and deletes what it processed. The live courier is the Cloud
+ * Function (functions/src/push/drain.ts); this endpoint is manual-only
+ * (workflow_dispatch) and must stay behaviourally in lockstep with it.
  *
  * GUARDRAIL NOTE: this rides the same approved bend of the "no custom backend"
  * rule as `sweep-expired-turns.ts` (repo owner sign-off) and follows that file's
@@ -47,6 +51,7 @@ import { cert, getApps, initializeApp, type App, type ServiceAccount } from "fir
 import { getFirestore, FieldValue, type Firestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import { parseServiceAccountJson } from "./_serviceAccount.js";
+import { diceEligibleTokens, isDicePush } from "./_pushPlatforms.js";
 import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
 
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
@@ -104,6 +109,8 @@ interface DrainSummary {
   malformed: number;
   /** Dead tokens removed from the recipient's mirror + private profile. */
   pruned: number;
+  /** Dice pushes dropped because no android/web token remained. */
+  filtered: number;
   /** Docs left in place for the next run after a transient failure. */
   errors: number;
   dryRun: boolean;
@@ -255,7 +262,15 @@ async function pruneDeadTokens(db: Firestore, recipientUid: string, dead: string
       db
         .collection(PUSH_TARGETS_COLLECTION)
         .doc(recipientUid)
-        .set({ tokens: FieldValue.arrayRemove(...dead), updatedAt: FieldValue.serverTimestamp() }, { merge: true }),
+        .set(
+          {
+            tokens: FieldValue.arrayRemove(...dead),
+            // Drop the dead tokens' platform tags too, so the map stays in step with the list.
+            platforms: Object.fromEntries(dead.map((token) => [token, FieldValue.delete()])),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        ),
       db
         .collection("users")
         .doc(recipientUid)
@@ -302,6 +317,7 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
     expired: 0,
     malformed: 0,
     pruned: 0,
+    filtered: 0,
     errors: 0,
     dryRun,
   };
@@ -342,13 +358,24 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
           continue;
         }
 
+        let tokens = payload.tokens;
+        if (isDicePush(payload.data)) {
+          const mirror = (await db.collection(PUSH_TARGETS_COLLECTION).doc(payload.recipientUid).get()).data();
+          tokens = diceEligibleTokens(mirror, tokens);
+          if (tokens.length === 0) {
+            summary.filtered += 1;
+            if (!dryRun) await docSnap.ref.delete();
+            continue;
+          }
+        }
+
         if (dryRun) {
           summary.sent += 1;
           continue;
         }
 
         const response = await messaging.sendEachForMulticast({
-          tokens: payload.tokens,
+          tokens,
           notification: { title: payload.title, body: payload.body },
           data: payload.data,
         });
@@ -362,7 +389,7 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
         const dead: string[] = [];
         response.responses.forEach((r, i) => {
           if (!r.success && r.error && DEAD_TOKEN_CODES.has(r.error.code)) {
-            dead.push(payload.tokens[i]);
+            dead.push(tokens[i]);
           }
         });
         summary.pruned += await pruneDeadTokens(db, payload.recipientUid, dead);

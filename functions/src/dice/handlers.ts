@@ -6,6 +6,7 @@
  */
 import { FieldValue } from "firebase-admin/firestore";
 import { logger } from "firebase-functions/logger";
+import { diceEligibleTokens } from "../push/platforms.js";
 import { rollN } from "./dice.js";
 import { appendCapped, currentTurnOf, matchFromData, namesFrom, stateFields } from "./docs.js";
 import {
@@ -556,9 +557,12 @@ export async function deliverDicePushes(db: DiceDb, notices: DiceNotice[]): Prom
       if (pref.data?.pushEnabled === false) continue;
       const mirror = await db.get(`pushTargets/${item.recipientUid}`);
       const raw = mirror.data?.tokens;
-      const tokens = Array.isArray(raw)
-        ? raw.filter((token): token is string => typeof token === "string" && token.length > 0).slice(0, 10)
+      const all = Array.isArray(raw)
+        ? raw.filter((token): token is string => typeof token === "string" && token.length > 0)
         : [];
+      // Dice is off in the iOS build: only tokens tagged android or web get a
+      // dice push, and an untagged (older) token counts as iOS. See push/platforms.ts.
+      const tokens = diceEligibleTokens(mirror.data, all).slice(0, 10);
       if (tokens.length === 0) continue;
       await db.add("push_dispatch", {
         tokens,
