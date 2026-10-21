@@ -19,7 +19,7 @@
  */
 import { describe, it } from "vitest";
 import { assertSucceeds, assertFails, type RulesTestContext } from "@firebase/rules-unit-testing";
-import { doc, deleteDoc, serverTimestamp, setDoc, writeBatch } from "firebase/firestore";
+import { doc, deleteDoc, getDoc, serverTimestamp, setDoc, writeBatch } from "firebase/firestore";
 import { seedValidGame, setupRulesTestEnv } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-nudges-redteam";
@@ -147,5 +147,22 @@ describe("nudges — companion write + 1h cooldown (H1)", () => {
     await seedLimit(new Date(Date.now() - 5 * 60 * 1000));
     const ctx = asSender();
     await assertFails(deleteDoc(doc(ctx.firestore(), "nudge_limits", LIMIT_ID)));
+  });
+});
+
+describe("nudge_limits reads", () => {
+  it("legitimate: sender can read their own cooldown doc before it exists", async () => {
+    await assertSucceeds(getDoc(doc(asSender().firestore(), "nudge_limits", LIMIT_ID)));
+  });
+
+  it("legitimate: sender can read their own existing cooldown doc", async () => {
+    await seedLimit(new Date(Date.now() - 5 * 60 * 1000));
+    await assertSucceeds(getDoc(doc(asSender().firestore(), "nudge_limits", LIMIT_ID)));
+  });
+
+  it("attack: CANNOT read another player's cooldown doc", async () => {
+    await seedLimit(new Date(Date.now() - 5 * 60 * 1000));
+    const bob = getEnv().authenticatedContext(RECIPIENT_UID, { email_verified: true });
+    await assertFails(getDoc(doc(bob.firestore(), "nudge_limits", LIMIT_ID)));
   });
 });

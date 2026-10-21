@@ -2660,10 +2660,13 @@ service cloud.firestore {
     // ── Notification rate limits ──
     // One doc per sender+game+type combo, enforces 5-second cooldown server-side.
     match /notification_limits/{limitId} {
-      // NOTE: Clients only write to this collection (setDoc). If a future
-      // read path is added, handle the non-existent-doc case (resource == null).
+      // The client reads its own cooldown doc before showing Nudge, and that
+      // doc usually doesn't exist yet. Gate on the id (senderUid_gameId), not
+      // resource.data, so a missing doc reads as "not found" instead of a
+      // rules error. The create rule pins the id prefix to the sender.
       allow read: if isSignedIn()
-        && resource.data.senderUid == request.auth.uid;
+        && limitId.matches(request.auth.uid + '_.+')
+        && (resource == null || resource.data.senderUid == request.auth.uid);
 
       allow create: if isSignedIn()
         && request.auth.uid == request.resource.data.senderUid
