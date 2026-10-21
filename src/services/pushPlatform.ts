@@ -8,6 +8,11 @@
  * Tokens are plain strings in `tokens`, so the tag lives beside them in a
  * `platforms` map keyed by token. A token with no tag (written by an older
  * build) is treated as iOS for dice; every other push ignores the tag.
+ *
+ * Stale tags: older builds (and a prune that only arrayRemoves) can leave keys
+ * in `platforms` for tokens that are gone. Every tag write therefore drops
+ * tags whose token is not in the list we are keeping, so the map cannot grow
+ * past the token list and lock the owner out of further push writes.
  */
 import { Capacitor } from "@capacitor/core";
 import { deleteField, type FieldValue } from "firebase/firestore";
@@ -20,9 +25,22 @@ export function currentPushPlatform(): PushPlatform {
   return platform === "ios" || platform === "android" ? platform : "web";
 }
 
-/** Mirror fields that tag `token` with this device's platform. Merge alongside `arrayUnion(token)`. */
-export function tagToken(token: string): { platforms: Record<string, PushPlatform> } {
-  return { platforms: { [token]: currentPushPlatform() } };
+/**
+ * Mirror fields that tag `token` and drop tags for any token no longer in
+ * `keptTokens` (the list after this write, including `token`). Merge alongside
+ * `arrayUnion(token)`.
+ */
+export function tagToken(
+  token: string,
+  keptTokens: readonly string[],
+  existingPlatforms: Readonly<Record<string, unknown>> = {},
+): { platforms: Record<string, PushPlatform | FieldValue> } {
+  const keep = new Set(keptTokens.includes(token) ? keptTokens : [...keptTokens, token]);
+  const platforms: Record<string, PushPlatform | FieldValue> = { [token]: currentPushPlatform() };
+  for (const key of Object.keys(existingPlatforms)) {
+    if (!keep.has(key)) platforms[key] = deleteField();
+  }
+  return { platforms };
 }
 
 /** Mirror fields that drop `token`'s tag. Merge alongside `arrayRemove(token)`. */

@@ -21,7 +21,18 @@ describe("pushPlatform", () => {
 
   it("tags a token with this device's platform, keyed by the token", () => {
     mockGetPlatform.mockReturnValue("ios");
-    expect(tagToken("abc:123")).toEqual({ platforms: { "abc:123": "ios" } });
+    expect(tagToken("abc:123", [])).toEqual({ platforms: { "abc:123": "ios" } });
+  });
+
+  it("drops tags for tokens no longer in the kept list", () => {
+    mockGetPlatform.mockReturnValue("web");
+    expect(tagToken("fresh", ["fresh", "still"], { stale: "ios", still: "android", gone: "web" })).toEqual({
+      platforms: {
+        fresh: "web",
+        stale: "DELETE_FIELD",
+        gone: "DELETE_FIELD",
+      },
+    });
   });
 
   it("removes one tag, or all of them", () => {

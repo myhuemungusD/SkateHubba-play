@@ -33,7 +33,7 @@
 
 import { Capacitor } from "@capacitor/core";
 import { PushNotifications, type Token } from "@capacitor/push-notifications";
-import { doc, setDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
@@ -300,9 +300,23 @@ async function persistToken(uid: string, token: string): Promise<void> {
     // a push_dispatch doc when an opponent triggers a notifiable event.
     // Same rationale as the web path in src/services/fcm.ts — the canonical
     // list stays owner-only, the mirror unlocks cross-user delivery.
+    const mirrorRef = doc(db, PUSH_TARGETS_COLLECTION, uid);
+    const snap = await getDoc(mirrorRef);
+    const data = snap.data() ?? {};
+    const existingTokens = Array.isArray(data.tokens)
+      ? data.tokens.filter((t): t is string => typeof t === "string")
+      : [];
+    const existingPlatforms =
+      data.platforms && typeof data.platforms === "object" && !Array.isArray(data.platforms)
+        ? (data.platforms as Record<string, unknown>)
+        : {};
     await setDoc(
-      doc(db, PUSH_TARGETS_COLLECTION, uid),
-      { tokens: arrayUnion(token), ...tagToken(token), updatedAt: serverTimestamp() },
+      mirrorRef,
+      {
+        tokens: arrayUnion(token),
+        ...tagToken(token, existingTokens, existingPlatforms),
+        updatedAt: serverTimestamp(),
+      },
       { merge: true },
     );
     activePushToken = token;

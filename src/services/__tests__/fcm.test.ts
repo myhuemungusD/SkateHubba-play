@@ -19,7 +19,7 @@ vi.mock("firebase/messaging", () => ({
 /* ── mock firebase/firestore ─────────────────── */
 
 import { firestoreNotifMocks } from "../../__tests__/harness/firestoreNotifMock";
-const { setDoc: mockSetDoc } = firestoreNotifMocks;
+const { setDoc: mockSetDoc, getDoc: mockGetDoc } = firestoreNotifMocks;
 
 vi.mock(
   "firebase/firestore",
@@ -416,6 +416,30 @@ describe("removeFcmToken", () => {
     mockSetDoc.mockRejectedValueOnce(new Error("fail"));
     await expect(removeFcmToken("u1", "tok")).resolves.toBeUndefined();
   });
+});
+
+it("drops stale platform tags when registering a new token", async () => {
+  mockGetToken.mockResolvedValue("fresh-token");
+  mockGetDoc.mockResolvedValueOnce({
+    data: () => ({
+      tokens: ["keep-me"],
+      platforms: { "keep-me": "web", "stale-gone": "ios", "also-gone": "android" },
+    }),
+  });
+  await requestPushPermission("u1");
+  const mirrorWrite = mockSetDoc.mock.calls.find(
+    (c) => c[0] === "pushTargets/u1" && c[1]?.tokens?._op === "arrayUnion",
+  );
+  expect(mirrorWrite?.[1]).toMatchObject({
+    tokens: { _op: "arrayUnion", value: "fresh-token" },
+    platforms: {
+      "fresh-token": "web",
+      "stale-gone": "DELETE_FIELD",
+      "also-gone": "DELETE_FIELD",
+    },
+  });
+  // keep-me is still in the token list, so its tag is left alone (merge keeps it).
+  expect(mirrorWrite?.[1].platforms).not.toHaveProperty("keep-me");
 });
 
 describe("removeCurrentFcmToken", () => {

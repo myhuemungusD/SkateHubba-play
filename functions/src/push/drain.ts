@@ -1,12 +1,14 @@
 /**
  * Push dispatch courier, Cloud Functions edition.
  *
- * Same contract as api/cron/drain-push-dispatch.ts (the Vercel endpoint the
- * GitHub Actions cron used to call): validate the doc, drop it after a 24h TTL,
- * send through FCM, prune tokens FCM calls dead, delete only after FCM accepts.
- * Moved here (approved by the repo owner, 2026-10-17) so pushes go out the
- * moment a /push_dispatch doc is created instead of waiting for a cron tick,
- * and so delivery no longer depends on the GitHub Actions budget.
+ * Same contract as api/cron/drain-push-dispatch.ts (manual-only Vercel
+ * endpoint, workflow_dispatch): validate the doc, drop it after a 24h TTL,
+ * send through FCM, prune tokens FCM calls dead (and their platform tags),
+ * re-check Roll Dice pushes against platform tags, delete only after FCM
+ * accepts. Moved here (approved by the repo owner, 2026-10-17) so pushes go
+ * out the moment a /push_dispatch doc is created instead of waiting for a
+ * cron tick, and so delivery no longer depends on the GitHub Actions budget.
+ * Both couriers must stay in lockstep on the dice filter and the tag prune.
  *
  * Deps are injected so the logic is unit-tested without firebase-admin.
  *

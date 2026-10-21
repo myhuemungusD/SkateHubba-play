@@ -24,6 +24,9 @@ import { vi } from "vitest";
 
 export const firestoreNotifMocks = {
   setDoc: vi.fn<(...args: unknown[]) => unknown>(() => Promise.resolve(undefined)),
+  // Empty mirror by default so tagToken prunes nothing; tests that seed stale
+  // tags override this.
+  getDoc: vi.fn<(...args: unknown[]) => unknown>(() => Promise.resolve({ data: () => undefined })),
   doc: vi.fn<(...args: unknown[]) => unknown>((..._args: unknown[]) => (_args.slice(1) as string[]).join("/")),
   arrayUnion: vi.fn((v: string) => ({ _op: "arrayUnion", value: v })),
   arrayRemove: vi.fn((v: string) => ({ _op: "arrayRemove", value: v })),
@@ -38,6 +41,7 @@ export const firestoreNotifMocks = {
 
 export const notifFirestoreModule = {
   setDoc: (...args: unknown[]) => firestoreNotifMocks.setDoc(...args),
+  getDoc: (...args: unknown[]) => firestoreNotifMocks.getDoc(...args),
   doc: (...args: unknown[]) => firestoreNotifMocks.doc(...args),
   arrayUnion: (v: string) => firestoreNotifMocks.arrayUnion(v),
   arrayRemove: (v: string) => firestoreNotifMocks.arrayRemove(v),

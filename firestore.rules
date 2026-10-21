@@ -2714,9 +2714,12 @@ service cloud.firestore {
       // together — keep this in lockstep with the writers if you add a field.
       // `platforms` (optional) tags each token with ios/android/web so the
       // server can keep Roll Dice pushes off iPhones while dice is off in the
-      // iOS build (functions/src/push/platforms.ts). Keyed by token; not
-      // tied to the token list, so an older build's arrayRemove that leaves a
-      // stale tag behind is still accepted.
+      // iOS build (functions/src/push/platforms.ts). Keyed by token. Not tied
+      // to the token list so an older build's arrayRemove that leaves a stale
+      // tag behind is still accepted; new builds prune stale tags when they
+      // register (src/services/pushPlatform.ts tagToken). No size cap: the
+      // token list is already <=10, and a size cap on platforms would lock
+      // the owner out of every push write once stale tags piled past it.
       function pushTargetsKeysOk() {
         return request.resource.data.keys().hasOnly(['tokens', 'updatedAt', 'platforms']);
       }
@@ -2724,7 +2727,6 @@ service cloud.firestore {
       function pushTargetsPlatformsOk() {
         return !('platforms' in request.resource.data)
           || (request.resource.data.platforms is map
-            && request.resource.data.platforms.size() <= 20
             && request.resource.data.platforms.values().hasOnly(['ios', 'android', 'web']));
       }
 

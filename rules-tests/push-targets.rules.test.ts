@@ -11,7 +11,7 @@
  *
  * Run via:  npm run test:rules
  */
-import { describe, it } from "vitest";
+import { describe, it, expect } from "vitest";
 import { assertSucceeds, assertFails, type RulesTestContext } from "@firebase/rules-unit-testing";
 import {
   arrayRemove,
@@ -141,10 +141,36 @@ describe("pushTargets — platform tags (dice stays off iPhones)", () => {
     await assertFails(setDoc(mirrorRef(), { ...validMirror(), platforms: { t1: 1 } }));
   });
 
-  it("attack: owner CANNOT store platforms as anything but a map, or grow it past 20", async () => {
+  it("attack: owner CANNOT store platforms as anything but a map of platform strings", async () => {
     await assertFails(setDoc(mirrorRef(), { ...validMirror(), platforms: ["ios"] }));
-    const many = Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`t${i}`, "web"]));
-    await assertFails(setDoc(mirrorRef(), { ...validMirror(), platforms: many }));
+    await assertFails(setDoc(mirrorRef(), { ...validMirror(), platforms: "ios" }));
+  });
+
+  it("owner CAN prune a pile of stale tags in one write (no size cap)", async () => {
+    // A size cap would lock the owner out once stale tags piled past it.
+    // New builds drop every tag whose token is gone (pushPlatform.tagToken).
+    const stale = Object.fromEntries(Array.from({ length: 25 }, (_, i) => [`old${i}`, "ios"]));
+    await getEnv().withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "pushTargets", OWNER_UID), {
+        tokens: ["t1"],
+        platforms: stale,
+        updatedAt: serverTimestamp(),
+      });
+    });
+    const pruned = Object.fromEntries(Object.keys(stale).map((k) => [k, deleteField()]));
+    await assertSucceeds(
+      setDoc(
+        mirrorRef(),
+        {
+          tokens: arrayUnion("t1"),
+          platforms: { ...pruned, t1: "web" },
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      ),
+    );
+    const snap = await getDoc(mirrorRef());
+    expect(snap.data()?.platforms).toEqual({ t1: "web" });
   });
 });
 
