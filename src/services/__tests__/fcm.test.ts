@@ -19,7 +19,7 @@ vi.mock("firebase/messaging", () => ({
 /* ── mock firebase/firestore ─────────────────── */
 
 import { firestoreNotifMocks } from "../../__tests__/harness/firestoreNotifMock";
-const { setDoc: mockSetDoc } = firestoreNotifMocks;
+const { setDoc: mockSetDoc, getDoc: mockGetDoc } = firestoreNotifMocks;
 
 vi.mock(
   "firebase/firestore",
@@ -129,7 +129,11 @@ describe("requestPushPermission", () => {
     expect(mockSetDoc).toHaveBeenNthCalledWith(
       2,
       "pushTargets/u1",
-      { tokens: { _op: "arrayUnion", value: "fcm-token-123" }, updatedAt: "SERVER_TS" },
+      {
+        tokens: { _op: "arrayUnion", value: "fcm-token-123" },
+        platforms: { "fcm-token-123": "web" },
+        updatedAt: "SERVER_TS",
+      },
       { merge: true },
     );
   });
@@ -157,7 +161,7 @@ describe("requestPushPermission", () => {
     expect(mockSetDoc).toHaveBeenNthCalledWith(
       4,
       "pushTargets/u1",
-      { tokens: { _op: "arrayUnion", value: "new-token" }, updatedAt: "SERVER_TS" },
+      { tokens: { _op: "arrayUnion", value: "new-token" }, platforms: { "new-token": "web" }, updatedAt: "SERVER_TS" },
       { merge: true },
     );
     // Stale removes follow (best-effort, allSettled).
@@ -170,7 +174,11 @@ describe("requestPushPermission", () => {
     expect(mockSetDoc).toHaveBeenNthCalledWith(
       6,
       "pushTargets/u1",
-      { tokens: { _op: "arrayRemove", value: "old-token" }, updatedAt: "SERVER_TS" },
+      {
+        tokens: { _op: "arrayRemove", value: "old-token" },
+        platforms: { "old-token": "DELETE_FIELD" },
+        updatedAt: "SERVER_TS",
+      },
       { merge: true },
     );
   });
@@ -224,7 +232,11 @@ describe("requestPushPermission", () => {
     expect(mockSetDoc).toHaveBeenNthCalledWith(
       4,
       "pushTargets/u1",
-      { tokens: { _op: "arrayUnion", value: "same-token" }, updatedAt: "SERVER_TS" },
+      {
+        tokens: { _op: "arrayUnion", value: "same-token" },
+        platforms: { "same-token": "web" },
+        updatedAt: "SERVER_TS",
+      },
       { merge: true },
     );
   });
@@ -318,7 +330,11 @@ describe("refreshWebPushTokenIfGranted", () => {
     expect(mockSetDoc).toHaveBeenNthCalledWith(
       2,
       "pushTargets/u1",
-      { tokens: { _op: "arrayUnion", value: "fcm-token-refresh-123" }, updatedAt: "SERVER_TS" },
+      {
+        tokens: { _op: "arrayUnion", value: "fcm-token-refresh-123" },
+        platforms: { "fcm-token-refresh-123": "web" },
+        updatedAt: "SERVER_TS",
+      },
       { merge: true },
     );
   });
@@ -387,7 +403,11 @@ describe("removeFcmToken", () => {
     expect(mockSetDoc).toHaveBeenNthCalledWith(
       2,
       "pushTargets/u1",
-      { tokens: { _op: "arrayRemove", value: "token-abc" }, updatedAt: "SERVER_TS" },
+      {
+        tokens: { _op: "arrayRemove", value: "token-abc" },
+        platforms: { "token-abc": "DELETE_FIELD" },
+        updatedAt: "SERVER_TS",
+      },
       { merge: true },
     );
   });
@@ -395,6 +415,35 @@ describe("removeFcmToken", () => {
   it("does not throw on error", async () => {
     mockSetDoc.mockRejectedValueOnce(new Error("fail"));
     await expect(removeFcmToken("u1", "tok")).resolves.toBeUndefined();
+  });
+});
+
+describe("platform tag prune on register", () => {
+  it("drops stale platform tags when registering a new token", async () => {
+    mockGetToken.mockResolvedValue("fresh-token");
+    mockGetDoc.mockResolvedValueOnce({
+      data: () => ({
+        tokens: ["keep-me"],
+        platforms: { "keep-me": "web", "stale-gone": "ios", "also-gone": "android" },
+      }),
+    });
+    await requestPushPermission("u1");
+    const mirrorWrite = mockSetDoc.mock.calls.find((c) => {
+      const path = c[0];
+      const body = c[1] as { tokens?: { _op?: string }; platforms?: Record<string, unknown> } | undefined;
+      return path === "pushTargets/u1" && body?.tokens?._op === "arrayUnion";
+    });
+    const body = mirrorWrite?.[1] as { platforms?: Record<string, unknown> };
+    expect(body).toMatchObject({
+      tokens: { _op: "arrayUnion", value: "fresh-token" },
+      platforms: {
+        "fresh-token": "web",
+        "stale-gone": "DELETE_FIELD",
+        "also-gone": "DELETE_FIELD",
+      },
+    });
+    // keep-me is still in the token list, so its tag is left alone (merge keeps it).
+    expect(body.platforms).not.toHaveProperty("keep-me");
   });
 });
 
@@ -424,7 +473,11 @@ describe("removeCurrentFcmToken", () => {
     expect(mockSetDoc).toHaveBeenNthCalledWith(
       4,
       "pushTargets/u1",
-      { tokens: { _op: "arrayRemove", value: "device-token-xyz" }, updatedAt: "SERVER_TS" },
+      {
+        tokens: { _op: "arrayRemove", value: "device-token-xyz" },
+        platforms: { "device-token-xyz": "DELETE_FIELD" },
+        updatedAt: "SERVER_TS",
+      },
       { merge: true },
     );
 
