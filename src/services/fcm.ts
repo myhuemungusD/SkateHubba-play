@@ -1,10 +1,11 @@
 import { getMessaging, getToken, isSupported, onMessage, type MessagePayload } from "firebase/messaging";
-import { doc, setDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore";
 import app, { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { PRIVATE_PROFILE_DOC_ID, getPushEnabled } from "./users";
 import { PUSH_TARGETS_COLLECTION } from "./pushDispatch";
+import { tagFromMirror, untagToken } from "./pushPlatform";
 import { claimMessagingWorker } from "../lib/swClaim";
 
 /**
@@ -108,6 +109,21 @@ export function _resetSwRegistration(): void {
 // Throws on Firestore/messaging errors so callers can attach their own log
 // context. Returns null only for benign no-ops (missing vapid key, empty
 // token).
+
+async function mirrorTagWrite(db: ReturnType<typeof requireDb>, uid: string, token: string): Promise<void> {
+  const mirrorRef = doc(db, PUSH_TARGETS_COLLECTION, uid);
+  const snap = await getDoc(mirrorRef);
+  await setDoc(
+    mirrorRef,
+    {
+      tokens: arrayUnion(token),
+      ...tagFromMirror(token, snap.data()),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
 async function acquireAndStoreToken(uid: string): Promise<string | null> {
   // Respect the Settings opt-out (src/services/pushPreferences.ts). Skipping
   // here is what stops the sign-in refresh from re-mirroring a token for a user
@@ -138,11 +154,7 @@ async function acquireAndStoreToken(uid: string): Promise<string | null> {
     { fcmTokens: arrayUnion(token) },
     { merge: true },
   );
-  await setDoc(
-    doc(db, PUSH_TARGETS_COLLECTION, uid),
-    { tokens: arrayUnion(token), updatedAt: serverTimestamp() },
-    { merge: true },
-  );
+  await mirrorTagWrite(db, uid, token);
 
   // Cache so sign-out can scrub exactly this device's token.
   activeFcmToken = token;
@@ -161,7 +173,7 @@ async function acquireAndStoreToken(uid: string): Promise<string | null> {
       ),
       setDoc(
         doc(db, PUSH_TARGETS_COLLECTION, uid),
-        { tokens: arrayRemove(staleToken), updatedAt: serverTimestamp() },
+        { tokens: arrayRemove(staleToken), ...untagToken(staleToken), updatedAt: serverTimestamp() },
         { merge: true },
       ),
     ]);
@@ -234,7 +246,7 @@ export async function removeFcmToken(uid: string, token: string): Promise<void> 
     // would route pushes to a revoked device after sign-out.
     await setDoc(
       doc(db, PUSH_TARGETS_COLLECTION, uid),
-      { tokens: arrayRemove(token), updatedAt: serverTimestamp() },
+      { tokens: arrayRemove(token), ...untagToken(token), updatedAt: serverTimestamp() },
       { merge: true },
     );
     if (activeFcmToken === token) {

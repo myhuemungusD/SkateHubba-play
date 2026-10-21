@@ -188,7 +188,11 @@ describe("registerPushToken", () => {
     expect(mockSetDoc).toHaveBeenNthCalledWith(
       2,
       "pushTargets/u1",
-      { tokens: { _op: "arrayUnion", value: "native-token-abc" }, updatedAt: "SERVER_TS" },
+      {
+        tokens: { _op: "arrayUnion", value: "native-token-abc" },
+        platforms: { "native-token-abc": "android" },
+        updatedAt: "SERVER_TS",
+      },
       { merge: true },
     );
   });
@@ -446,7 +450,11 @@ describe("unregisterPushToken", () => {
     expect(mockSetDoc).toHaveBeenNthCalledWith(
       4,
       "pushTargets/u1",
-      { tokens: { _op: "arrayRemove", value: "device-xyz" }, updatedAt: "SERVER_TS" },
+      {
+        tokens: { _op: "arrayRemove", value: "device-xyz" },
+        platforms: { "device-xyz": "DELETE_FIELD" },
+        updatedAt: "SERVER_TS",
+      },
       { merge: true },
     );
     expect(mockRemoveAllListeners).toHaveBeenCalledOnce();
@@ -505,6 +513,8 @@ describe("registerPushToken on iOS", () => {
     expect(mockSetDoc).toHaveBeenCalled();
     const payload = mockSetDoc.mock.calls[0]?.[1] as { fcmTokens: unknown };
     expect(payload.fcmTokens).toBeDefined();
+    // The mirror tags this token as iOS, so the server keeps dice pushes off it.
+    expect(mockSetDoc.mock.calls[1]?.[1]).toMatchObject({ platforms: { "fcm-from-bridge": "ios" } });
   });
 
   it("accepts a string detail and a token already on window", async () => {

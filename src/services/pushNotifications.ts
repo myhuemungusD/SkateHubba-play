@@ -33,11 +33,12 @@
 
 import { Capacitor } from "@capacitor/core";
 import { PushNotifications, type Token } from "@capacitor/push-notifications";
-import { doc, setDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { PRIVATE_PROFILE_DOC_ID, getPushEnabled } from "./users";
+import { tagFromMirror, untagToken } from "./pushPlatform";
 import { PUSH_TARGETS_COLLECTION } from "./pushDispatch";
 
 /**
@@ -299,9 +300,15 @@ async function persistToken(uid: string, token: string): Promise<void> {
     // a push_dispatch doc when an opponent triggers a notifiable event.
     // Same rationale as the web path in src/services/fcm.ts — the canonical
     // list stays owner-only, the mirror unlocks cross-user delivery.
+    const mirrorRef = doc(db, PUSH_TARGETS_COLLECTION, uid);
+    const snap = await getDoc(mirrorRef);
     await setDoc(
-      doc(db, PUSH_TARGETS_COLLECTION, uid),
-      { tokens: arrayUnion(token), updatedAt: serverTimestamp() },
+      mirrorRef,
+      {
+        tokens: arrayUnion(token),
+        ...tagFromMirror(token, snap.data()),
+        updatedAt: serverTimestamp(),
+      },
       { merge: true },
     );
     activePushToken = token;
@@ -394,7 +401,7 @@ export async function unregisterPushToken(uid: string): Promise<void> {
       // pushes to the device after sign-out / account swap.
       await setDoc(
         doc(db, PUSH_TARGETS_COLLECTION, uid),
-        { tokens: arrayRemove(token), updatedAt: serverTimestamp() },
+        { tokens: arrayRemove(token), ...untagToken(token), updatedAt: serverTimestamp() },
         { merge: true },
       );
       activePushToken = null;
