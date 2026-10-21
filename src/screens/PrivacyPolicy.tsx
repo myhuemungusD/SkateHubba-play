@@ -1,7 +1,7 @@
 import { Btn } from "../components/ui/Btn";
 import type { Screen } from "../context/NavigationContext";
 
-const EFFECTIVE_DATE = "October 10, 2026";
+const EFFECTIVE_DATE = "October 21, 2026";
 const CONTACT_EMAIL = "privacy@skatehubba.com";
 
 export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (s: Screen) => void }) {
@@ -60,9 +60,23 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
             </li>
             <li>
               <strong className="text-white">Precise device location:</strong> If you open the map and grant permission,
-              we read your device&apos;s GPS location to centre the map and show skate spots near you. Location is used
-              only while the map is open, is not stored on our servers, and you can revoke the permission at any time in
-              your device or browser settings.
+              we read your device&apos;s GPS location to centre the map and show skate spots near you. That live map
+              position stays on your device. When you tap Check in, we send one location reading to our servers to
+              confirm you are at the spot. For each check-in we keep the spot, the exact time, and the GPS accuracy in
+              your private check-in history (only you can read it). We also keep your most recent check-in coordinates
+              and time, and (while you stay checked in) your most recent presence coordinates and time, on a private
+              anti-spoofing record that only you and our servers can read. Those coordinates are replaced each time and
+              are used only to stop faked check-ins (for example, two spots too far apart to travel between). While you
+              are checked in, the app re-checks every so often that you are still at the spot and writes a short
+              &quot;here until&quot; record for that spot (your username and an expiry time). Any signed-in user can
+              read that here-until record. Who&apos;s skating also shows the spot name and the exact time you were last
+              seen there to other signed-in users, unless you turn on Hide my online status. Hide my online status
+              clears the public last-seen time and keeps you out of Who&apos;s skating; it does not hide the here-until
+              record at the spot itself. Separately, we store a last-seen server time on your online status (readable by
+              signed-in users) when Hide my online status is off. Your spot passport and badges show the spot and the
+              month or day, never your coordinates. We delete these records when you delete your account (presence and
+              activity cleanup ships with the account-deletion update). You can revoke location permission at any time
+              in your device or browser settings.
             </li>
             <li>
               <strong className="text-white">Push notification tokens:</strong> If you enable notifications, we store

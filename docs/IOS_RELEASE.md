@@ -151,9 +151,16 @@ Do these before any store submission. They are the same items tracked in [DSA_CO
 2. Push Notifications and Sign in with Apple are on for that App ID. Confirm Associated Domains is on too (step 6).
 3. Age rating questionnaire (on the app record, not in the repo):
    - Not Made for Kids.
-   - The in-app age gate is 13+. Expect a 13+ or 16+ rating because the app has user-recorded video and social features.
+   - The in-app age gate is 13+. Expect a 13+ or 16+ rating because the app has user-recorded video, a public feed and chat.
    - Unrestricted web access: no.
-   - Simulated gambling: no. Roll Dice is compiled out of store builds (`VITE_FEATURE_DICE_ENABLED` is `false`) and there are no chips or cash-out.
+   - Social media: yes. The Clips feed, public profiles and the Map are on in the store build. Under-13 sign-up is blocked by the age gate.
+   - Messaging and chat: yes. Spot group chats and clip comments are on (no private DMs). Report, block and the slur filter cover both.
+   - User-Generated Content: yes. Clips, comments, bios, spot text and Closet Studio designs.
+   - Contests: yes. XP, the level climb and leaderboards.
+   - Loot Boxes: no. Buying Hubba Bucks is off in the store build (`VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED=false`).
+   - Age Assurance: yes. Self-declared date of birth at sign-up (`MIN_AGE = 13`); under-13 accounts cannot be created. We do not verify the DOB against an ID.
+   - Social Media Disabled for Users Under 13: does not apply — under-13 sign-up is blocked, so there is no under-13 social experience to disable.
+   - Simulated gambling: no. Roll Dice is turned off in store builds: `VITE_FEATURE_DICE_ENABLED` is `false` in `ios-release.yml` and `ci_post_clone.sh`, and the tester override does nothing inside the native app, so the dice screens never render. The code is still in the bundle; it is switched off, not compiled out. There are no chips or cash-out.
    - Encryption: the app only uses HTTPS.
 
 ## Sign in with Apple in Firebase

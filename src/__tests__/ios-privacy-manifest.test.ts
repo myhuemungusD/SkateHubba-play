@@ -14,14 +14,23 @@ describe("iOS privacy manifest", () => {
     ["EmailAddress", "email sign-in"],
     ["PhoneNumber", "SMS two-step verification (src/services/mfa.ts)"],
     ["OtherUserContent", "clip comments, spot names and bios"],
+    ["OtherDataTypes", "date of birth from the age gate (src/utils/age.ts)"],
     ["PhotosorVideos", "trick clips and avatars"],
     ["AudioData", "trick clip sound"],
     ["PreciseLocation", "spots map"],
+    ["ProductInteraction", "last-seen / Who's skating + analytics"],
     ["UserID", "account uid"],
     ["DeviceID", "push tokens"],
     ["CrashData", "Sentry"],
   ])("declares %s (%s)", (type) => {
     expect(manifest).toContain(`<string>NSPrivacyCollectedDataType${type}</string>`);
+  });
+
+  it("links Product Interaction to the user for App Functionality and Analytics", () => {
+    const block = manifest.split("NSPrivacyCollectedDataTypeProductInteraction")[1]?.split("</dict>")[0] ?? "";
+    expect(block).toMatch(/NSPrivacyCollectedDataTypeLinked[\s\S]*?<true\/>/);
+    expect(block).toContain("NSPrivacyCollectedDataTypePurposeAppFunctionality");
+    expect(block).toContain("NSPrivacyCollectedDataTypePurposeAnalytics");
   });
 
   it("declares no tracking and no tracking domains", () => {
