@@ -153,11 +153,15 @@ export interface FakeTransaction {
 
 export interface FakeBatch {
   delete(ref: FakeDocRef): void;
+  set(ref: FakeDocRef, data: DocData): void;
+  update(ref: FakeDocRef, data: DocData): void;
   commit(): Promise<void>;
 }
 
 export interface FakeDb {
   collection(name: string): FakeCollectionRef;
+  /** Every doc whose parent collection id is `name`, at any depth. */
+  collectionGroup(name: string): FakeQuery;
   batch(): FakeBatch;
   runTransaction<T>(fn: (tx: FakeTransaction) => Promise<T>): Promise<T>;
 }
@@ -223,10 +227,26 @@ function childIds(docs: Map<string, DocData>, collectionPath: string): string[] 
   return out.sort();
 }
 
+/** Paths of docs whose immediate parent collection id is `group`, sorted by full path. */
+function groupPaths(docs: Map<string, DocData>, group: string): string[] {
+  const out: string[] = [];
+  for (const path of docs.keys()) {
+    const segs = path.split("/");
+    if (segs[segs.length - 2] === group) out.push(path);
+  }
+  return out.sort();
+}
+
 interface QueryState {
-  wheres: { field: string; value: unknown }[];
+  wheres: { field: string; op: string; value: unknown }[];
   limit: number | null;
-  startAfterId: string | null;
+  /** Full path of the cursor doc. */
+  startAfterPath: string | null;
+}
+
+function matches(data: DocData, w: { field: string; op: string; value: unknown }): boolean {
+  if (w.op === "array-contains") return Array.isArray(data[w.field]) && (data[w.field] as unknown[]).includes(w.value);
+  return data[w.field] === w.value;
 }
 
 /**
@@ -290,44 +310,51 @@ export function makeFakeStore(seed: Seed = {}, objects: string[] = []): FakeStor
     };
   };
 
-  const query = (collectionPath: string, state: QueryState): FakeQuery => ({
+  /** `list` returns the candidate doc paths for this query (a collection or a group). */
+  const query = (label: string, list: () => string[], state: QueryState): FakeQuery => ({
     where: (field, op, value) => {
-      store.wheres.push({ collection: collectionPath, field, op, value });
-      return query(collectionPath, { ...state, wheres: [...state.wheres, { field, value }] });
+      store.wheres.push({ collection: label, field, op, value });
+      return query(label, list, { ...state, wheres: [...state.wheres, { field, op, value }] });
     },
     orderBy: (field) => {
       store.orderBys.push(field);
-      return query(collectionPath, state);
+      return query(label, list, state);
     },
-    limit: (n) => query(collectionPath, { ...state, limit: n }),
-    startAfter: (snap) => query(collectionPath, { ...state, startAfterId: snap.id }),
+    limit: (n) => query(label, list, { ...state, limit: n }),
+    startAfter: (snap) => query(label, list, { ...state, startAfterPath: snap.ref.path }),
     get: () => {
-      store.pageRequests.push(collectionPath);
-      let ids = childIds(store.docs, collectionPath).filter((id) => {
-        const data = store.docs.get(`${collectionPath}/${id}`) ?? {};
-        return state.wheres.every((w) => data[w.field] === w.value);
+      store.pageRequests.push(label);
+      let paths = list().filter((path) => {
+        const data = store.docs.get(path) ?? {};
+        return state.wheres.every((w) => matches(data, w));
       });
-      const after = state.startAfterId;
-      if (after !== null) ids = ids.filter((id) => id > after);
-      if (state.limit !== null) ids = ids.slice(0, state.limit);
-      const pageDocs = ids.map((id) => snapOf(collectionPath, id));
+      const after = state.startAfterPath;
+      if (after !== null) paths = paths.filter((path) => path > after);
+      if (state.limit !== null) paths = paths.slice(0, state.limit);
+      const pageDocs = paths.map((path) => snapOfPath(path));
       return Promise.resolve({ docs: pageDocs, size: pageDocs.length, empty: pageDocs.length === 0 });
     },
   });
 
   const collectionRef = (collectionPath: string): FakeCollectionRef => ({
-    ...query(collectionPath, { wheres: [], limit: null, startAfterId: null }),
+    ...query(collectionPath, () => childIds(store.docs, collectionPath).map((id) => `${collectionPath}/${id}`), {
+      wheres: [],
+      limit: null,
+      startAfterPath: null,
+    }),
     doc: (id: string) => docRef(collectionPath, id),
   });
 
   store.db = {
     collection: collectionRef,
+    collectionGroup: (name: string) =>
+      query(`group:${name}`, () => groupPaths(store.docs, name), { wheres: [], limit: null, startAfterPath: null }),
     batch: () => {
-      const staged: FakeDocRef[] = [];
+      const staged: { ref: FakeDocRef; kind: "delete" | "set" | "update"; data?: DocData }[] = [];
       return {
-        delete: (ref) => {
-          staged.push(ref);
-        },
+        delete: (ref) => void staged.push({ ref, kind: "delete" }),
+        set: (ref, data) => void staged.push({ ref, kind: "set", data }),
+        update: (ref, data) => void staged.push({ ref, kind: "update", data }),
         commit: () => {
           const failure = store.failNextCommit;
           if (failure !== null) {
@@ -335,9 +362,16 @@ export function makeFakeStore(seed: Seed = {}, objects: string[] = []): FakeStor
             return Promise.reject(new Error(failure));
           }
           store.commitSizes.push(staged.length);
-          for (const ref of staged) {
-            store.events.push(`delete:${ref.path}`);
-            store.docs.delete(ref.path);
+          for (const { ref, kind, data } of staged) {
+            store.events.push(`${kind}:${ref.path}`);
+            if (kind === "delete") store.docs.delete(ref.path);
+            else if (kind === "set") store.docs.set(ref.path, { ...data });
+            else {
+              const current = store.docs.get(ref.path);
+              // Firestore rejects an update to a missing doc; so does the fake.
+              if (!current) return Promise.reject(new Error(`update on missing doc ${ref.path}`));
+              store.docs.set(ref.path, { ...current, ...data });
+            }
           }
           store.events.push(`commit:${staged.length}`);
           return Promise.resolve();
