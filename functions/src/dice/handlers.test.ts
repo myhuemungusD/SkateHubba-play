@@ -49,7 +49,7 @@ afterEach(() => resetDieSource());
 
 describe("challenge", () => {
   it("opens a pending challenge and notifies the opponent", async () => {
-    db.seed("pushTargets/u2", { tokens: ["tok"] });
+    db.seed("pushTargets/u2", { tokens: ["tok"], platforms: { tok: "web" } });
     const created = await createDiceGame(db, actor("u1"), "u2", { mode: "craps", target: 9 });
     expect(created).toMatchObject({ gameId: "game-1", status: "pending", currentTurn: null, applied: true });
     expect(game(db)).toMatchObject({
@@ -387,9 +387,13 @@ describe("pushes and the sweep", () => {
     };
     await deliverDicePushes(db, [notice]);
     expect(db.added).toEqual([]);
-    db.seed("pushTargets/u2", { tokens: ["a", "", 4, "b"] });
+    db.seed("pushTargets/u2", { tokens: ["a", "", 4, "b", "i"], platforms: { a: "web", b: "android", i: "ios" } });
     await deliverDicePushes(db, [notice]);
     expect(db.added[0]?.data).toMatchObject({ tokens: ["a", "b"], data: { kind: "dice", click_action: "/dice/g" } });
+    // Only iOS or untagged tokens left: no dispatch at all.
+    db.seed("pushTargets/u2", { tokens: ["i", "legacy"], platforms: { i: "ios" } });
+    await deliverDicePushes(db, [notice]);
+    expect(db.added).toHaveLength(1);
     db.seed("users/u2/private/profile", { pushEnabled: false });
     await deliverDicePushes(db, [notice]);
     expect(db.added).toHaveLength(1);

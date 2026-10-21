@@ -1,15 +1,22 @@
 /**
  * Push dispatch courier, Cloud Functions edition.
  *
- * Same contract as api/cron/drain-push-dispatch.ts (the Vercel endpoint the
- * GitHub Actions cron used to call): validate the doc, drop it after a 24h TTL,
- * send through FCM, prune tokens FCM calls dead, delete only after FCM accepts.
- * Moved here (approved by the repo owner, 2026-10-17) so pushes go out the
- * moment a /push_dispatch doc is created instead of waiting for a cron tick,
- * and so delivery no longer depends on the GitHub Actions budget.
+ * Same contract as api/cron/drain-push-dispatch.ts (manual-only Vercel
+ * endpoint, workflow_dispatch): validate the doc, drop it after a 24h TTL,
+ * send through FCM, prune tokens FCM calls dead (and their platform tags),
+ * re-check Roll Dice pushes against platform tags, delete only after FCM
+ * accepts. Moved here (approved by the repo owner, 2026-10-17) so pushes go
+ * out the moment a /push_dispatch doc is created instead of waiting for a
+ * cron tick, and so delivery no longer depends on the GitHub Actions budget.
+ * Both couriers must stay in lockstep on the dice filter and the tag prune.
  *
  * Deps are injected so the logic is unit-tested without firebase-admin.
+ *
+ * Roll Dice pushes are re-checked here against the recipient's token platform
+ * tags (see platforms.ts), so a dice push queued before the tags existed, or
+ * by any future writer, still never reaches an iPhone while dice is off there.
  */
+import { diceEligibleTokens, isDicePush } from "./platforms.js";
 
 /** Drop undelivered pushes older than this. Matches the endpoint's TTL. */
 export const PUSH_TTL_MS = 24 * 60 * 60 * 1000;
@@ -50,6 +57,8 @@ export interface DrainDeps {
   }) => Promise<MulticastResult>;
   /** Remove dead tokens from pushTargets + private profile. */
   prune: (recipientUid: string, dead: string[]) => Promise<void>;
+  /** The recipient's pushTargets doc, for the dice platform check. Undefined when missing. */
+  pushTarget: (recipientUid: string) => Promise<Record<string, unknown> | undefined>;
   warn: (event: string, fields: Record<string, unknown>) => void;
   nowMs: number;
 }
@@ -60,13 +69,15 @@ export interface QueuedDoc {
   delete: () => Promise<unknown>;
 }
 
-export type DocOutcome = "sent" | "expired" | "malformed" | "error";
+/** "filtered": a dice push whose tokens are all iOS or untagged, dropped without sending. */
+export type DocOutcome = "sent" | "expired" | "malformed" | "filtered" | "error";
 
 export interface DrainSummary {
   scanned: number;
   sent: number;
   expired: number;
   malformed: number;
+  filtered: number;
   errors: number;
   skippedFresh: number;
 }
@@ -128,15 +139,24 @@ export async function deliverDispatch(doc: QueuedDoc, deps: DrainDeps): Promise<
       return "expired";
     }
 
+    let tokens = payload.tokens;
+    if (isDicePush(payload.data)) {
+      tokens = diceEligibleTokens(await deps.pushTarget(payload.recipientUid), tokens);
+      if (tokens.length === 0) {
+        await doc.delete();
+        return "filtered";
+      }
+    }
+
     const response = await deps.send({
-      tokens: payload.tokens,
+      tokens,
       notification: { title: payload.title, body: payload.body },
       data: payload.data,
     });
 
     const dead: string[] = [];
     response.responses.forEach((r, i) => {
-      if (!r.success && r.error && DEAD_TOKEN_CODES.has(r.error.code)) dead.push(payload.tokens[i]);
+      if (!r.success && r.error && DEAD_TOKEN_CODES.has(r.error.code)) dead.push(tokens[i]);
     });
     if (dead.length > 0) {
       try {
@@ -164,7 +184,15 @@ export async function drainQueue(
   docs: (QueuedDoc & { createdAtMs: number | null })[],
   deps: DrainDeps,
 ): Promise<DrainSummary> {
-  const summary: DrainSummary = { scanned: 0, sent: 0, expired: 0, malformed: 0, errors: 0, skippedFresh: 0 };
+  const summary: DrainSummary = {
+    scanned: 0,
+    sent: 0,
+    expired: 0,
+    malformed: 0,
+    filtered: 0,
+    errors: 0,
+    skippedFresh: 0,
+  };
   for (const doc of docs) {
     summary.scanned += 1;
     if (doc.createdAtMs !== null && deps.nowMs - doc.createdAtMs < RETRY_MIN_AGE_MS) {
@@ -175,6 +203,7 @@ export async function drainQueue(
     if (outcome === "sent") summary.sent += 1;
     else if (outcome === "expired") summary.expired += 1;
     else if (outcome === "malformed") summary.malformed += 1;
+    else if (outcome === "filtered") summary.filtered += 1;
     else summary.errors += 1;
   }
   return summary;

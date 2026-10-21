@@ -16,12 +16,21 @@ export function adminDrainDeps(db: Firestore, messaging: Messaging, nowMs: numbe
     nowMs,
     warn,
     send: (msg) => messaging.sendEachForMulticast(msg),
+    pushTarget: async (recipientUid) => (await db.collection("pushTargets").doc(recipientUid).get()).data(),
     prune: async (recipientUid, dead) => {
       await Promise.all([
         db
           .collection("pushTargets")
           .doc(recipientUid)
-          .set({ tokens: FieldValue.arrayRemove(...dead), updatedAt: FieldValue.serverTimestamp() }, { merge: true }),
+          .set(
+            {
+              tokens: FieldValue.arrayRemove(...dead),
+              // Drop the dead tokens' platform tags too, so the map stays in step with the list.
+              platforms: Object.fromEntries(dead.map((token) => [token, FieldValue.delete()])),
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          ),
         db
           .collection("users")
           .doc(recipientUid)
