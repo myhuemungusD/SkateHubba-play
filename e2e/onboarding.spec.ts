@@ -243,6 +243,8 @@ test("Settings → Replay onboarding re-arms the tour at step 0", async ({ page 
 
   // Replay the tutorial.
   await page.getByRole("button", { name: /Replay onboarding/i }).click();
+  // Replay routes back on its own; let that land so our goto doesn't abort it.
+  await page.waitForURL((url) => !url.pathname.startsWith("/settings"), { timeout: 10_000 });
 
   // The replay handler resets local + server state. Navigate back to the
   // lobby (manually, in case Settings doesn't auto-route in this build) and

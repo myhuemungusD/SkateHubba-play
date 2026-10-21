@@ -14,22 +14,54 @@ export const SIZES = [
   { id: "play-10in", store: "Google Play", label: '10" tablet', width: 800, height: 1280, scale: 2, mobile: true }, // 1600×2560
 ];
 
-/** Key screens, in store order. */
+/**
+ * Key screens, in store order. Each one must show real content (no empty
+ * states) and only features the iPhone launch build has: no Roll Dice, no
+ * Skate Runner. `open` names how screenshots.mjs reaches a screen that has no
+ * URL of its own (the game screen opens from its lobby card). `click` taps a
+ * text before the shot (Home expands its "waiting on them" games), and
+ * `scrollTo` scrolls an element to the top, past the header.
+ */
 export const SCREENS = [
-  { id: "01-lobby", path: "/lobby" },
-  { id: "02-feed", path: "/feed" },
+  { id: "01-game", path: "/lobby", open: "game" },
+  { id: "02-feed", path: "/feed", seek: 4 },
   { id: "03-map", path: "/map" },
-  { id: "04-profile", path: "/profile" },
-  { id: "05-settings", path: "/settings" },
+  { id: "04-profile", path: "/me" },
+  { id: "05-closet", path: "/me", scrollTo: '[data-testid="closet-showcase"]' },
+  { id: "06-lobby", path: "/lobby", click: "waiting on them", scrollTo: '[data-testid="whos-skating-button"]' },
 ];
+
+/** Routes that must never appear in a store screenshot set. */
+export const FORBIDDEN_PATHS = ["/dice", "/play/runner"];
 
 export const pixelSize = (s) => ({ w: s.width * s.scale, h: s.height * s.scale });
 export const shotPath = (dir, size, screen) => `${dir}/${size.id}/${screen.id}.png`;
 
+/** Seeded demo skaters. Made-up handles only, never a real user's. */
 export const DEMO_OPPONENTS = [
   { uid: "review-demo-opp-1", username: "kickflip_kai", stance: "Regular" },
   { uid: "review-demo-opp-2", username: "manny_mae", stance: "Goofy" },
+  { uid: "review-demo-opp-3", username: "ledge_leo", stance: "Regular" },
+  { uid: "review-demo-opp-4", username: "nollie_nia", stance: "Goofy" },
+  { uid: "review-demo-opp-5", username: "tre_flip_tess", stance: "Regular" },
+  { uid: "review-demo-opp-6", username: "grind_gabe", stance: "Goofy" },
 ];
+
+/** Mike White Signature shoes the demo profile owns (credited in-app by DesignerCredit). */
+export const DEMO_LOCKER = [
+  { id: "review-demo-gear-1", itemDefId: "mike_white_signature_001", type: "shoes", rarity: "limited", equipped: true },
+  { id: "review-demo-gear-2", itemDefId: "mike_white_og_gum", type: "shoes", rarity: "limited", equipped: false },
+  { id: "review-demo-gear-3", itemDefId: "mike_white_ice_bolt", type: "shoes", rarity: "limited", equipped: false },
+  { id: "review-demo-gear-4", itemDefId: "mike_white_creamsicle", type: "shoes", rarity: "limited", equipped: false },
+];
+
+/** Display names for the Mike White shoes in {@link DEMO_LOCKER}. */
+export const MIKE_WHITE_NAMES = {
+  mike_white_signature_001: "Mike White Signature — Tan / White / Navy",
+  mike_white_og_gum: "OG Signature — Black / Gum",
+  mike_white_ice_bolt: "Bolt Runner — Black / Ice",
+  mike_white_creamsicle: "Creamsicle — White / Orange",
+};
 
 /** Read the review account settings from env. Never defaulted, never logged. */
 export function reviewEnv(env) {
@@ -53,27 +85,66 @@ export function reviewEnv(env) {
  * Only public features: the reviewer is NOT added to config/featureTesters,
  * so App Review sees exactly what ships.
  */
-export function buildSeedDocs({ uid, username, appUrl, now = new Date(), tutorialVersion = 2 }) {
+/** Where the seed uploads the demo clip in Storage. */
+export const DEMO_VIDEO_PATH = "review-kit/sh-video-edit.mp4";
+
+/**
+ * Firebase Storage download URL. The game screen only plays trick videos from
+ * firebasestorage.googleapis.com, so a clip hosted anywhere else shows
+ * "No video recorded".
+ */
+export function storageDownloadUrl(bucket, path, token) {
+  return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(path)}?alt=media&token=${token}`;
+}
+
+export function buildSeedDocs({
+  uid,
+  username,
+  appUrl,
+  now = new Date(),
+  tutorialVersion = 2,
+  tipsDisabled = false,
+  videoUrl,
+}) {
   const day = 24 * 60 * 60 * 1000;
   const at = (offsetDays) => new Date(now.getTime() + offsetDays * day);
-  const video = `${appUrl}/sh-video-edit.mp4`;
+  const video = videoUrl || `${appUrl}/sh-video-edit.mp4`;
   const docs = [];
   const put = (path, data) => docs.push([path, data]);
 
-  put(`users/${uid}`, { uid, username, stance: "Regular", createdAt: at(-30), isReviewAccount: true });
+  put(`users/${uid}`, {
+    uid,
+    username,
+    stance: "Regular",
+    createdAt: at(-30),
+    isReviewAccount: true,
+    // Server-written stats, seeded so the profile shows a played-in account.
+    wins: 14,
+    losses: 6,
+    gamesPlayed: 20,
+    currentWinStreak: 3,
+    bestWinStreak: 5,
+    tricksLanded: 61,
+    tricksFailed: 23,
+    xp: 2460,
+    level: 11,
+    recentResults: ["W", "L", "W", "W", "W"],
+  });
   put(`usernames/${username}`, { uid });
   put(`users/${uid}/private/profile`, {
     dob: "1995-06-15",
     onboardingTutorialVersion: tutorialVersion,
     onboardingCompletedAt: at(-30),
     onboardingSkippedAt: null,
+    // Screenshot runs turn the tip bubbles off so they don't cover the screen.
+    ...(tipsDisabled ? { tipsDisabled: true } : {}),
   });
   for (const o of DEMO_OPPONENTS) {
     put(`users/${o.uid}`, { uid: o.uid, username: o.username, stance: o.stance, createdAt: at(-60) });
     put(`usernames/${o.username}`, { uid: o.uid });
   }
 
-  const [a, b] = DEMO_OPPONENTS;
+  const [a, b, c, d, e, f] = DEMO_OPPONENTS;
   const base = (id, opp, extra) =>
     put(`games/${id}`, {
       player1Uid: uid,
@@ -96,8 +167,18 @@ export function buildSeedDocs({ uid, username, appUrl, now = new Date(), tutoria
       updatedAt: at(-1),
       ...extra,
     });
-  base("review-demo-your-turn", a, { p1Letters: 1, p2Letters: 2, turnNumber: 6 });
+  // Mid-game: kai set a kickflip and it's the reviewer's turn to match it.
+  base("review-demo-your-turn", a, {
+    p1Letters: 1,
+    p2Letters: 2,
+    turnNumber: 6,
+    phase: "matching",
+    currentSetter: a.uid,
+    currentTrickName: "Kickflip",
+    currentTrickVideoUrl: video,
+  });
   base("review-demo-their-turn", b, { currentTurn: b.uid, currentSetter: b.uid, turnNumber: 3, p2Letters: 1 });
+  base("review-demo-your-set", c, { p1Letters: 2, p2Letters: 3, turnNumber: 9 });
   base("review-demo-won", a, {
     status: "complete",
     winner: uid,
@@ -105,6 +186,36 @@ export function buildSeedDocs({ uid, username, appUrl, now = new Date(), tutoria
     p1Letters: 3,
     turnNumber: 14,
     updatedAt: at(-2),
+  });
+  // Extra games so Home is full: two more on the reviewer, one more waiting,
+  // and a finished win and loss.
+  base("review-demo-your-turn-2", e, {
+    p1Letters: 0,
+    p2Letters: 1,
+    turnNumber: 4,
+    phase: "matching",
+    currentSetter: e.uid,
+    currentTrickName: "Tre Flip",
+    currentTrickVideoUrl: video,
+    turnDeadline: at(2.5),
+  });
+  base("review-demo-your-set-2", f, { p1Letters: 1, p2Letters: 1, turnNumber: 5, turnDeadline: at(6) });
+  base("review-demo-their-turn-2", d, { currentTurn: d.uid, currentSetter: d.uid, turnNumber: 2 });
+  base("review-demo-won-2", f, {
+    status: "complete",
+    winner: uid,
+    p2Letters: 5,
+    p1Letters: 2,
+    turnNumber: 11,
+    updatedAt: at(-4),
+  });
+  base("review-demo-lost", e, {
+    status: "complete",
+    winner: e.uid,
+    p1Letters: 5,
+    p2Letters: 4,
+    turnNumber: 16,
+    updatedAt: at(-6),
   });
 
   const clip = (gameId, turn, role, who, trick, upvotes) =>
@@ -126,8 +237,53 @@ export function buildSeedDocs({ uid, username, appUrl, now = new Date(), tutoria
   clip("review-demo-won", 1, "match", a, "Kickflip", 7);
   clip("review-demo-won", 2, "set", a, "Heelflip", 9);
   clip("review-demo-won", 3, "set", me, "Frontside 180", 15);
+  clip("review-demo-won", 4, "set", a, "Varial Flip", 21);
+  clip("review-demo-your-set", 2, "set", c, "Backside Boardslide", 18);
+  clip("review-demo-your-set", 3, "set", d, "Nollie Heelflip", 11);
+  clip("review-demo-your-set", 4, "match", me, "Pop Shove-it", 8);
 
-  // Two spots near Apple Park so the map has nearby pins during review.
+  for (const g of DEMO_LOCKER) {
+    const { id, ...item } = g;
+    put(`users/${uid}/locker/${id}`, {
+      ...item,
+      brand: "Mike White",
+      name: MIKE_WHITE_NAMES[item.itemDefId],
+      imageUrl: `${appUrl}/assets/closet/mike-white/card/${item.itemDefId.replace(/^mike_white_/, "").replace(/_/g, "-")}.webp`,
+      acquiredAt: at(-5),
+      provenance: { reason: "demo" },
+    });
+  }
+
+  // Badges that match the seeded stats, so the ribbon isn't all locked.
+  const badges = [
+    ["games_10", -20],
+    ["wins_10", -12],
+    ["streak_3", -9],
+    ["streak_5", -4],
+    ["lands_50", -6],
+    ["clips_1", -25],
+  ];
+  for (const [id, when] of badges) put(`users/${uid}/achievements/${id}`, { earnedAt: at(when), reason: "demo" });
+
+  // Spot passport stamps (public), so the profile shows check-ins.
+  const stamps = [
+    ["review-demo-spot-1", "Cupertino Ledges", 4, -8],
+    ["review-demo-spot-3", "De Anza Hubba", 2, -5],
+    ["review-demo-spot-6", "Wolfe Rd Bank", 1, -2],
+  ];
+  for (const [spotId, spotName, count, when] of stamps) {
+    put(`users/${uid}/passport/${spotId}`, {
+      spotId,
+      spotName,
+      scope: "public",
+      legendary: false,
+      count,
+      firstAt: at(when),
+    });
+  }
+  put(`passportSettings/${uid}`, { public: true });
+
+  // Six spots near Apple Park so the map has nearby pins during review.
   const spot = (id, name, lat, lng, obstacles) =>
     put(`spots/${id}`, {
       createdBy: uid,
@@ -146,5 +302,9 @@ export function buildSeedDocs({ uid, username, appUrl, now = new Date(), tutoria
     });
   spot("review-demo-spot-1", "Cupertino Ledges", 37.3349, -122.009, ["ledge", "stairs"]);
   spot("review-demo-spot-2", "Memorial Park Manual Pad", 37.3233, -122.0447, ["manual pad"]);
+  spot("review-demo-spot-3", "De Anza Hubba", 37.3195, -122.0451, ["hubba", "stairs"]);
+  spot("review-demo-spot-4", "Stevens Creek Gap", 37.3237, -122.0322, ["gap"]);
+  spot("review-demo-spot-5", "Infinite Loop Curbs", 37.3318, -122.0312, ["curb", "ledge"]);
+  spot("review-demo-spot-6", "Wolfe Rd Bank", 37.3301, -122.0146, ["bank"]);
   return docs;
 }
