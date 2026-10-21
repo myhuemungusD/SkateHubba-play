@@ -155,6 +155,11 @@ Do these before any store submission. They are the same items tracked in [DSA_CO
    - Unrestricted web access: no.
    - Social media: yes. The Clips feed, public profiles and the Map are on in the store build. Under-13 sign-up is blocked by the age gate.
    - Messaging and chat: yes. Spot group chats and clip comments are on (no private DMs). Report, block and the slur filter cover both.
+   - User-Generated Content: yes. Clips, comments, bios, spot text and Closet Studio designs.
+   - Contests: yes. XP, the level climb, leaderboards and weekly challenges.
+   - Loot Boxes: no. Buying Hubba Bucks is off in the store build (`VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED=false`).
+   - Age Assurance: yes. Date-of-birth gate at sign-up (`MIN_AGE = 13`); under-13 accounts cannot be created.
+   - Social Media Disabled for Users Under 13: does not apply — under-13 sign-up is blocked, so there is no under-13 social experience to disable.
    - Simulated gambling: no. Roll Dice is turned off in store builds: `VITE_FEATURE_DICE_ENABLED` is `false` in `ios-release.yml` and `ci_post_clone.sh`, and the tester override does nothing inside the native app, so the dice screens never render. The code is still in the bundle; it is switched off, not compiled out. There are no chips or cash-out.
    - Encryption: the app only uses HTTPS.
 
