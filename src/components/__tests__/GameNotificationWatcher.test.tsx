@@ -156,7 +156,7 @@ describe("GameNotificationWatcher", () => {
 describe("notifications collection listener", () => {
   it("subscribes with the user uid", () => {
     render(<GameNotificationWatcher />);
-    expect(vi.mocked(subscribeToNotifications)).toHaveBeenCalledWith("u1", expect.any(Function), mockHydrate);
+    expect(vi.mocked(subscribeToNotifications)).toHaveBeenCalledWith("u1", expect.any(Function), expect.any(Function));
   });
 
   it.each([
@@ -209,7 +209,11 @@ describe("notifications collection listener", () => {
 });
 
 describe("dice notifications at the open table", () => {
-  afterEach(() => window.history.replaceState(null, "", "/"));
+  beforeEach(() => vi.stubEnv("VITE_FEATURE_DICE_ENABLED", "true"));
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    window.history.replaceState(null, "", "/");
+  });
 
   it("goes to the bell, not a toast, when you're already at that table", () => {
     window.history.replaceState(null, "", "/dice/g1");
@@ -234,6 +238,30 @@ describe("dice notifications at the open table", () => {
     const cb = vi.mocked(subscribeToNotifications).mock.calls[0]?.[1];
     cb!({ firestoreId: "fs1", type: "dice_challenge", title: "Roll Dice", body: "B", gameId: "g1", createdAtMs: 1 });
     expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ chime: "new_challenge", gameId: "g1" }));
+  });
+});
+
+describe("dice notifications in a build with Roll Dice off", () => {
+  beforeEach(() => vi.stubEnv("VITE_FEATURE_DICE_ENABLED", "false"));
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each(["dice_challenge", "dice_turn", "dice_result"])("never toasts %s", (type) => {
+    render(<GameNotificationWatcher />);
+    const cb = vi.mocked(subscribeToNotifications).mock.calls[0]?.[1];
+    cb!({ firestoreId: "fs1", type, title: "Roll Dice", body: "B", gameId: "g1", createdAtMs: 1 });
+    expect(mockNotify).not.toHaveBeenCalled();
+    expect(mockHydrate).not.toHaveBeenCalled();
+  });
+
+  it("keeps dice rows out of the bell seed but keeps the rest", () => {
+    render(<GameNotificationWatcher />);
+    const seedCb = vi.mocked(subscribeToNotifications).mock.calls[0]?.[2];
+    const turn = { firestoreId: "fs2", type: "your_turn", title: "T", body: "B", gameId: "g2", createdAtMs: 2 };
+    seedCb!([
+      { firestoreId: "fs1", type: "dice_turn", title: "Roll Dice", body: "B", gameId: "g1", createdAtMs: 1 },
+      turn,
+    ]);
+    expect(mockHydrate).toHaveBeenCalledWith([turn]);
   });
 });
 
@@ -725,10 +753,12 @@ describe("cleanup", () => {
 });
 
 describe("notification seed → bell hydration", () => {
-  it("passes the context hydrate as the seed callback", () => {
+  it("forwards the seed to the context hydrate", () => {
     render(<GameNotificationWatcher />);
     const seedCb = vi.mocked(subscribeToNotifications).mock.calls[0]?.[2];
-    expect(seedCb).toBe(mockHydrate);
+    const seeded = [{ firestoreId: "fs1", type: "your_turn", title: "T", body: "B", gameId: "g1", createdAtMs: 1 }];
+    seedCb!(seeded);
+    expect(mockHydrate).toHaveBeenCalledWith(seeded);
   });
 
   it("hydrates completed-game docs that the toast path suppresses", () => {

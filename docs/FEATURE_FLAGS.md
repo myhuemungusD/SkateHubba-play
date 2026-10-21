@@ -19,11 +19,20 @@ Every new feature ships **off**. Testers (today Jason and Mike) see everything t
 
 ## Where flags are on today
 
-- **Code default:** everything off.
-- **Website (Vercel Production + Preview):** `VITE_FEATURE_EXTRAS_ENABLED=true` (Map, Clips feed, Verified Pro), plus `VITE_FEATURE_MAP_CHECKINS`, `VITE_FEATURE_SPOT_PRESENCE` and `VITE_FEATURE_TIPS` (same public set as the iPhone store build).
-- **iPhone store/TestFlight build** (`ios-release.yml`, Xcode Cloud `ci_post_clone.sh`): public on — `VITE_FEATURE_EXTRAS_ENABLED`, `VITE_FEATURE_MAP_CHECKINS`, `VITE_FEATURE_SPOT_PRESENCE`, `VITE_FEATURE_TIPS`, `VITE_FEATURE_APPLE_SIGNIN_ENABLED`, `VITE_FEATURE_PRO_BLESSING`, `VITE_FEATURE_PRO_PROFILES`. Still off for the public (testers only via override or workflow tick boxes): Skate Runner, Dice, Closet Studio, admin, What's That Trick, XP, clip editor, pro camera, profile banner. Leave the tick boxes unticked for App Store builds.
-- **Server writes:** map check-ins and spot presence callables still honor `MAP_CHECKINS_ENABLED` / `SPOT_PRESENCE_ENABLED` and their `*_TESTER_UIDS` lists. Turning the client flags on shows the screens; enabling the server switches for everyone is a separate Firebase deploy.
-- **Testers:** everything.
+Rule (Jason, 2026-10-20): every finished feature is on for everyone. A flag stays off only when the feature is unfinished or needs something outside the code first.
+
+- **Code default:** everything off, so a brand-new feature never leaks before it's done.
+- **Website (Vercel Production + Preview), iPhone store/TestFlight build (`ios-release.yml`, Xcode Cloud `ci_post_clone.sh`) and server switches (`functions.sk8hub-d7806.env`):** every finished feature on. That covers Map, check-ins, spot presence, tips, Verified Pro (blessing, profiles, showcase, calls, community), Dice (website and server only), XP, referee, turn length, trick picker, clip editor, pro camera, clip moderation, feed modes, post makes, profile banner and custom profile, spot chats, Closet (drops, trading, studio, 360 shoes, Hubba icons), and Apple Sign-In on iPhone.
+- **Still off for the public, and why:**
+  - Skate Runner: waits for Jason's sign-off.
+  - Roll Dice in the iPhone build (Jason, 2026-10-20): off for the App Store launch so the listing needs no Simulated Gambling rating. Still on for the website and the server. With it off the iOS app hides the lobby tile, profile Challenge button and `/dice` routes (they redirect), and drops dice toasts and bell rows. Turning it on later means an app update through review.
+  - What's That Trick: its scoring jobs are still stubs.
+  - Buying Hubba Bucks (`CLOSET_BUCKS_PURCHASE_ENABLED`): needs in-app purchase products set up in App Store Connect first.
+  - SMS two-step sign-in: not built for iPhone yet.
+  - Apple Sign-In on the website: needs a separate Apple web Service ID.
+  - Admin screens: admin claim only, never a flag.
+- **Clip moderation** needs the Google Video Intelligence API on project `sk8hub-d7806` (enabled 2026-10-20). Without it every new clip waits for manual review.
+- **Testers:** everything, including the features above that are still off.
 
 ## Client flags
 

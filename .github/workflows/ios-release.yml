@@ -12,28 +12,8 @@ on:
         required: false
         type: string
         default: ""
-      clip_editor:
-        description: "Tester build: show the clip editor (VITE_FEATURE_CLIP_EDITOR). Leave off for App Store builds."
-        required: false
-        type: boolean
-        default: false
-      dice:
-        description: "Tester build: show Roll Dice (VITE_FEATURE_DICE_ENABLED). Server stays gated by DICE_ENABLED / DICE_TESTER_UIDS. Leave off for App Store builds."
-        required: false
-        type: boolean
-        default: false
-      pro_camera:
-        description: "Tester build: new pro camera (VITE_FEATURE_PRO_CAMERA). Leave off for App Store builds."
-        required: false
-        type: boolean
-        default: false
       wtt:
         description: "Tester build: What's That Trick (VITE_FEATURE_WTT_ENABLED + VITE_FEATURE_FEED_MODES_ENABLED). Server stays gated by WTT_ENABLED / WTT_TESTER_UIDS. Leave off for App Store builds."
-        required: false
-        type: boolean
-        default: false
-      profile_banner:
-        description: "Tester build: profile background picture (VITE_FEATURE_PROFILE_BANNER). Leave off for App Store builds."
         required: false
         type: boolean
         default: false
@@ -147,45 +127,52 @@ jobs:
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
           VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
           VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
-          # Public App Store flags (screenshots must match the binary):
-          # Map/Clips/Verified Pro, spot passport/check-ins, Who's skating,
-          # Hesher tips, Sign in with Apple, pro blessing + pro profiles.
-          # Everything else stays default-off; flagOn() still turns them on
-          # at runtime for uids in config/featureTesters. Leave the tester
-          # inputs below unticked for store builds.
-          # App Review must see Sign in with Apple. Enable the Firebase provider
-          # first (docs/IOS_RELEASE.md). The website and Android stay off until
-          # VITE_FEATURE_APPLE_SIGNIN_ENABLED is the literal "true" in Vercel.
+          # Public App Store flags (2026-10-20: every finished feature is on
+          # for everyone so the binary matches the listing and screenshots).
+          # Each server switch is on too (functions params), so no screen
+          # shows a button the server refuses.
+          # Still off for the public (testers see them via config/featureTesters):
+          #   Skate Runner (until Jason signs off), What's That Trick (scoring
+          #   not built), buying Hubba Bucks (needs App Store in-app purchase
+          #   products), SMS two-step (not built for iPhone), admin screens
+          #   (admin claim only).
           VITE_FEATURE_APPLE_SIGNIN_ENABLED: "true"
-          # Roll Dice is off unless the person dispatching ticks the "dice"
-          # input for a tester build. Do not turn this into a secret.
-          VITE_FEATURE_DICE_ENABLED: ${{ inputs.dice && 'true' || 'false' }}
-          # Clip editor: off unless the "clip_editor" input is ticked.
-          VITE_FEATURE_CLIP_EDITOR: ${{ inputs.clip_editor && 'true' || 'false' }}
-          # Wave 1 tester inputs: each off unless its box is ticked.
-          VITE_FEATURE_PRO_CAMERA: ${{ inputs.pro_camera && 'true' || 'false' }}
-          # Name It lives inside the feed-mode toggle, so wtt turns both on.
-          VITE_FEATURE_WTT_ENABLED: ${{ inputs.wtt && 'true' || 'false' }}
-          VITE_FEATURE_FEED_MODES_ENABLED: ${{ inputs.wtt && 'true' || 'false' }}
-          VITE_FEATURE_PROFILE_BANNER: ${{ inputs.profile_banner && 'true' || 'false' }}
-          # Public: Map tab, Clips feed, Verified Pro (matches store screenshots).
           VITE_FEATURE_EXTRAS_ENABLED: "true"
-          # Public: spot passport / verified check-ins UI. Server still gates
-          # writes with MAP_CHECKINS_ENABLED / MAP_TESTER_UIDS.
           VITE_FEATURE_MAP_CHECKINS: "true"
-          # Public: Who's skating + online dots. Server still gates writes with
-          # SPOT_PRESENCE_ENABLED / SPOT_PRESENCE_TESTER_UIDS.
           VITE_FEATURE_SPOT_PRESENCE: "true"
-          # Public: Hesher tip bubbles (client-only, never on camera).
           VITE_FEATURE_TIPS: "true"
+          VITE_FEATURE_PRO_BLESSING: "true"
+          VITE_FEATURE_PRO_PROFILES: "true"
+          VITE_FEATURE_PRO_SHOWCASE: "true"
+          VITE_FEATURE_PRO_CALLS: "true"
+          VITE_FEATURE_PRO_COMMUNITY: "true"
+          VITE_FEATURE_DICE_ENABLED: "false"
+          VITE_FEATURE_XP_ENABLED: "true"
+          VITE_FEATURE_REFEREE_ENABLED: "true"
+          VITE_FEATURE_TURN_LENGTH: "true"
+          VITE_FEATURE_TRICK_PICKER_ENABLED: "true"
+          VITE_FEATURE_CLIP_EDITOR: "true"
+          VITE_FEATURE_PRO_CAMERA: "true"
+          VITE_FEATURE_CLIP_MODERATION_ENABLED: "true"
+          VITE_FEATURE_FEED_MODES_ENABLED: "true"
+          VITE_FEATURE_POST_MAKES_ENABLED: "true"
+          VITE_FEATURE_PROFILE_BANNER: "true"
+          VITE_FEATURE_PROFILE_CUSTOM: "true"
+          VITE_FEATURE_SPOT_CHATS_ENABLED: "true"
+          VITE_FEATURE_CLOSET_ENABLED: "true"
+          VITE_FEATURE_CLOSET_DROPS_ENABLED: "true"
+          VITE_FEATURE_CLOSET_TRADING_ENABLED: "true"
+          VITE_FEATURE_CLOSET_STUDIO: "true"
+          VITE_FEATURE_SHOE_360: "true"
+          VITE_FEATURE_HUBBA_ICONS: "true"
+          VITE_FEATURE_RUNNER_ENABLED: "false"
+          VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED: "false"
+          VITE_FEATURE_SMS_2FA_ENABLED: "false"
+          # Tester build only: What's That Trick ("wtt" input).
+          VITE_FEATURE_WTT_ENABLED: ${{ inputs.wtt && 'true' || 'false' }}
           # Map key required now that Map is public (and for testers).
           VITE_MAPBOX_TOKEN: ${{ secrets.VITE_MAPBOX_TOKEN }}
           VITE_MAPBOX_STYLE_URL: ${{ secrets.VITE_MAPBOX_STYLE_URL }}
-          # Pro blessing UI. The proBlessing function still gates who can act
-          # (PRO_BLESSING_ENABLED / PRO_BLESSING_TESTER_UIDS, docs/PRO_BLESSING.md).
-          VITE_FEATURE_PRO_BLESSING: "true"
-          # Pro showcase on for everyone (Bryan + Mike granted 2026-10-16).
-          VITE_FEATURE_PRO_PROFILES: "true"
           # Store builds must fail when the service worker would ship with
           # unreplaced Firebase placeholders (see vite.config.ts).
           REQUIRE_SW_CONFIG: "1"
