@@ -2709,16 +2709,31 @@ service cloud.firestore {
       allow list: if false;
 
       // Allowlist of accepted keys. setDoc(..., merge:true) is the only
-      // legitimate writer (src/services/fcm.ts + pushNotifications.ts), and
-      // every write touches both fields together — keep this in lockstep
-      // with the writers if you add a field.
+      // legitimate writer (src/services/fcm.ts + pushNotifications.ts +
+      // pushPreferences.ts), and every write touches tokens and updatedAt
+      // together — keep this in lockstep with the writers if you add a field.
+      // `platforms` (optional) tags each token with ios/android/web so the
+      // server can keep Roll Dice pushes off iPhones while dice is off in the
+      // iOS build (functions/src/push/platforms.ts). Keyed by token. Not tied
+      // to the token list so an older build's arrayRemove that leaves a stale
+      // tag behind is still accepted; new builds prune stale tags when they
+      // register (src/services/pushPlatform.ts tagToken). No size cap: the
+      // token list is already <=10, and a size cap on platforms would lock
+      // the owner out of every push write once stale tags piled past it.
       function pushTargetsKeysOk() {
-        return request.resource.data.keys().hasOnly(['tokens', 'updatedAt']);
+        return request.resource.data.keys().hasOnly(['tokens', 'updatedAt', 'platforms']);
+      }
+
+      function pushTargetsPlatformsOk() {
+        return !('platforms' in request.resource.data)
+          || (request.resource.data.platforms is map
+            && request.resource.data.platforms.values().hasOnly(['ios', 'android', 'web']));
       }
 
       function pushTargetsShapeOk() {
         return request.resource.data.tokens is list
           && request.resource.data.tokens.size() <= 10
+          && pushTargetsPlatformsOk()
           // updatedAt MUST equal server time — without this, a client could
           // backfill an old timestamp and we'd lose stale-token-cleanup
           // semantics elsewhere (the Extension uses updatedAt to skip
@@ -3775,10 +3790,14 @@ service cloud.firestore {
     // ── Closet: trades (item-for-item swaps) ──
     // Both parties can read the trade; only the closet callables write.
     // Public history would reveal who's trading what and leak inventory.
+    // Party fields are the ones the callables write (functions/src/closet/
+    // trading.ts): fromUid proposes, toUid receives. A client list query must
+    // filter on one of them (where('fromUid','==',me) / where('toUid','==',me))
+    // so the rule can prove every result is theirs.
     match /trades/{tradeId} {
       allow read: if isSignedIn()
-        && (request.auth.uid == resource.data.proposerUid
-          || request.auth.uid == resource.data.recipientUid);
+        && (request.auth.uid == resource.data.fromUid
+          || request.auth.uid == resource.data.toUid);
       allow write: if false;
     }
 

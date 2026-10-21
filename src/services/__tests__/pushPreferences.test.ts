@@ -15,6 +15,7 @@ vi.mock("firebase/firestore", () => ({
   doc: (...args: unknown[]) => mockDoc(...args),
   setDoc: (...args: unknown[]) => mockSetDoc(...args),
   serverTimestamp: () => "SERVER_TS",
+  deleteField: () => "DELETE_FIELD",
 }));
 
 vi.mock("../../firebase", () => ({ requireDb: () => ({}) }));
@@ -53,7 +54,7 @@ describe("setPushEnabled — disable", () => {
     expect(mockSetDoc).toHaveBeenNthCalledWith(
       2,
       "pushTargets/u1",
-      { tokens: [], updatedAt: "SERVER_TS" },
+      { tokens: [], platforms: "DELETE_FIELD", updatedAt: "SERVER_TS" },
       { merge: true },
     );
     expect(mockRegisterIfGranted).not.toHaveBeenCalled();

@@ -1,0 +1,24 @@
+import { describe, expect, it } from "vitest";
+import { DICE_PUSH_PLATFORMS, diceEligibleTokens, isDicePush, tokenAllowsDice } from "./platforms.js";
+
+describe("dice push platforms", () => {
+  it("allows android and web, never ios (dice is off in the iOS build)", () => {
+    expect([...DICE_PUSH_PLATFORMS].sort()).toEqual(["android", "web"]);
+  });
+
+  it("treats untagged, unknown and malformed tags as iOS (fail closed)", () => {
+    const mirror = { platforms: { a: "android", w: "web", i: "ios", x: "watch", n: 3 } };
+    expect(diceEligibleTokens(mirror, ["a", "w", "i", "x", "n", "untagged"])).toEqual(["a", "w"]);
+    expect(diceEligibleTokens(undefined, ["a"])).toEqual([]);
+    expect(diceEligibleTokens({ platforms: ["a"] }, ["a"])).toEqual([]);
+    expect(diceEligibleTokens({ platforms: null }, ["a"])).toEqual([]);
+    expect(tokenAllowsDice({ platforms: { a: "web" } }, "a")).toBe(true);
+  });
+
+  it("recognises a dice dispatch by kind or by type", () => {
+    expect(isDicePush({ kind: "dice" })).toBe(true);
+    expect(isDicePush({ type: "dice_result" })).toBe(true);
+    expect(isDicePush({ type: "your_turn" })).toBe(false);
+    expect(isDicePush({})).toBe(false);
+  });
+});

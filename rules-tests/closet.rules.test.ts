@@ -7,13 +7,12 @@
  *   drops/{dropId}                 — read: signed-in, write: false
  *     claims/{uid}                 — read: owner, write: false
  *     entries/{uid}                — read: owner, write: false
- *   trades/{tradeId}               — read: participants, write: false
+ *   trades/{tradeId}               — see trades.rules.test.ts
  *   closetAudit/{autoId}           — read: admin, write: false
  *
  * All writes are server-side (Cloud Functions). Client reads are scoped:
  * - Public collections (catalog, serials, drops) are signed-in-only.
  * - User-scoped subcollections (claims, entries) are owner-only.
- * - Trades are readable by both proposer and recipient.
  * - Audit logs are admin-only.
  *
  * Run via:  npm run test:rules
@@ -32,7 +31,6 @@ const ADMIN_UID = "admin-uid";
 const CATALOG_ITEM_ID = "limited-og-deck";
 const SERIAL_ID = "serial-123";
 const DROP_ID = "drop-2024-w42";
-const TRADE_ID = "trade-abc123";
 const AUDIT_ID = "audit-xyz789";
 
 const getEnv = setupRulesTestEnv(PROJECT_ID, async (env: RulesTestEnvironment) => {
@@ -72,16 +70,6 @@ const getEnv = setupRulesTestEnv(PROJECT_ID, async (env: RulesTestEnvironment) =
     await setDoc(doc(ctx.firestore(), "drops", DROP_ID, "entries", BOB_UID), {
       enteredAt: new Date(),
       windowEndsAt: new Date(Date.now() + 86400 * 1000),
-    });
-
-    // Seed trade
-    await setDoc(doc(ctx.firestore(), "trades", TRADE_ID), {
-      proposerUid: ALICE_UID,
-      recipientUid: BOB_UID,
-      proposerCopyIds: ["copy1"],
-      recipientCopyIds: ["copy2"],
-      status: "pending",
-      createdAt: new Date(),
     });
 
     // Seed audit log
@@ -262,44 +250,6 @@ describe("drops/{id}/entries — owner read, no writes", () => {
         windowEndsAt: new Date(Date.now() + 86400 * 1000),
       }),
     );
-  });
-});
-
-describe("trades — participant read, no writes", () => {
-  it("proposer CAN read trade", async () => {
-    const snap = await assertSucceeds(getDoc(refAs(ALICE_UID, "trades", TRADE_ID)));
-    expect(snap.exists()).toBe(true);
-  });
-
-  it("recipient CAN read trade", async () => {
-    const snap = await assertSucceeds(getDoc(refAs(BOB_UID, "trades", TRADE_ID)));
-    expect(snap.exists()).toBe(true);
-  });
-
-  it("stranger CANNOT read trade", async () => {
-    await assertFails(getDoc(refAs("stranger-uid", "trades", TRADE_ID)));
-  });
-
-  it("anonymous CANNOT read trade", async () => {
-    await assertFails(getDoc(refAs(null, "trades", TRADE_ID)));
-  });
-
-  it("participant CANNOT create trade", async () => {
-    await assertFails(
-      setDoc(refAs(ALICE_UID, "trades", "forged-trade"), {
-        proposerUid: ALICE_UID,
-        recipientUid: BOB_UID,
-        status: "pending",
-      }),
-    );
-  });
-
-  it("participant CANNOT update trade", async () => {
-    await assertFails(updateDoc(refAs(ALICE_UID, "trades", TRADE_ID), { status: "accepted" }));
-  });
-
-  it("participant CANNOT delete trade", async () => {
-    await assertFails(deleteDoc(refAs(ALICE_UID, "trades", TRADE_ID)));
   });
 });
 

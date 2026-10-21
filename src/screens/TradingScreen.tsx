@@ -227,11 +227,11 @@ function TradeCard({ trade, currentUid, onRefresh }: TradeCardProps) {
         </div>
       </div>
 
-      {/* Hold Indicators */}
-      {trade.status === "accepted" && trade.holdUntil && (
+      {/* Hold: the server swaps the items itself when the hold ends (releaseTradeHolds, hourly). */}
+      {trade.status === "held" && trade.holdUntil && (
         <div className="mb-4 px-4 py-3 bg-blue-500/20 border border-blue-500 rounded-lg">
           <p className="text-blue-400 text-sm">
-            🔒 <strong>Trade Hold:</strong> Can be completed after {new Date(trade.holdUntil).toLocaleDateString()}
+            🔒 <strong>Trade Hold:</strong> Items swap on {new Date(trade.holdUntil).toLocaleDateString()}
           </p>
         </div>
       )}
@@ -256,7 +256,8 @@ function TradeCard({ trade, currentUid, onRefresh }: TradeCardProps) {
         </div>
       )}
 
-      {trade.status === "held" && trade.holdUntil && new Date(trade.holdUntil) < new Date() && (
+      {/* After the recipient accepts, both sides confirm; the second confirm swaps (or starts a hold). */}
+      {trade.status === "accepted" && !trade.confirmedBy.includes(currentUid) && (
         <button
           onClick={handleConfirm}
           disabled={actionLoading}
@@ -264,6 +265,9 @@ function TradeCard({ trade, currentUid, onRefresh }: TradeCardProps) {
         >
           {actionLoading ? "Confirming..." : "CONFIRM TRADE"}
         </button>
+      )}
+      {trade.status === "accepted" && trade.confirmedBy.includes(currentUid) && (
+        <p className="text-sm text-subtle">Waiting for the other skater to confirm.</p>
       )}
     </div>
   );
