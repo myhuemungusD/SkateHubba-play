@@ -20,6 +20,10 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 const STORAGE_EMULATOR = `http://${process.env.FIREBASE_STORAGE_EMULATOR_HOST || "127.0.0.1:9199"}`;
 
+/** Hides native video controls (Chrome draws them even after a pause). */
+export const HIDE_VIDEO_CONTROLS_CSS =
+  "video::-webkit-media-controls,video::-webkit-media-controls-enclosure{display:none!important}";
+
 export function isLocalUrl(url) {
   return ["localhost", "127.0.0.1"].includes(new URL(url).hostname);
 }
@@ -112,6 +116,7 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
             .click();
           await page.waitForURL(/\/game/, { timeout: 15_000 });
         }
+        if (screen.click) await page.getByText(screen.click).first().click({ timeout: 15_000 });
         if (screen.scrollTo) {
           await page.locator(screen.scrollTo).first().scrollIntoViewIfNeeded({ timeout: 15_000 });
           await page
@@ -129,6 +134,9 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
             await new Promise((r) => v.addEventListener("seeked", r, { once: true }));
           }, screen.seek);
         }
+        // Store shots show the app, not the browser's video controls.
+        await page.addStyleTag({ content: HIDE_VIDEO_CONTROLS_CSS });
+        await page.evaluate(() => document.querySelectorAll("video").forEach((v) => v.removeAttribute("controls")));
         await page.waitForTimeout(2500);
         if (isForbiddenUrl(page.url()))
           throw new Error(`${screen.id} landed on ${page.url()}, which the iPhone build hides`);

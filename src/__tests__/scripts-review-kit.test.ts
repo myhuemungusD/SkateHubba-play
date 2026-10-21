@@ -31,10 +31,10 @@ describe("plan", () => {
     const paths = docs.map(([p]: [string]) => p);
     expect(paths).toContain("users/U");
     expect(paths).toContain("usernames/appreview");
-    expect(paths.filter((p: string) => p.startsWith("games/"))).toHaveLength(4);
+    expect(paths.filter((p: string) => p.startsWith("games/"))).toHaveLength(9);
     expect(paths.filter((p: string) => p.startsWith("clips/"))).toHaveLength(8);
     expect(paths.filter((p: string) => p.startsWith("spots/"))).toHaveLength(6);
-    expect(paths.filter((p: string) => p.startsWith("users/U/locker/"))).toHaveLength(3);
+    expect(paths.filter((p: string) => p.startsWith("users/U/locker/"))).toHaveLength(4);
     expect(paths.filter((p: string) => p.startsWith("users/U/achievements/"))).toHaveLength(6);
     expect(paths.filter((p: string) => p.startsWith("users/U/passport/"))).toHaveLength(3);
     expect(paths).toContain("passportSettings/U");
@@ -160,6 +160,7 @@ describe("screenshots guards", () => {
     expect(shots.isForbiddenUrl("http://l/play/runner/x")).toBe(true);
     expect(shots.isForbiddenUrl("http://l/lobby")).toBe(false);
     expect(shots.isForbiddenUrl("http://l/dicey")).toBe(false);
+    expect(shots.HIDE_VIDEO_CONTROLS_CSS).toContain("-webkit-media-controls");
     expect(shots.isLocalUrl("http://localhost:5173")).toBe(true);
     expect(shots.isLocalUrl("https://skatehubba.com")).toBe(false);
   });

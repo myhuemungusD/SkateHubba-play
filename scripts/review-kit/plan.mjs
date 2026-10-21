@@ -18,7 +18,9 @@ export const SIZES = [
  * Key screens, in store order. Each one must show real content (no empty
  * states) and only features the iPhone launch build has: no Roll Dice, no
  * Skate Runner. `open` names how screenshots.mjs reaches a screen that has no
- * URL of its own (the game screen opens from its lobby card).
+ * URL of its own (the game screen opens from its lobby card). `click` taps a
+ * text before the shot (Home expands its "waiting on them" games), and
+ * `scrollTo` scrolls an element to the top, past the header.
  */
 export const SCREENS = [
   { id: "01-game", path: "/lobby", open: "game" },
@@ -26,7 +28,7 @@ export const SCREENS = [
   { id: "03-map", path: "/map" },
   { id: "04-profile", path: "/me" },
   { id: "05-closet", path: "/me", scrollTo: '[data-testid="closet-showcase"]' },
-  { id: "06-lobby", path: "/lobby" },
+  { id: "06-lobby", path: "/lobby", click: "waiting on them", scrollTo: '[data-testid="whos-skating-button"]' },
 ];
 
 /** Routes that must never appear in a store screenshot set. */
@@ -41,6 +43,8 @@ export const DEMO_OPPONENTS = [
   { uid: "review-demo-opp-2", username: "manny_mae", stance: "Goofy" },
   { uid: "review-demo-opp-3", username: "ledge_leo", stance: "Regular" },
   { uid: "review-demo-opp-4", username: "nollie_nia", stance: "Goofy" },
+  { uid: "review-demo-opp-5", username: "tre_flip_tess", stance: "Regular" },
+  { uid: "review-demo-opp-6", username: "grind_gabe", stance: "Goofy" },
 ];
 
 /** Mike White Signature shoes the demo profile owns (credited in-app by DesignerCredit). */
@@ -48,6 +52,7 @@ export const DEMO_LOCKER = [
   { id: "review-demo-gear-1", itemDefId: "mike_white_signature_001", type: "shoes", rarity: "limited", equipped: true },
   { id: "review-demo-gear-2", itemDefId: "mike_white_og_gum", type: "shoes", rarity: "limited", equipped: false },
   { id: "review-demo-gear-3", itemDefId: "mike_white_ice_bolt", type: "shoes", rarity: "limited", equipped: false },
+  { id: "review-demo-gear-4", itemDefId: "mike_white_creamsicle", type: "shoes", rarity: "limited", equipped: false },
 ];
 
 /** Display names for the Mike White shoes in {@link DEMO_LOCKER}. */
@@ -55,6 +60,7 @@ export const MIKE_WHITE_NAMES = {
   mike_white_signature_001: "Mike White Signature — Tan / White / Navy",
   mike_white_og_gum: "OG Signature — Black / Gum",
   mike_white_ice_bolt: "Bolt Runner — Black / Ice",
+  mike_white_creamsicle: "Creamsicle — White / Orange",
 };
 
 /** Read the review account settings from env. Never defaulted, never logged. */
@@ -138,7 +144,7 @@ export function buildSeedDocs({
     put(`usernames/${o.username}`, { uid: o.uid });
   }
 
-  const [a, b, c, d] = DEMO_OPPONENTS;
+  const [a, b, c, d, e, f] = DEMO_OPPONENTS;
   const base = (id, opp, extra) =>
     put(`games/${id}`, {
       player1Uid: uid,
@@ -180,6 +186,36 @@ export function buildSeedDocs({
     p1Letters: 3,
     turnNumber: 14,
     updatedAt: at(-2),
+  });
+  // Extra games so Home is full: two more on the reviewer, one more waiting,
+  // and a finished win and loss.
+  base("review-demo-your-turn-2", e, {
+    p1Letters: 0,
+    p2Letters: 1,
+    turnNumber: 4,
+    phase: "matching",
+    currentSetter: e.uid,
+    currentTrickName: "Tre Flip",
+    currentTrickVideoUrl: video,
+    turnDeadline: at(2.5),
+  });
+  base("review-demo-your-set-2", f, { p1Letters: 1, p2Letters: 1, turnNumber: 5, turnDeadline: at(6) });
+  base("review-demo-their-turn-2", d, { currentTurn: d.uid, currentSetter: d.uid, turnNumber: 2 });
+  base("review-demo-won-2", f, {
+    status: "complete",
+    winner: uid,
+    p2Letters: 5,
+    p1Letters: 2,
+    turnNumber: 11,
+    updatedAt: at(-4),
+  });
+  base("review-demo-lost", e, {
+    status: "complete",
+    winner: e.uid,
+    p1Letters: 5,
+    p2Letters: 4,
+    turnNumber: 16,
+    updatedAt: at(-6),
   });
 
   const clip = (gameId, turn, role, who, trick, upvotes) =>
