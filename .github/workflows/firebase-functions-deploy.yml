@@ -132,6 +132,16 @@ jobs:
         env:
           FUNCTIONS_DOTENV: ${{ secrets.FUNCTIONS_DOTENV }}
           PROJECT_ID: ${{ steps.project.outputs.project_id }}
+          # On/off switches added after FUNCTIONS_DOTENV was written. They are
+          # not secret, so they live in repository variables. A key already in
+          # FUNCTIONS_DOTENV wins; a missing switch falls back to the variable,
+          # then to the code default (off).
+          VAR_CLOSET_ENABLED: ${{ vars.CLOSET_ENABLED }}
+          VAR_CLOSET_DROPS_ENABLED: ${{ vars.CLOSET_DROPS_ENABLED }}
+          VAR_CLOSET_TRADING_ENABLED: ${{ vars.CLOSET_TRADING_ENABLED }}
+          VAR_CLOSET_BUCKS_PURCHASE_ENABLED: ${{ vars.CLOSET_BUCKS_PURCHASE_ENABLED }}
+          VAR_MAP_CHECKINS_ENABLED: ${{ vars.MAP_CHECKINS_ENABLED }}
+          VAR_SPOT_PRESENCE_ENABLED: ${{ vars.SPOT_PRESENCE_ENABLED }}
         run: |
           set -euo pipefail
           if [ -z "$FUNCTIONS_DOTENV" ]; then
@@ -143,6 +153,24 @@ jobs:
           umask 077
           DEST="functions/.env.${PROJECT_ID}"
           printf '%s\n' "$FUNCTIONS_DOTENV" > "$DEST"
+          # Fill switches the secret predates, so a non-interactive deploy
+          # never stops on "no value for the following environment variables".
+          for key in CLOSET_ENABLED CLOSET_DROPS_ENABLED CLOSET_TRADING_ENABLED CLOSET_BUCKS_PURCHASE_ENABLED MAP_CHECKINS_ENABLED SPOT_PRESENCE_ENABLED; do
+            if ! grep -Eq "^${key}=" "$DEST"; then
+              var="VAR_${key}"
+              val=$(printf '%s' "${!var:-false}" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+              if [ "$val" != "true" ] && [ "$val" != "false" ]; then
+                echo "::error::Repository variable ${key} must be true or false."
+                rm -f "$DEST"
+                exit 1
+              fi
+              printf '%s=%s\n' "$key" "$val" >> "$DEST"
+              echo "${key}=${val} (repository variable or default)"
+            fi
+          done
+          for key in CLOSET_TESTER_UIDS MAP_TESTER_UIDS SPOT_PRESENCE_TESTER_UIDS; do
+            grep -Eq "^${key}=" "$DEST" || printf '%s=\n' "$key" >> "$DEST"
+          done
           missing=0
           for key in XP_ENABLED XP_TESTER_UIDS DICE_ENABLED DICE_TESTER_UIDS MODERATION_ENABLED SENTRY_DSN PRO_BLESSING_ENABLED PRO_BLESSING_TESTER_UIDS PRO_BLESSING_LIMIT PRO_BLESSING_WINDOW_DAYS PRO_BLESSING_MIN_ACCOUNT_DAYS; do
             if ! grep -Eq "^${key}=" "$DEST"; then
