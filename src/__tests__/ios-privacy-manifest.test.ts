@@ -14,6 +14,7 @@ describe("iOS privacy manifest", () => {
     ["EmailAddress", "email sign-in"],
     ["PhoneNumber", "SMS two-step verification (src/services/mfa.ts)"],
     ["OtherUserContent", "clip comments, spot names and bios"],
+    ["OtherDataTypes", "date of birth from the age gate (src/utils/age.ts)"],
     ["PhotosorVideos", "trick clips and avatars"],
     ["AudioData", "trick clip sound"],
     ["PreciseLocation", "spots map"],

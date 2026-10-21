@@ -521,3 +521,28 @@ describe("isTurnLengthEnabled (VITE_FEATURE_TURN_LENGTH)", () => {
     expect(isTurnLengthEnabled()).toBe(true);
   });
 });
+
+describe("tester override in native store builds (App Store 2.3.1)", () => {
+  afterEach(() => {
+    localStorage.removeItem(FEATURE_TESTER_STORAGE_KEY);
+    delete (globalThis as { Capacitor?: unknown }).Capacitor;
+  });
+
+  it("turns flags on for a tester on the web", () => {
+    localStorage.setItem(FEATURE_TESTER_STORAGE_KEY, "uid-1");
+    expect(isDiceEnabled()).toBe(true);
+  });
+
+  it("never unlocks hidden features inside the iOS/Android shell", () => {
+    localStorage.setItem(FEATURE_TESTER_STORAGE_KEY, "uid-1");
+    (globalThis as { Capacitor?: unknown }).Capacitor = { isNativePlatform: () => true };
+    expect(isDiceEnabled()).toBe(false);
+    expect(isRunnerEnabled()).toBe(false);
+  });
+
+  it("still honors the override when Capacitor reports a web platform", () => {
+    localStorage.setItem(FEATURE_TESTER_STORAGE_KEY, "uid-1");
+    (globalThis as { Capacitor?: unknown }).Capacitor = { isNativePlatform: () => false };
+    expect(isDiceEnabled()).toBe(true);
+  });
+});
