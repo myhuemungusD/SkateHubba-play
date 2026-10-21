@@ -142,10 +142,23 @@ describe("closet callables", () => {
     ],
     [
       "proposeTrade",
-      () => proposeTrade({ recipientUid: "bob", proposerCopyIds: ["c1"], recipientCopyIds: [] }),
-      { recipientUid: "bob", proposerCopyIds: ["c1"], recipientCopyIds: [] },
+      () => proposeTrade({ recipientUid: "bob", proposerCopyIds: ["c1"], recipientCopyIds: ["c2"], note: "fair?" }),
+      { toUid: "bob", give: ["c1"], get: ["c2"], note: "fair?" },
       "closet_trade_proposed",
       { tradeId: "t9" },
+    ],
+    [
+      "respondTrade",
+      () =>
+        proposeTrade({
+          recipientUid: "bob",
+          proposerCopyIds: ["c1"],
+          recipientCopyIds: ["c2"],
+          counterToTradeId: "t1",
+        }),
+      { toUid: "bob", give: ["c1"], get: ["c2"], tradeId: "t1", response: "counter" },
+      "closet_trade_proposed",
+      { tradeId: "t10" },
     ],
   ] as const)("%s calls the server and tracks it", async (name, run, payload, event, result) => {
     call.mockResolvedValueOnce(result);
@@ -170,29 +183,67 @@ describe("closet callables", () => {
   });
 });
 
-describe("closet trades reads", () => {
-  const tradeData = (proposedAt: string, extra: Record<string, unknown> = {}) => ({
-    proposerUid: "me",
-    recipientUid: "bob",
-    proposerItems: [{ copyId: "c1", name: "Teeth", rarity: "limited", imageUrl: null }],
-    recipientItems: [],
-    status: "proposed",
+describe("closet trades reads (the schema the callables write)", () => {
+  const tradeData = (createdAt: string, extra: Record<string, unknown> = {}) => ({
+    fromUid: "me",
+    toUid: "bob",
+    parties: ["me", "bob"],
+    give: [{ copyId: "c1", itemDefId: "teeth", name: "Teeth", rarity: "limited", serial: 3 }],
+    get: [{ copyId: "c2", itemDefId: "deck", name: "Deck", rarity: "common", serial: null }],
+    status: "pending",
+    confirmedBy: [],
     note: "fair?",
-    proposedAt: ts(proposedAt),
+    createdAt: ts(createdAt),
+    updatedAt: ts(createdAt),
     ...extra,
   });
 
-  it("parses one trade and defaults odd fields", async () => {
+  it("maps fromUid/toUid, give/get and the hold date", async () => {
     mockGetDoc.mockResolvedValueOnce(
-      snap("t1", tradeData("2026-10-17T00:00:00Z", { holdUntil: ts("2026-10-20T00:00:00Z") })),
+      snap(
+        "t1",
+        tradeData("2026-10-17T00:00:00Z", {
+          status: "held",
+          confirmedBy: ["me", "bob", 7],
+          releaseAt: ts("2026-10-24T00:00:00Z"),
+          updatedAt: ts("2026-10-18T00:00:00Z"),
+        }),
+      ),
     );
-    expect(await fetchTrade("t1")).toMatchObject({
+    expect(await fetchTrade("t1")).toEqual({
       id: "t1",
+      proposerUid: "me",
+      recipientUid: "bob",
+      proposerItems: [{ copyId: "c1", name: "Teeth", rarity: "limited", imageUrl: null }],
+      recipientItems: [{ copyId: "c2", name: "Deck", rarity: "common", imageUrl: null }],
+      status: "held",
+      confirmedBy: ["me", "bob"],
       note: "fair?",
-      holdUntil: new Date("2026-10-20T00:00:00Z"),
+      proposedAt: new Date("2026-10-17T00:00:00Z"),
+      respondedAt: new Date("2026-10-18T00:00:00Z"),
+      completedAt: null,
+      holdUntil: new Date("2026-10-24T00:00:00Z"),
     });
+  });
 
-    mockGetDoc.mockResolvedValueOnce(snap("t2", { proposedAt: ts("2026-10-17T00:00:00Z") }));
+  it.each([
+    ["pending", "proposed"],
+    ["accepted", "accepted"],
+    ["held", "held"],
+    ["completed", "complete"],
+    ["declined", "declined"],
+    ["cancelled", "canceled"],
+    ["countered", "canceled"],
+    ["expired", "canceled"],
+    ["failed", "canceled"],
+    ["reversed", "canceled"],
+  ])("server status %s shows as %s", async (server, shown) => {
+    mockGetDoc.mockResolvedValueOnce(snap("t", tradeData("2026-10-17T00:00:00Z", { status: server })));
+    expect((await fetchTrade("t"))?.status).toBe(shown);
+  });
+
+  it("defaults odd fields", async () => {
+    mockGetDoc.mockResolvedValueOnce(snap("t2", { createdAt: ts("2026-10-17T00:00:00Z"), give: [null, "x"] }));
     expect(await fetchTrade("t2")).toEqual({
       id: "t2",
       proposerUid: "",
@@ -200,6 +251,7 @@ describe("closet trades reads", () => {
       proposerItems: [],
       recipientItems: [],
       status: "proposed",
+      confirmedBy: [],
       note: null,
       proposedAt: new Date("2026-10-17T00:00:00Z"),
       respondedAt: null,
@@ -211,23 +263,32 @@ describe("closet trades reads", () => {
   it("returns null for missing, undated or unreadable trades", async () => {
     mockGetDoc.mockResolvedValueOnce(snap("t", undefined));
     expect(await fetchTrade("t")).toBeNull();
-    mockGetDoc.mockResolvedValueOnce(snap("t", { status: "held" }));
+    // The old field names are not a trade: no createdAt.
+    mockGetDoc.mockResolvedValueOnce(snap("t", { proposerUid: "me", proposedAt: ts("2026-10-17T00:00:00Z") }));
     expect(await fetchTrade("t")).toBeNull();
     mockGetDoc.mockRejectedValueOnce(new Error("denied"));
     expect(await fetchTrade("t")).toBeNull();
   });
 
-  it("merges both sides of the user's trades, newest first", async () => {
+  it("queries each side by its own party field, merged newest first", async () => {
     mockGetDocs
       .mockResolvedValueOnce({ docs: [snap("old", tradeData("2026-10-01T00:00:00Z")), snap("junk", {})] })
-      .mockResolvedValueOnce({ docs: [snap("new", tradeData("2026-10-10T00:00:00Z"))] });
+      .mockResolvedValueOnce({
+        docs: [snap("new", tradeData("2026-10-10T00:00:00Z", { fromUid: "bob", toUid: "me" }))],
+      });
     expect((await fetchUserTrades("me")).map((t) => t.id)).toEqual(["new", "old"]);
+    const queries = mockGetDocs.mock.calls.map((c) => JSON.stringify(c[0]));
+    expect(queries[0]).toContain('["fromUid","==","me"]');
+    expect(queries[1]).toContain('["toUid","==","me"]');
+    expect(queries.join()).not.toMatch(/proposerUid|recipientUid/);
+    expect(queries.join()).toContain('["createdAt","desc"]');
   });
 
-  it("applies a status filter to both queries and fails soft", async () => {
-    mockGetDocs.mockResolvedValue({ docs: [] });
-    expect(await fetchUserTrades("me", "held")).toEqual([]);
-    expect(mockGetDocs).toHaveBeenCalledTimes(2);
+  it("filters by the shown status after mapping, and fails soft", async () => {
+    mockGetDocs
+      .mockResolvedValueOnce({ docs: [snap("a", tradeData("2026-10-01T00:00:00Z", { status: "held" }))] })
+      .mockResolvedValueOnce({ docs: [snap("b", tradeData("2026-10-02T00:00:00Z"))] });
+    expect((await fetchUserTrades("me", "held")).map((t) => t.id)).toEqual(["a"]);
     mockGetDocs.mockRejectedValueOnce(new Error("offline"));
     expect(await fetchUserTrades("me")).toEqual([]);
     expect(logger.warn).toHaveBeenCalledWith("fetch_user_trades_failed", expect.anything());
