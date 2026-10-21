@@ -31,14 +31,22 @@
  *   • Fail-loud. Any phase that fails throws, and the caller then does NOT
  *     delete the Auth user. The account stays usable and the user can retry —
  *     the opposite of the old contract, which reported success on total failure.
- *   • Scope-preserving. This deletes exactly what the client cascade intended to
- *     delete, no more. Admin credentials *could* reach further (e.g. disputes
- *     other people raised about this user), but widening erasure to other
- *     users' documents is a product decision, not a bug fix.
+ *   • Complete, and checked. Every collection in firestore.rules is listed in
+ *     `_userDataRegistry.ts` as deleted, anonymized, retained (with the reason)
+ *     or not personal. A test fails when a new collection is not listed.
+ *   • Other people's history is kept. Records two people share (dice matches,
+ *     closet trades, serial ownership, public spots) are anonymized rather than
+ *     deleted, so the other skater does not lose their side. Records other
+ *     people filed about this user (reports, disputes they raised) stay.
  */
 
-import { FieldPath, type Firestore, type Query } from "firebase-admin/firestore";
-import type { Storage } from "firebase-admin/storage";
+import type { Firestore } from "firebase-admin/firestore";
+import { deleteIfPresent, deletePrefix, deleteRefs, scanAll, type CascadeDeps } from "./_cascadeUtil.js";
+import { emptyClosetCounts, eraseCloset, type ClosetErasureCounts } from "./_closetErasure.js";
+import { eraseDiceGames } from "./_diceErasure.js";
+import { emptyOwnedCounts, eraseOwnedContent, type OwnedContentCounts } from "./_ownedContent.js";
+
+export type { CascadeDeps } from "./_cascadeUtil.js";
 
 /** Owner-only canonical doc under `users/{uid}/private` — mirrors users.ts. */
 const PRIVATE_PROFILE_DOC_ID = "profile";
@@ -47,26 +55,22 @@ const PRIVATE_PROFILE_DOC_ID = "profile";
 const AVATAR_EXTENSIONS = ["webp", "jpeg", "png"] as const;
 
 /**
- * Firestore caps a batch at 500 writes. 400 leaves headroom so a future extra
- * delete per entity can't silently push a previously-fine account over the line.
+ * Every subcollection under users/{uid} besides the ones counted on their own
+ * (achievements, locker, xpMarkers, blocked_users). Firestore does not delete
+ * subcollections with their parent, so each is named here. The coverage test
+ * (`account-delete.coverage.test.ts`) fails when firestore.rules gains a
+ * users/{uid} subcollection that is not listed in `_userDataRegistry.ts`.
  */
-const BATCH_CHUNK = 400;
-
-/**
- * Max docs pulled per query page. Deletion is unbounded in principle (a heavy
- * user can have thousands of notifications), so every scan paginates rather
- * than assuming one `get()` returns everything.
- */
-const PAGE_SIZE = 500;
-
-/** Concurrent Storage deletes. Bounded so a large account can't self-DoS on GCS limits. */
-const STORAGE_DELETE_CONCURRENCY = 20;
-
-/** Attempts per Storage object before giving up (transient codes only). */
-const STORAGE_RETRY_ATTEMPTS = 3;
-
-/** Base backoff between Storage retries; doubles per attempt. */
-const STORAGE_RETRY_BASE_MS = 200;
+export const OTHER_USER_SUBCOLLECTIONS = [
+  "private",
+  "wallet",
+  "ledger",
+  "closetLimits",
+  "closetDesigns",
+  "profileCustom",
+  "passport",
+  "checkins",
+] as const;
 
 /** Per-collection counts, returned to the caller for logging and the response body. */
 export interface DeletionSummary {
@@ -102,14 +106,16 @@ export interface DeletionSummary {
   trainingLabels: number;
   /** 1 when a pending training-consent revocation doc was deleted, otherwise 0. */
   trainingRevocations: number;
-}
-
-/** Everything the cascade needs, injected so the unit tests can drive it with fakes. */
-export interface CascadeDeps {
-  db: Firestore;
-  storage: Storage;
-  /** Bucket name, e.g. `my-project.firebasestorage.app`. */
-  bucketName: string;
+  /** Finished or just-closed dice matches kept for the other player, with this account anonymized. */
+  diceGamesAnonymized: number;
+  /** Dice matches deleted because both players are gone. */
+  diceGamesDeleted: number;
+  /** Docs in {@link OTHER_USER_SUBCOLLECTIONS} (private profile, Closet wallet and ledger, designs...). */
+  userSubcollectionDocs: number;
+  /** Trades, serial ownership and drop entries. */
+  closet: ClosetErasureCounts;
+  /** Spot chat, comments, spots, live map state, pro posts, rate limits and media. */
+  content: OwnedContentCounts;
 }
 
 function emptySummary(): DeletionSummary {
@@ -138,27 +144,12 @@ function emptySummary(): DeletionSummary {
     diceCreateLimits: 0,
     trainingLabels: 0,
     trainingRevocations: 0,
+    diceGamesAnonymized: 0,
+    diceGamesDeleted: 0,
+    userSubcollectionDocs: 0,
+    closet: emptyClosetCounts(),
+    content: emptyOwnedCounts(),
   };
-}
-
-/**
- * Page through a query by document id, collecting every matching doc.
- *
- * Ordering by `__name__` gives a stable cursor that does not require a
- * composite index (a `where(...) + orderBy(otherField)` pair would). The loop
- * terminates when a page comes back short of `PAGE_SIZE`.
- */
-async function scanAll(base: Query): Promise<FirebaseFirestore.QueryDocumentSnapshot[]> {
-  const out: FirebaseFirestore.QueryDocumentSnapshot[] = [];
-  let cursor: FirebaseFirestore.QueryDocumentSnapshot | null = null;
-  for (;;) {
-    let page = base.orderBy(FieldPath.documentId()).limit(PAGE_SIZE);
-    if (cursor) page = page.startAfter(cursor);
-    const snap = await page.get();
-    out.push(...snap.docs);
-    if (snap.size < PAGE_SIZE) return out;
-    cursor = snap.docs[snap.size - 1];
-  }
 }
 
 /**
@@ -207,16 +198,6 @@ async function deleteVotes(
   return votes.length;
 }
 
-/** Delete refs in chunked batches, staying under the 500-write ceiling. */
-async function deleteRefs(db: Firestore, refs: FirebaseFirestore.DocumentReference[]): Promise<number> {
-  for (let i = 0; i < refs.length; i += BATCH_CHUNK) {
-    const batch = db.batch();
-    for (const ref of refs.slice(i, i + BATCH_CHUNK)) batch.delete(ref);
-    await batch.commit();
-  }
-  return refs.length;
-}
-
 /**
  * Read the account's username so the reservation in `/usernames` can be released.
  *
@@ -238,100 +219,6 @@ async function deleteRefs(db: Firestore, refs: FirebaseFirestore.DocumentReferen
  * Returns null when the profile is already gone (a resumed run), in which case
  * the reservation was either freed on the previous attempt or never held.
  */
-function numField(data: Record<string, unknown>, field: string): number {
-  const value = data[field];
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
-
-/**
- * True once anyone has rolled or a round has already been won.
- * Mirrors `matchHasStarted` in functions/src/dice/engine.ts. Duplicated here
- * so account deletion (Vercel) does not import the Cloud Functions package.
- */
-function diceMatchStarted(data: Record<string, unknown>): boolean {
-  if (numField(data, "round") > 1 || numField(data, "rollCount") > 0) return true;
-  const results = data.results;
-  if (results && typeof results === "object" && Object.keys(results).length > 0) return true;
-  const roundsWon = data.roundsWon;
-  if (!roundsWon || typeof roundsWon !== "object") return false;
-  return Object.values(roundsWon).some((n) => typeof n === "number" && n > 0);
-}
-
-function otherDicePlayer(data: Record<string, unknown>, uid: string): string | null {
-  const p1 = data.player1Uid;
-  const p2 = data.player2Uid;
-  if (p1 === uid && typeof p2 === "string" && p2 !== uid) return p2;
-  if (p2 === uid && typeof p1 === "string" && p1 !== uid) return p1;
-  return null;
-}
-
-async function deleteIfPresent(db: Firestore, collectionName: string, uid: string): Promise<number> {
-  const ref = db.collection(collectionName).doc(uid);
-  const snap = await ref.get();
-  if (!snap.exists) return 0;
-  await ref.delete();
-  return 1;
-}
-
-/**
- * Close every active dice match this account is in.
- *
- * Before the first roll, the challenger leaving expires the match and the
- * opponent leaving declines it. After play has started, the other player
- * wins the match and their diceStats win counter moves. Terminal matches
- * stay so the other player keeps the history.
- */
-async function closeActiveDiceGames(db: Firestore, uid: string, nowMs: number): Promise<number> {
-  const col = db.collection("diceGames");
-  const [asP1, asP2] = await Promise.all([
-    scanAll(col.where("player1Uid", "==", uid)),
-    scanAll(col.where("player2Uid", "==", uid)),
-  ]);
-  const seen = new Set<string>();
-  let closed = 0;
-  for (const snap of [...asP1, ...asP2]) {
-    if (seen.has(snap.id)) continue;
-    seen.add(snap.id);
-    const data = snap.data() as Record<string, unknown>;
-    if (data.status !== "active") continue;
-    const survivor = otherDicePlayer(data, uid);
-    const started = diceMatchStarted(data);
-    const challengerLeft = data.player1Uid === uid;
-    let status: "forfeit" | "expired" | "declined" = "declined";
-    let endReason: "quit" | "decline" = "decline";
-    if (started) {
-      status = "forfeit";
-      endReason = "quit";
-    } else if (challengerLeft) {
-      status = "expired";
-      endReason = "quit";
-    }
-    const winner = started ? survivor : null;
-    await db.runTransaction(async (tx) => {
-      const fresh = await tx.get(snap.ref);
-      const current = (fresh.data() ?? {}) as Record<string, unknown>;
-      if (current.status !== "active") return;
-      tx.update(snap.ref, { status, winner, endReason, currentTurn: null, updatedAt: nowMs });
-      if (!winner) return;
-      const statsRef = db.collection("diceStats").doc(winner);
-      const statsSnap = await tx.get(statsRef);
-      const stats = (statsSnap.data() ?? {}) as Record<string, unknown>;
-      tx.set(
-        statsRef,
-        {
-          wins: numField(stats, "wins") + 1,
-          losses: numField(stats, "losses"),
-          gamesPlayed: numField(stats, "gamesPlayed") + 1,
-          updatedAt: nowMs,
-        },
-        { merge: true },
-      );
-    });
-    closed += 1;
-  }
-  return closed;
-}
-
 export async function readUsername(db: Firestore, uid: string): Promise<string | null> {
   const snap = await db.collection("users").doc(uid).get();
   if (!snap.exists) return null;
@@ -363,51 +250,6 @@ async function releaseUsername(db: Firestore, uid: string, candidate: string): P
     tx.delete(ref);
     return true;
   });
-}
-
-/**
- * Delete every object under a Storage prefix.
- *
- * `deleteFiles` paginates internally. A missing prefix is not an error — it
- * resolves with nothing deleted, which is exactly the resumed-run case.
- */
-async function deletePrefix(deps: CascadeDeps, prefix: string): Promise<number> {
-  const bucket = deps.storage.bucket(deps.bucketName);
-  const [files] = await bucket.getFiles({ prefix });
-  // Bounded fan-out. A heavy account (many finished games x turns) can hold
-  // hundreds of objects; firing every delete at once invites GCS rate limits,
-  // and because this phase runs first, a single 429 would abort the cascade
-  // before any Firestore document is touched — every retry replaying the same
-  // burst. Chunking keeps a big account deletable.
-  for (let i = 0; i < files.length; i += STORAGE_DELETE_CONCURRENCY) {
-    const chunk = files.slice(i, i + STORAGE_DELETE_CONCURRENCY);
-    await Promise.all(chunk.map((f) => withStorageRetry(() => f.delete({ ignoreNotFound: true }))));
-  }
-  return files.length;
-}
-
-/**
- * Retry a Storage operation through transient GCS failures.
- *
- * Deliberately narrow: only rate-limit and availability codes retry. A
- * permissions or bad-bucket failure must still throw, because silently
- * continuing would erase the Firestore records while leaving the binaries —
- * the exact privacy failure this cascade exists to prevent.
- */
-async function withStorageRetry<T>(op: () => Promise<T>): Promise<T> {
-  let lastErr: unknown;
-  for (let attempt = 0; attempt < STORAGE_RETRY_ATTEMPTS; attempt++) {
-    try {
-      return await op();
-    } catch (err) {
-      lastErr = err;
-      const code = (err as { code?: unknown } | null)?.code;
-      const retryable = code === 429 || code === 500 || code === 502 || code === 503 || code === 504;
-      if (!retryable || attempt === STORAGE_RETRY_ATTEMPTS - 1) throw err;
-      await new Promise((r) => setTimeout(r, STORAGE_RETRY_BASE_MS * 2 ** attempt));
-    }
-  }
-  throw lastErr;
 }
 
 /**
@@ -459,9 +301,14 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   // Unlike S.K.A.T.E., an open dice match is closed rather than left active.
   // The other player would otherwise sit on a turn that can never be taken.
   // A match nobody has rolled in just ends. A match that has started is a
-  // forfeit: the player who stays gets the win. The departing user's own
-  // diceStats doc is deleted below, so their loss is not written first.
-  summary.diceGames = await closeActiveDiceGames(db, uid, Date.now());
+  // forfeit: the player who stays gets the win. Every match is then
+  // anonymized for the other player (see `_diceErasure.ts`). The departing
+  // user's own diceStats doc is deleted below, so their loss is not written.
+  const nowMs = Date.now();
+  const dice = await eraseDiceGames(db, uid, nowMs);
+  summary.diceGames = dice.closed;
+  summary.diceGamesAnonymized = dice.anonymized;
+  summary.diceGamesDeleted = dice.deleted;
   summary.diceStats = await deleteIfPresent(db, "diceStats", uid);
   summary.diceCreateLimits = await deleteIfPresent(db, "diceCreateLimits", uid);
 
@@ -570,6 +417,15 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
     (await scanAll(db.collection("appeals").where("appellantUid", "==", uid))).map((d) => d.ref),
   );
 
+  // ── Phase 3c: Closet trades and drops, spot chat, comments, spots ──
+  // Shared records (trades, serial rows, public spots) are anonymized, the
+  // rest is deleted. Rationale per collection lives in each module and in
+  // `_userDataRegistry.ts`. Runs before Phase 4 because a held trade's
+  // refund reads the other skater's wallet, and both modules locate data by
+  // uid fields that stay valid until the identity docs go.
+  summary.closet = await eraseCloset(db, uid, nowMs);
+  summary.content = await eraseOwnedContent(deps, uid);
+
   // ── Phase 4: identity surface ──
   // Achievements, locker, blocked_users, the private profile doc (email / DOB /
   // parental consent) and the public profile go together, so in the ordinary
@@ -592,15 +448,25 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   summary.usernameReleased = username !== null && (await releaseUsername(db, uid, username));
 
   const blocked = await scanAll(db.collection("users").doc(uid).collection("blocked_users"));
+  const others: FirebaseFirestore.DocumentReference[] = [];
+  for (const name of OTHER_USER_SUBCOLLECTIONS) {
+    for (const d of await scanAll(db.collection("users").doc(uid).collection(name))) others.push(d.ref);
+  }
+  const profileRef = db.collection("users").doc(uid).collection("private").doc(PRIVATE_PROFILE_DOC_ID);
   const identityRefs: FirebaseFirestore.DocumentReference[] = [
     ...achievements.map((d) => d.ref),
     ...locker.map((d) => d.ref),
     ...xpMarkers.map((d) => d.ref),
     ...blocked.map((d) => d.ref),
-    db.collection("users").doc(uid).collection("private").doc(PRIVATE_PROFILE_DOC_ID),
+    // The private profile keeps its explicit ref (as before this list
+    // existed); it is filtered out of `others` so one batch never deletes
+    // the same doc twice.
+    ...others.filter((ref) => ref.path !== profileRef.path),
+    profileRef,
     db.collection("users").doc(uid),
   ];
   await deleteRefs(db, identityRefs);
+  summary.userSubcollectionDocs = others.length;
   summary.achievements = achievements.length;
   summary.locker = locker.length;
   summary.xpMarkers = xpMarkers.length;
