@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("firebase-admin/firestore", () => ({
-  FieldValue: { arrayRemove: (...v: string[]) => ({ rm: v }), serverTimestamp: () => "TS" },
+  FieldValue: { arrayRemove: (...v: string[]) => ({ rm: v }), serverTimestamp: () => "TS", delete: () => "DEL" },
 }));
 
 import { adminDrainDeps, readQueue, toQueuedDoc } from "./store.js";
@@ -13,6 +13,7 @@ function fakeDb() {
     set: vi.fn(async (data: unknown) => {
       sets.push({ path, data });
     }),
+    get: vi.fn(async () => ({ data: () => (path === "pushTargets/u1" ? { tokens: ["t"] } : undefined) })),
     collection: (c: string) => ({ doc: (id: string) => docRef(`${path}/${c}/${id}`) }),
   });
   const db = {
@@ -32,9 +33,11 @@ describe("push store", () => {
     expect(d.nowMs).toBe(5);
     await d.prune("u1", ["t"]);
     expect(sets).toEqual([
-      { path: "pushTargets/u1", data: { tokens: { rm: ["t"] }, updatedAt: "TS" } },
+      { path: "pushTargets/u1", data: { tokens: { rm: ["t"] }, platforms: { t: "DEL" }, updatedAt: "TS" } },
       { path: "users/u1/private/profile", data: { fcmTokens: { rm: ["t"] } } },
     ]);
+    expect(await d.pushTarget("u1")).toEqual({ tokens: ["t"] });
+    expect(await d.pushTarget("nobody")).toBeUndefined();
     const msg = { tokens: ["t"], notification: { title: "a", body: "b" }, data: {} };
     await d.send(msg);
     expect(messaging.sendEachForMulticast).toHaveBeenCalledWith(msg);
