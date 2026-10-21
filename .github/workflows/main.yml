@@ -1,8 +1,10 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
+  # No push-to-main run (Actions cost, approved by Jason 2026-10-20). Branch
+  # protection is strict (PRs must be up to date with main) and requires
+  # build-and-test + e2e, so the PR run already tested exactly what lands on
+  # main; re-running it after merge only doubled the minutes.
   pull_request:
     branches: [main]
     # ready_for_review re-runs the gated jobs when a draft PR is marked ready.
