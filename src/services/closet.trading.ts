@@ -11,7 +11,22 @@ import { logger } from "./logger";
 import { toDateOrNull } from "./closet.time";
 import { trackEvent } from "./analytics";
 
+/** What the trading screen shows. Mapped from the server's status below. */
 export type TradeStatus = "proposed" | "accepted" | "declined" | "canceled" | "held" | "complete";
+
+/**
+ * Server trade statuses (functions/src/closet/trading.ts, trading.holds.ts)
+ * folded into the screen's six. Anything that ended without a swap and
+ * wasn't a decline (cancelled, countered, expired, failed, reversed) shows
+ * as canceled.
+ */
+const STATUS_FROM_SERVER: Record<string, TradeStatus> = {
+  pending: "proposed",
+  accepted: "accepted",
+  held: "held",
+  completed: "complete",
+  declined: "declined",
+};
 
 export interface TradeItem {
   copyId: string;
@@ -27,6 +42,8 @@ export interface Trade {
   proposerItems: TradeItem[];
   recipientItems: TradeItem[];
   status: TradeStatus;
+  /** Who has pressed Confirm on an accepted trade. Both must before the swap. */
+  confirmedBy: string[];
   note: string | null;
   proposedAt: Date;
   respondedAt: Date | null;
@@ -34,22 +51,41 @@ export interface Trade {
   holdUntil: Date | null;
 }
 
-function parseTradeDoc(id: string, data: Record<string, unknown>): Trade | null {
-  const proposedAt = toDateOrNull(data.proposedAt);
-  if (!proposedAt) return null;
+function str(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
 
+function items(raw: unknown): TradeItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((i): i is Record<string, unknown> => typeof i === "object" && i !== null)
+    .map((i) => ({ copyId: str(i.copyId), name: str(i.name), rarity: str(i.rarity), imageUrl: null }));
+}
+
+/**
+ * Parse a trades/{id} doc as the closet callables write it: fromUid proposes
+ * and gives `give`, toUid receives and gives `get`. Same field names the
+ * firestore.rules read check uses.
+ */
+function parseTradeDoc(id: string, data: Record<string, unknown>): Trade | null {
+  const proposedAt = toDateOrNull(data.createdAt);
+  if (!proposedAt) return null;
+  const serverStatus = str(data.status);
   return {
     id,
-    proposerUid: typeof data.proposerUid === "string" ? data.proposerUid : "",
-    recipientUid: typeof data.recipientUid === "string" ? data.recipientUid : "",
-    proposerItems: Array.isArray(data.proposerItems) ? (data.proposerItems as TradeItem[]) : [],
-    recipientItems: Array.isArray(data.recipientItems) ? (data.recipientItems as TradeItem[]) : [],
-    status: (data.status as TradeStatus) ?? "proposed",
+    proposerUid: str(data.fromUid),
+    recipientUid: str(data.toUid),
+    proposerItems: items(data.give),
+    recipientItems: items(data.get),
+    status: STATUS_FROM_SERVER[serverStatus] ?? (serverStatus === "" ? "proposed" : "canceled"),
+    confirmedBy: Array.isArray(data.confirmedBy)
+      ? data.confirmedBy.filter((u): u is string => typeof u === "string")
+      : [],
     note: typeof data.note === "string" ? data.note : null,
     proposedAt,
-    respondedAt: toDateOrNull(data.respondedAt),
+    respondedAt: serverStatus === "pending" || serverStatus === "" ? null : toDateOrNull(data.updatedAt),
     completedAt: toDateOrNull(data.completedAt),
-    holdUntil: toDateOrNull(data.holdUntil),
+    holdUntil: toDateOrNull(data.releaseAt),
   };
 }
 
@@ -68,44 +104,27 @@ export async function fetchTrade(tradeId: string): Promise<Trade | null> {
   }
 }
 
+const TRADES_PER_SIDE = 50;
+
 /**
- * Fetch trades involving the current user.
- * Returns trades sorted by proposal time (newest first).
+ * Fetch trades involving the current user, newest first. One query per side,
+ * each filtered on the user's own party field (fromUid / toUid), which is
+ * what lets the rules prove every result is theirs. The status filter runs
+ * here, after mapping, so the two composite indexes stay the only ones.
  */
 export async function fetchUserTrades(uid: string, statusFilter?: TradeStatus): Promise<Trade[]> {
   try {
     const tradesRef = collection(requireDb(), "trades");
-    let q = query(tradesRef, where("proposerUid", "==", uid), orderBy("proposedAt", "desc"), fbLimit(50));
-
-    if (statusFilter) {
-      q = query(
-        tradesRef,
-        where("proposerUid", "==", uid),
-        where("status", "==", statusFilter),
-        orderBy("proposedAt", "desc"),
-        fbLimit(50),
+    const side = (field: "fromUid" | "toUid") =>
+      withRetry(() =>
+        getDocs(query(tradesRef, where(field, "==", uid), orderBy("createdAt", "desc"), fbLimit(TRADES_PER_SIDE))),
       );
-    }
-
-    const proposerSnap = await withRetry(() => getDocs(q));
-
-    q = query(tradesRef, where("recipientUid", "==", uid), orderBy("proposedAt", "desc"), fbLimit(50));
-    if (statusFilter) {
-      q = query(
-        tradesRef,
-        where("recipientUid", "==", uid),
-        where("status", "==", statusFilter),
-        orderBy("proposedAt", "desc"),
-        fbLimit(50),
-      );
-    }
-
-    const recipientSnap = await withRetry(() => getDocs(q));
+    const [sent, received] = await Promise.all([side("fromUid"), side("toUid")]);
 
     const trades: Trade[] = [];
-    for (const docSnap of [...proposerSnap.docs, ...recipientSnap.docs]) {
+    for (const docSnap of [...sent.docs, ...received.docs]) {
       const parsed = parseTradeDoc(docSnap.id, docSnap.data());
-      if (parsed) trades.push(parsed);
+      if (parsed && (!statusFilter || parsed.status === statusFilter)) trades.push(parsed);
     }
 
     return trades.sort((a, b) => b.proposedAt.getTime() - a.proposedAt.getTime());
@@ -120,6 +139,7 @@ export interface ProposeTradeParams {
   proposerCopyIds: string[];
   recipientCopyIds: string[];
   note?: string;
+  /** Counter this pending offer instead of opening a new one. */
   counterToTradeId?: string;
 }
 
@@ -129,7 +149,20 @@ export interface ProposeTradeParams {
  */
 export async function proposeTrade(params: ProposeTradeParams): Promise<{ tradeId: string }> {
   try {
-    const data = await callCloset<ProposeTradeParams, { tradeId: string }>("proposeTrade", params);
+    // The callable's field names (functions/src/closet/trading.ts ProposeInput).
+    const payload = {
+      toUid: params.recipientUid,
+      give: params.proposerCopyIds,
+      get: params.recipientCopyIds,
+      ...(params.note ? { note: params.note } : {}),
+    };
+    const data = params.counterToTradeId
+      ? await callCloset<object, { tradeId: string }>("respondTrade", {
+          ...payload,
+          tradeId: params.counterToTradeId,
+          response: "counter",
+        })
+      : await callCloset<object, { tradeId: string }>("proposeTrade", payload);
     trackEvent("closet_trade_proposed", { tradeId: data.tradeId });
     return data;
   } catch (err) {
@@ -138,18 +171,16 @@ export async function proposeTrade(params: ProposeTradeParams): Promise<{ tradeI
   }
 }
 
-export type TradeResponse = "accept" | "decline" | "cancel" | "counter";
+export type TradeResponse = "accept" | "decline" | "cancel";
 
 export interface RespondTradeParams {
   tradeId: string;
   response: TradeResponse;
-  proposerCopyIds?: string[];
-  recipientCopyIds?: string[];
-  note?: string;
 }
 
 /**
- * Respond to a trade: accept, decline, cancel, or counter.
+ * Respond to a trade: accept, decline or cancel. A counter-offer is
+ * proposeTrade with counterToTradeId.
  * Throws on failure (not a party, invalid state, etc.).
  */
 export async function respondTrade(params: RespondTradeParams): Promise<void> {

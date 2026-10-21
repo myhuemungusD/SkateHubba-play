@@ -87,6 +87,7 @@ function trade(over: Partial<Trade> = {}): Trade {
     proposerItems: [{ copyId: "c1", name: "Teeth — Fire Red", rarity: "limited", imageUrl: null }],
     recipientItems: [{ copyId: "c2", name: "Shop Deck", rarity: "common", imageUrl: null }],
     status: "proposed",
+    confirmedBy: [],
     note: "swap?",
     proposedAt: new Date("2026-10-17T00:00:00Z"),
     respondedAt: null,
@@ -270,26 +271,31 @@ describe("TradingScreen", () => {
     await waitFor(() => expect(svc.respondTrade).toHaveBeenLastCalledWith({ tradeId: "t1", response: "decline" }));
   });
 
-  it("shows holds and confirms a finished hold", async () => {
+  it("shows a hold's swap date, and confirms an accepted trade once", async () => {
     svc.fetchUserTrades.mockResolvedValue([
       trade({
         id: "mine",
         proposerUid: "me-123456789",
         recipientUid: "bob-abcdefghij",
         status: "accepted",
-        holdUntil: new Date(Date.now() + 1e9),
         note: null,
       }),
-      trade({ id: "held", status: "held", holdUntil: new Date(Date.now() - 1000) }),
+      trade({ id: "held", status: "held", holdUntil: new Date(Date.now() + 1e9) }),
+      trade({ id: "done-by-me", status: "accepted", confirmedBy: ["me-123456789"], note: null }),
     ]);
     svc.confirmTrade.mockRejectedValueOnce(new Error("x")).mockResolvedValueOnce(undefined);
     render(<TradingScreen />);
     expect(await screen.findByText(/trade hold/i)).toBeInTheDocument();
+    expect(screen.getByText(/items swap on/i)).toBeInTheDocument();
+    expect(screen.getByText(/waiting for the other skater/i)).toBeInTheDocument();
     expect(screen.getByText("You Give")).toBeInTheDocument();
+    // Only the trade I haven't confirmed offers the button; a held trade has none.
+    expect(screen.getAllByRole("button", { name: /confirm trade/i })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: /confirm trade/i }));
     await waitFor(() => expect(screen.getByRole("button", { name: /confirm trade/i })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: /confirm trade/i }));
     await waitFor(() => expect(svc.confirmTrade).toHaveBeenCalledTimes(2));
+    expect(svc.confirmTrade).toHaveBeenCalledWith("mine");
   });
 
   it("filters by status", async () => {
@@ -308,32 +314,24 @@ describe("TradingScreen", () => {
   });
 
   it("walks through proposing a trade", async () => {
+    const lockerItem = (id: string, name: string, over: Record<string, unknown> = {}) => ({
+      id,
+      type: "deck",
+      brand: "",
+      name,
+      imageUrl: null,
+      rarity: "common",
+      acquiredAt: null,
+      provenanceReason: null,
+      equipped: false,
+      itemDefId: null,
+      ...over,
+    });
     svc.fetchLockerItems.mockResolvedValue([
-      {
-        id: "c1",
-        type: "shoes",
-        brand: "",
-        name: "Teeth",
-        imageUrl: "/t.webp",
-        rarity: "limited",
-        acquiredAt: null,
-        provenanceReason: null,
-        equipped: false,
-        itemDefId: null,
-      },
-      {
-        id: "c2",
-        type: "deck",
-        brand: "",
-        name: "Deck",
-        imageUrl: null,
-        rarity: "common",
-        acquiredAt: null,
-        provenanceReason: null,
-        equipped: false,
-        itemDefId: null,
-      },
+      lockerItem("c1", "Teeth", { type: "shoes", imageUrl: "/t.webp", rarity: "limited" }),
+      lockerItem("c2", "Deck"),
     ]);
+    const bobsLocker = (n: number) => Array.from({ length: n }, (_, i) => lockerItem(`b${i}`, `Bob ${i}`));
     svc.proposeTrade.mockRejectedValueOnce(new Error("rate")).mockResolvedValueOnce({ tradeId: "t2" });
     render(<TradingScreen />);
     fireEvent.click(await screen.findByRole("button", { name: "NEW TRADE" }));
@@ -343,15 +341,30 @@ describe("TradingScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /next \(1 items\)/i }));
     fireEvent.click(screen.getByRole("button", { name: "BACK" }));
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
-    fireEvent.change(screen.getByPlaceholderText(/enter user id/i), { target: { value: "bob" } });
+
+    // An empty closet on the other side: nothing to ask for, so no offer.
+    svc.fetchLockerItems.mockResolvedValueOnce([]);
+    fireEvent.change(screen.getByPlaceholderText(/enter user id/i), { target: { value: " bob " } });
+    fireEvent.click(screen.getByRole("button", { name: "NEXT" }));
+    expect(await screen.findByText(/nothing to trade yet/i)).toBeInTheDocument();
+    expect(svc.fetchLockerItems).toHaveBeenLastCalledWith("bob");
+    expect(screen.getByRole("button", { name: /send offer/i })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "BACK" }));
+
+    // Pick from their closet; a fifth pick is ignored (4 per side).
+    svc.fetchLockerItems.mockResolvedValueOnce(bobsLocker(5));
+    fireEvent.click(screen.getByRole("button", { name: "NEXT" }));
+    for (const i of [0, 1, 2, 3, 4])
+      fireEvent.click(await screen.findByRole("button", { name: new RegExp(`Bob ${i}$`) }));
+    fireEvent.click(screen.getByRole("button", { name: /Bob 3$/ }));
     fireEvent.click(screen.getByRole("button", { name: /send offer/i }));
     await waitFor(() => expect(screen.getByRole("button", { name: /send offer/i })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: /send offer/i }));
-    await waitFor(() => expect(screen.queryByText(/who do you want/i)).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText(/from their closet/i)).not.toBeInTheDocument());
     expect(svc.proposeTrade).toHaveBeenLastCalledWith({
       recipientUid: "bob",
       proposerCopyIds: ["c1"],
-      recipientCopyIds: [],
+      recipientCopyIds: ["b0", "b1", "b2"],
     });
   });
 
