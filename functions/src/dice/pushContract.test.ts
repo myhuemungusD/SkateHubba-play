@@ -45,6 +45,10 @@ function expectDicePush(msg: Sent | undefined, token: string, type: string, body
     tokens: [token],
     notification: { title: "Roll Dice", body },
     data: { gameId: "game-1", type, kind: "dice", click_action: "/dice/game-1" },
+    webpush: {
+      fcmOptions: { link: "https://skatehubba.com/dice/game-1" },
+      notification: { icon: "/icon-192.png", badge: "/icon-192.png", tag: "game_game-1", renotify: true },
+    },
   });
 }
 
