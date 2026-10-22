@@ -69,6 +69,15 @@ describe("EditorEngine.seek", () => {
     await expect(done).resolves.toBeUndefined();
   });
 
+  it("settles at once when the video had already errored", async () => {
+    const e = makeEngine();
+    const video = (e as unknown as { videos: Map<string, HTMLVideoElement> }).videos.get("m")!;
+    Object.defineProperty(video, "error", { value: { code: 4 } });
+    const add = vi.spyOn(video, "addEventListener");
+    await expect(e.seek(2)).resolves.toBeUndefined();
+    expect(add).not.toHaveBeenCalled();
+  });
+
   it("settles on seeked and detaches both listeners", async () => {
     const e = makeEngine();
     const video = (e as unknown as { videos: Map<string, HTMLVideoElement> }).videos.get("m")!;

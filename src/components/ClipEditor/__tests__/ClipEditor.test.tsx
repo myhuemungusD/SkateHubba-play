@@ -157,6 +157,18 @@ describe("ClipEditor", () => {
     expect(await screen.findByText("Couldn't open this clip.")).toBeInTheDocument();
   });
 
+  it("keeps the editor open and logs when a scrub seek fails", async () => {
+    const { logger } = await import("../../../services/logger");
+    const warn = vi.spyOn(logger, "warn");
+    renderEditor();
+    const slider = await screen.findByRole("slider", { name: "Playhead" });
+    engine.seekRejects = true;
+    await act(async () => fireEvent.keyDown(slider, { key: "ArrowRight" }));
+    await waitFor(() => expect(warn).toHaveBeenCalledWith("clip_editor_seek_failed", { error: "Error: draw failed" }));
+    expect(screen.queryByText("Couldn't open this clip.")).not.toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "Playhead" })).toBeInTheDocument();
+  });
+
   it("explains when WebGL is missing", async () => {
     engine.throwOnCreate = true;
     renderEditor();

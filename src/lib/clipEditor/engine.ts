@@ -219,7 +219,8 @@ export class EditorEngine {
         (a) =>
           new Promise<void>((resolve) => {
             const v = this.videos.get(a.id);
-            if (!v) return resolve();
+            // An element that already errored will never fire `seeked` or a new `error`.
+            if (!v || v.error) return resolve();
             const target = Math.max(0, Math.min(a.durationSec, src - a.offsetSec));
             if (Math.abs(v.currentTime - target) < 0.001) return resolve();
             // Settle on error too: a broken source never fires `seeked`, and a
