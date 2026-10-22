@@ -108,10 +108,11 @@ jobs:
           VITE_FEATURE_SPOT_CHATS_ENABLED: "true"
           # Closet stays off in store builds until claim, buy and equip are
           # verified on a TestFlight build with App Check (iOS side is #829).
+          # Closet Studio (its clothes editor) goes with it.
           VITE_FEATURE_CLOSET_ENABLED: "false"
           VITE_FEATURE_CLOSET_DROPS_ENABLED: "false"
           VITE_FEATURE_CLOSET_TRADING_ENABLED: "false"
-          VITE_FEATURE_CLOSET_STUDIO: "true"
+          VITE_FEATURE_CLOSET_STUDIO: "false"
           VITE_FEATURE_SHOE_360: "true"
           VITE_FEATURE_HUBBA_ICONS: "true"
           VITE_FEATURE_RUNNER_ENABLED: "false"
