@@ -17,6 +17,7 @@ import { ToolTabs } from "./Chip";
 import { AnglesPanel, ExportPanel } from "./AnglesExportPanels";
 import { exportClip, audioUrls } from "./exportClip";
 import { readAngle } from "./readAngle";
+import { logSeekFailure } from "./logSeekFailure";
 
 export interface ClipEditorProps {
   blob: Blob;
@@ -60,7 +61,7 @@ export function ClipEditor({ blob, onDone, onCancel }: ClipEditorProps) {
           try {
             engineRef.current = new EditorEngine(canvasRef.current, p, setPlayhead);
             engineRef.current.setSources({ main: a.url });
-            void engineRef.current.seek(0);
+            void engineRef.current.seek(0).catch(() => setError("Couldn't open this clip."));
           } catch {
             setError("Your device can't preview edits here. Update your browser or use the iPhone app.");
           }
@@ -219,7 +220,7 @@ export function ClipEditor({ blob, onDone, onCancel }: ClipEditorProps) {
                 project={project}
                 playhead={playhead}
                 beats={beats}
-                onSeek={(t) => void engineRef.current?.seek(t)}
+                onSeek={(t) => void engineRef.current?.seek(t).catch(logSeekFailure)}
                 onDropSfx={(id, t) => setProject(placeSfx(project, id, t))}
                 onMoveSfx={(id, t) => setProject(moveSfx(project, id, t))}
                 onRemoveSfx={(id) => {

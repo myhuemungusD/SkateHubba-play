@@ -8,6 +8,7 @@
  * verified pros. Capped per announcement; marked so a retry never re-sends.
  */
 import { FieldValue, type Firestore } from "firebase-admin/firestore";
+import { testerEligibleTokens } from "../push/platforms.js";
 
 export const MAX_RECIPIENTS = 2000;
 export type Audience = "all" | "testers" | "pros";
@@ -60,7 +61,10 @@ export async function fanOutAnnouncement(
   } else {
     for (const uid of uids.slice(0, MAX_RECIPIENTS)) {
       const snap = await db.collection("pushTargets").doc(uid).get();
-      targets.push({ uid, tokens: tokensOf(snap.data()?.tokens) });
+      const mirror = snap.data();
+      const tokens = tokensOf(mirror?.tokens);
+      // Testers on iPhone can't see tester features, so skip ios and untagged tokens.
+      targets.push({ uid, tokens: audience === "testers" ? testerEligibleTokens(mirror, tokens) : tokens });
     }
   }
 
