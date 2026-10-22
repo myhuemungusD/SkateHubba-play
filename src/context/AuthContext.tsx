@@ -51,6 +51,14 @@ function writeErasedUid(uid: string): void {
   }
 }
 
+function clearErasedUid(): void {
+  try {
+    sessionStorage.removeItem(PENDING_DELETE_ERASED_KEY);
+  } catch {
+    /* best-effort, like the pending marker */
+  }
+}
+
 function readPendingDeleteUid(): string | null {
   try {
     return sessionStorage.getItem(PENDING_DELETE_KEY);
@@ -501,9 +509,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // deletion" affordance surfaces after the user re-authenticates.
     writePendingDeleteUid(uid);
     setPendingDeleteUid(uid);
-    // An erased marker only ever describes the attempt for its own uid. Drop any
-    // left from a different account on this device before the new attempt.
-    setErasedUid((prev) => (prev === uid ? prev : null));
+    // A live profile proves the data is not erased, whatever an earlier attempt
+    // recorded (the user may have recreated a profile instead of tapping
+    // Finish). Drop the marker, in storage too, so nothing can claim
+    // "your data is deleted" next to this profile.
+    clearErasedUid();
+    setErasedUid(null);
     logger.info("delete_account_pending_retry_captured", { uid });
     // Unregister native push BEFORE Auth deletion — the owner-only rule on
     // users/{uid}/private/profile denies the arrayRemove write once the

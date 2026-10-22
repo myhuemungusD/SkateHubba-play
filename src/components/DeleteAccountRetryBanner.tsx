@@ -26,12 +26,12 @@ export function DeleteAccountRetryBanner() {
 
   // Banner is visible only when the signed-in user is the one mid-deletion.
   if (!user || !pendingDeleteUid || user.uid !== pendingDeleteUid) return null;
-  // While the profile is intact, nothing was erased: Settings still has Delete
+  // While a profile exists, nothing is erased: Settings still has Delete
   // Account and its modal shows any error. Showing this banner then would
   // announce "not deleted" during the first attempt (the marker is written
   // before the request) and nag a user who changed their mind, with no way to
   // dismiss it. It is for the states Settings can't reach.
-  if (activeProfile && !pendingDeleteErased) return null;
+  if (activeProfile) return null;
 
   const onFinish = async () => {
     setSubmitting(true);

@@ -93,7 +93,7 @@ describe("sentry lib", () => {
       expect(sent.level).toBe("error");
       expect(sent.extra).toEqual({
         uid: hashUid("u1"),
-        username: expect.stringMatching(/^name_/),
+        username: expect.stringMatching(/^name-[0-9a-f]{8}$/),
         email: "[REDACTED_EMAIL]",
         code: "x",
       });

@@ -235,6 +235,29 @@ describe("Smoke: Account & Sign Out", () => {
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
   });
 
+  it("a recreated profile clears an old erased marker: no 'data is deleted' next to it", async () => {
+    // An earlier attempt erased the data but not the Auth record, then the
+    // user made a new profile instead of tapping Finish. That profile is data,
+    // so neither the banner nor the next attempt may claim it is deleted.
+    sessionStorage.setItem("skate.pendingDeleteUid", "u1");
+    sessionStorage.setItem("skate.pendingDeleteErased", "u1");
+    authSvc.refs.deleteAccount.mockRejectedValueOnce(requiresRecentLoginError());
+    asUnverifiedUser();
+    withGames([]);
+    await renderApp();
+
+    expect(screen.queryByText(/your data is deleted/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /(finish|retry) deleting your account/i })).not.toBeInTheDocument();
+    await openDeleteAccountModal();
+    await userEvent.click(modal().getByText("Delete Forever"));
+
+    await waitFor(() => {
+      expect(sessionStorage.getItem("skate.pendingDeleteErased")).toBeNull();
+    });
+    expect(sessionStorage.getItem("skate.pendingDeleteUid")).toBe("u1");
+    expect(screen.queryByText(/your data is deleted/i)).not.toBeInTheDocument();
+  });
+
   it("banner offers a retry when the profile is gone but erasure was never confirmed", async () => {
     // The request failed part-way (or the app was closed mid-way): no profile
     // to reach Settings from, and no server confirmation that data is gone.

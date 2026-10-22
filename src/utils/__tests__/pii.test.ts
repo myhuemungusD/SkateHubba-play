@@ -57,6 +57,18 @@ describe("redactPII", () => {
     expect(redactPII({ uid: "uid_not-hex" })?.uid).toBe(hashUid("uid_not-hex"));
   });
 
+  it("keeps a surrogate only under its own kind of key, so a look-alike username is still hashed", () => {
+    // USERNAME_RE allows "_", so a skater can pick a name shaped like a uid surrogate.
+    const lookAlike = redactPII({ username: "uid_deadbeef" })?.username as string;
+    expect(lookAlike).toMatch(/^name-[0-9a-f]{8}$/);
+    expect(lookAlike).not.toBe("uid_deadbeef");
+    expect(redactPII({ username: "name_deadbeef" })?.username).toMatch(/^name-[0-9a-f]{8}$/);
+    // A username surrogate under a uid key is hashed like any other uid value.
+    expect(redactPII({ uid: "name-deadbeef" })?.uid).toBe(hashUid("name-deadbeef"));
+    // Untouched under any other key (it is not PII-shaped there).
+    expect(redactPII({ note: "uid_deadbeef" })?.note).toBe("uid_deadbeef");
+  });
+
   it("returns undefined when data is undefined", () => {
     expect(redactPII(undefined)).toBeUndefined();
   });
@@ -94,7 +106,7 @@ describe("redactPII", () => {
 
   it("hashes username and camelCase *Username keys (public direct identifiers)", () => {
     const out = redactPII({ username: "sk8r", playerUsername: "sk8r", reportedUsername: "other", empty: "" });
-    expect(out?.username).toMatch(/^name_[0-9a-f]{8}$/);
+    expect(out?.username).toMatch(/^name-[0-9a-f]{8}$/);
     expect(out?.playerUsername).toBe(out?.username);
     expect(out?.reportedUsername).not.toBe(out?.username);
     expect(JSON.stringify(out)).not.toContain("sk8r");
