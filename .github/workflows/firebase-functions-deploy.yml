@@ -182,7 +182,7 @@ jobs:
             grep -Ev "^${key}=" "$DEST" > "$DEST.tmp" || true
             mv "$DEST.tmp" "$DEST"
             printf '%s=%s\n' "$key" "$val" >> "$DEST"
-            echo "${key}=${val} (repository variable override)"
+            echo "override ${key%_ENABLED}: ${val}"
           done
           for key in CLOSET_TESTER_UIDS MAP_TESTER_UIDS SPOT_PRESENCE_TESTER_UIDS; do
             grep -Eq "^${key}=" "$DEST" || printf '%s=\n' "$key" >> "$DEST"
