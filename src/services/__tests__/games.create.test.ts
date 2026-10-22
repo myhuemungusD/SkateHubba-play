@@ -350,10 +350,11 @@ describe("games service", () => {
       expect(notif?.body).toContain("Flat Bar");
     });
 
-    it("announces custom rules text in the challenge notification body", async () => {
+    it("announces the Custom Rules label, never the custom rules text (M2 preset copy)", async () => {
       await createGame("p1", "alice", "p2", "bob", { trickCategory: "custom", customRules: "mongo only" });
       const notif = mockBatchSet.mock.calls.map((c) => c[1]).find((d) => d && "body" in d);
-      expect(notif?.body).toContain("mongo only");
+      expect(notif?.body).toBe("@alice challenged you to S.K.A.T.E. — Custom Rules");
+      expect(notif?.body).not.toContain("mongo only");
     });
 
     describe("turn length (VITE_FEATURE_TURN_LENGTH)", () => {

@@ -214,7 +214,7 @@ describe("decideExpiredForfeit", () => {
     expect(decision!.notification).toMatchObject({
       recipientUid: "p1",
       senderUid: "p2",
-      body: "Match @bob's Trick", // bob = p2 username, "Trick" fallback
+      body: "Match @bob's trick", // bob = p2 username, preset "trick" fallback (M2)
     });
   });
 });

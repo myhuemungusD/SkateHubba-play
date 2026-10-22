@@ -49,7 +49,7 @@ async function runSetTrickTransaction(ctx: RulesTestContext, videoUrl?: null): P
       recipientUid: MATCHER_UID,
       type: "your_turn",
       title: "Your Turn!",
-      body: "Match @alice's kickflip",
+      body: "Match @alice's Kickflip",
       gameId: GAME_ID,
       read: false,
       createdAt: serverTimestamp(),

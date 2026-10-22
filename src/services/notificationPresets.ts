@@ -26,12 +26,7 @@ import { CUSTOM_CATEGORY_ID, TRICK_CATEGORIES, trickCategoryLabel } from "../con
 import { TURN_LENGTH_OPTIONS, turnLengthLabel } from "./turnDuration.js";
 
 export type PresetNotificationType =
-  | "your_turn"
-  | "new_challenge"
-  | "game_won"
-  | "game_lost"
-  | "judge_invite"
-  | "nudge";
+  "your_turn" | "new_challenge" | "game_won" | "game_lost" | "judge_invite" | "nudge";
 
 export interface NotificationPreset {
   type: PresetNotificationType;
@@ -52,7 +47,11 @@ export const NOTIFICATION_PRESETS: readonly NotificationPreset[] = [
     title: "New Challenge!",
     bodies: ["{user} challenged you to S.K.A.T.E.", "{user} challenged you to S.K.A.T.E. — {headline}"],
   },
-  { type: "judge_invite", title: "You've been asked to referee", bodies: ["{user} vs {user} — accept to rule on disputes"] },
+  {
+    type: "judge_invite",
+    title: "You've been asked to referee",
+    bodies: ["{user} vs {user} — accept to rule on disputes"],
+  },
   { type: "nudge", title: "You got nudged!", bodies: ["{user} is waiting for your move"] },
   { type: "game_won", title: "You Won!", bodies: ["vs {user}"] },
   { type: "game_lost", title: "Game Over", bodies: ["vs {user}"] },

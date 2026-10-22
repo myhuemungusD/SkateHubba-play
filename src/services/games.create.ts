@@ -1,10 +1,6 @@
 import { doc, getDoc, runTransaction, serverTimestamp, Timestamp, writeBatch } from "firebase/firestore";
 import { requireAuth, requireDb } from "../firebase";
-import {
-  normalizeTrickCategory,
-  normalizeCustomRules,
-  CUSTOM_CATEGORY_ID,
-} from "../constants/trickCategories";
+import { normalizeTrickCategory, normalizeCustomRules, CUSTOM_CATEGORY_ID } from "../constants/trickCategories";
 import { isRefereeEnabled, isTurnLengthEnabled } from "../lib/featureFlags";
 import { addBreadcrumb } from "../lib/sentry";
 import { withRetry } from "../utils/retry";
