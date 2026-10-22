@@ -96,6 +96,22 @@ describe("selection", () => {
     expect(deps.sleep).toHaveBeenCalledWith(4000);
   });
 
+  it("only looks up the owner handle for rows inside --limit", async () => {
+    const { deps } = harness([
+      clip("a", 300, { playerUsername: undefined }),
+      clip("b", 200, { playerUsername: "on_doc" }),
+      clip("c", 100, { playerUsername: undefined }),
+    ]);
+    vi.mocked(deps.ownerHandle).mockResolvedValue("looked_up");
+    const { rows } = await rescreenPending(deps, { ...OPTIONS, apply: false, limit: 1 });
+    expect(deps.ownerHandle).toHaveBeenCalledTimes(1);
+    expect(rows.map((r) => [r.clipId, r.action, r.owner])).toEqual([
+      ["a", "would-screen", "looked_up"],
+      ["b", "not-run-limit", "on_doc"],
+      ["c", "not-run-limit", ""],
+    ]);
+  });
+
   it("helpers agree with the handler's precondition", () => {
     expect(isScreenable({ source: "user", moderation: "pending" })).toBe(true);
     expect(isScreenable({ source: "user", moderation: "review" })).toBe(false);

@@ -14,13 +14,13 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 describe("parseArgs", () => {
   it("defaults to a dry run with safe batch settings", () => {
-    expect(rescreen.parseArgs([])).toEqual({
+    expect(rescreen.parseArgs([], new Date("2026-10-22T06:30:00Z"))).toEqual({
       apply: false,
       limit: 25,
       delayMs: 5000,
       minAgeMinutes: 10,
       maxErrors: 2,
-      log: "/workspace/team/qa/2026-10-21/rescreen.md",
+      log: "rescreen-2026-10-21.md",
       database: "skatehubba",
     });
   });
@@ -72,6 +72,24 @@ describe("moderationSwitch (same strict parse as defineBoolean, default off)", (
     expect(rescreen.moderationSwitch({ SKATEHUBBA_FUNCTIONS_ENV: join(dir, "missing.env") }).source).toMatch(
       /^default \(off/,
     );
+  });
+});
+
+describe("defaultLogPath", () => {
+  it("is relative to the cwd and dated by the Pacific day, never a box path", () => {
+    expect(rescreen.defaultLogPath(new Date("2026-10-22T06:30:00Z"))).toBe("rescreen-2026-10-21.md");
+    expect(rescreen.defaultLogPath(new Date("2026-10-22T08:00:00Z"))).toBe("rescreen-2026-10-22.md");
+    expect(rescreen.parseArgs([]).log).toMatch(/^rescreen-\d{4}-\d{2}-\d{2}\.md$/);
+  });
+});
+
+describe("projectIdFrom", () => {
+  it("prefers GOOGLE_CLOUD_PROJECT, then GCLOUD_PROJECT, else empty (ADC decides)", () => {
+    expect(rescreen.projectIdFrom({ GOOGLE_CLOUD_PROJECT: " sk8hub-d7806 ", GCLOUD_PROJECT: "other" })).toBe(
+      "sk8hub-d7806",
+    );
+    expect(rescreen.projectIdFrom({ GCLOUD_PROJECT: "demo-skatehubba" })).toBe("demo-skatehubba");
+    expect(rescreen.projectIdFrom({})).toBe("");
   });
 });
 

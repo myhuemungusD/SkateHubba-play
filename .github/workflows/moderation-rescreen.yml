@@ -1,0 +1,227 @@
+name: Moderation Rescreen (pending clips)
+
+# Manual only. Runs scripts/moderation/rescreen-pending.mjs against production
+# so clips stuck at moderation == "pending" go through the same screener the
+# live moderateNewClip trigger uses.
+#
+#   gh workflow run moderation-rescreen.yml -f mode=dry-run
+#   gh workflow run moderation-rescreen.yml -f mode=apply -f limit=1 -f confirm=rescreen
+#   gh workflow run moderation-rescreen.yml -f mode=apply -f limit=25 -f confirm=rescreen
+#
+# Runbook: docs/DEPLOY_DICE_MODERATION.md, "Rescreen clips stuck in pending".
+#
+# Auth is the Workload Identity Federation pair from
+# firebase-functions-deploy.yml (`FIREBASE_WIF_PROVIDER` +
+# `FIREBASE_WIF_SERVICE_ACCOUNT`, google-github-actions/auth, id-token: write,
+# `production` environment). No service-account key file exists on any
+# machine: the auth action writes a short-lived external_account config and
+# the script reads it through Application Default Credentials. Unlike the
+# deploy there is NO `FIREBASE_TOKEN` fallback: that token only drives the
+# Firebase CLI and cannot sign Admin SDK or Video Intelligence calls, so a WIF
+# failure stops the run.
+#
+# Guards:
+#   - Dry run by default. A dry run only reads Firestore.
+#   - Apply needs confirm=rescreen and the main branch, and sets
+#     MODERATION_ENABLED=true for the script. The script still fails closed
+#     on its own and only touches clips that are still pending.
+#   - One run at a time (concurrency group, never cancelled mid-run).
+#   - limit 1-50, delay_ms 0-600000. The log (clip id, @handle, age, states;
+#     no tokens, emails or uids) is uploaded as the `rescreen` artifact and
+#     copied to the job summary.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run lists pending clips and writes nothing. apply screens and writes."
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - apply
+      limit:
+        description: "Most clips to screen this run (1-50). Start apply with 1."
+        required: true
+        default: "1"
+        type: string
+      delay_ms:
+        description: "Pause between clips in milliseconds (0-600000)."
+        required: true
+        default: "5000"
+        type: string
+      confirm:
+        description: "Type rescreen to allow mode=apply. Ignored for dry-run."
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: moderation-rescreen
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  rescreen:
+    name: Rescreen pending clips
+    if: github.repository == 'myhuemungusD/SkateHubba-play'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check inputs
+        env:
+          MODE: ${{ inputs.mode }}
+          LIMIT: ${{ inputs.limit }}
+          DELAY_MS: ${{ inputs.delay_ms }}
+          CONFIRM: ${{ inputs.confirm }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          # Both modes read production with the deploy service account, so
+          # both run only from main: a branch could change what runs here.
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "::error::Run this workflow from the main branch."
+            exit 1
+          fi
+          case "$MODE" in
+            dry-run) ;;
+            apply)
+              if [ "$CONFIRM" != "rescreen" ]; then
+                echo "::error::Refusing to apply. The confirm input must be the word rescreen."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::mode must be dry-run or apply."
+              exit 1
+              ;;
+          esac
+          if ! [[ "$LIMIT" =~ ^[0-9]+$ ]] || [ "$LIMIT" -lt 1 ] || [ "$LIMIT" -gt 50 ]; then
+            echo "::error::limit must be a whole number from 1 to 50."
+            exit 1
+          fi
+          if ! [[ "$DELAY_MS" =~ ^[0-9]+$ ]] || [ "$DELAY_MS" -gt 600000 ]; then
+            echo "::error::delay_ms must be a whole number from 0 to 600000."
+            exit 1
+          fi
+          echo "Mode ${MODE}, limit ${LIMIT}, delay ${DELAY_MS} ms."
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install function dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Build functions
+        working-directory: functions
+        run: npm run build
+
+      - name: Resolve Firebase project
+        id: project
+        run: |
+          set -euo pipefail
+          PROJECT_ID="${{ secrets.FIREBASE_PROJECT_ID }}"
+          if [ -z "$PROJECT_ID" ]; then
+            echo "FIREBASE_PROJECT_ID secret is empty — falling back to .firebaserc"
+            PROJECT_ID=$(jq -r '.projects.default // empty' .firebaserc)
+          fi
+          if [ -z "$PROJECT_ID" ]; then
+            echo "::error::Cannot resolve Firebase project ID."
+            exit 1
+          fi
+          if ! [[ "$PROJECT_ID" =~ ^[a-z0-9-]+$ ]]; then
+            echo "::error::Refusing to use an unexpected Firebase project id."
+            exit 1
+          fi
+          echo "Resolved project: $PROJECT_ID"
+          echo "project_id=$PROJECT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Check Workload Identity Federation secrets
+        env:
+          WIF_PROVIDER: ${{ secrets.FIREBASE_WIF_PROVIDER }}
+          WIF_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_WIF_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          if [ -z "$WIF_PROVIDER" ] || [ -z "$WIF_SERVICE_ACCOUNT" ]; then
+            echo "::error::FIREBASE_WIF_PROVIDER and FIREBASE_WIF_SERVICE_ACCOUNT are required. This workflow has no key-file or FIREBASE_TOKEN fallback."
+            exit 1
+          fi
+          if ! [[ "$WIF_PROVIDER" =~ ^projects/[0-9]+/locations/global/workloadIdentityPools/[^/]+/providers/[^/]+$ ]]; then
+            echo "::error::FIREBASE_WIF_PROVIDER is invalid. Expected: projects/NUMBER/locations/global/workloadIdentityPools/POOL_ID/providers/PROVIDER_ID"
+            exit 1
+          fi
+          echo "Using Workload Identity Federation."
+
+      # Same action, pin and inputs as firebase-functions-deploy.yml, but not
+      # continue-on-error: with no usable fallback, a failed exchange must stop.
+      - name: Authenticate via Workload Identity Federation
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.FIREBASE_WIF_PROVIDER }}
+          service_account: ${{ secrets.FIREBASE_WIF_SERVICE_ACCOUNT }}
+
+      - name: Rescreen
+        id: run
+        shell: bash
+        env:
+          MODE: ${{ inputs.mode }}
+          LIMIT: ${{ inputs.limit }}
+          DELAY_MS: ${{ inputs.delay_ms }}
+          GOOGLE_CLOUD_PROJECT: ${{ steps.project.outputs.project_id }}
+          GCLOUD_PROJECT: ${{ steps.project.outputs.project_id }}
+        run: |
+          set -euo pipefail
+          LOG_DIR="$RUNNER_TEMP/rescreen"
+          mkdir -p "$LOG_DIR"
+          echo "log=$LOG_DIR/rescreen.md" >> "$GITHUB_OUTPUT"
+          ARGS=(--limit "$LIMIT" --delay-ms "$DELAY_MS" --log "$LOG_DIR/rescreen.md")
+          if [ "$MODE" = "apply" ]; then
+            # The screener must already be on in production (deploy log
+            # "switch MODERATION: ON"). The script refuses --apply without it.
+            export MODERATION_ENABLED=true
+            ARGS=(--apply "${ARGS[@]}")
+          else
+            unset MODERATION_ENABLED
+          fi
+          node scripts/moderation/rescreen-pending.mjs "${ARGS[@]}"
+
+      - name: Job summary
+        if: always() && steps.run.outputs.log != ''
+        env:
+          LOG: ${{ steps.run.outputs.log }}
+          MODE: ${{ inputs.mode }}
+          OUTCOME: ${{ steps.run.outcome }}
+        run: |
+          {
+            echo "### Moderation rescreen (${MODE}): ${OUTCOME}"
+            echo ""
+            if [ -f "$LOG" ]; then
+              cat "$LOG"
+            else
+              echo "No log was written. Read the Rescreen step output."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload log
+        if: always() && steps.run.outputs.log != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rescreen
+          path: ${{ steps.run.outputs.log }}
+          if-no-files-found: warn
+          retention-days: 30

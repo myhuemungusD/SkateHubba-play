@@ -8,27 +8,26 @@
  * functions/src/moderation/handlers.ts), so thresholds, notices, the badge
  * count, and the approved-path video copy all match a live screen.
  *
- * Admin only. It uses a service account, never ships to the client, and adds
- * no callable. Docs: docs/DEPLOY_DICE_MODERATION.md, "Rescreen clips stuck
- * in pending".
+ * Admin only. It never ships to the client and adds no callable. Docs:
+ * docs/DEPLOY_DICE_MODERATION.md, "Rescreen clips stuck in pending".
  *
- * Build first. The script imports the compiled functions code:
+ * Production runs go through the workflow, never a laptop or the team box:
  *
- *   npm --prefix functions ci
- *   npm --prefix functions run build
+ *   gh workflow run moderation-rescreen.yml -f mode=dry-run
+ *   gh workflow run moderation-rescreen.yml -f mode=apply -f limit=1 -f confirm=rescreen
+ *
+ * The workflow signs in with Workload Identity Federation (the same deploy
+ * service account as firebase-functions-deploy.yml), so no service-account
+ * key file exists anywhere. The script only uses Application Default
+ * Credentials; it has no key-file option on purpose.
+ *
+ * Local runs are for the emulator only:
+ *
+ *   npm --prefix functions ci && npm --prefix functions run build
+ *   FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 GOOGLE_CLOUD_PROJECT=demo-skatehubba \
+ *     node scripts/moderation/rescreen-pending.mjs --log /tmp/rescreen.md
  *
  * Run it with node (no shebang: the root Vitest transform imports this file).
- *
- * Usage:
- *
- *   export GOOGLE_APPLICATION_CREDENTIALS=/path/to/admin-sa.json
- *
- *   # Dry run (default): lists pending clips with id, owner, age. No writes.
- *   node scripts/moderation/rescreen-pending.mjs
- *
- *   # Apply. Only after the deploy log shows "switch MODERATION: ON".
- *   MODERATION_ENABLED=true node scripts/moderation/rescreen-pending.mjs --apply --limit 1
- *   MODERATION_ENABLED=true node scripts/moderation/rescreen-pending.mjs --apply --limit 25 --delay-ms 5000
  *
  * Flags:
  *   --apply              Screen and write. Without it nothing is written.
@@ -38,8 +37,9 @@
  *   --min-age-minutes N  Skip clips newer than this (default 10); the live
  *                        trigger may still be screening them.
  *   --max-errors N       Stop after N screener errors in a row (default 2).
- *   --log PATH           Markdown log to append to
- *                        (default /workspace/team/qa/2026-10-21/rescreen.md).
+ *   --log PATH           Markdown log to append to (default
+ *                        ./rescreen-YYYY-MM-DD.md in the current directory,
+ *                        Pacific date). The workflow always passes --log.
  *   --database ID        Firestore database (default skatehubba).
  *
  * MODERATION_ENABLED: --apply fails closed unless it is exactly "true", read
@@ -62,7 +62,16 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { DATABASE_ID, functionsEnvPath, parseDotenv } from "../lib/functions-env.mjs";
 
-export const DEFAULT_LOG = "/workspace/team/qa/2026-10-21/rescreen.md";
+/** Cwd-relative, dated by the Pacific calendar day: rescreen-YYYY-MM-DD.md. */
+export function defaultLogPath(date = new Date()) {
+  const day = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+  return `rescreen-${day}.md`;
+}
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const COMPILED = join(ROOT, "functions", "lib", "moderation", "rescreen.js");
 
@@ -72,7 +81,6 @@ const DEFAULTS = {
   delayMs: 5000,
   minAgeMinutes: 10,
   maxErrors: 2,
-  log: DEFAULT_LOG,
   database: DATABASE_ID,
 };
 
@@ -84,8 +92,8 @@ function positiveInt(flag, raw, { allowZero = false } = {}) {
   return n;
 }
 
-export function parseArgs(argv) {
-  const out = { ...DEFAULTS };
+export function parseArgs(argv, now = new Date()) {
+  const out = { ...DEFAULTS, log: defaultLogPath(now) };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     const eq = arg.indexOf("=");
@@ -150,6 +158,11 @@ export function moderationSwitch(env = process.env, readFile = readFileSync) {
   return { on: value.trim() === "true", source: "functions parameter file" };
 }
 
+/** Project to pin: GOOGLE_CLOUD_PROJECT (set by the workflow), then GCLOUD_PROJECT, else let ADC decide. */
+export function projectIdFrom(env = process.env) {
+  return (env.GOOGLE_CLOUD_PROJECT ?? env.GCLOUD_PROJECT ?? "").trim();
+}
+
 export function appendLog(path, text, fs = { appendFileSync, existsSync, mkdirSync }) {
   fs.mkdirSync(dirname(path), { recursive: true });
   const header = fs.existsSync(path)
@@ -183,7 +196,7 @@ export async function main(argv = process.argv.slice(2), env = process.env, io =
   const lib = await import(/* @vite-ignore */ pathToFileURL(COMPILED).href);
   const runtime = lib.adminRescreenRuntime({
     databaseId: args.database,
-    credentialsPath: env.GOOGLE_APPLICATION_CREDENTIALS ?? "",
+    projectId: projectIdFrom(env),
     sentryDsn: env.SENTRY_DSN ?? "",
   });
   const emulator = env.FIRESTORE_EMULATOR_HOST ? ` (emulator ${env.FIRESTORE_EMULATOR_HOST})` : "";

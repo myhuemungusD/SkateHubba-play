@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const handleClipCreated = vi.fn(async () => "approved" as const);
 const initializeApp = vi.fn();
 const getAccessToken = vi.fn(async () => ({ access_token: "tok", expires_in: 3600 }));
-const cert = vi.fn(() => ({ getAccessToken }));
 const applicationDefault = vi.fn(() => ({ getAccessToken }));
 const fakeDb = { __db: true, collection: () => ({}) };
 const getFirestore = vi.fn(() => fakeDb);
@@ -16,7 +15,6 @@ vi.mock("./handlers.js", () => ({ handleClipCreated: (...args: unknown[]) => han
 vi.mock("./publish.js", () => ({ adminClipStore: () => media }));
 vi.mock("firebase-admin/app", () => ({
   initializeApp: (...args: unknown[]) => initializeApp(...args),
-  cert: (...args: unknown[]) => cert(...(args as [])),
   applicationDefault: () => applicationDefault(),
 }));
 vi.mock("firebase-admin/firestore", () => ({ getFirestore: (...args: unknown[]) => getFirestore(...(args as [])) }));
@@ -31,12 +29,10 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 describe("adminRescreenRuntime", () => {
-  it("screens through handleClipCreated with the trigger's options plus the service-account token", async () => {
-    const key = join(dir, "sa.json");
-    writeFileSync(key, JSON.stringify({ project_id: "demo-skatehubba" }));
-    const runtime = adminRescreenRuntime({ databaseId: "skatehubba", credentialsPath: key, sentryDsn: "" });
+  it("screens through handleClipCreated with the trigger's options plus the ADC token", async () => {
+    const runtime = adminRescreenRuntime({ databaseId: "skatehubba", projectId: "demo-skatehubba", sentryDsn: "" });
     expect(runtime.projectId).toBe("demo-skatehubba");
-    expect(cert).toHaveBeenCalledWith(key);
+    expect(applicationDefault).toHaveBeenCalledTimes(1);
     expect(initializeApp).toHaveBeenCalledWith(expect.objectContaining({ projectId: "demo-skatehubba" }));
     expect(getFirestore).toHaveBeenCalledWith("skatehubba");
 
@@ -52,20 +48,27 @@ describe("adminRescreenRuntime", () => {
     await expect(runtime.checkToken()).resolves.toBeUndefined();
   });
 
-  it("falls back to Application Default Credentials and fails fast on an empty token", async () => {
-    const prior = process.env.GCLOUD_PROJECT;
-    delete process.env.GCLOUD_PROJECT;
-    delete process.env.GOOGLE_CLOUD_PROJECT;
+  it("never takes a key-file path: a Workload Identity config in GOOGLE_APPLICATION_CREDENTIALS still goes through ADC", () => {
+    const prior = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    const wif = join(dir, "external-account.json");
+    writeFileSync(wif, JSON.stringify({ type: "external_account", audience: "//iam.googleapis.com/x" }));
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = wif;
     try {
-      const runtime = adminRescreenRuntime({ databaseId: "skatehubba", credentialsPath: "", sentryDsn: "" });
-      expect(applicationDefault).toHaveBeenCalled();
-      expect(initializeApp).toHaveBeenCalledWith({ credential: expect.anything() });
-      expect(runtime.projectId).toBe("");
-      getAccessToken.mockResolvedValueOnce({ access_token: "", expires_in: 0 });
-      await expect(runtime.checkToken()).rejects.toThrow("empty access token");
+      adminRescreenRuntime({ databaseId: "skatehubba", projectId: "demo-skatehubba", sentryDsn: "" });
+      expect(applicationDefault).toHaveBeenCalledTimes(1);
     } finally {
-      if (prior !== undefined) process.env.GCLOUD_PROJECT = prior;
+      if (prior === undefined) delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+      else process.env.GOOGLE_APPLICATION_CREDENTIALS = prior;
     }
+  });
+
+  it("lets ADC find the project when none is pinned and fails fast on an empty token", async () => {
+    const runtime = adminRescreenRuntime({ databaseId: "skatehubba", projectId: "", sentryDsn: "" });
+    expect(applicationDefault).toHaveBeenCalled();
+    expect(initializeApp).toHaveBeenCalledWith({ credential: expect.anything() });
+    expect(runtime.projectId).toBe("");
+    getAccessToken.mockResolvedValueOnce({ access_token: "", expires_in: 0 });
+    await expect(runtime.checkToken()).rejects.toThrow("empty access token");
   });
 });
 

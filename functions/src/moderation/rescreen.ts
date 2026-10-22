@@ -5,7 +5,8 @@
  * switch (MODERATION_ENABLED) was off is left pending and never screened.
  * This module finds those clips and runs each one through the same
  * `handleClipCreated` path the trigger uses. It is driven by
- * scripts/moderation/rescreen-pending.mjs with an admin service account.
+ * scripts/moderation/rescreen-pending.mjs, normally from the
+ * moderation-rescreen.yml workflow (Workload Identity Federation, no key file).
  * Nothing here is exported from index.ts, so it never deploys as a function
  * and never reaches the client.
  *
@@ -19,8 +20,7 @@
  *  - `maxErrors` screener failures in a row stop the run, so a missing IAM
  *    role or quota sends at most that many clips to review.
  */
-import { readFileSync } from "node:fs";
-import { applicationDefault, cert, initializeApp, type Credential } from "firebase-admin/app";
+import { applicationDefault, initializeApp } from "firebase-admin/app";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { handleClipCreated } from "./handlers.js";
 import { adminClipStore } from "./publish.js";
@@ -118,6 +118,10 @@ function errorText(error: unknown): string {
   return message.replace(/\s+/g, " ").slice(0, 200);
 }
 
+function storedHandle(clip: Record<string, unknown>): string {
+  return typeof clip.playerUsername === "string" ? clip.playerUsername : "";
+}
+
 /** Oldest first; clips with no createdAt sort last. */
 function byAge(a: PendingClip, b: PendingClip): number {
   const am = millisOf(a.data.createdAt) ?? Number.POSITIVE_INFINITY;
@@ -137,7 +141,9 @@ export async function rescreenPending(deps: RescreenDeps, options: RescreenOptio
     const createdMs = millisOf(listed.data.createdAt);
     const row: RescreenRow = {
       clipId: listed.id,
-      owner: await deps.ownerHandle(listed.data),
+      // Free: the handle stored on the clip. users/{uid} is only read below,
+      // for rows that count against --limit.
+      owner: storedHandle(listed.data),
       ageMs: createdMs === null ? null : Math.max(0, deps.now() - createdMs),
       before: stateOf(listed.data),
       after: stateOf(listed.data),
@@ -168,6 +174,7 @@ export async function rescreenPending(deps: RescreenDeps, options: RescreenOptio
       continue;
     }
     used += 1;
+    row.owner = await deps.ownerHandle(listed.data);
     if (!options.apply) continue;
 
     if (used > 1 && options.delayMs > 0) await deps.sleep(options.delayMs);
@@ -308,8 +315,8 @@ export function firestoreRescreenDeps(db: Firestore, screen: RescreenDeps["scree
 
 export interface AdminRuntimeOptions {
   databaseId: string;
-  /** Path from GOOGLE_APPLICATION_CREDENTIALS; empty uses Application Default Credentials. */
-  credentialsPath: string;
+  /** Project id to pin. Empty lets Application Default Credentials find it. */
+  projectId: string;
   sentryDsn: string;
 }
 
@@ -324,18 +331,17 @@ export interface AdminRuntime {
  * Admin SDK wiring for the script. `screen` is exactly the trigger's
  * handler with the trigger's options, except the switch is passed as on
  * (the script refuses to run otherwise) and the Video Intelligence token
- * comes from the service account instead of the metadata server.
+ * comes from Application Default Credentials instead of the metadata server.
  */
 export function adminRescreenRuntime(options: AdminRuntimeOptions): AdminRuntime {
-  let credential: Credential;
-  let projectId = process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?? "";
-  if (options.credentialsPath.length > 0) {
-    const account = JSON.parse(readFileSync(options.credentialsPath, "utf8")) as { project_id?: unknown };
-    if (typeof account.project_id === "string") projectId = account.project_id;
-    credential = cert(options.credentialsPath);
-  } else {
-    credential = applicationDefault();
-  }
+  // Application Default Credentials only. In GitHub Actions,
+  // google-github-actions/auth writes a Workload Identity Federation
+  // (external_account) config and points GOOGLE_APPLICATION_CREDENTIALS at it;
+  // google-auth-library exchanges the OIDC token for a short-lived token of
+  // the deploy service account. cert() only accepts a service-account key, so
+  // it would reject that file. There is deliberately no key-file path here.
+  const credential = applicationDefault();
+  const projectId = options.projectId;
   initializeApp(projectId.length > 0 ? { credential, projectId } : { credential });
   const db = getFirestore(options.databaseId);
   const getToken = async (): Promise<string> => (await credential.getAccessToken()).access_token;

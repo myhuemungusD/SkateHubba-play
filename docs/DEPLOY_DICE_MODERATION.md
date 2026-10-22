@@ -156,49 +156,112 @@ a deploy whose log prints `switch MODERATION: ON`.
 `moderation == "pending"` or `moderationStatus == "pending"`, oldest first,
 and runs each pending user upload through `handleClipCreated`, the same
 handler the trigger calls. Thresholds, notices, the clipsPosted badge and the
-approved-path video copy all match a live screen. It is admin-only (service
-account, no callable, nothing in the client bundle).
+approved-path video copy all match a live screen. It is admin-only (no
+callable, nothing in the client bundle) and runs from the
+`moderation-rescreen.yml` GitHub Actions workflow, never from a laptop or the
+team box.
 
 **Safety:**
 
-- Dry run by default. `--apply` refuses to run unless `MODERATION_ENABLED` is
-  exactly `true` (environment, else the functions parameter file).
+- Dry run by default. `mode=apply` needs `confirm=rescreen` and the `main`
+  branch, and the workflow sets `MODERATION_ENABLED=true` for the script. The
+  script still refuses `--apply` unless that is exactly `true`.
 - Each clip is re-read just before screening, and the handler's transaction
   re-checks `pending` at write time, so a decision by the live trigger or an
   admin is never overwritten. Re-running is safe.
-- Clips newer than `--min-age-minutes` (default 10) are left to the trigger.
-- `--limit` (default 25) and `--delay-ms` (default 5000) pace Video
-  Intelligence calls. Two screener errors in a row stop the run
-  (`--max-errors`). A failed screen sends the clip to review, never approval.
+- Clips newer than 10 minutes are left to the trigger.
+- `limit` (default 1, max 50) and `delay_ms` (default 5000) pace Video
+  Intelligence calls. Two screener errors in a row stop the run. A failed
+  screen sends the clip to review, never approval.
+- One run at a time (concurrency group `moderation-rescreen`).
 - Clips with `moderationStatus: pending` but no `moderation: pending` are
-  listed as not screenable and left alone; clear them from `/admin`.
+  listed as `skipped-not-screenable` and left alone. See "Clips the
+  rescreen cannot screen" below.
 
-**Credentials:** the service account needs Firestore and Storage admin on
-`sk8hub-d7806` and permission to call the Cloud Video Intelligence API (the
-API must be enabled). The script mints one access token before touching any
-clip, so a bad key fails up front. A missing IAM role shows up as
-`screener error ... annotate 403` on the first clip, which is why the first
-apply uses `--limit 1`.
+**Credentials:** no service-account key file, anywhere. The workflow signs in
+with Workload Identity Federation as the deploy service account (the
+`FIREBASE_WIF_PROVIDER` / `FIREBASE_WIF_SERVICE_ACCOUNT` pair from
+`firebase-functions-deploy.yml`, `production` environment). The script uses
+Application Default Credentials, which read the short-lived config the auth
+step writes. There is no `FIREBASE_TOKEN` fallback; that token cannot sign
+Admin SDK or Video Intelligence calls.
+
+That service account needs, on `sk8hub-d7806`:
+
+| Why                                                                | Role                                      | Scope                                     |
+| ------------------------------------------------------------------ | ----------------------------------------- | ----------------------------------------- |
+| Read pending clips, write decisions                                | `roles/datastore.user`                    | project                                   |
+| Video Intelligence reads the clip as the caller; approve copies it | `roles/storage.objectUser`                | bucket `sk8hub-d7806.firebasestorage.app` |
+| Call `videos:annotate` (no dedicated role)                         | `roles/serviceusage.serviceUsageConsumer` | project                                   |
+
+The Cloud Video Intelligence API must be enabled (step 1). Grant once, as a
+project owner:
 
 ```bash
-npm --prefix functions ci
-npm --prefix functions run build
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/admin-sa.json
-
-# 1. Dry run: ids, owner handles, ages. No writes.
-node scripts/moderation/rescreen-pending.mjs
-
-# 2. One clip, then check the log.
-MODERATION_ENABLED=true node scripts/moderation/rescreen-pending.mjs --apply --limit 1
-
-# 3. The rest, paced.
-MODERATION_ENABLED=true node scripts/moderation/rescreen-pending.mjs --apply --limit 25 --delay-ms 5000
+PROJECT=sk8hub-d7806
+SA="PASTE_THE_FIREBASE_WIF_SERVICE_ACCOUNT_EMAIL"
+gcloud projects add-iam-policy-binding "$PROJECT" \
+  --member="serviceAccount:${SA}" --role="roles/datastore.user" --condition=None
+gcloud projects add-iam-policy-binding "$PROJECT" \
+  --member="serviceAccount:${SA}" --role="roles/serviceusage.serviceUsageConsumer" --condition=None
+gcloud storage buckets add-iam-policy-binding gs://sk8hub-d7806.firebasestorage.app \
+  --member="serviceAccount:${SA}" --role="roles/storage.objectUser"
+gcloud services enable videointelligence.googleapis.com --project="$PROJECT"
 ```
 
-Each run appends a markdown section (clip id, @handle, age, before and after
-state, action) to `/workspace/team/qa/2026-10-21/rescreen.md`, or to
-`--log PATH`. No tokens, emails or uids are logged. Exit code 1 means a
-screener error or an early stop; read the log before rerunning.
+A missing role shows up as `screener error ... annotate 403` (Video
+Intelligence or Storage) or `PERMISSION_DENIED` from Firestore on the first
+clip, which is why the first apply uses `limit=1`. Apply also mints one
+access token before touching any clip, so a broken WIF setup fails up front.
+
+**Run it** after a deploy whose log prints `switch MODERATION: ON`:
+
+```bash
+# 1. Dry run: ids, owner handles, ages. No writes.
+gh workflow run moderation-rescreen.yml -f mode=dry-run
+
+# 2. One clip, then read the log.
+gh workflow run moderation-rescreen.yml -f mode=apply -f limit=1 -f confirm=rescreen
+
+# 3. The rest, paced.
+gh workflow run moderation-rescreen.yml -f mode=apply -f limit=25 -f confirm=rescreen
+
+# Watch and fetch the log of the latest run.
+gh run watch "$(gh run list --workflow moderation-rescreen.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+gh run download --name rescreen
+```
+
+Each run prints a markdown section (clip id, @handle, age, before and after
+state, action) to the job log and job summary, and uploads it as the
+`rescreen` artifact (kept 30 days). No tokens, emails or uids are logged.
+The owner's profile is read only for rows inside `limit`; other rows show
+the handle stored on the clip, or `(unknown)`. A
+failed run means a screener error or an early stop; read the log before
+rerunning.
+
+**Clips the rescreen cannot screen.** The log lists them with action
+`skipped-not-screenable`, the state as `moderation/moderationStatus`, and a
+note. The screener only acts on user uploads with `moderation: pending`, so
+an admin clears these by hand:
+
+1. Note the clip id and state from the dry-run log.
+2. Note says "not a user upload": a game clip or live post. The upload
+   screener never handles these. Leave it, and tell Nccode if it shows
+   "Checking…" in the app.
+3. State `review/pending`: the clip is in the `/admin` queue (Clips in
+   review). Open `/admin`, find the clip, then tap **Keep** (approved/active)
+   or **Remove** with a reason (removed/hidden, owner notified).
+4. Any other state, such as `-/pending` or `approved/pending`: the `/admin`
+   queue only lists `moderation == "review"`, so the clip does not show
+   there. An admin decides it with the `decideClipModeration` callable
+   (`{ clipId, decision: "approved" | "removed", reason }`), the same call
+   the Keep and Remove buttons make. It accepts any user clip and fixes both
+   fields in one transaction. There is no `/admin` button for this case
+   yet; ask Nccode to run it rather than editing Firestore by hand.
+5. Run the dry run again. The clip should no longer be listed.
+
+Local runs are for the Firestore emulator only (`FIRESTORE_EMULATOR_HOST`
+set, `GOOGLE_CLOUD_PROJECT=demo-skatehubba`); see the script header.
 
 ---
 
