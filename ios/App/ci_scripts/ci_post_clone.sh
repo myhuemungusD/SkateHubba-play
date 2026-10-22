@@ -90,6 +90,9 @@ npm run build
 node .github/scripts/install-google-service-info.mjs
 
 npx cap sync ios
+# Fail unless the generated manifest pins the auth plugin to the Google trait
+# (otherwise SwiftPM links the Facebook SDK, which declares tracking).
+node scripts/check-ios-spm-traits.mjs
 
 # 5. Add the plist to Copy Bundle Resources (same helper fastlane uses).
 # The project uses Swift Package Manager (ios/App/CapApp-SPM), not
