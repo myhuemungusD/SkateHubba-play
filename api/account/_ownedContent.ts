@@ -38,6 +38,11 @@ export interface OwnedContentCounts {
   crewListsUpdated: number;
   spotMessageReports: number;
   wttVotes: number;
+  /**
+   * Notifications this account sent to others (challenges, referee asks).
+   * Their title and body carry this account's @handle, so they go too.
+   */
+  notificationsSent: number;
   proContent: number;
   rateLimits: number;
   mediaObjects: number;
@@ -51,6 +56,7 @@ const OWNED_BY_FIELD: readonly (readonly [string, string, keyof OwnedContentCoun
   ["privateSpots", "createdBy", "privateSpots"],
   ["spotMessageReports", "reportedBy", "spotMessageReports"],
   ["wttVotes", "uid", "wttVotes"],
+  ["notifications", "senderUid", "notificationsSent"],
   ["proReviews", "uid", "proContent"],
   ["proChallengeEntries", "uid", "proContent"],
   ["proChallenges", "proUid", "proContent"],
@@ -87,6 +93,7 @@ export function emptyOwnedCounts(): OwnedContentCounts {
     crewListsUpdated: 0,
     spotMessageReports: 0,
     wttVotes: 0,
+    notificationsSent: 0,
     proContent: 0,
     rateLimits: 0,
     mediaObjects: 0,

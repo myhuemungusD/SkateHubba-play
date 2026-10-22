@@ -1,7 +1,13 @@
+import { ContentDataList } from "../components/legal/ContentDataList";
+import { DeviceDataList } from "../components/legal/DeviceDataList";
+import { PolicySection } from "../components/legal/PolicySection";
+import { ProcessorsSection } from "../components/legal/ProcessorsSection";
+import { RetentionSection } from "../components/legal/RetentionSection";
+import { TrickTrainingSection } from "../components/legal/TrickTrainingSection";
 import { Btn } from "../components/ui/Btn";
 import type { Screen } from "../context/NavigationContext";
 
-const EFFECTIVE_DATE = "October 21, 2026";
+const EFFECTIVE_DATE = "October 22, 2026";
 const CONTACT_EMAIL = "privacy@skatehubba.com";
 
 export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (s: Screen) => void }) {
@@ -22,101 +28,44 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
         <h1 className="font-display text-4xl text-white mb-1">Privacy Policy</h1>
         <p className="font-body text-sm text-faint mb-8">Effective date: {EFFECTIVE_DATE}</p>
 
-        <Section title="1. Who We Are">
+        <PolicySection title="1. Who We Are">
           <p>
-            SkateHubba ("we", "our", "us") operates the SkateHubba S.K.A.T.E. web application at{" "}
-            <span className="text-brand-orange">skatehubba.com</span>. This Privacy Policy explains what personal data
-            we collect, how we use it, and your rights.
+            SkateHubba ("we", "our", "us") operates the SkateHubba S.K.A.T.E. game on the web at{" "}
+            <span className="text-brand-orange">skatehubba.com</span> and in our iPhone and Android apps. This Privacy
+            Policy covers all three and explains what personal data we collect, how we use it, and your rights.
           </p>
-        </Section>
+        </PolicySection>
 
-        <Section title="2. Data We Collect">
-          <ul>
-            <li>
-              <strong className="text-white">Account data:</strong> Email address, display name (optional), and username
-              you choose during sign-up.
-            </li>
-            <li>
-              <strong className="text-white">Authentication data:</strong> If you sign in with Google, we receive your
-              Google profile (name, email, profile photo URL) from Google OAuth.
-            </li>
-            <li>
-              <strong className="text-white">Date of birth:</strong> Collected once during the age-verification gate at
-              sign-up. We use it to confirm you meet our minimum age requirement and to comply with COPPA. It is stored
-              in a private, owner-only part of your profile and is never shown to other users.
-            </li>
-            <li>
-              <strong className="text-white">Game data:</strong> Trick names, game results, scores, and turn history
-              associated with your account.
-            </li>
-            <li>
-              <strong className="text-white">Video recordings:</strong> Videos you record in-app to set or match tricks.
-              These are uploaded to Firebase Storage and linked to your game sessions.
-            </li>
-            <li>
-              <strong className="text-white">Trick-training labels (only if you opt in):</strong> The storage path of a
-              clip, the trick you picked (including stance and obstacle), whether the clip was a set or a match, and
-              whether it landed. We also store a snapshot of your consent. This is off unless you turn it on.
-            </li>
-            <li>
-              <strong className="text-white">Precise device location:</strong> If you open the map and grant permission,
-              we read your device&apos;s GPS location to centre the map and show skate spots near you. That live map
-              position stays on your device. When you tap Check in, we send one location reading to our servers to
-              confirm you are at the spot. For each check-in we keep the spot, the exact time, and the GPS accuracy in
-              your private check-in history (only you can read it). We also keep your most recent check-in coordinates
-              and time, and (while you stay checked in) your most recent presence coordinates and time, on a private
-              anti-spoofing record that only you and our servers can read. Those coordinates are replaced each time and
-              are used only to stop faked check-ins (for example, two spots too far apart to travel between). While you
-              are checked in, the app re-checks every so often that you are still at the spot and writes a short
-              &quot;here until&quot; record for that spot (your username and an expiry time). Any signed-in user can
-              read that here-until record. Who&apos;s skating also shows the spot name and the exact time you were last
-              seen there to other signed-in users, unless you turn on Hide my online status. Hide my online status
-              clears the public last-seen time and keeps you out of Who&apos;s skating; it does not hide the here-until
-              record at the spot itself. Separately, we store a last-seen server time on your online status (readable by
-              signed-in users) when Hide my online status is off. Your spot passport and badges show the spot and the
-              month or day, never your coordinates. We delete these records when you delete your account (presence and
-              activity cleanup ships with the account-deletion update). You can revoke location permission at any time
-              in your device or browser settings.
-            </li>
-            <li>
-              <strong className="text-white">Push notification tokens:</strong> If you enable notifications, we store
-              the Firebase Cloud Messaging (FCM) device token for your device so we can send you game notifications
-              (e.g. it&apos;s your turn). Tokens are held in the private part of your profile and removed when you sign
-              out or disable notifications.
-            </li>
-            <li>
-              <strong className="text-white">Usage data:</strong> Product-usage events (e.g. game created, sign-in
-              method, screens viewed) collected via Vercel Analytics and PostHog. Analytics are only active after you
-              accept the consent banner, and any user identifiers in these events are hashed before transmission.
-            </li>
-            <li>
-              <strong className="text-white">Error data:</strong> Crash reports and stack traces collected via Sentry.
-              Email addresses and other PII are stripped before transmission.
-            </li>
-          </ul>
-        </Section>
+        <PolicySection title="2. Data We Collect">
+          <ContentDataList />
+          <DeviceDataList />
+        </PolicySection>
 
-        <Section title="3. How We Use Your Data">
+        <PolicySection title="3. How We Use Your Data">
           <ul>
             <li>To create and manage your account.</li>
-            <li>To enable multiplayer S.K.A.T.E. games between users.</li>
-            <li>To send transactional emails (e.g. email verification, password reset) via Firebase.</li>
-            <li>To detect and fix bugs using anonymised error reports.</li>
-            <li>To understand aggregate product usage and improve the app.</li>
+            <li>To enable multiplayer S.K.A.T.E. games between users, including refereeing and dispute votes.</li>
+            <li>To run the community feed, profiles, spots and chat, and to check uploaded clips.</li>
+            <li>
+              To send game notifications you turned on, and transactional emails (e.g. email verification, password
+              reset) via Firebase.
+            </li>
+            <li>To stop faked check-ins, automated abuse and ban evasion.</li>
+            <li>To detect and fix bugs using pseudonymised error reports.</li>
+            <li>If you accept analytics, to understand product usage and improve the app.</li>
             <li>
               If you opt in, to teach a future trick recognizer from clips you filmed and the trick you named. We do not
               do this unless you turn the setting on.
             </li>
             <li>
-              To review user reports of inappropriate content or behaviour. When you flag an opponent, we store your
-              user ID, the reported user&apos;s ID, the game ID, and the reason you provided. Reports are reviewed by
-              our moderation team and kept confidential.
+              To review user reports of inappropriate content or behaviour (see &quot;Reports, appeals and blocks&quot;
+              above). Reports are reviewed by our moderation team and kept confidential.
             </li>
           </ul>
           <p>We do not sell your data to third parties. We do not use your data for advertising.</p>
-        </Section>
+        </PolicySection>
 
-        <Section title="4. Legal Basis (GDPR)">
+        <PolicySection title="4. Legal Basis (GDPR)">
           <p>
             If you are located in the European Economic Area (EEA), we process your personal data under the following
             legal bases:
@@ -127,60 +76,29 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
               signed up for.
             </li>
             <li>
-              <strong className="text-white">Legitimate interests:</strong> Security monitoring, bug tracking, and
-              aggregate analytics.
+              <strong className="text-white">Legitimate interests:</strong> Security monitoring, preventing abuse and
+              faked check-ins, moderation, and bug tracking.
             </li>
             <li>
-              <strong className="text-white">Consent:</strong> Where we ask for consent (e.g. optional analytics), you
-              may withdraw it at any time.
+              <strong className="text-white">Consent:</strong> Analytics, trick-recognition training, device location,
+              and notifications. You may withdraw consent at any time.
             </li>
           </ul>
-        </Section>
+        </PolicySection>
 
-        <Section title="5. Third-Party Services">
-          <p>We use the following sub-processors, each with their own privacy policies:</p>
-          <ul>
-            <li>
-              <strong className="text-white">Google Firebase</strong> (Authentication, Firestore database, Storage) —
-              Google LLC, USA.
-            </li>
-            <li>
-              <strong className="text-white">Vercel</strong> (hosting, edge network, and privacy-friendly aggregate
-              analytics) — Vercel Inc., USA.
-            </li>
-            <li>
-              <strong className="text-white">PostHog</strong> (product analytics — funnels, retention, and feature
-              usage) — PostHog Inc., USA. Only active after you accept the consent banner. We do not enable session
-              recording or autocapture, and user identifiers are hashed.
-            </li>
-            <li>
-              <strong className="text-white">Sentry</strong> (error tracking) — Functional Software Inc., USA.
-            </li>
-          </ul>
-        </Section>
+        <ProcessorsSection />
 
-        <Section title="6. Data Retention">
-          <ul>
-            <li>
-              <strong className="text-white">Account &amp; game data:</strong> Retained while your account is active.
-              Deleted within 30 days of account deletion.
-            </li>
-            <li>
-              <strong className="text-white">Video recordings:</strong> Retained for 90 days after a game ends, then
-              automatically deleted.
-            </li>
-            <li>
-              <strong className="text-white">Error logs:</strong> Retained for 90 days in Sentry.
-            </li>
-          </ul>
-        </Section>
+        <RetentionSection />
 
-        <Section title="7. Your Rights">
+        <PolicySection title="7. Your Rights">
           <p>Depending on your location, you may have the right to:</p>
           <ul>
-            <li>Access the personal data we hold about you.</li>
+            <li>
+              Access the personal data we hold about you. In Settings, under Account, &quot;Download my data&quot; gives
+              you a copy as a file.
+            </li>
             <li>Correct inaccurate data.</li>
-            <li>Delete your account and associated data (available directly in the app under Account Settings).</li>
+            <li>Delete your account and associated data (in the app: Settings, then Account, then Delete account).</li>
             <li>Object to or restrict certain processing.</li>
             <li>Data portability (receive your data in a machine-readable format).</li>
             <li>Lodge a complaint with your local data protection authority.</li>
@@ -189,20 +107,20 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
             To exercise any right, email us at <span className="text-brand-orange">{CONTACT_EMAIL}</span>. We will
             respond within 30 days.
           </p>
-        </Section>
+        </PolicySection>
 
-        <Section title="8. Cookies &amp; Tracking">
+        <PolicySection title="8. Cookies &amp; Tracking">
           <p>
-            We do not use advertising cookies, cross-site tracking, or behavioural ad networks. Vercel Analytics
-            collects anonymised, aggregated usage metrics without using cookies or fingerprinting. PostHog is used for
-            product analytics (understanding how features are used) and only runs after you accept the consent banner;
-            it stores its identifier in your browser&apos;s local storage rather than in third-party cookies, has
-            autocapture and session recording disabled, and receives only hashed user identifiers. Firebase may store
-            authentication tokens in browser storage (IndexedDB / localStorage) to keep you signed in.
+            We do not use advertising cookies, cross-site tracking, or behavioural ad networks. Analytics run only after
+            you accept the consent banner. Vercel Analytics and Speed Insights collect aggregated usage and
+            loading-speed metrics without cookies. PostHog stores its identifier in your browser&apos;s local storage
+            rather than in third-party cookies, has autocapture and session recording disabled, and receives only a
+            pseudonymous ID. Firebase stores sign-in tokens in browser storage (IndexedDB / localStorage) to keep you
+            signed in, and the app keeps the settings listed under &quot;Stored on your device&quot; in Section 2.
           </p>
-        </Section>
+        </PolicySection>
 
-        <Section title="9. Children's Privacy (COPPA Compliance)">
+        <PolicySection title="9. Children's Privacy (COPPA Compliance)">
           <p>
             SkateHubba takes the privacy of children seriously and complies with the Children&apos;s Online Privacy
             Protection Act (COPPA).
@@ -210,8 +128,8 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
           <ul>
             <li>
               <strong className="text-white">Age verification:</strong> All users must complete an age verification gate
-              before creating an account. Users under 13 are blocked from registering and no personal information is
-              collected or retained from them.
+              before creating an account. If someone enters a birth date under 13, we stop sign-up and delete any
+              sign-in account already created (for example with Google or Apple), along with anything saved for it.
             </li>
             <li>
               <strong className="text-white">Parental consent (ages 13–17):</strong> Users between 13 and 17 must
@@ -238,43 +156,11 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
               any time.
             </li>
           </ul>
-        </Section>
+        </PolicySection>
 
-        <Section title="10. Trick recognition training">
-          <p>
-            SkateHubba may one day recognize tricks from video. That work is not running yet. If it does, it will only
-            learn from clips of people who asked us to use them.
-          </p>
-          <ul>
-            <li>
-              <strong className="text-white">Opt-in, default off.</strong> The Settings switch &quot;Help train
-              SkateHubba&apos;s trick AI&quot; starts off. Nothing you film is used for training unless you turn it on.
-              After your first finished game we may ask once. You can ignore that question.
-            </li>
-            <li>
-              <strong className="text-white">What we keep.</strong> If you opt in, we store a training label for each
-              set and match clip: where the video lives, the trick, stance, and obstacle you picked, whether you were
-              setting or matching, how the turn ended, and whether you had opted in at the time.
-            </li>
-            <li>
-              <strong className="text-white">Turning it off.</strong> You can switch it off at any time. We then stop
-              using your clips for training, including clips you already shared. Those labels are marked excluded.
-            </li>
-            <li>
-              <strong className="text-white">Deletion.</strong> Deleting your account deletes your training labels along
-              with the rest of your data.
-            </li>
-            <li>
-              <strong className="text-white">Age.</strong> Players under 18 cannot opt in. Players under 13 cannot use
-              SkateHubba at all.
-            </li>
-          </ul>
-          <p>
-            This section is written in plain words. A lawyer should review it before you rely on it as a legal notice.
-          </p>
-        </Section>
+        <TrickTrainingSection />
 
-        <Section title="11. California Privacy Rights (CCPA/CPRA)">
+        <PolicySection title="11. California Privacy Rights (CCPA/CPRA)">
           <p>
             If you are a California resident, the California Consumer Privacy Act (CCPA), as amended by the California
             Privacy Rights Act (CPRA), grants you additional rights:
@@ -286,8 +172,8 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
             </li>
             <li>
               <strong className="text-white">Right to delete:</strong> You may request deletion of your personal
-              information. You can do this directly in the app (Account Settings → Delete Account) or by emailing{" "}
-              <span className="text-brand-orange">{CONTACT_EMAIL}</span>.
+              information. You can do this directly in the app (Settings, then Account, then Delete account) or by
+              emailing <span className="text-brand-orange">{CONTACT_EMAIL}</span>.
             </li>
             <li>
               <strong className="text-white">Right to opt-out of sale:</strong> SkateHubba does{" "}
@@ -316,29 +202,29 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
               .
             </p>
           )}
-        </Section>
+        </PolicySection>
 
-        <Section title="12. Do Not Sell My Personal Information">
+        <PolicySection title="12. Do Not Sell My Personal Information">
           <p>
             SkateHubba does <strong className="text-white">not sell</strong> personal information as defined under the
             CCPA. We do not share personal information with third parties for monetary or other valuable consideration.
             We only share data with our service providers (listed in Section 5) as necessary to operate the app.
           </p>
-        </Section>
+        </PolicySection>
 
-        <Section title="13. Changes to This Policy">
+        <PolicySection title="13. Changes to This Policy">
           <p>
             We may update this Privacy Policy from time to time. We will notify users of material changes by updating
             the effective date at the top of this page. Continued use of the app after changes constitutes acceptance of
             the updated policy.
           </p>
-        </Section>
+        </PolicySection>
 
-        <Section title="14. Contact">
+        <PolicySection title="14. Contact">
           <p>
             Questions about this Privacy Policy? Email us at <span className="text-brand-orange">{CONTACT_EMAIL}</span>.
           </p>
-        </Section>
+        </PolicySection>
       </article>
 
       <div className="px-5 pb-12 flex justify-center">
@@ -347,14 +233,5 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
         </Btn>
       </div>
     </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="mb-8">
-      <h2 className="font-display text-xl text-white tracking-wider mb-3">{title}</h2>
-      <div className="font-body text-sm text-dim leading-relaxed space-y-2">{children}</div>
-    </section>
   );
 }

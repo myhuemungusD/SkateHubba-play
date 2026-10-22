@@ -83,7 +83,11 @@ vi.mock("../../services/mfa", () => ({
   isTotpHint: (h: { factorId: string }) => h.factorId === "totp",
 }));
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // An under-13 block is sticky for 24h on the device; don't let one test's block leak into the next.
+  localStorage.clear();
+});
 afterEach(() => vi.unstubAllEnvs());
 
 const defaultProps = {
@@ -797,6 +801,28 @@ describe("AuthScreen", () => {
       expect((screen.getByLabelText("Birth month") as HTMLInputElement).value).toBe("");
       expect((screen.getByLabelText("Birth day") as HTMLInputElement).value).toBe("");
       expect((screen.getByLabelText("Birth year") as HTMLInputElement).value).toBe("");
+    });
+
+    it("Go Back from the blocked card leaves the signup form", async () => {
+      const onBack = vi.fn();
+      renderWithProviders(<AuthScreen {...signupProps} onBack={onBack} />);
+      await fillSignupForm();
+      await fillDob("01", "01", "2020");
+      await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+      await userEvent.click(screen.getByRole("button", { name: "Go Back" }));
+      expect(onBack).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps blocking after Go Back even with an adult DOB (no back-buttoning)", async () => {
+      renderWithProviders(<AuthScreen {...signupProps} />);
+      await fillSignupForm();
+      await fillDob("01", "01", "2020");
+      await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+      await userEvent.click(screen.getByRole("button", { name: "Go Back" }));
+      await fillDob("01", "15", "2000");
+      await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+      expect(screen.getByText("Sorry!")).toBeInTheDocument();
+      expect(mockSignUp).not.toHaveBeenCalled();
     });
 
     it("requires parental consent for 13-17 year olds before submitting", async () => {

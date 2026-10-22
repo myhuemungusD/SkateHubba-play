@@ -7,12 +7,17 @@ import { initSentry, captureException, addBreadcrumb } from "./lib/sentry";
 import { initPosthogOnConsent } from "./lib/posthog";
 import { captureInstallPrompt } from "./lib/installPrompt";
 import { installToolbarOverlay } from "./lib/toolbarOverlay";
+import { captureGameLinkFromLocation } from "./lib/gameLink";
 import { Root } from "./boot/Root";
 import { runWhenIdle, setLandingBooted, shouldBootLanding } from "./boot/landingBoot";
 import "./index.css";
 
 // Before first paint. Safari, Chrome iOS, the PWA, and Capacitor stay at 0.
 installToolbarOverlay();
+
+// A push tap opens /?game=<id>. Park the id and strip it before the router
+// (and the boot landing, whose buttons navigate away) can drop it.
+captureGameLinkFromLocation();
 
 // The full app (Firebase, contexts, every route) is a separate chunk so a
 // signed-out visitor's landing page can paint before it loads — see

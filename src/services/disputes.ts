@@ -4,7 +4,6 @@
  *   - disputes.raise.ts   — setter-facing trigger (transactional create)
  *   - disputes.feed.ts    — open-dispute feed query
  *   - disputes.votes.ts   — verdict write + per-page viewer-state hydration
- *   - disputes.cascade.ts — account-deletion cascade
  *
  * SCOPE: this iteration RECORDS AND TALLIES ONLY. Raising a dispute and
  * ruling on one never write letters, never advance a turn, and never touch
@@ -37,5 +36,3 @@ export {
   castDisputeVerdict,
   fetchDisputeViewerState,
 } from "./disputes.votes";
-
-export { deleteUserDisputeVotes, deleteUserDisputes } from "./disputes.cascade";
