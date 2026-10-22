@@ -83,6 +83,13 @@ jobs:
           REQUIRE_SW_CONFIG: '1'
       - name: Sync Capacitor
         run: npx cap sync android
+      # Without android/app/google-services.json, build.gradle skips the
+      # google-services plugin and Android push never registers. Same
+      # pattern as ios-release.yml's GoogleService-Info.plist step.
+      - name: Install google-services.json
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: node .github/scripts/install-google-services-json.mjs
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: 'temurin'
