@@ -15,7 +15,7 @@ describe("plan", () => {
     expect(px["ios-6.9"]).toEqual({ w: 1320, h: 2868 });
     expect(px["ios-6.5"]).toEqual({ w: 1284, h: 2778 });
     expect(px["ios-5.5"]).toEqual({ w: 1242, h: 2208 });
-    expect(px["ipad-13"]).toEqual({ w: 2064, h: 2752 });
+    expect(px["ipad-13"]).toBeUndefined(); // iPhone-only app: no iPad set
     expect(px["play-phone"]).toEqual({ w: 1080, h: 1920 });
     expect(plan.shotPath("/o", plan.SIZES[0], plan.SCREENS[0])).toBe("/o/ios-6.9/01-game.png");
   });

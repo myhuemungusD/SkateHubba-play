@@ -34,15 +34,14 @@ npm run review:screenshots -- --base-url http://localhost:5173 --out ./shots
 
 It signs in as the reviewer with Playwright (`npx playwright install chromium` once), then saves six screens at each size into `store-screenshots/<size>/` (gitignored): a game mid-turn, the clips feed, the map, the profile, the Closet and the lobby. It stops if any screen lands on Roll Dice or Skate Runner. Set `REVIEW_BROWSER_CHANNEL=chrome` to capture with Google Chrome, which plays the H.264 demo clip (Playwright's own Chromium can't).
 
-| id         | Store       | Device                                                       | Pixels    |
-| ---------- | ----------- | ------------------------------------------------------------ | --------- |
-| ios-6.9    | App Store   | iPhone 6.9"                                                  | 1320×2868 |
-| ios-6.5    | App Store   | iPhone 6.5"                                                  | 1284×2778 |
-| ios-5.5    | App Store   | iPhone 5.5"                                                  | 1242×2208 |
-| ipad-13    | App Store   | iPad 13" (the app supports iPad: TARGETED_DEVICE_FAMILY 1,2) | 2064×2752 |
-| play-phone | Google Play | Phone                                                        | 1080×1920 |
-| play-7in   | Google Play | 7" tablet                                                    | 1200×1920 |
-| play-10in  | Google Play | 10" tablet                                                   | 1600×2560 |
+| id         | Store       | Device      | Pixels    |
+| ---------- | ----------- | ----------- | --------- |
+| ios-6.9    | App Store   | iPhone 6.9" | 1320×2868 |
+| ios-6.5    | App Store   | iPhone 6.5" | 1284×2778 |
+| ios-5.5    | App Store   | iPhone 5.5" | 1242×2208 |
+| play-phone | Google Play | Phone       | 1080×1920 |
+| play-7in   | Google Play | 7" tablet   | 1200×1920 |
+| play-10in  | Google Play | 10" tablet  | 1600×2560 |
 
 Run `review:seed` first so the screens have content. These are captures of the web build at device size. Look them over before uploading, because the native status bar isn't included.
 

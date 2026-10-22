@@ -8,7 +8,6 @@ export const SIZES = [
   { id: "ios-6.9", store: "App Store", label: 'iPhone 6.9"', width: 440, height: 956, scale: 3, mobile: true }, // 1320×2868
   { id: "ios-6.5", store: "App Store", label: 'iPhone 6.5"', width: 428, height: 926, scale: 3, mobile: true }, // 1284×2778
   { id: "ios-5.5", store: "App Store", label: 'iPhone 5.5"', width: 414, height: 736, scale: 3, mobile: true }, // 1242×2208
-  { id: "ipad-13", store: "App Store", label: 'iPad 13"', width: 1032, height: 1376, scale: 2, mobile: true }, // 2064×2752 (TARGETED_DEVICE_FAMILY 1,2)
   { id: "play-phone", store: "Google Play", label: "Phone", width: 360, height: 640, scale: 3, mobile: true }, // 1080×1920
   { id: "play-7in", store: "Google Play", label: '7" tablet', width: 600, height: 960, scale: 2, mobile: true }, // 1200×1920
   { id: "play-10in", store: "Google Play", label: '10" tablet', width: 800, height: 1280, scale: 2, mobile: true }, // 1600×2560
