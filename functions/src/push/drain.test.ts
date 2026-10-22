@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { deliverDispatch, drainQueue, parseDispatchDoc, PUSH_TTL_MS, RETRY_MIN_AGE_MS } from "./drain.js";
+import {
+  deliverDispatch,
+  drainQueue,
+  parseDispatchDoc,
+  PUSH_BACKLOG_CUTOFF_MS,
+  PUSH_TTL_MS,
+  RETRY_MIN_AGE_MS,
+} from "./drain.js";
 
 const NOW = 1_800_000_000_000;
 const ts = (ms: number) => ({ toMillis: () => ms });
@@ -80,6 +87,19 @@ describe("deliverDispatch", () => {
     const dp = deps();
     expect(await deliverDispatch(d, dp)).toBe("expired");
     expect(dp.send).not.toHaveBeenCalled();
+  });
+  it("drops the pre-go-live backlog unsent", async () => {
+    const d = doc(good({ createdAt: ts(PUSH_BACKLOG_CUTOFF_MS - 1) }));
+    const dp = deps({ nowMs: PUSH_BACKLOG_CUTOFF_MS + 60_000 });
+    expect(await deliverDispatch(d, dp)).toBe("expired");
+    expect(dp.send).not.toHaveBeenCalled();
+    expect(d.delete).toHaveBeenCalled();
+  });
+  it("still delivers docs created at or after the cutoff", async () => {
+    const d = doc(good({ createdAt: ts(PUSH_BACKLOG_CUTOFF_MS) }));
+    const dp = deps({ nowMs: PUSH_BACKLOG_CUTOFF_MS + 60_000 });
+    expect(await deliverDispatch(d, dp)).toBe("sent");
+    expect(dp.send).toHaveBeenCalled();
   });
   it("prunes only dead tokens", async () => {
     const dp = deps({
