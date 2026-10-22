@@ -624,6 +624,8 @@ service cloud.firestore {
         && !('isVerifiedPro' in request.resource.data)
         && !('verifiedBy' in request.resource.data)
         && !('verifiedAt' in request.resource.data)
+        // QA / test-account marker: Admin SDK only (scripts/set-test-account.mjs).
+        && !('isTestAccount' in request.resource.data)
         // Pro-authored profile fields: never at creation (no one is a pro yet)
         && !('proBio' in request.resource.data)
         && !('proSignatureTricks' in request.resource.data)
@@ -686,6 +688,7 @@ service cloud.firestore {
             .hasAny(['uid', 'username', 'createdAt',
                      'banned',
                      'isVerifiedPro', 'verifiedBy', 'verifiedAt',
+                     'isTestAccount',
                      'email', 'emailVerified', 'dob', 'parentalConsent',
                      'fcmTokens',
                      'wins', 'losses', 'lastStatsGameId',
