@@ -76,18 +76,13 @@ jobs:
           FUNCTIONS: ${{ github.event.inputs.functions }}
         run: |
           set -euo pipefail
-          RAW="${FUNCTIONS// /}"
-          if [ -z "$RAW" ]; then
-            echo "only=functions" >> "$GITHUB_OUTPUT"
-            echo "Deploy target: all functions."
-            exit 0
-          fi
-          if ! [[ "$RAW" =~ ^[A-Za-z][A-Za-z0-9]*(,[A-Za-z][A-Za-z0-9]*)*$ ]]; then
-            echo "::error::The functions input must be a comma-separated list of names, like diceAction,diceSweep."
-            exit 1
-          fi
-          echo "only=functions:${RAW}" >> "$GITHUB_OUTPUT"
-          echo "Deploy target: ${RAW}."
+          # Every name needs its own functions: prefix. firebase-tools ignores
+          # bare entries, so "functions:a,b" used to deploy only a (run
+          # 39634702670). scripts/ci/functions-only.mjs builds the list and is
+          # unit-tested in src/__tests__/scripts-functions-only.test.ts.
+          ONLY=$(node scripts/ci/functions-only.mjs only)
+          echo "only=${ONLY}" >> "$GITHUB_OUTPUT"
+          echo "Deploy target: ${ONLY}."
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -306,7 +301,7 @@ jobs:
               --project "$PROJECT_ID" \
               --only "$ONLY" \
               --non-interactive \
-              --force; then
+              --force 2>&1 | tee "$RUNNER_TEMP/functions-deploy.log"; then
               echo "Deploy succeeded on attempt ${attempt}."
               break
             fi
@@ -319,6 +314,14 @@ jobs:
             sleep "$sleep_for"
             attempt=$((attempt + 1))
           done
+
+      # Fail loudly if a requested function did not deploy. firebase-tools
+      # never skips a function named in --only, so each one must log
+      # "Successful create|update operation". Skipped for deploy-all runs.
+      - name: Verify requested functions deployed
+        env:
+          FUNCTIONS: ${{ github.event.inputs.functions }}
+        run: node scripts/ci/functions-only.mjs verify "$RUNNER_TEMP/functions-deploy.log"
 
       - name: Summary
         env:
