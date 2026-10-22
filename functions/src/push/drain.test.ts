@@ -71,6 +71,10 @@ describe("deliverDispatch", () => {
       tokens: ["a", "b"],
       notification: { title: "T", body: "B" },
       data: { gameId: "g" },
+      webpush: {
+        fcmOptions: { link: "https://skatehubba.com/?game=g" },
+        notification: { icon: "/icon-192.png", badge: "/icon-192.png", tag: "game_g", renotify: true },
+      },
     });
     expect(d.delete).toHaveBeenCalled();
     expect(dp.prune).not.toHaveBeenCalled();
@@ -159,6 +163,8 @@ describe("dice pushes and the iOS build", () => {
     expect(await deliverDispatch(d, dp)).toBe("sent");
     expect(dp.pushTarget).toHaveBeenCalledWith("u1");
     expect(dp.send).toHaveBeenCalledWith(expect.objectContaining({ tokens: ["laptop"] }));
+    // A dice tap opens the dice table, the same route the service worker uses.
+    expect(dp.send.mock.calls[0][0].webpush.fcmOptions.link).toBe("https://skatehubba.com/dice/g");
     // Dead-token pruning maps back to the filtered list, not the original one.
     expect(dp.prune).toHaveBeenCalledWith("u1", ["laptop"]);
   });

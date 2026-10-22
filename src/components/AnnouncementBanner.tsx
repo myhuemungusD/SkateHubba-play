@@ -7,13 +7,16 @@ import {
   type Announcement,
 } from "../services/adminInsights";
 import { fetchIsFeatureTester } from "../services/featureTesters";
+import { isNativeShell } from "../lib/featureFlags";
 
 /** In-app banner for the newest live announcement this player is in the audience for. */
 export function AnnouncementBanner({ uid, isPro }: { uid: string; isPro: boolean }) {
   const [item, setItem] = useState<Announcement | null>(null);
   useEffect(() => {
     let live = true;
-    fetchIsFeatureTester(uid)
+    // Store builds never act on the runtime tester list (App Store 2.3.1), so
+    // native skips the read and only sees non-tester announcements.
+    (isNativeShell() ? Promise.resolve(false) : fetchIsFeatureTester(uid))
       .then((isTester) => getActiveAnnouncement({ isPro, isTester }))
       .then(
         (a) => {

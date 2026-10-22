@@ -320,7 +320,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // silently merge cohorts). Sentry uses the same surrogate for scoped issues.
   useEffect(() => {
     if (user) {
-      const username = activeProfile?.username;
       // Hash the uid before it reaches PostHog / Sentry. hashIdentity is a
       // stable, deterministic surrogate, so the distinct_id stays consistent
       // per user (analytics continuity, sign-out reset still works) while the
@@ -329,15 +328,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Sentry is crash/error reporting under legitimate interest (PrivacyPolicy
       // §Error data — no consent gate; PII is stripped in main.tsx beforeSend),
       // so setUser stays unconditional. PostHog is analytics: gate on consent.
-      setSentryUser({ id: surrogateId, ...(username ? { username } : {}) });
+      // Only the hashed surrogate is sent. The username is a public, direct
+      // identifier, and the privacy policy promises that analytics and error
+      // identifiers are hashed, so it must not reach either vendor.
+      setSentryUser({ id: surrogateId });
       if (analyticsConsented) {
-        posthogIdentify(surrogateId, username ? { username } : undefined);
+        posthogIdentify(surrogateId);
       }
     } else {
       posthogReset();
       setSentryUser(null);
     }
-  }, [user, activeProfile?.username, analyticsConsented]);
+  }, [user, analyticsConsented]);
 
   // Refresh the native push token after sign-in. Gated on isPushSupported()
   // so web users never hit the Capacitor plugin (which throws "unimplemented"

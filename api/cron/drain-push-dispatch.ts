@@ -52,6 +52,7 @@ import { getFirestore, FieldValue, type Firestore } from "firebase-admin/firesto
 import { getMessaging } from "firebase-admin/messaging";
 import { parseServiceAccountJson } from "./_serviceAccount.js";
 import { diceEligibleTokens, isDicePush } from "./_pushPlatforms.js";
+import { webpushOptions } from "./_pushWebpush.js";
 import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
 
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
@@ -378,6 +379,8 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
           tokens,
           notification: { title: payload.title, body: payload.body },
           data: payload.data,
+          // Tap link, icon and per-game tag for web tokens (see _pushWebpush.ts).
+          webpush: webpushOptions(payload.data),
         });
 
         // Only reached when FCM accepted the request. A throw above leaves the

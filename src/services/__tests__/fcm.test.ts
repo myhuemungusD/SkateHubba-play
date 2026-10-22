@@ -48,6 +48,8 @@ import {
   _resetSwRegistration,
   _resetActiveFcmToken,
   _resetMessagingSupport,
+  cappedTokenList,
+  MAX_PUSH_TOKENS,
 } from "../fcm";
 
 // jsdom doesn't provide Notification — stub it globally for these tests
@@ -56,6 +58,8 @@ const originalNotification = globalThis.Notification;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Some cases give getDoc a per-path implementation; restore the empty-doc default.
+  mockGetDoc.mockImplementation(() => Promise.resolve({ data: () => undefined }));
   _resetSwRegistration();
   _resetActiveFcmToken();
   _resetMessagingSupport();
@@ -421,12 +425,12 @@ describe("removeFcmToken", () => {
 describe("platform tag prune on register", () => {
   it("drops stale platform tags when registering a new token", async () => {
     mockGetToken.mockResolvedValue("fresh-token");
-    mockGetDoc.mockResolvedValueOnce({
-      data: () => ({
-        tokens: ["keep-me"],
-        platforms: { "keep-me": "web", "stale-gone": "ios", "also-gone": "android" },
-      }),
-    });
+    mockGetDoc.mockImplementation(async (ref: unknown) => ({
+      data: () =>
+        ref === "pushTargets/u1"
+          ? { tokens: ["keep-me"], platforms: { "keep-me": "web", "stale-gone": "ios", "also-gone": "android" } }
+          : undefined,
+    }));
     await requestPushPermission("u1");
     const mirrorWrite = mockSetDoc.mock.calls.find((c) => {
       const path = c[0];
@@ -444,6 +448,69 @@ describe("platform tag prune on register", () => {
     });
     // keep-me is still in the token list, so its tag is left alone (merge keeps it).
     expect(body.platforms).not.toHaveProperty("keep-me");
+  });
+});
+
+describe("10-token cap on register", () => {
+  const full = Array.from({ length: 10 }, (_, i) => `old-${i}`);
+
+  function seed(docs: Record<string, Record<string, unknown> | undefined>) {
+    mockGetDoc.mockImplementation(async (ref: unknown) => ({ data: () => docs[ref as string] }));
+  }
+
+  it("cappedTokenList leaves room-to-spare and already-present cases to arrayUnion", () => {
+    expect(cappedTokenList(undefined, "t")).toBeNull();
+    expect(cappedTokenList(["a", "b"], "t")).toBeNull();
+    expect(cappedTokenList(full, "old-3")).toBeNull();
+    expect(cappedTokenList(full.slice(0, 9), "t")).toBeNull();
+  });
+
+  it("cappedTokenList keeps the newest 9 plus the new token, ignoring junk entries", () => {
+    expect(cappedTokenList(full, "new")).toEqual([...full.slice(1), "new"]);
+    expect(cappedTokenList([...full, "old-10", 42], "new")).toEqual([...full.slice(2), "old-10", "new"]);
+    expect(MAX_PUSH_TOKENS).toBe(10);
+  });
+
+  it("trims both docs to the newest 9 plus this device instead of being denied", async () => {
+    mockRequestPermission.mockResolvedValue("granted");
+    mockGetToken.mockResolvedValue("new-device");
+    seed({
+      "users/u1/private/profile": { fcmTokens: full },
+      "pushTargets/u1": { tokens: full, platforms: { "old-0": "ios", "old-5": "web" } },
+    });
+
+    expect(await requestPushPermission("u1")).toBe("new-device");
+
+    const kept = [...full.slice(1), "new-device"];
+    expect(mockSetDoc).toHaveBeenNthCalledWith(1, "users/u1/private/profile", { fcmTokens: kept }, { merge: true });
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      2,
+      "pushTargets/u1",
+      {
+        tokens: kept,
+        // The dropped token's tag goes with it; old-5 is still kept, so its tag stays.
+        platforms: { "new-device": "web", "old-0": "DELETE_FIELD" },
+        updatedAt: "SERVER_TS",
+      },
+      { merge: true },
+    );
+    expect(kept).toHaveLength(10);
+  });
+
+  it("re-registering a token already in a full list stays an arrayUnion", async () => {
+    mockRequestPermission.mockResolvedValue("granted");
+    mockGetToken.mockResolvedValue("old-4");
+    seed({ "users/u1/private/profile": { fcmTokens: full }, "pushTargets/u1": { tokens: full } });
+
+    await requestPushPermission("u1");
+
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      1,
+      "users/u1/private/profile",
+      { fcmTokens: { _op: "arrayUnion", value: "old-4" } },
+      { merge: true },
+    );
+    expect(mockSetDoc.mock.calls[1][1]).toMatchObject({ tokens: { _op: "arrayUnion", value: "old-4" } });
   });
 });
 
