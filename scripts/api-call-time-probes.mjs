@@ -46,13 +46,26 @@ const SETTLE_MS = 4000;
 /**
  * What each probe exercises. `covers` lists the package entry points it loads,
  * so the guard test can check that every SDK the functions import is probed.
- * `mustLoad` are packages (matched as /node_modules/<name>/) the call path has
- * to have required by the end; their absence means the lazy load never ran.
+ * `mustLoad` are packages, or package subpaths (each matched as
+ * /node_modules/<entry>/ in require.cache), the call path has to have required
+ * by the end; their absence means the lazy load never ran. A probe with nothing
+ * to check can't catch a regression (if an SDK ever short-circuits, it passes
+ * vacuously), so every probe has a non-empty `mustLoad` or, when require.cache
+ * can't see what it loads, a `noMustLoad` saying why and what asserts it instead.
+ *
+ * `fetch-blob` is the request-time witness for the Auth and Messaging calls:
+ * google-auth-library 11's gaxios 7 import()s node-fetch 3 (ESM, so not in
+ * require.cache) on its first request, and node-fetch's fetch-blob dependency
+ * require()s fetch-blob/streams.cjs. It is absent until a call actually sends
+ * (initializeApp, getAuth and getMessaging alone don't load it). If gaxios ever
+ * drops node-fetch this fails loudly: pick the new transport's witness.
  */
 export const PROBES = {
   "firebase-admin/app": {
     covers: ["firebase-admin/app"],
-    mustLoad: [],
+    // cert()'s credential stack. initializeApp(cert) requires nothing beyond the import
+    // (checked: identical require.cache), so this asserts the import graph, not a call.
+    mustLoad: ["google-auth-library"],
     describe: "initializeApp(cert(serviceAccount)) as every function's getAdminApp does",
   },
   "firebase-admin/firestore": {
@@ -67,17 +80,24 @@ export const PROBES = {
   },
   "firebase-admin/auth": {
     covers: ["firebase-admin/auth"],
-    mustLoad: [],
+    // jsonwebtoken → jwks-rsa → jose is the first 1.2.0 crash chain (jose 6 is ESM-only;
+    // package.json overrides jwks-rsa's jose to 5.x). fetch-blob: see above.
+    mustLoad: ["jsonwebtoken", "jwks-rsa", "jose", "fetch-blob"],
     describe: "getAuth(app).verifyIdToken(checkRevoked) + revokeRefreshTokens + deleteUser",
   },
   "firebase-admin/messaging": {
     covers: ["firebase-admin/messaging"],
-    mustLoad: [],
+    // google-auth-library and gaxios mint the FCM access token, but firebase-admin/app
+    // already loads both, so on their own they'd pass even if no send ran: the
+    // messaging module itself and fetch-blob (the send's request; see above) discriminate.
+    mustLoad: ["google-auth-library", "gaxios", "firebase-admin/lib/messaging", "fetch-blob"],
     describe: "getMessaging(app).sendEachForMulticast",
   },
   "@sentry/node": {
     covers: ["@sentry/node"],
     mustLoad: [],
+    noMustLoad:
+      "api/_sentry.ts import()s @sentry/node, which resolves to its ESM build (exports.import → build/esm), so it never enters require.cache; the runner fails instead when ensureSentry() returns null with a DSN set, which is exactly what a failed import() produces",
     describe: "api/_sentry.ts ensureSentry() with a DSN (dynamic import) + captureServerError + flush",
   },
   "api/account/delete": {
@@ -87,6 +107,13 @@ export const PROBES = {
       "the real handler (withSentry, getAdminApp, verifyIdToken) + the real erasure helpers (deletePrefix, deleteUserDataAsAdmin) on cascadeDeps-shaped deps",
   },
 };
+
+/** Probes that would pass with nothing checked: empty mustLoad and no noMustLoad reason. */
+export function listVacuousProbes(probes = PROBES) {
+  return Object.entries(probes)
+    .filter(([, p]) => p.mustLoad.length === 0 && !p.noMustLoad?.trim())
+    .map(([name]) => name);
+}
 
 // ── child side ──────────────────────────────────────────────────────────────
 
