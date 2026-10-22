@@ -389,3 +389,19 @@ export async function tuneVideoTrack(track: MediaStreamTrack): Promise<void> {
 
   logCameraSettings(track);
 }
+
+/**
+ * Catch handler for the live-preview `<video>.play()` promise. An AbortError
+ * means a newer load superseded this one (lens flip, unmount) and is expected;
+ * anything else is logged so it shows up without becoming an unhandled rejection.
+ */
+export function logPreviewPlayError(err: unknown): void {
+  // Read by shape: DOMException is not an Error instance in every engine.
+  const e = typeof err === "object" && err !== null ? (err as { name?: unknown; message?: unknown }) : {};
+  const name = typeof e.name === "string" ? e.name : "";
+  if (name === "AbortError") return;
+  logger.warn("camera_preview_play_failed", {
+    name: name || "unknown",
+    error: typeof e.message === "string" ? e.message : String(err),
+  });
+}

@@ -21,6 +21,15 @@ export const MENU_BTN =
   "w-full min-h-[44px] py-3 rounded-xl glass-card text-white font-display text-sm hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
 
 /**
+ * True when @capacitor/camera rejected because the user dismissed the picker
+ * ("User cancelled photos app" on iOS and Android), not because access failed.
+ */
+export function isPickerCancel(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /cancel/i.test(msg);
+}
+
+/**
  * Capture a Blob from the native Capacitor Camera plugin. Lazy import
  * so the plugin only lands on the upload code path.
  */

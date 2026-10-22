@@ -19,6 +19,7 @@ import {
   type AvatarSource,
   type Pending,
   type Screen,
+  isPickerCancel,
 } from "./avatarPickerShared";
 import { AvatarPreviewScreen } from "./AvatarPreviewScreen";
 import { AvatarUrlScreen } from "./AvatarUrlScreen";
@@ -75,6 +76,8 @@ export function AvatarPicker({ uid, onUploaded, onClose }: Props) {
           const blob = await captureFromCapacitor(source);
           if (blob) handleBlob(blob, source);
         } catch (err) {
+          // Backing out of the native picker rejects too; that's not a failure.
+          if (isPickerCancel(err)) return;
           logger.warn("avatar_picker_native_failed", {
             source,
             error: err instanceof Error ? err.message : String(err),
