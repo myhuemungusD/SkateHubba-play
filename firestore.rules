@@ -219,6 +219,31 @@ service cloud.firestore {
         );
     }
 
+    // ── Game-clip video pin (security audit 2026-10-21, H1) ──
+    // A game clip's video must be the attributed player's own upload for that
+    // exact game, turn and role. Storage pins every game upload to
+    // games/{gameId}/turn-{n}/{role}-{uploaderUid}.{ext}, so only the player
+    // named in the file can have written it. Without this, any participant
+    // could publish any bucket object as the opponent's clip.
+    function gameClipVideoUrlOk(d) {
+      return d.videoUrl is string
+        && d.videoUrl.size() <= 2048
+        && d.gameId.matches('^[A-Za-z0-9_-]{1,128}$')
+        && d.videoUrl.matches(
+          '^https://firebasestorage\\.googleapis\\.com/v0/b/' + FIREBASE_BUCKET() +
+          '/o/games%2F' + d.gameId + '%2Fturn-' + string(d.turnNumber) + '%2F' + d.role + '-' +
+          d.playerUid + '\\.(webm|mp4)(\\?.*)?$'
+        );
+    }
+
+    // Server-side moderation switch. config/moderation { enabled: bool } is
+    // written only by the Admin SDK. When it is on, a user clip must start
+    // pending; absent or off keeps the moderation-off direct publish.
+    function moderationOn() {
+      return fsExists('config', 'moderation')
+        && fsGet('config', 'moderation').data.get('enabled', false) == true;
+    }
+
     // ── User-clip creation rate limit (30s) ──
     // Same two-part idiom as /reports + reports_limits: a pre-state read
     // proves the cooldown elapsed, and a getAfter() on the SAME batch
@@ -3191,6 +3216,7 @@ service cloud.firestore {
         // ── videoUrl bucket pin (audit P2) ──
         // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r36
         && videoUrlBucketPinned(request.resource.data.videoUrl)
+        && gameClipVideoUrlOk(request.resource.data)
         && (request.resource.data.spotId == null
             || (request.resource.data.spotId is string
                 && request.resource.data.spotId.size() <= 64))
@@ -3211,8 +3237,10 @@ service cloud.firestore {
         // playerUid must be one of the game's two players — never the judge,
         // never an arbitrary UID.
         && (
-          request.resource.data.playerUid == fsGet('games', request.resource.data.gameId).data.player1Uid
-          || request.resource.data.playerUid == fsGet('games', request.resource.data.gameId).data.player2Uid
+          (request.resource.data.playerUid == fsGet('games', request.resource.data.gameId).data.player1Uid
+            && request.resource.data.playerUsername == fsGet('games', request.resource.data.gameId).data.player1Username)
+          || (request.resource.data.playerUid == fsGet('games', request.resource.data.gameId).data.player2Uid
+            && request.resource.data.playerUsername == fsGet('games', request.resource.data.gameId).data.player2Username)
         );
 
       // ── User-uploaded clips (no backing game) ──
@@ -3233,6 +3261,9 @@ service cloud.firestore {
         && request.resource.data.playerUsername is string
         && request.resource.data.playerUsername.size() > 0
         && request.resource.data.playerUsername.size() <= 20
+        // Display name is the caller's real handle (audit H1). users/{uid}
+        // is already read by clipRateLimitOk, so this costs no extra read.
+        && request.resource.data.playerUsername == fsGet('users', request.auth.uid).data.username
         && request.resource.data.trickName is string
         && request.resource.data.trickName.size() >= 1
         && request.resource.data.trickName.size() <= 80
@@ -3241,6 +3272,7 @@ service cloud.firestore {
                 && request.resource.data.spotId.size() <= 64))
         && (
           (request.resource.data.moderationStatus == 'active'
+            && !moderationOn()
             && !('moderation' in request.resource.data)
             && (userClipVideoUrlOk(request.resource.data.videoUrl, request.auth.uid)
                 || userClipPublicUrlOk(request.resource.data.videoUrl, request.auth.uid)))
@@ -3297,6 +3329,8 @@ service cloud.firestore {
           && request.resource.data.username is string
           && request.resource.data.username.size() > 0
           && request.resource.data.username.size() <= 20
+          // Display name is the caller's real handle (audit H1).
+          && request.resource.data.username == fsGet('users', request.auth.uid).data.username
           && request.resource.data.text is string
           && request.resource.data.text.size() >= 1
           && request.resource.data.text.size() <= 300

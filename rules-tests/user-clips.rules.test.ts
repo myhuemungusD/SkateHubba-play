@@ -365,7 +365,8 @@ describe("clips/{id}/comments", () => {
   function makeComment(uid: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
     return {
       userId: uid,
-      username: "alice",
+      // The create rule binds username to users/{uid}.username (audit H1).
+      username: uid === OTHER_UID ? "bob" : "alice",
       text: "sick clip",
       createdAt: serverTimestamp(),
       ...overrides,
