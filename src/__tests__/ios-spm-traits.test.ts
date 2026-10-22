@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import config from "../../capacitor.config";
@@ -27,6 +28,28 @@ const localPackages = [
   traits: traits === undefined ? null : [...traits.matchAll(/"([^"]+)"|(\.defaults)/g)].map((t) => t[1] ?? t[2]),
 }));
 
+/**
+ * Runs the Capacitor CLI's Package.swift generator (what `cap sync ios` writes
+ * on CI) so a CLI that renames or drops `packageTraits` fails here, not only
+ * at the post-sync guard (scripts/check-ios-spm-traits.mjs).
+ */
+async function generateCapAppPackage(): Promise<string> {
+  const req = createRequire(import.meta.url);
+  const { loadConfig } = req("@capacitor/cli/dist/config") as { loadConfig: () => Promise<CliConfig> };
+  const { getPlugins } = req("@capacitor/cli/dist/plugin") as {
+    getPlugins: (config: CliConfig, platform: string) => Promise<unknown[]>;
+  };
+  const { getIOSPlugins } = req("@capacitor/cli/dist/ios/common") as {
+    getIOSPlugins: (plugins: unknown[]) => Promise<unknown[]>;
+  };
+  const { generatePackageText } = req("@capacitor/cli/dist/util/spm") as {
+    generatePackageText: (config: CliConfig, plugins: unknown[]) => Promise<string>;
+  };
+  const cliConfig = await loadConfig();
+  return generatePackageText(cliConfig, await getIOSPlugins(await getPlugins(cliConfig, "ios")));
+}
+type CliConfig = { readonly app: unknown };
+
 describe("iOS SwiftPM plugin traits", () => {
   it("builds the auth plugin with the Google trait only", () => {
     expect(spm?.packageTraits?.["@capacitor-firebase/authentication"]).toEqual(["Google"]);
@@ -44,6 +67,13 @@ describe("iOS SwiftPM plugin traits", () => {
       /\.product\(name: "GoogleSignIn", package: "GoogleSignIn-iOS",\s*condition: \.when\(traits: \["Google"\]\)\)/,
     );
     expect(auth?.traits).toContain("Google");
+  });
+
+  it("Capacitor's own generator writes the Google-only trait from this config", async () => {
+    const text = await generateCapAppPackage();
+    expect(text.split("\n")[0]).toBe(`// swift-tools-version: ${spm?.swiftToolsVersion}`);
+    expect(text).toMatch(/"CapacitorFirebaseAuthentication", path: "[^"]+", traits: \["Google"\]\)/);
+    expect(text).not.toMatch(/facebook/i);
   });
 
   it("declares Swift tools 6.1+, which package traits require", () => {
