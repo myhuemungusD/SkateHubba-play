@@ -16,7 +16,7 @@ describe("plan", () => {
     expect(px["ios-6.3"]).toEqual({ w: 1206, h: 2622 });
     expect(px["ios-6.5"]).toEqual({ w: 1284, h: 2778 });
     expect(px["ios-5.5"]).toEqual({ w: 1242, h: 2208 });
-    expect(px["ipad-13"]).toBeUndefined(); // iPhone-only app: no iPad set
+    expect(px["ipad-13"]).toEqual({ w: 2064, h: 2752 });
     expect(px["play-phone"]).toEqual({ w: 1080, h: 1920 });
     expect(plan.shotPath("/o", plan.SIZES[0], plan.SCREENS[0])).toBe("/o/ios-6.9/01-game.png");
   });
@@ -224,17 +224,22 @@ describe("App Store shot list (screenshots-plan.md)", () => {
     expect(shots.shotProblem({ ...ok, text: "No video recorded" })).toMatch(/No video recorded/);
     expect(shots.shotProblem({ ...ok, text: "ROLL DICE" })).toMatch(/ROLL DICE/);
     expect(shots.shotProblem({ ...ok, text: "Bless as pro" })).toMatch(/Bless/);
+    // Post-#812 blessing copy ("put on by @x"), in both forms.
+    expect(shots.shotProblem({ ...ok, text: "Put someone on as pro" })).toMatch(/Put someone on/);
+    expect(shots.shotProblem({ ...ok, text: "@kai put you on" })).toMatch(/put you on/);
+    expect(shots.shotProblem({ ...ok, text: "put on by @kai" })).toBeNull();
     expect(shots.shotProblem({ ...ok, overlays: 1 })).toMatch(/overlay/);
     expect(shots.shotProblem({ ...ok, url: "http://l/feed" })).toMatch(/must not show/);
     expect(plan.OVERLAY_SELECTOR).toContain('[role="dialog"]');
     expect(plan.OVERLAY_SELECTOR).toContain('[data-testid="toast"]');
   });
 
-  it("has no iPad size in the App Store set", () => {
+  it('runs the App Store set as 6.9" + 6.3" whatever else SIZES holds', () => {
     const appStore = plan.SIZES.filter((s: { store: string }) => s.store === "App Store").map(
       (s: { id: string }) => s.id,
     );
-    expect(appStore).toContain("ios-6.3");
-    expect(appStore.filter((id: string) => id.startsWith("ipad"))).toEqual([]);
+    expect(appStore).toEqual(expect.arrayContaining(["ios-6.9", "ios-6.3"]));
+    const run = shots.parseArgs(["--only", "ios-6.9,ios-6.3"], {}).sizes.map((s: { id: string }) => s.id);
+    expect(run.some((id: string) => id.startsWith("ipad"))).toBe(false);
   });
 });

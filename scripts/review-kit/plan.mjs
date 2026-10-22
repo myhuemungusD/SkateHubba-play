@@ -9,6 +9,7 @@ export const SIZES = [
   { id: "ios-6.3", store: "App Store", label: 'iPhone 6.3"', width: 402, height: 874, scale: 3, mobile: true }, // 1206×2622
   { id: "ios-6.5", store: "App Store", label: 'iPhone 6.5"', width: 428, height: 926, scale: 3, mobile: true }, // 1284×2778
   { id: "ios-5.5", store: "App Store", label: 'iPhone 5.5"', width: 414, height: 736, scale: 3, mobile: true }, // 1242×2208
+  { id: "ipad-13", store: "App Store", label: 'iPad 13"', width: 1032, height: 1376, scale: 2, mobile: true }, // 2064×2752 (TARGETED_DEVICE_FAMILY 1,2)
   { id: "play-phone", store: "Google Play", label: "Phone", width: 360, height: 640, scale: 3, mobile: true }, // 1080×1920
   { id: "play-7in", store: "Google Play", label: '7" tablet', width: 600, height: 960, scale: 2, mobile: true }, // 1200×1920
   { id: "play-10in", store: "Google Play", label: '10" tablet', width: 800, height: 1280, scale: 2, mobile: true }, // 1600×2560
@@ -40,8 +41,9 @@ export const SCREENS = [
 export const FORBIDDEN_PATHS = ["/dice", "/play/runner", "/map", "/feed", "/closet", "/trading"];
 
 /** Text that means a shot caught an error, an empty state or an unpromised feature. */
+// "put (you|someone) on" is the post-#812 wording for a pro blessing.
 export const FORBIDDEN_TEXT =
-  /temporarily unavailable|No video recorded|Something went wrong|Roll Dice|Skate Runner|\bbless/i;
+  /temporarily unavailable|No video recorded|Something went wrong|Roll Dice|Skate Runner|\bbless|put (you|someone) on/i;
 
 /** Anything open on top of the screen: dialogs, sheets and toasts. */
 export const OVERLAY_SELECTOR = '[role="dialog"], [role="alertdialog"], [aria-modal="true"], [data-testid="toast"]';
