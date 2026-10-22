@@ -223,7 +223,7 @@ export function useUserClipUpload(
     try {
       // Storage first: a clip doc pointing at an object that failed to upload
       // is a broken tile in the feed, whereas an orphaned Storage object is
-      // invisible and swept by the storage lifecycle rule.
+      // invisible to users (nothing sweeps it yet; it only costs storage).
       const videoUrl = await uploadUserClip(
         uid,
         clipId,

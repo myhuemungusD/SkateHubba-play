@@ -12,7 +12,7 @@ export function RetentionSection() {
         </li>
         <li>
           <strong className="text-white">Game videos:</strong> Game videos may be deleted automatically 90 days after
-          upload. That includes the video behind a feed clip from that game.
+          upload. We keep any video that a feed clip, a dispute or a report still uses.
         </li>
         <li>
           <strong className="text-white">Error logs:</strong> Kept in Sentry for up to 90 days.

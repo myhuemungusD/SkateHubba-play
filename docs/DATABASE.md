@@ -438,19 +438,19 @@ Metadata stored per file:
 | `customMetadata.turn`        | Turn number as a string                                                                      |
 | `customMetadata.role`        | `"set"` or `"match"`                                                                         |
 | `customMetadata.uploadedAt`  | ISO 8601 timestamp                                                                           |
-| `customMetadata.retainUntil` | ISO 8601 timestamp (90-day hint for the Storage lifecycle rule provisioned by `infra/`)      |
+| `customMetadata.retainUntil` | ISO 8601 timestamp (90-day hint; `gameVideoRetention` uses the object's creation time)       |
 
 ---
 
 ## Data Lifecycle
 
-| Entity               | Deletion policy                                                                                                                                                                                                                                                             |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| User accounts        | Deleted on user request via account deletion flow                                                                                                                                                                                                                           |
-| Private profile docs | Deleted atomically with the public user doc in the account-deletion batch                                                                                                                                                                                                   |
-| Usernames            | Deleted atomically with user profile during account deletion                                                                                                                                                                                                                |
-| Games                | On account deletion, finished games the user played are deleted; games still in progress are forfeited and anonymized; games the user only refereed are anonymized (`api/account/_userDataRegistry.ts`)                                                                     |
-| Videos               | Deleted eagerly with non-active games during account deletion (`api/account/_deleteUserData.ts`). Otherwise each upload is stamped with a `retainUntil` metadata hint 90 days out (`src/services/storage.ts`), and a Storage lifecycle rule purges objects past that window |
+| Entity               | Deletion policy                                                                                                                                                                                                                                                                |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| User accounts        | Deleted on user request via account deletion flow                                                                                                                                                                                                                              |
+| Private profile docs | Deleted atomically with the public user doc in the account-deletion batch                                                                                                                                                                                                      |
+| Usernames            | Deleted atomically with user profile during account deletion                                                                                                                                                                                                                   |
+| Games                | On account deletion, finished games the user played are deleted; games still in progress are forfeited and anonymized; games the user only refereed are anonymized (`api/account/_userDataRegistry.ts`)                                                                        |
+| Videos               | Deleted eagerly with non-active games during account deletion (`api/account/_deleteUserData.ts`). Otherwise each upload is stamped with a `retainUntil` metadata hint 90 days out (`src/services/storage.ts`), and `gameVideoRetention` deletes unreferenced ones past 90 days |
 
 ---
 

@@ -79,15 +79,16 @@ Rule (Jason, 2026-10-20): every finished feature is on for everyone. A flag stay
 
 Cloud Functions read their switches from the functions parameter file (`FUNCTIONS_DOTENV` secret for the GitHub workflow, or the local file `scripts/deploy.mjs` copies in). Every `define*` parameter must have a value or the deploy fails. See [DEPLOY_FUNCTIONS.md](DEPLOY_FUNCTIONS.md).
 
-| Switch                                                                                                                    | Feature                 |
-| ------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `MAP_CHECKINS_ENABLED`, `MAP_TESTER_UIDS`                                                                                 | Map check-ins           |
-| `SPOT_PRESENCE_ENABLED`, `SPOT_PRESENCE_TESTER_UIDS`                                                                      | Spot presence           |
-| `DICE_ENABLED`, `DICE_TESTER_UIDS`                                                                                        | Roll Dice               |
-| `XP_ENABLED`, `XP_TESTER_UIDS`                                                                                            | XP (also in Vercel env) |
-| `PRO_BLESSING_ENABLED`, `PRO_BLESSING_TESTER_UIDS`, `PRO_BLESSING_LIMIT`, `_WINDOW_DAYS`, `_MIN_ACCOUNT_DAYS`             | Pro blessing            |
-| `CLOSET_ENABLED`, `CLOSET_DROPS_ENABLED`, `CLOSET_TRADING_ENABLED`, `CLOSET_BUCKS_PURCHASE_ENABLED`, `CLOSET_TESTER_UIDS` | Closet                  |
-| `MODERATION_ENABLED`                                                                                                      | Clip moderation         |
+| Switch                                                                                                                    | Feature                                    |
+| ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `MAP_CHECKINS_ENABLED`, `MAP_TESTER_UIDS`                                                                                 | Map check-ins                              |
+| `SPOT_PRESENCE_ENABLED`, `SPOT_PRESENCE_TESTER_UIDS`                                                                      | Spot presence                              |
+| `DICE_ENABLED`, `DICE_TESTER_UIDS`                                                                                        | Roll Dice                                  |
+| `XP_ENABLED`, `XP_TESTER_UIDS`                                                                                            | XP (also in Vercel env)                    |
+| `PRO_BLESSING_ENABLED`, `PRO_BLESSING_TESTER_UIDS`, `PRO_BLESSING_LIMIT`, `_WINDOW_DAYS`, `_MIN_ACCOUNT_DAYS`             | Pro blessing                               |
+| `CLOSET_ENABLED`, `CLOSET_DROPS_ENABLED`, `CLOSET_TRADING_ENABLED`, `CLOSET_BUCKS_PURCHASE_ENABLED`, `CLOSET_TESTER_UIDS` | Closet                                     |
+| `MODERATION_ENABLED`                                                                                                      | Clip moderation                            |
+| `GAME_VIDEO_RETENTION_ENABLED`                                                                                            | Old game video cleanup (dry run while off) |
 
 ## Adding a flag
 

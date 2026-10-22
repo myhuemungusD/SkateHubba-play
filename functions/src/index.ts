@@ -38,6 +38,9 @@ import {
 } from "./closet/handlers.js";
 import { adminClosetDb } from "./closet/store.js";
 import { releaseTradeHolds as sweepTradeHolds } from "./closet/trading.holds.js";
+import { getStorage } from "firebase-admin/storage";
+import { runGameVideoRetention } from "./retention/gameVideos.js";
+import { adminRetentionDeps } from "./retention/store.js";
 
 /**
  * Shared defaults for every v2 function in this file.
@@ -391,5 +394,30 @@ export const proGoldOnCreate = onDocumentCreated(
   { document: "proGold/{clipId}", database: DATABASE_ID, region: "us-central1", timeoutSeconds: 60 },
   async (event): Promise<void> => {
     await applyProCall(getFirestore(DATABASE_ID), "gold", event.data?.data());
+  },
+);
+
+/**
+ * Game video retention switch. Off (the default) is a dry run that only logs
+ * what would be deleted; see retention/gameVideos.ts for the policy.
+ */
+const gameVideoRetentionEnabled = defineBoolean("GAME_VIDEO_RETENTION_ENABLED", { default: false });
+
+/** Daily: delete `games/` videos past retention that nothing references. */
+export const gameVideoRetention = onSchedule(
+  {
+    schedule: "every day 04:30",
+    timeZone: "America/Los_Angeles",
+    region: "us-central1",
+    timeoutSeconds: 540,
+    memory: "1GiB",
+  },
+  async (): Promise<void> => {
+    const db = getFirestore(DATABASE_ID);
+    const summary = await runGameVideoRetention(adminRetentionDeps(db, getStorage().bucket()), {
+      enabled: gameVideoRetentionEnabled.value(),
+      nowMs: Date.now(),
+    });
+    console.log(JSON.stringify({ event: "game_video_retention", ...summary }));
   },
 );

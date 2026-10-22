@@ -322,8 +322,8 @@ export async function uploadVideo(
       turn: String(turnNumber),
       role,
       uploadedAt: new Date().toISOString(),
-      // Retention hint: videos older than 90 days may be purged by a
-      // scheduled Cloud Function or a Storage lifecycle rule.
+      // Retention hint only: the gameVideoRetention Cloud Function decides by
+      // the object's creation time and keeps any video a clip still uses.
       retainUntil: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
     },
     onProgress,

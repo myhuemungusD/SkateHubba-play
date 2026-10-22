@@ -4,10 +4,13 @@ name: Firebase Infra Setup
 # Firebase infrastructure that can't live alongside normal code deploys:
 #
 #   1. Daily Firestore managed-backup schedule for the `skatehubba` database
-#   2. Cloud Storage lifecycle rule that deletes `games/` videos after 90 days
 #
-# Both operations are idempotent — re-running this workflow is safe and only
-# replays the gcloud commands in infra/*.sh. They live behind
+# Old game videos are not removed by a bucket lifecycle rule: clips reuse
+# game video URLs, so a blanket 90-day rule would break the feed. The
+# `gameVideoRetention` Cloud Function handles that instead (docs/GAPS.md P3-2).
+#
+# The operation is idempotent — re-running this workflow is safe and only
+# replays the gcloud commands in infra/*.sh. It lives behind
 # `workflow_dispatch` (not a push trigger) because they need project-level
 # IAM and should only run deliberately.
 
@@ -22,7 +25,6 @@ on:
         options:
           - all
           - firestore-backups
-          - storage-lifecycle
 
 concurrency:
   group: firebase-infra-setup
@@ -77,12 +79,6 @@ jobs:
           GCP_PROJECT_ID: ${{ steps.project.outputs.project_id }}
         run: bash infra/firestore-backup.sh
 
-      - name: Apply Storage lifecycle rule
-        if: ${{ github.event.inputs.task == 'all' || github.event.inputs.task == 'storage-lifecycle' }}
-        env:
-          GCP_PROJECT_ID: ${{ steps.project.outputs.project_id }}
-        run: bash infra/storage-lifecycle.sh
-
       - name: Summary
         run: |
           {
@@ -92,5 +88,5 @@ jobs:
             echo "- Project: \`${{ steps.project.outputs.project_id }}\`"
             echo ""
             echo "Firestore backups are retained for 7 days (daily schedule)."
-            echo "Storage lifecycle purges \`games/**\` videos older than 90 days."
+            echo "Old game videos are removed by the gameVideoRetention Cloud Function, not a bucket rule."
           } >> "$GITHUB_STEP_SUMMARY"

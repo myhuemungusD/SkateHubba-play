@@ -262,6 +262,10 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 
 ### P3-2 · Storage lifecycle vs clips permanence — latent data loss
 
+**Status (2026-10-22): RESOLVED in code; switch off.** Jason decided to keep any video a clip uses and delete the rest. The blanket rule (`infra/storage-lifecycle.*` and the `storage-lifecycle` task in `firebase-infra-setup.yml`) is removed and was never applied to prod. Instead the `gameVideoRetention` Cloud Function (`functions/src/retention/`) deletes `games/` videos older than 90 days that no clip, dispute, report, appeal, moderation statement or training label points to, once `GAME_VIDEO_RETENTION_ENABLED` is on (it runs as a dry run that only logs counts until then). Videos of games whose doc is gone (erased accounts) are deleted after a 1-day grace unless something references them. Turning the switch on is Jason's call after reviewing a dry-run log line (`event: game_video_retention`).
+
+Original finding:
+
 `infra/storage-lifecycle.json` deletes `games/` objects at 90 days, but clips reuse game video URLs (`clips.writes.ts:67,91` → `storage.ts:309`). Running `firebase-infra-setup.yml` with the lifecycle rule silently breaks every clip in the public feed and every `TurnHistoryViewer` replay at 90 days. Decide: exempt clip-backed videos, or accept feed decay — **before** anyone runs that workflow.
 
 ### P3-3 · Release hygiene
