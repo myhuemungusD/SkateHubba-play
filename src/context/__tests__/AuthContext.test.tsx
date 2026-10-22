@@ -215,7 +215,9 @@ describe("identity sync", () => {
   it("sets the Sentry user with a hashed surrogate even without analytics consent", () => {
     renderIdentity({ user: true, consent: false });
 
-    expect(mockSetSentryUser).toHaveBeenCalledWith({ id: hashIdentity("u1"), username: "sk8r" });
+    expect(mockSetSentryUser).toHaveBeenCalledWith({ id: hashIdentity("u1") });
+    // The public username is a direct identifier: it must never reach Sentry.
+    expect(JSON.stringify(mockSetSentryUser.mock.calls)).not.toContain("sk8r");
     // Sentry id must not be the raw uid.
     expect(mockSetSentryUser.mock.calls[0][0]).not.toMatchObject({ id: "u1" });
   });
@@ -229,7 +231,9 @@ describe("identity sync", () => {
   it("identifies to PostHog with the hashed surrogate once consent is granted", () => {
     renderIdentity({ user: true, consent: true });
 
-    expect(mockPosthogIdentify).toHaveBeenCalledWith(hashIdentity("u1"), { username: "sk8r" });
+    expect(mockPosthogIdentify).toHaveBeenCalledWith(hashIdentity("u1"));
+    // The public username is a direct identifier: it must never reach PostHog.
+    expect(JSON.stringify(mockPosthogIdentify.mock.calls)).not.toContain("sk8r");
   });
 
   it("resets PostHog and clears the Sentry user on sign-out", () => {

@@ -69,6 +69,9 @@ const EMPTY_CONTENT = {
  * the per-uid map docs are deleted blind (attempted, not found).
  */
 const EMPTY_NEW_PHASES = {
+  skateGamesForfeited: 0,
+  skateGamesAnonymized: 0,
+  skateGamesJudgedAnonymized: 0,
   diceGamesAnonymized: 0,
   diceGamesDeleted: 0,
   closet: { tradesSettled: 0, tradesAnonymized: 0, tradesDeleted: 0, serials: 0, dropRecords: 0 },
@@ -173,6 +176,8 @@ describe("full cascade over a populated account", () => {
       trainingRevocations: 0,
       userSubcollectionDocs: 1,
       ...EMPTY_NEW_PHASES,
+      skateGamesForfeited: 1,
+      skateGamesAnonymized: 1,
     });
   });
 
@@ -235,11 +240,15 @@ describe("full cascade over a populated account", () => {
     expect(store.docs.has("nudges/both")).toBe(false);
   });
 
-  it("leaves an active game and its videos intact so the opponent is not stranded", async () => {
+  it("keeps an active game for the opponent, closed as their win, with this account tombstoned", async () => {
     const store = fixture();
     await deleteUserDataAsAdmin(store.deps, UID);
 
-    expect(store.docs.has("games/gActive")).toBe(true);
+    const game = store.docs.get("games/gActive");
+    expect(game).toMatchObject({ player1Uid: "deleted-user", player2Uid: OTHER, status: "forfeit", winner: OTHER });
+    expect(JSON.stringify(game)).not.toContain(UID);
+    // Legacy object names carry no uploader uid, so they can't be attributed
+    // and stay with the opponent's game folder.
     expect([...store.objects].sort()).toEqual([
       "games/gActive/round1.webm",
       "games/gTheirs/round1.webm",
@@ -321,6 +330,7 @@ describe("ownership fields", () => {
   const OWNERSHIP: [string, string][] = [
     ["games", "player1Uid"],
     ["games", "player2Uid"],
+    ["games", "judgeId"],
     ["diceGames", "player1Uid"],
     ["diceGames", "player2Uid"],
     ["clips", "playerUid"],
