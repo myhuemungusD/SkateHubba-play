@@ -63,6 +63,8 @@ import { BootFeed } from "./boot/BootFeed";
 import { Landing } from "./screens/Landing";
 import { AuthScreen } from "./screens/AuthScreen";
 import { ProfileSetup } from "./screens/ProfileSetup";
+import { CoppaBlockedCard } from "./components/CoppaBlockedCard";
+import { useCoppaBlockedNotice } from "./utils/coppaNotice";
 import { Lobby } from "./screens/Lobby";
 // Lazy: non-critical / heavy secondary screens — code-split into separate
 // chunks so the first-paint bundle doesn't pay for Mapbox (MapPage +
@@ -250,6 +252,7 @@ function LandingRoute({
 }: LandingBridge & { authLoading: boolean; signedIn: boolean }) {
   const shellActive = useSyncExternalStore(subscribeBootShell, isBootShellActive);
   const holdShell = shellActive && !signedIn;
+  const [coppaBlocked, dismissCoppa] = useCoppaBlockedNotice();
 
   // Taps before auth resolves are queued the same way the boot landing does
   // and replayed by AppScreens.
@@ -271,6 +274,8 @@ function LandingRoute({
   }, [shellActive, signedIn]);
 
   if (holdShell) return null;
+  // An under-13 Google/Apple sign-up was just blocked and its account removed.
+  if (coppaBlocked && !signedIn) return <CoppaBlockedCard onBack={dismissCoppa} />;
   return (
     <Landing
       onGo={onGo}

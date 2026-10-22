@@ -20,6 +20,7 @@ import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { DobConsentFields } from "../components/DobConsentFields";
 import { CoppaBlockedCard } from "../components/CoppaBlockedCard";
+import { blockUnderageSignIn } from "../services/auth.underage";
 import { SkateboardIcon } from "../components/icons";
 import { SANITIZE_RE, STANCES, sanitizeDisplayName, usernameNote } from "./profileSetupHelpers";
 
@@ -198,6 +199,8 @@ export function ProfileSetup({
       if (result.kind === "blocked") {
         logger.info("age_gate_blocked", { age: result.age });
         setAgeBlocked(true);
+        // COPPA: remove the Auth account Google/Apple made; the landing shows the card.
+        void blockUnderageSignIn();
         return;
       }
       if (result.needsParentalConsent && !parentConsent) {

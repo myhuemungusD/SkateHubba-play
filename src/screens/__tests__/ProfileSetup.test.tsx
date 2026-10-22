@@ -36,8 +36,12 @@ vi.mock("../../services/users", () => ({
   USERNAME_RE: /^[a-z0-9_]+$/,
 }));
 
+const { mockBlockUnderage } = vi.hoisted(() => ({ mockBlockUnderage: vi.fn() }));
+vi.mock("../../services/auth.underage", () => ({ blockUnderageSignIn: () => mockBlockUnderage() }));
+
 beforeEach(() => {
   vi.clearAllMocks();
+  mockBlockUnderage.mockResolvedValue("deleted");
   // Default: new user with no existing profile
   mockGetUserProfile.mockResolvedValue(null);
 });
@@ -396,6 +400,8 @@ describe("ProfileSetup", () => {
     expect(screen.getByRole("heading", { name: "Sorry!" })).toBeInTheDocument();
     expect(screen.getByText(/at least 13 years old/)).toBeInTheDocument();
     expect(mockCreateProfile).not.toHaveBeenCalled();
+    // COPPA: the Google/Apple Auth account made before the DOB step is removed.
+    expect(mockBlockUnderage).toHaveBeenCalledTimes(1);
   });
 
   it("clears the failing DOB when the user taps Go Back on the blocked card", async () => {

@@ -166,6 +166,16 @@ describe("App", () => {
     });
   });
 
+  it("shows the COPPA blocked card on the landing once after an underage sign-up is removed", async () => {
+    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    sessionStorage.setItem("coppa_blocked_notice", "1");
+    renderApp();
+    expect(await screen.findByRole("heading", { name: "Sorry!" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Go Back" }));
+    expect(await screen.findByText("QUIT SCROLLING.")).toBeInTheDocument();
+    expect(sessionStorage.getItem("coppa_blocked_notice")).toBeNull();
+  });
+
   it("navigates directly to the signup card when 'Create account' is clicked", async () => {
     mockUseAuth.mockReturnValue({
       loading: false,
