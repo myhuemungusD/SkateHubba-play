@@ -25,6 +25,7 @@ The Oct 8 review's before shots were not in the git tree, so they are not copied
 - **Lobby tour.** While the tour card is open the lobby list can scroll the finished-games row clear of the card. The completion check was already correct: a saved version number without `completedAt` or `skippedAt` still shows the tour.
 - **Auth paint.** The card entrance is transform-only, so `/auth` has something to paint on the first frame (Largest Contentful Paint).
 - **Roll Dice.** Hub, picker, and table use the same safe-area padding, 44px controls, and bottom action bar. The dice feature stays behind `VITE_FEATURE_DICE_ENABLED`.
+- **Roll Dice thumb zone (Oct 21).** On a dice table the ledge sits right on the action bar, and the two stick to the bottom of the screen together, so the dice and Roll share the thumb zone and the round log scrolls behind them. The bar keeps its safe-area padding. The group is capped at 75% of the screen height, and on a short or sideways screen the ledge scrolls inside it, so the scoreboard and Roll both stay reachable. The lobby's Roll Dice card now sits below the S.K.A.T.E. games. Before and after shots at 375 and 430 wide, a 375×560 screen, and landscape are in `docs/mobile-phone-layout/dice-thumb-zone/`.
 
 ## Google app on iOS
 
