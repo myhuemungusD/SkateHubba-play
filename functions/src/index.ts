@@ -39,7 +39,7 @@ import {
 import { adminClosetDb } from "./closet/store.js";
 import { releaseTradeHolds as sweepTradeHolds } from "./closet/trading.holds.js";
 import { getStorage } from "firebase-admin/storage";
-import { runGameVideoRetention } from "./retention/gameVideos.js";
+import { runAndLogGameVideoRetention } from "./retention/gameVideos.js";
 import { adminRetentionDeps } from "./retention/store.js";
 
 /**
@@ -403,7 +403,7 @@ export const proGoldOnCreate = onDocumentCreated(
  */
 const gameVideoRetentionEnabled = defineBoolean("GAME_VIDEO_RETENTION_ENABLED", { default: false });
 
-/** Daily: delete `games/` videos past retention that nothing references. */
+/** Daily: delete `games/` videos past retention that nothing pins (retention/gameVideos.ts). */
 export const gameVideoRetention = onSchedule(
   {
     schedule: "every day 04:30",
@@ -413,11 +413,9 @@ export const gameVideoRetention = onSchedule(
     memory: "1GiB",
   },
   async (): Promise<void> => {
-    const db = getFirestore(DATABASE_ID);
-    const summary = await runGameVideoRetention(adminRetentionDeps(db, getStorage().bucket()), {
+    await runAndLogGameVideoRetention(() => adminRetentionDeps(getFirestore(DATABASE_ID), getStorage().bucket()), {
       enabled: gameVideoRetentionEnabled.value(),
       nowMs: Date.now(),
     });
-    console.log(JSON.stringify({ event: "game_video_retention", ...summary }));
   },
 );

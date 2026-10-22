@@ -137,7 +137,6 @@ jobs:
           VAR_CLOSET_BUCKS_PURCHASE_ENABLED: ${{ vars.CLOSET_BUCKS_PURCHASE_ENABLED }}
           VAR_MAP_CHECKINS_ENABLED: ${{ vars.MAP_CHECKINS_ENABLED }}
           VAR_SPOT_PRESENCE_ENABLED: ${{ vars.SPOT_PRESENCE_ENABLED }}
-          VAR_GAME_VIDEO_RETENTION_ENABLED: ${{ vars.GAME_VIDEO_RETENTION_ENABLED }}
           # Overrides for switches that also live in FUNCTIONS_DOTENV. When a
           # repository variable is set it replaces the secret's line, so a
           # switch can be flipped (and read) without rewriting the secret.
@@ -145,6 +144,9 @@ jobs:
           OVR_DICE_ENABLED: ${{ vars.DICE_ENABLED }}
           OVR_MODERATION_ENABLED: ${{ vars.MODERATION_ENABLED }}
           OVR_PRO_BLESSING_ENABLED: ${{ vars.PRO_BLESSING_ENABLED }}
+          # Deletes user videos, so the variable always wins over the secret
+          # and only exactly "true" turns it on.
+          OVR_GAME_VIDEO_RETENTION_ENABLED: ${{ vars.GAME_VIDEO_RETENTION_ENABLED }}
         run: |
           set -euo pipefail
           if [ -z "$FUNCTIONS_DOTENV" ]; then
@@ -158,7 +160,7 @@ jobs:
           printf '%s\n' "$FUNCTIONS_DOTENV" > "$DEST"
           # Fill switches the secret predates, so a non-interactive deploy
           # never stops on "no value for the following environment variables".
-          for key in CLOSET_ENABLED CLOSET_DROPS_ENABLED CLOSET_TRADING_ENABLED CLOSET_BUCKS_PURCHASE_ENABLED MAP_CHECKINS_ENABLED SPOT_PRESENCE_ENABLED GAME_VIDEO_RETENTION_ENABLED; do
+          for key in CLOSET_ENABLED CLOSET_DROPS_ENABLED CLOSET_TRADING_ENABLED CLOSET_BUCKS_PURCHASE_ENABLED MAP_CHECKINS_ENABLED SPOT_PRESENCE_ENABLED; do
             if ! grep -Eq "^${key}=" "$DEST"; then
               var="VAR_${key}"
               val=$(printf '%s' "${!var:-false}" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
@@ -171,7 +173,7 @@ jobs:
               echo "${key}=${val} (repository variable or default)"
             fi
           done
-          for key in XP_ENABLED DICE_ENABLED MODERATION_ENABLED PRO_BLESSING_ENABLED; do
+          for key in XP_ENABLED DICE_ENABLED MODERATION_ENABLED PRO_BLESSING_ENABLED GAME_VIDEO_RETENTION_ENABLED; do
             ovr="OVR_${key}"
             [ -n "${!ovr:-}" ] || continue
             val=$(printf '%s' "${!ovr}" | tr -d '[:space:]')
@@ -185,6 +187,8 @@ jobs:
             printf '%s=%s\n' "$key" "$val" >> "$DEST"
             echo "override ${key%_ENABLED}: ${val}"
           done
+          # No variable and no secret line: retention stays a dry run.
+          grep -Eq "^GAME_VIDEO_RETENTION_ENABLED=" "$DEST" || printf 'GAME_VIDEO_RETENTION_ENABLED=false\n' >> "$DEST"
           for key in CLOSET_TESTER_UIDS MAP_TESTER_UIDS SPOT_PRESENCE_TESTER_UIDS; do
             grep -Eq "^${key}=" "$DEST" || printf '%s=\n' "$key" >> "$DEST"
           done
@@ -202,6 +206,13 @@ jobs:
               missing=1
             fi
           done
+          # Exact match, no lowercasing: "TRUE" or "yes" in the secret refuses
+          # the deploy instead of guessing for a switch that deletes videos.
+          val=$(grep -E "^GAME_VIDEO_RETENTION_ENABLED=" "$DEST" | head -n 1 | cut -d= -f2- | tr -d '[:space:]' || true)
+          if [ "$val" != "true" ] && [ "$val" != "false" ]; then
+            echo "::error::GAME_VIDEO_RETENTION_ENABLED must be exactly true or false."
+            missing=1
+          fi
           if [ "$missing" -ne 0 ]; then
             rm -f "$DEST"
             exit 1

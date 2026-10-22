@@ -77,12 +77,15 @@ jobs:
           #     checks, which needs the server). docs/MAP_ROADMAP.md.
           #   • Admin insights — adminAnalytics + announcementOnCreate (Jason's
           #     2026-10-17 build-out of every placeholder). Admin claim only.
+          #   • Game video retention — gameVideoRetention (Jason's 2026-10-22
+          #     policy, GAPS P3-2; sign-off is Jason merging the PR that adds
+          #     it here). Deletes games/ videos nothing pins; off by default.
           # Any other changed file under functions/src/ hard-fails.
           VIOLATIONS=""
           while IFS= read -r file; do
             [ -z "$file" ] && continue
             case "$file" in
-              functions/src/index.ts|functions/src/index.test.ts|functions/src/applyGameStats.ts|functions/src/applyGameStats.test.ts|functions/src/dice/*.ts|functions/src/moderation/*.ts|functions/src/pro/*.ts|functions/src/closet/*.ts|functions/src/push/*.ts|functions/src/map/*.ts|functions/src/admin/*.ts) ;;
+              functions/src/index.ts|functions/src/index.test.ts|functions/src/applyGameStats.ts|functions/src/applyGameStats.test.ts|functions/src/dice/*.ts|functions/src/moderation/*.ts|functions/src/pro/*.ts|functions/src/closet/*.ts|functions/src/push/*.ts|functions/src/map/*.ts|functions/src/admin/*.ts|functions/src/retention/*.ts) ;;
               *) VIOLATIONS="${VIOLATIONS}${file}"$'\n' ;;
             esac
           done < <(git diff origin/main...HEAD --name-only | grep -E '^functions/src/' || true)
@@ -102,6 +105,7 @@ jobs:
             echo "  functions/src/push/*.ts  (push courier, 2026-10-17)"
             echo "  functions/src/map/*.ts  (map check-ins, 2026-10-17)"
             echo "  functions/src/admin/*.ts  (admin analytics + announcements, 2026-10-17)"
+            echo "  functions/src/retention/*.ts  (game video retention, 2026-10-22)"
             echo "Any other functions/src/ code requires explicit maintainer approval."
             echo "See .github/BRANCH_PROTECTION.md for details."
             exit 1

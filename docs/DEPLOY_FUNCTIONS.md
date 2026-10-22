@@ -122,7 +122,7 @@ Every `*_ENABLED` key must be `true` or `false`, and the `PRO_BLESSING_*` number
 
 `CRON_SECRET` is not in this file. `pushDispatchSweep` reads it from Firebase Secret Manager (`firebase functions:secrets:set CRON_SECRET`), and the value must match the Vercel env exactly.
 
-`GAME_VIDEO_RETENTION_ENABLED` can also come from a repository variable of the same name (default `false`), and the deploy log prints `switch GAME_VIDEO_RETENTION: ON/OFF`. While it is off, `gameVideoRetention` only logs what it would delete (`event: game_video_retention`, `dryRun: true`). Turn it on only after checking those counts, because it deletes user videos.
+`GAME_VIDEO_RETENTION_ENABLED` is set by the repository variable of the same name, which wins over a line in the secret (like `MODERATION_ENABLED`). It must be exactly `true` or `false` (anything else, including `TRUE`, refuses the deploy), and with neither set it is `false`. The deploy log prints `switch GAME_VIDEO_RETENTION: ON/OFF`. While it is off, `gameVideoRetention` only logs what it would delete (`event: game_video_retention`, `dryRun: true`). Turn it on only after checking those counts, because it deletes user videos.
 
 Copy the live values before the first run. A wrong file overwrites production on the next deploy (it can turn dice or moderation off).
 

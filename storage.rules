@@ -32,7 +32,8 @@ service firebase.storage {
         // Residual: an attacker can still create junk under a game's
         // directory at THEIR OWN uid-suffixed names. That is bounded (≤50 MB,
         // 1 KB min, auth-only readable, never referenced by any Firestore
-        // doc) and is reaped by the existing 90-day retention/cleanup sweep.
+        // doc) and is deleted by `gameVideoRetention` after 90 days, or after
+        // 1 day once its game doc is gone (functions/src/retention/).
         // Per-extension content-type pinning: the extension and the
         // contentType MUST agree (mirrors the avatar rule below), so a client
         // cannot ship mp4 bytes behind a `.webm` name. Exact-string equality

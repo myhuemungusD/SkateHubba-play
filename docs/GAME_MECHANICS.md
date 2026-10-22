@@ -164,7 +164,7 @@ Games frozen in `pendingReview` or `communityReview` are **never** forfeited for
 - Format: `video/webm` on web (via MediaRecorder API) or `video/mp4` on native (via Capacitor).
 - Storage path: `games/{gameId}/turn-{turnNumber}/{role}-{uploaderUid}.{ext}` where `role` is `"set"` (setter's trick) or `"match"` (matcher's attempt) and `{ext}` is `webm` (web) or `mp4` (native). **The uploader's UID is part of the filename** and `storage.rules` matches it by exact string equality, so no account can occupy another player's upload path. The object also carries `uploaderUid` metadata, and `update` is denied outright — an upload slot is write-once.
 - Size limits: 1 KB minimum (prevents empty uploads), 50 MB maximum per video.
-- Videos are not kept forever. Every upload is stamped with a `retainUntil` metadata hint 90 days out (`src/services/storage.ts`) and the `gameVideoRetention` Cloud Function deletes ones older than 90 days that no clip, dispute or report still uses (a dry run until `GAME_VIDEO_RETENTION_ENABLED` is on). Videos attached to non-active games are also deleted eagerly by the server account-deletion cascade (`api/account/_deleteUserData.ts`).
+- Videos are not kept forever. Every upload is stamped with a `retainUntil` metadata hint 90 days out (`src/services/storage.ts`) and the `gameVideoRetention` Cloud Function may delete ones older than 90 days that no feed clip, dispute, report, moderation decision or opted-in training label still uses (a dry run until `GAME_VIDEO_RETENTION_ENABLED` is on). Videos attached to non-active games are also deleted eagerly by the server account-deletion cascade (`api/account/_deleteUserData.ts`).
 
 ---
 
