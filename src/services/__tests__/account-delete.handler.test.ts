@@ -50,7 +50,7 @@ vi.mock("../../../api/account/_posthogErasure.js", () => ({ erasePosthogPerson: 
 // Only loaded when SENTRY_DSN is set (see the "error reporting" block).
 vi.mock("@sentry/node", async () => (await import("./sentry-node.test-helpers")).sentryNodeMock);
 
-import { VALID_SERVICE_ACCOUNT } from "./cron.test-helpers";
+import { MALFORMED_KEY_JSON, VALID_SERVICE_ACCOUNT } from "./cron.test-helpers";
 import {
   makeAccountReq,
   makeAccountRes,
@@ -249,6 +249,21 @@ describe("token verification", () => {
     expectRefused(out, 401, "invalid_token");
   });
 
+  it.each([
+    [REJECTIONS[0][1], "auth/id-token-expired"],
+    [REJECTIONS[1][1], "auth/id-token-revoked"],
+    [REJECTIONS[2][1], "Error"],
+    [REJECTIONS[4][1], "string"],
+  ])("logs the rejection's code or class, never its message (%#)", async (rejection, code) => {
+    h.verifyIdTokenMock.mockRejectedValueOnce(rejection);
+    await call();
+    const line = (warnSpy.mock.calls as unknown[][])
+      .map((c) => String(c[0]))
+      .find((l) => l.includes("account_delete_token_rejected"));
+    expect(JSON.parse(line ?? "{}")).toEqual({ event: "account_delete_token_rejected", code });
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toMatch(/Firebase ID token|exploded/);
+  });
+
   it("returns byte-identical bodies for every rejection reason — no oracle", async () => {
     // Distinguishing expired from revoked from malformed would tell an attacker
     // which of those a captured token is, and whether the uid even exists.
@@ -432,6 +447,41 @@ describe("CORS", () => {
     },
   );
 
+  it.each(ALLOWED)("still echoes %s in production", async (origin) => {
+    process.env.VERCEL_ENV = "production";
+    const out = await call({ origin });
+    expect(out.headers["Access-Control-Allow-Origin"]).toBe(origin);
+  });
+
+  const DEV = ["http://localhost", "http://localhost:5173", "http://localhost:4173"];
+
+  it.each(DEV)("refuses the dev origin %s in production", async (origin) => {
+    process.env.VERCEL_ENV = "production";
+    const out = await call({ origin });
+    expect(out.headers["Access-Control-Allow-Origin"]).toBeUndefined();
+    expect(out.headers["Vary"]).toBe("Origin");
+  });
+
+  it.each([
+    ["local dev (no VERCEL_ENV)", undefined],
+    ["a preview deploy", "preview"],
+    ["vercel dev", "development"],
+  ])("echoes the dev origins on %s", async (_label, env) => {
+    if (env === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = env;
+    for (const origin of DEV) {
+      const out = await call({ origin });
+      expect(out.headers["Access-Control-Allow-Origin"]).toBe(origin);
+    }
+  });
+
+  it("keeps the configured extra origin in production", async () => {
+    process.env.VERCEL_ENV = "production";
+    process.env.ACCOUNT_DELETE_ALLOWED_ORIGIN = "https://preview.example";
+    const out = await call({ origin: "https://preview.example" });
+    expect(out.headers["Access-Control-Allow-Origin"]).toBe("https://preview.example");
+  });
+
   it("adds the configured extra origin", async () => {
     process.env.ACCOUNT_DELETE_ALLOWED_ORIGIN = "https://preview.example";
     const out = await call({ origin: "https://preview.example" });
@@ -569,6 +619,39 @@ describe("error reporting (server-side Sentry)", () => {
     expect(order).toEqual(["error:account_delete_init_failed", "flush", "respond"]);
     const reported = captures()[0][0] as Error;
     expect(`${reported.message} ${reported.stack}`).not.toContain("SECRET");
+  });
+
+  it("never writes service-account material to the console or Sentry on a malformed env", async () => {
+    const malformed = MALFORMED_KEY_JSON;
+    let parseMessage = "";
+    try {
+      JSON.parse(malformed);
+    } catch (err) {
+      parseMessage = (err as Error).message;
+    }
+    // Precondition: the raw parse error really does carry the secret.
+    expect(parseMessage).toContain("PRIVATE KEY");
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = malformed;
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const { out } = await callRecordingOrder();
+      expect(out.body).toMatchObject({ code: "init_failed", message: "Server misconfiguration." });
+      const consoleText = JSON.stringify([warnSpy.mock.calls, errorSpy.mock.calls, logSpy.mock.calls]);
+      expect(consoleText).not.toContain("PRIVATE KEY");
+      expect(JSON.parse(loggedLine("account_delete_init_failed") ?? "{}")).toEqual({
+        event: "account_delete_init_failed",
+        errorName: "SyntaxError",
+        reason: "service account JSON invalid",
+      });
+      expect(captures()).toHaveLength(1);
+      const [reported, ctx] = captures()[0] as [Error, unknown];
+      expect(`${reported.message} ${reported.stack} ${JSON.stringify(ctx)}`).not.toContain("PRIVATE KEY");
+      expect(JSON.stringify(out.body)).not.toContain("PRIVATE KEY");
+    } finally {
+      errorSpy.mockRestore();
+      logSpy.mockRestore();
+    }
   });
 
   it("reports an Auth-delete failure after erasure, flushed before the 200", async () => {

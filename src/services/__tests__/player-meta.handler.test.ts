@@ -110,7 +110,8 @@ describe("player-meta handler", () => {
         isVerifiedPro: { booleanValue: true },
       });
       const out = await invoke({ uid: UID });
-      expect(out.body).toContain("Verified Pro");
+      expect(out.body).toContain(" · Pro.");
+      expect(out.body).not.toContain("Verified Pro");
     });
 
     it("falls back to the site image when the avatar is not an absolute https URL", async () => {

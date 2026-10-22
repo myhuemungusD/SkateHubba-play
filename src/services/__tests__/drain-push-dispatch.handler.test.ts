@@ -46,7 +46,7 @@ vi.mock("firebase-admin/messaging", () => ({
 vi.mock("@sentry/node", async () => (await import("./sentry-node.test-helpers")).sentryNodeMock);
 
 import handler from "../../../api/cron/drain-push-dispatch";
-import { makeRes, makeReq, VALID_SERVICE_ACCOUNT } from "./cron.test-helpers";
+import { expectRedactedInitFailure, makeRes, makeReq, VALID_SERVICE_ACCOUNT } from "./cron.test-helpers";
 import { recordSentryOrder, resetSentryNodeMock, sentryNodeMock, TEST_SENTRY_DSN } from "./sentry-node.test-helpers";
 
 const SECRET = "s3cret";
@@ -245,6 +245,12 @@ describe("init", () => {
     await handler(makeReq({ authorization: AUTH }), res);
     expect(out.code).toBe(500);
     expect(out.body).toMatchObject({ error: "init_failed" });
+  });
+
+  it("keeps a malformed service account's parse error out of the body and the log", async () => {
+    h.getAppsMock.mockReturnValue([]);
+    const { res, out } = makeRes();
+    await expectRedactedInitFailure(out, () => handler(makeReq({ authorization: AUTH }), res));
   });
 
   it("initializes an app when none exists", async () => {

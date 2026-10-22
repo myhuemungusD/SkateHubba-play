@@ -45,7 +45,7 @@ vi.mock("firebase-admin/firestore", () => ({
 }));
 
 import handler from "../../../api/cron/resolve-expired-disputes";
-import { makeRes, makeReq, VALID_SERVICE_ACCOUNT } from "./cron.test-helpers";
+import { expectRedactedInitFailure, makeRes, makeReq, VALID_SERVICE_ACCOUNT } from "./cron.test-helpers";
 import { makeDisputeGame } from "./dispute.resolution.test-helpers";
 import type { GameDoc } from "../games.mappers";
 
@@ -288,6 +288,13 @@ describe("resolve handler init failure", () => {
     await handler(authedGet(), res);
     expect(out.code).toBe(500);
     expect(out.body).toMatchObject({ error: "init_failed" });
+  });
+
+  it("keeps a malformed service account's parse error out of the body and the log", async () => {
+    process.env.CRON_SECRET = "s3cret";
+    getAppsMock.mockReturnValue([]);
+    const { res, out } = makeRes();
+    await expectRedactedInitFailure(out, () => handler(authedGet(), res));
   });
 
   it("proceeds to a clean 200 summary when no games are eligible", async () => {

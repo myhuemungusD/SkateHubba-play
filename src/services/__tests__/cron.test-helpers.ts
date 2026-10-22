@@ -11,6 +11,8 @@
  * in vite.config.ts.
  */
 
+import { expect, vi } from "vitest";
+
 /** Records what the handler wrote to the response. */
 export interface ResponseCapture {
   code?: number;
@@ -65,3 +67,30 @@ export const VALID_SERVICE_ACCOUNT = JSON.stringify({
   client_email: "svc@demo.iam.gserviceaccount.com",
   private_key: "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n",
 });
+
+/**
+ * A malformed FIREBASE_SERVICE_ACCOUNT_JSON short enough that Node 22's
+ * JSON.parse quotes the whole input — fake key marker included — in its message.
+ */
+export const MALFORMED_KEY_JSON = '{"pk":PRIVATE KEY}';
+
+/**
+ * Set MALFORMED_KEY_JSON as the service account, run `act` with console.warn
+ * captured, and assert the init failure reaches neither the response nor the
+ * log: flat body, error class + fixed reason only.
+ */
+export async function expectRedactedInitFailure(out: ResponseCapture, act: () => Promise<void>): Promise<void> {
+  process.env.FIREBASE_SERVICE_ACCOUNT_JSON = MALFORMED_KEY_JSON;
+  const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    await act();
+    expect(out.code).toBe(500);
+    expect(out.body).toEqual({ error: "init_failed", message: "Server misconfiguration." });
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain("PRIVATE KEY");
+    expect(warnSpy).toHaveBeenCalledWith(
+      JSON.stringify({ event: "init_failed", errorName: "SyntaxError", reason: "service account JSON invalid" }),
+    );
+  } finally {
+    warnSpy.mockRestore();
+  }
+}

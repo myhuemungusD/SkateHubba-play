@@ -123,8 +123,8 @@ export async function blessSkater(
       to: targetUid,
       from: actor.uid,
       type: "pro_blessing",
-      title: "You've been blessed",
-      body: `@${blesserUsername} wants to turn you pro on SkateHubba.`,
+      title: `@${blesserUsername} put you on`,
+      body: "They're vouching that you're pro. Accept to show it on your profile.",
       blessingId,
     });
     return { blessingId, status: "pending" };
@@ -167,8 +167,8 @@ export async function respondToBlessing(
       to: blesserUid,
       from: actor.uid,
       type: "pro_blessing_accepted",
-      title: "They turned pro",
-      body: `@${str(target.username)} accepted your blessing. Welcome them in.`,
+      title: `@${str(target.username)} accepted`,
+      body: "Your put-on is live.",
       blessingId,
     });
     return { blessingId, status: "accepted" };

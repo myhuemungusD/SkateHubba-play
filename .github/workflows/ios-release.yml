@@ -127,21 +127,28 @@ jobs:
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
           VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
           VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
+          # App Check is always on in store builds: App Attest (DeviceCheck
+          # fallback) is free (only the website's reCAPTCHA costs money, and that stays
+          # controlled by Vercel env). Without it ensureAppCheck() is a no-op
+          # and every enforceAppCheck callable (Closet, pro seed) rejects the
+          # call. The iOS app must be registered in Firebase > App Check.
+          VITE_APPCHECK_ENABLED: "true"
           # Public App Store flags (2026-10-20: every finished feature is on
           # for everyone so the binary matches the listing and screenshots).
           # Each server switch is on too (functions params), so no screen
           # shows a button the server refuses.
           # Still off for the public (testers see them via config/featureTesters):
-          #   Skate Runner (until Jason signs off), What's That Trick (scoring
-          #   not built), buying Hubba Bucks (needs App Store in-app purchase
-          #   products), SMS two-step (not built for iPhone), admin screens
-          #   (admin claim only).
+          #   pro blessing UI (website only for now), Skate Runner (until Jason
+          #   signs off), What's That Trick (scoring not built), buying Hubba
+          #   Bucks (needs App Store in-app purchase products), SMS two-step
+          #   (not built for iPhone), admin screens (admin claim only).
           VITE_FEATURE_APPLE_SIGNIN_ENABLED: "true"
           VITE_FEATURE_EXTRAS_ENABLED: "true"
           VITE_FEATURE_MAP_CHECKINS: "true"
           VITE_FEATURE_SPOT_PRESENCE: "true"
           VITE_FEATURE_TIPS: "true"
-          VITE_FEATURE_PRO_BLESSING: "true"
+          # Pro blessing UI off on iPhone for launch (Jason, 2026-10-21).
+          VITE_FEATURE_PRO_BLESSING: "false"
           VITE_FEATURE_PRO_PROFILES: "true"
           VITE_FEATURE_PRO_SHOWCASE: "true"
           VITE_FEATURE_PRO_CALLS: "true"
@@ -159,10 +166,13 @@ jobs:
           VITE_FEATURE_PROFILE_BANNER: "true"
           VITE_FEATURE_PROFILE_CUSTOM: "true"
           VITE_FEATURE_SPOT_CHATS_ENABLED: "true"
-          VITE_FEATURE_CLOSET_ENABLED: "true"
-          VITE_FEATURE_CLOSET_DROPS_ENABLED: "true"
+          # Closet stays off until App Check is verified on a TestFlight
+          # device (claim, buy, equip): its callables enforce App Check.
+          # Closet Studio (its clothes editor) goes with it.
+          VITE_FEATURE_CLOSET_ENABLED: "false"
+          VITE_FEATURE_CLOSET_DROPS_ENABLED: "false"
           VITE_FEATURE_CLOSET_TRADING_ENABLED: "false"
-          VITE_FEATURE_CLOSET_STUDIO: "true"
+          VITE_FEATURE_CLOSET_STUDIO: "false"
           VITE_FEATURE_SHOE_360: "true"
           VITE_FEATURE_HUBBA_ICONS: "true"
           VITE_FEATURE_RUNNER_ENABLED: "false"

@@ -50,7 +50,7 @@ import { timingSafeEqual } from "node:crypto";
 import { cert, getApps, initializeApp, type App, type ServiceAccount } from "firebase-admin/app";
 import { getFirestore, FieldValue, type Firestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
-import { parseServiceAccountJson } from "./_serviceAccount.js";
+import { describeInitFailure, parseServiceAccountJson } from "./_serviceAccount.js";
 import { diceEligibleTokens, isDicePush } from "./_pushPlatforms.js";
 import { webpushOptions } from "./_pushWebpush.js";
 import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
@@ -330,9 +330,12 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
     db = getFirestore(app, FIRESTORE_DB_NAME);
   } catch (err) {
     // Misconfiguration (missing/malformed service account) — surface as 500.
+    // Never err.message, in the log or the body: a JSON.parse failure on
+    // FIREBASE_SERVICE_ACCOUNT_JSON quotes part of the secret.
+    console.warn(JSON.stringify({ event: "init_failed", ...describeInitFailure(err) }));
     captureServerError("drain_init_failed", err, {}, { redactMessage: true });
     await flushServerErrors();
-    res.status(500).json({ error: "init_failed", message: err instanceof Error ? err.message : String(err) });
+    res.status(500).json({ error: "init_failed", message: "Server misconfiguration." });
     return;
   }
 

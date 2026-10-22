@@ -164,7 +164,7 @@ describe("PlayerDirectory", () => {
       <PlayerDirectory {...base} players={[player({ uid: "u2", username: "pro_skater", isVerifiedPro: true })]} />,
     );
 
-    expect(screen.getByTitle("Verified Pro")).toBeInTheDocument();
+    expect(screen.getByTitle("Pro")).toBeInTheDocument();
     vi.unstubAllEnvs();
   });
 });

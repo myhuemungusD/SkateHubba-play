@@ -58,7 +58,6 @@ export const PRO_TOOLS: readonly ProTool[] = [
     icon: <Award size={16} />,
     id: "props",
     title: "Pro props",
-    description:
-      "Give a signature props sticker to skaters who beat you or nail your trick. Props are a shout-out, never pro status.",
+    description: "Give a signature props sticker to skaters who beat you or nail your trick. Props are not pro status.",
   },
 ];

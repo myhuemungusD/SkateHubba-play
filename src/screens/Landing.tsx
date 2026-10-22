@@ -135,7 +135,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
 
           {/* Subtitle */}
           <p className="landing-sub font-body text-fluid-lg text-dim max-w-md leading-relaxed mb-10">
-            The first async S.K.A.T.E. game. No edits. No excuses.
+            S.K.A.T.E. over video. One take. No edits.
           </p>
 
           {/* Auth Buttons — Google is the primary path; email options sit

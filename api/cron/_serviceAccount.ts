@@ -32,13 +32,15 @@
  *      different one. Fields this module does not consume are not checked;
  *      they are also never used.
  *   4. If repair doesn't help, rethrow the strict error with a safe
- *      structural fingerprint (counts only, no content) so the next
- *      occurrence is diagnosable from the 500 body alone.
+ *      structural fingerprint (counts only, no content). The message still
+ *      carries the strict error's input snippet, so handlers never surface
+ *      it: logs and bodies get `describeInitFailure` (class + fixed reason).
  *
  * The underscore prefix keeps Vercel's filesystem router from exposing this
  * module as an endpoint (verified against @vercel/fs-detectors: any path
  * containing "/_" gets no builder).
  */
+import { safeErrorName } from "../_safeError.js";
 
 /** Shape of the fields we consume from Google's service-account JSON. */
 interface RawServiceAccount {
@@ -228,4 +230,37 @@ export function parseServiceAccountJson(raw: string): ParseResult {
     validateRepaired(account, strictErr, diagnose(text));
     return { account, repaired: true };
   }
+}
+
+/** The only reasons an init-failure log line may carry. Fixed strings, never input. */
+export type InitFailureReason =
+  | "service account env not set"
+  | "service account JSON invalid"
+  | "service account JSON missing fields"
+  | "service account repair implausible"
+  | "storage bucket unresolved"
+  | "firebase init failed";
+
+/**
+ * A log-safe description of a firebase-admin boot failure.
+ *
+ * Never log `err.message` from that path: a `JSON.parse` failure on
+ * `FIREBASE_SERVICE_ACCOUNT_JSON` quotes part of its input (Node 22 / V8
+ * include a snippet around the bad position), so the message can carry
+ * private-key material straight into the Vercel logs. This returns the error
+ * class plus a fixed reason chosen by matching the messages this module and
+ * the handlers throw; the message itself is only inspected, never returned.
+ */
+export function describeInitFailure(err: unknown): { errorName: string; reason: InitFailureReason } {
+  const errorName = safeErrorName(err);
+  const message = err instanceof Error ? err.message : "";
+  let reason: InitFailureReason = "firebase init failed";
+  if (err instanceof SyntaxError) reason = "service account JSON invalid";
+  else if (message === "FIREBASE_SERVICE_ACCOUNT_JSON is not set") reason = "service account env not set";
+  else if (message === "FIREBASE_SERVICE_ACCOUNT_JSON is missing required fields")
+    reason = "service account JSON missing fields";
+  else if (message.startsWith("FIREBASE_SERVICE_ACCOUNT_JSON repair produced an implausible"))
+    reason = "service account repair implausible";
+  else if (message === "Storage bucket name could not be resolved") reason = "storage bucket unresolved";
+  return { errorName, reason };
 }

@@ -19,6 +19,7 @@ describe("iOS privacy manifest", () => {
       "SMS two-step verification (src/services/mfa.ts); VITE_FEATURE_SMS_2FA_ENABLED is off in the iOS build, declared anyway",
     ],
     ["OtherUserContent", "clip comments, spot names and bios"],
+    ["GameplayContent", "S.K.A.T.E. game state (turns, letters, results) linked to both players"],
     ["OtherDataTypes", "date of birth from the age gate (src/utils/age.ts)"],
     ["PhotosorVideos", "trick clips and avatars"],
     ["AudioData", "trick clip sound"],
@@ -34,6 +35,7 @@ describe("iOS privacy manifest", () => {
   it.each([
     ["Name", true],
     ["CoarseLocation", false],
+    ["GameplayContent", true],
   ])("declares %s linked=%s, App Functionality only", (type, linked) => {
     const block = manifest.split(`<string>NSPrivacyCollectedDataType${type}</string>`)[1]?.split("</dict>")[0] ?? "";
     expect(block).toMatch(new RegExp(`NSPrivacyCollectedDataTypeLinked</key>\\s*<${linked}/>`));

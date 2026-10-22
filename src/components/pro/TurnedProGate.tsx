@@ -48,14 +48,14 @@ export function TurnedProGate({ uid, onTurnedPro }: { uid: string; onTurnedPro?:
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 p-6 text-center"
     >
       <div className="w-full max-w-sm">
-        <p className="pro-username font-display text-xs tracking-[0.35em]">✦ VERIFIED PRO</p>
+        <p className="pro-username font-display text-xs tracking-[0.35em]">✦ PRO</p>
         <h1 id="turned-pro-title" className="mt-3 font-display text-4xl leading-tight tracking-wide text-white">
-          {celebrate ? "You turned pro." : "You've been blessed."}
+          {celebrate ? "You're on." : `@${shown.blesserUsername} put you on as PRO`}
         </h1>
         <p className="mt-3 font-body text-sm text-white/75">
           {celebrate
-            ? `Blessed by @${shown.blesserUsername}. Your pro badge, pro profile and Pro tools are live.`
-            : `@${shown.blesserUsername} wants to turn you pro. Pro can't be earned or won here — only a pro can vouch for you.`}
+            ? "Your PRO tag, pro profile and pro tools are live."
+            : "They're vouching that you're pro. Nobody earns or wins pro here. It only comes from another pro."}
         </p>
         {shown.reason && <p className="mt-4 font-body text-base italic text-amber-100">&ldquo;{shown.reason}&rdquo;</p>}
         {error && (
@@ -73,7 +73,7 @@ export function TurnedProGate({ uid, onTurnedPro }: { uid: string; onTurnedPro?:
             }}
             className="mt-8 w-full min-h-[48px] rounded-xl bg-amber-300 font-display tracking-wider text-black"
           >
-            LET&apos;S GO
+            GOT IT
           </button>
         ) : (
           <div className="mt-8 space-y-2">
@@ -84,7 +84,7 @@ export function TurnedProGate({ uid, onTurnedPro }: { uid: string; onTurnedPro?:
               onClick={() => void answer(true)}
               className="w-full min-h-[48px] rounded-xl bg-amber-300 font-display tracking-wider text-black disabled:opacity-50"
             >
-              ACCEPT &amp; TURN PRO
+              ACCEPT
             </button>
             <button
               type="button"

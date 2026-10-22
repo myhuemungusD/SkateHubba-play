@@ -161,6 +161,7 @@ jobs:
           .github/workflows/ios-release.yml
           .github/workflows/ios-signing-bootstrap.yml
           .github/workflows/main.yml
+          .github/workflows/moderation-rescreen.yml
           .github/workflows/pr-gate.yml
           .github/workflows/release-please.yml
           .github/workflows/release-recovery.yml
