@@ -132,16 +132,17 @@ jobs:
           # Each server switch is on too (functions params), so no screen
           # shows a button the server refuses.
           # Still off for the public (testers see them via config/featureTesters):
-          #   Skate Runner (until Jason signs off), What's That Trick (scoring
-          #   not built), buying Hubba Bucks (needs App Store in-app purchase
-          #   products), SMS two-step (not built for iPhone), admin screens
-          #   (admin claim only).
+          #   pro blessing UI (website only for now), Skate Runner (until Jason
+          #   signs off), What's That Trick (scoring not built), buying Hubba
+          #   Bucks (needs App Store in-app purchase products), SMS two-step
+          #   (not built for iPhone), admin screens (admin claim only).
           VITE_FEATURE_APPLE_SIGNIN_ENABLED: "true"
           VITE_FEATURE_EXTRAS_ENABLED: "true"
           VITE_FEATURE_MAP_CHECKINS: "true"
           VITE_FEATURE_SPOT_PRESENCE: "true"
           VITE_FEATURE_TIPS: "true"
-          VITE_FEATURE_PRO_BLESSING: "true"
+          # Pro blessing UI off on iPhone for launch (Jason, 2026-10-21).
+          VITE_FEATURE_PRO_BLESSING: "false"
           VITE_FEATURE_PRO_PROFILES: "true"
           VITE_FEATURE_PRO_SHOWCASE: "true"
           VITE_FEATURE_PRO_CALLS: "true"

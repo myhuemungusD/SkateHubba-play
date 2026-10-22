@@ -43,7 +43,7 @@ npm ci --no-audit --no-fund
 
 # 3. Web build with the same production env and flags as ios-release.yml.
 # Public App Store flags (2026-10-20): every finished feature is on for
-# everyone. Still off: Skate Runner, What's That Trick, buying Hubba
+# everyone. Still off: pro blessing UI, Skate Runner, What's That Trick, buying Hubba
 # Bucks, SMS two-step, admin. Jason and Mike still get every flag
 # through the config/featureTesters override at runtime.
 export VITE_FEATURE_APPLE_SIGNIN_ENABLED=true
@@ -51,7 +51,8 @@ export VITE_FEATURE_EXTRAS_ENABLED=true
 export VITE_FEATURE_MAP_CHECKINS=true
 export VITE_FEATURE_SPOT_PRESENCE=true
 export VITE_FEATURE_TIPS=true
-export VITE_FEATURE_PRO_BLESSING=true
+# Pro blessing UI off on iPhone for launch (Jason, 2026-10-21); see docs/FEATURE_FLAGS.md.
+export VITE_FEATURE_PRO_BLESSING=false
 export VITE_FEATURE_PRO_PROFILES=true
 export VITE_FEATURE_PRO_SHOWCASE=true
 export VITE_FEATURE_PRO_CALLS=true
