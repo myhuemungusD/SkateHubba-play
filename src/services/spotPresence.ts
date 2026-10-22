@@ -8,12 +8,17 @@
  * (the day pass) unless auto re-check-in is turned off. Nothing here stores
  * your location: the server only writes "at this spot until".
  *
+ * Hide-online also hides spot presence (security audit 2026-10-21, M6): a
+ * hidden skater sends no heartbeats (the server refuses to write one anyway),
+ * and the who's-here list leaves out anyone whose online status is hidden.
+ *
  * Foreground only. iOS and Android pause the web view in the background, so
  * presence simply lapses after PRESENCE_TTL_MS without a heartbeat.
  */
-import { collection, onSnapshot, query, Timestamp, where } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, query, Timestamp, where } from "firebase/firestore";
 import * as firebase from "../firebase";
 import { logger } from "./logger";
+import { getHideOnline } from "./onlineStatus";
 
 export const PRESENCE_RADIUS_M = 152;
 export const PRESENCE_TTL_MS = 10 * 60 * 1000;
@@ -24,7 +29,7 @@ export const ACTIVE_SPOT_KEY = "sh_presence_spot";
 export const ACTIVE_SPOT_EVENT = "sh-presence-spot";
 
 export type PresenceCode =
-  "here" | "away" | "no_pass" | "throttled" | "low_accuracy" | "stale" | "suspect" | "not_found";
+  "here" | "away" | "hidden" | "no_pass" | "throttled" | "low_accuracy" | "stale" | "suspect" | "not_found";
 
 export interface PresenceResult {
   code: PresenceCode;
@@ -163,15 +168,45 @@ export function leaveSpot(spotId: string): Promise<PresenceResult> {
   return sendPresence({ spotId, leave: true });
 }
 
+/**
+ * Called when the skater turns on "Hide my online status": end today's
+ * presence at once instead of letting it lapse. A no-op without an active spot.
+ */
+export async function hideFromSpot(nowMs: number = Date.now()): Promise<void> {
+  const spot = readActiveSpot(nowMs);
+  if (spot) await leaveSpot(spot.id);
+}
+
 /* ── who's here ───────────────────────────── */
+
+/**
+ * The uids (of `uids`) whose online status is hidden. A failed lookup counts
+ * as hidden: dropping a visible skater from the list for one refresh is
+ * harmless, showing a hidden one is not.
+ */
+async function hiddenAmong(uids: readonly string[]): Promise<Set<string>> {
+  const db = firebase.requireDb();
+  const flags = await Promise.all(
+    uids.map(async (uid) => {
+      try {
+        const snap = await getDoc(doc(db, "onlineStatus", uid));
+        return snap.exists() && snap.data().hidden === true;
+      } catch {
+        return true;
+      }
+    }),
+  );
+  return new Set(uids.filter((_, i) => flags[i]));
+}
 
 function toMillis(v: unknown): number {
   return v instanceof Timestamp ? v.toMillis() : 0;
 }
 
 /**
- * Live list of skaters present at a spot (excluding lapsed docs). Re-filters
- * on a timer so someone whose presence lapses drops off without a new write.
+ * Live list of skaters present at a spot (excluding lapsed docs and anyone
+ * whose online status is hidden). Re-filters on a timer so someone whose
+ * presence lapses drops off without a new write.
  */
 export function subscribeSpotSkaters(
   spotId: string,
@@ -185,10 +220,11 @@ export function subscribeSpotSkaters(
     onChange(latest.filter((s) => s.exp > t).map(({ uid, username }) => ({ uid, username })));
   };
   const q = query(collection(db, "spotPresence", spotId, "here"), where("expiresAt", ">", Timestamp.fromMillis(now())));
+  let seq = 0;
   const unsub = onSnapshot(
     q,
     (snap) => {
-      latest = snap.docs.map((d) => {
+      const rows = snap.docs.map((d) => {
         const raw = d.data();
         return {
           uid: d.id,
@@ -196,10 +232,16 @@ export function subscribeSpotSkaters(
           exp: toMillis(raw.expiresAt),
         };
       });
-      emit();
+      const mine = ++seq;
+      void hiddenAmong(rows.map((r) => r.uid)).then((hidden) => {
+        if (mine !== seq) return; // a newer snapshot already won
+        latest = rows.filter((r) => !hidden.has(r.uid));
+        emit();
+      });
     },
     (err) => {
       logger.warn("spot_presence_list_failed", { code: (err as { code?: string }).code ?? "unknown" });
+      seq += 1;
       latest = [];
       emit();
     },
@@ -220,6 +262,8 @@ export interface WatchDeps {
   send?: (body: Record<string, unknown>) => Promise<PresenceResult>;
   now?: () => number;
   autoRejoin?: () => boolean;
+  /** Hide-online switch; while it's on, no heartbeat is sent. */
+  hidden?: () => boolean;
 }
 
 /**
@@ -237,6 +281,12 @@ export function startSpotPresence(
   const send = deps.send ?? sendPresence;
   const now = deps.now ?? Date.now;
   const autoRejoin = deps.autoRejoin ?? getAutoRejoin;
+  const hidden = deps.hidden ?? getHideOnline;
+  if (hidden()) {
+    // Hidden skaters aren't shown at spots, so don't even watch the location.
+    onStatus("hidden");
+    return () => {};
+  }
   if (!geo) {
     onStatus("denied");
     return () => {};
@@ -255,6 +305,12 @@ export function startSpotPresence(
 
   const onFix = (pos: GeolocationPosition) => {
     if (stopped || inFlight) return;
+    if (hidden()) {
+      // Turned on mid-session: send nothing until it's off again.
+      lastInside = null;
+      onStatus("hidden");
+      return;
+    }
     const { latitude: lat, longitude: lng, accuracy } = pos.coords;
     const t = now();
     const inside = distanceM(lat, lng, spot.latitude, spot.longitude) <= PRESENCE_RADIUS_M;

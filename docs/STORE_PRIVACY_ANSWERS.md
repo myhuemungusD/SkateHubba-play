@@ -52,7 +52,8 @@ Declared native permissions (context for both consoles):
 `ios/App/App/Info.plist` — Camera, Microphone, Photo Library (read+add),
 Location When In Use. `android/.../AndroidManifest.xml` — CAMERA,
 RECORD_AUDIO, ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION,
-READ_MEDIA_IMAGES/VIDEO, POST_NOTIFICATIONS.
+POST_NOTIFICATIONS. No media or storage permissions: pickers use the Android
+Photo Picker or system file chooser (Play Photo and Video Permissions policy).
 
 Deletion & export: in-app Settings → "Delete account" (`deleteAccount` in
 `src/services/auth.ts` → server cascade in `api/account/delete.ts` and
@@ -199,11 +200,9 @@ The image is screened on-device by NSFWjs before upload and stored at
   upload or edit. `NSPhotoLibraryAddUsageDescription` covers saving photos and
   exported clips.
 
-**Android permissions** — both already declared for trick recording; the
-avatar feature required no manifest change:
-
-- `android.permission.CAMERA`
-- `android.permission.READ_MEDIA_IMAGES`
+**Android permissions**: only `android.permission.CAMERA` (already declared for
+trick recording). Picking from the library goes through the Android Photo
+Picker, which needs no permission.
 
 ### Native rebuild determination
 

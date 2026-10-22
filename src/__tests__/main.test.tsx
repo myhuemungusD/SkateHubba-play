@@ -162,3 +162,27 @@ describe("main entry — splash screen hide", () => {
     expect(splashCrumbs).toHaveLength(0);
   });
 });
+
+describe("main entry — push ?game= link", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+    mockIsNativePlatform.mockReturnValue(false);
+    document.body.innerHTML = "";
+    sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+    sessionStorage.clear();
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("parks the game id and strips the param before the router mounts", async () => {
+    window.history.replaceState(null, "", "/?game=YqZNr8nWUabkLwpak0uU");
+    await loadMain();
+    expect(window.location.pathname).toBe("/");
+    expect(window.location.search).toBe("");
+    expect(sessionStorage.getItem("skate.pendingGameLink")).toBe("YqZNr8nWUabkLwpak0uU");
+  });
+});

@@ -10,11 +10,12 @@ import { OnboardingProvider } from "./context/OnboardingContext";
 import { TipsProvider } from "./context/TipsContext";
 import { VerifyEmailBanner } from "./components/VerifyEmailBanner";
 import { useEmailVerifiedToast } from "./hooks/useEmailVerifiedToast";
+import { useGameDeepLink } from "./hooks/useGameDeepLink";
 import { getUidByUsername } from "./services/users";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Spinner } from "./components/ui/Spinner";
 import { ToastContainer } from "./components/ToastContainer";
-import { GameNotificationWatcher, OPEN_GAME_EVENT } from "./components/GameNotificationWatcher";
+import { GameNotificationWatcher } from "./components/GameNotificationWatcher";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { BottomNav, isBottomNavScreen } from "./components/BottomNav";
 import { canGoBackInApp } from "./hooks/useGoBack";
@@ -448,31 +449,8 @@ function AppRoutes() {
     [auth.user?.emailVerified, nav, game, notify],
   );
 
-  // Deep-link into a game when a push notification is tapped (service worker postMessage)
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ gameId?: unknown; kind?: unknown }>).detail;
-      const gameId = detail?.gameId;
-      if (typeof gameId !== "string" || gameId.length === 0) return;
-      if (detail?.kind === "dice") {
-        navigate(`/dice/${gameId}`);
-        return;
-      }
-      if (!game.games) return;
-      const found = game.games.find((g) => g.id === gameId);
-      if (found) {
-        game.openGame(found);
-      } else {
-        // Deep-linked game isn't in the loaded list (stale push, completed
-        // game, or list not yet hydrated). Fall back to the lobby instead of
-        // silently no-op'ing so the tap always lands somewhere actionable.
-        nav.setScreen("lobby");
-      }
-    };
-    window.addEventListener(OPEN_GAME_EVENT, handler);
-    return () => window.removeEventListener(OPEN_GAME_EVENT, handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-subscribe when games list or openGame changes
-  }, [game.games, game.openGame, nav.setScreen, navigate]);
+  // Push taps and /?game=<id> links (cold load, signed out, SW, native).
+  useGameDeepLink();
 
   return (
     <>

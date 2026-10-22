@@ -33,12 +33,13 @@
 
 import { Capacitor } from "@capacitor/core";
 import { PushNotifications, type Token } from "@capacitor/push-notifications";
-import { doc, getDoc, setDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, arrayRemove, serverTimestamp } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { PRIVATE_PROFILE_DOC_ID, getPushEnabled } from "./users";
-import { tagFromMirror, untagToken } from "./pushPlatform";
+import { untagToken } from "./pushPlatform";
+import { storePushToken } from "./pushTokenStore";
 import { PUSH_TARGETS_COLLECTION } from "./pushDispatch";
 
 /**
@@ -289,28 +290,11 @@ async function registerAndPersist(uid: string, assumeEnabled: boolean): Promise<
 async function persistToken(uid: string, token: string): Promise<void> {
   if (!token) return;
   try {
-    const db = requireDb();
-    await setDoc(
-      doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID),
-      { fcmTokens: arrayUnion(token) },
-      { merge: true },
-    );
-    // Mirror to the cross-readable /pushTargets/{uid} doc so the dispatch
-    // path (src/services/pushDispatch.ts) can embed this device's token in
-    // a push_dispatch doc when an opponent triggers a notifiable event.
-    // Same rationale as the web path in src/services/fcm.ts — the canonical
-    // list stays owner-only, the mirror unlocks cross-user delivery.
-    const mirrorRef = doc(db, PUSH_TARGETS_COLLECTION, uid);
-    const snap = await getDoc(mirrorRef);
-    await setDoc(
-      mirrorRef,
-      {
-        tokens: arrayUnion(token),
-        ...tagFromMirror(token, snap.data()),
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
+    // Canonical owner-only list plus the cross-readable /pushTargets/{uid}
+    // mirror the dispatch path (src/services/pushDispatch.ts) embeds in a
+    // push_dispatch doc. Same helper as the web path, so both trim to the
+    // newest 9 plus this device at the 10-token rules cap.
+    await storePushToken(requireDb(), uid, token);
     activePushToken = token;
   } catch (err) {
     logger.warn("push_token_persist_failed", { uid, error: parseFirebaseError(err) });
