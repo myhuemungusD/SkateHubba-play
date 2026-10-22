@@ -464,3 +464,27 @@ export function setupRulesTestEnv(
     return env;
   };
 }
+
+/** A source:"user" clip doc in the shape the client writes (rules-test fixture). */
+export function makeUserClipDoc(
+  uid: string,
+  videoUrl: string,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    source: "user",
+    gameId: null,
+    turnNumber: null,
+    role: null,
+    playerUid: uid,
+    playerUsername: "alice",
+    trickName: "switch heel",
+    videoUrl,
+    spotId: null,
+    moderationStatus: "active",
+    upvoteCount: 0,
+    downvoteCount: 0,
+    createdAt: serverTimestamp(),
+    ...overrides,
+  };
+}

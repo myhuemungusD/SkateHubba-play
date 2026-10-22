@@ -18,6 +18,13 @@ describe("DeleteAccountModal", () => {
     expect(screen.getByText(/This cannot be undone/)).toBeInTheDocument();
   });
 
+  it("describes what deletion really does to games (no promise that history is kept)", () => {
+    render(<DeleteAccountModal onClose={onClose} onDeleteAccount={onDeleteAccount} />);
+    expect(screen.queryByText(/retained for your opponents/)).toBeNull();
+    expect(screen.getByText(/finished games and their videos/)).toBeInTheDocument();
+    expect(screen.getByText(/forfeit to your opponent, with your name and videos removed/)).toBeInTheDocument();
+  });
+
   it("renders as a dialog", () => {
     render(<DeleteAccountModal onClose={onClose} onDeleteAccount={onDeleteAccount} />);
     expect(screen.getByRole("dialog")).toBeInTheDocument();
