@@ -1,76 +1,37 @@
 /**
- * Admin seeding of Verified Pro (`proSeed` callable).
+ * Admin seeding of Verified Pro: the `proSeed` callable.
  *
- * Seeding used to be a direct client write by any admin (a Firestore rules
- * branch on users/{uid}) or the `scripts/grant-pro.ts` CLI, with no reason
- * and no evidence, so nothing recorded *why* anyone was pro and a stolen
- * admin token could mint pros silently (security audit 2026-10-21;
- * docs/team spec pro-filmer-stats G2).
+ * Seeding has been a direct client write by any admin (the users/{uid} admin
+ * rules branch) or the `scripts/grant-pro.ts` CLI, with no reason and no
+ * evidence, so nothing recorded *why* anyone was pro and a stolen admin token
+ * could mint pros silently (security audit 2026-10-21, H5).
  *
- * Now the only seeding path is this callable (admin custom claim + App
- * Check). It requires a reason and evidence (company + https link), and in
- * one transaction sets the badge and writes an append-only `proAudit` row.
- * Rules deny every client write to `proAudit` and let only admins read it.
- * The CLI writes the same row (see `scripts/grant-pro.ts`).
+ * This callable (admin custom claim + App Check) requires a reason and
+ * evidence (company + https link) and, through `seedPro` (seedCore.ts), sets
+ * the badge and writes an append-only `proAudit` row in one transaction. The
+ * CLI runs the same `seedPro` with `source: "cli"`. Rules let only admins read
+ * `proAudit` and deny every client write to it. The old admin client-write
+ * rules branch is removed separately in #813b, once this function is live.
  */
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions/logger";
 import { Timestamp } from "firebase-admin/firestore";
 import type { DiceDb } from "../dice/store.js";
-import { parseSeedInput, SeedInputError, type SeedInput } from "./seedInput.js";
+import { parseSeedInput, SeedInputError } from "./seedInput.js";
+import { SeedError, seedPro, type ProSeedResult } from "./seedCore.js";
 
-export const PRO_AUDIT_COLLECTION = "proAudit";
+export { PRO_AUDIT_COLLECTION, type ProSeedResult } from "./seedCore.js";
 
 export interface ProSeedDeps {
   db: DiceDb;
   nowMs: number;
-}
-
-export interface ProSeedResult {
-  auditId: string;
-  status: "seeded";
-}
-
-class SeedError extends Error {
-  constructor(readonly code: string) {
-    super(code);
-    this.name = "SeedError";
-  }
-}
-
-export async function seedPro(
-  db: DiceDb,
-  actorUid: string,
-  input: SeedInput,
-  nowMs: number,
-  source: "callable" | "cli" = "callable",
-): Promise<ProSeedResult> {
-  if (input.targetUid === actorUid) throw new SeedError("self_seed");
-  const auditId = db.newId(PRO_AUDIT_COLLECTION);
-  return db.runTransaction(async (tx) => {
-    const target = (await tx.get(`users/${input.targetUid}`)).data;
-    if (!target) throw new SeedError("not_found");
-    if (target.isVerifiedPro === true) throw new SeedError("already_pro");
-    if (target.banned === true) throw new SeedError("target_banned");
-    const now = Timestamp.fromMillis(nowMs);
-    tx.update(`users/${input.targetUid}`, { isVerifiedPro: true, verifiedBy: actorUid, verifiedAt: now });
-    tx.set(`${PRO_AUDIT_COLLECTION}/${auditId}`, {
-      action: "seed",
-      actorUid,
-      targetUid: input.targetUid,
-      targetUsername: typeof target.username === "string" ? target.username : "",
-      reason: input.reason,
-      evidenceCompany: input.evidenceCompany,
-      evidenceUrl: input.evidenceUrl,
-      source,
-      createdAt: now,
-    });
-    return { auditId, status: "seeded" as const };
-  });
+  /** Admin custom-claim lookup for the TARGET (pros are never admins). */
+  isAdmin: (uid: string) => Promise<boolean>;
 }
 
 const CODES: Record<string, HttpsError["code"]> = {
   self_seed: "permission-denied",
+  target_is_admin: "permission-denied",
   not_found: "not-found",
   already_pro: "failed-precondition",
   target_banned: "failed-precondition",
@@ -86,7 +47,12 @@ export async function handleProSeedCall(request: CallableRequest, deps: ProSeedD
   if (!request.app) throw new HttpsError("failed-precondition", "app_check_required");
   try {
     const input = parseSeedInput(request.data);
-    const result = await seedPro(deps.db, uid, input, deps.nowMs);
+    const result = await seedPro(
+      { db: deps.db, isAdmin: deps.isAdmin, stamp: Timestamp.fromMillis(deps.nowMs) },
+      uid,
+      input,
+      "callable",
+    );
     logger.info("pro_seeded", { actorUid: uid, targetUid: input.targetUid, auditId: result.auditId });
     return result;
   } catch (err) {

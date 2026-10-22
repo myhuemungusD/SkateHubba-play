@@ -28,6 +28,11 @@ function text(raw: unknown, min: number, max: number, code: string): string {
   return value;
 }
 
+/** Bare IPv4 or bracketed IPv6 host: evidence must name a real site, not an address. */
+function isIpHost(hostname: string): boolean {
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.startsWith("[");
+}
+
 function httpsUrl(raw: unknown): string {
   if (typeof raw !== "string" || raw.length > SEED_URL_MAX) throw new SeedInputError("bad_evidence_url");
   let url: URL;
@@ -36,7 +41,9 @@ function httpsUrl(raw: unknown): string {
   } catch {
     throw new SeedInputError("bad_evidence_url");
   }
-  if (url.protocol !== "https:" || !url.hostname.includes(".")) throw new SeedInputError("bad_evidence_url");
+  if (url.protocol !== "https:" || !url.hostname.includes(".") || isIpHost(url.hostname)) {
+    throw new SeedInputError("bad_evidence_url");
+  }
   return url.toString();
 }
 

@@ -49,6 +49,8 @@ const PLAIN_UID = "plain-uid";
 /** Signed-in user whose token carries `admin: false`. */
 const FALSE_CLAIM_UID = "false-claim-uid";
 const REPORTER_UID = "reporter-uid";
+/** A verified pro (users doc isVerifiedPro: true) with NO admin claim. */
+const PRO_UID = "pro-uid";
 
 const BADGE_ID = "hundred-clips";
 const ITEM_ID = "og-deck";
@@ -66,6 +68,7 @@ const CALLERS = {
   plain: { uid: PLAIN_UID, claims: { email_verified: true } },
   adminFalse: { uid: FALSE_CLAIM_UID, claims: { email_verified: true, admin: false } },
   reporter: { uid: REPORTER_UID, claims: { email_verified: true } },
+  pro: { uid: PRO_UID, claims: { email_verified: true } },
 } as const;
 
 type CallerName = keyof typeof CALLERS;
@@ -286,6 +289,7 @@ describe("proAudit/{id} — append-only seed log", () => {
   beforeEach(async () => {
     await getEnv().withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), "proAudit", "a1"), row);
+      await setDoc(doc(ctx.firestore(), "users", PRO_UID), { username: "pro", isVerifiedPro: true });
     });
   });
 
@@ -296,6 +300,10 @@ describe("proAudit/{id} — append-only seed log", () => {
   it("a non-admin CANNOT read the log", async () => {
     await assertFails(getDoc(audit("plain")));
     await assertFails(getDoc(audit("target")));
+  });
+
+  it("a verified pro without the admin claim CANNOT read the log (pro is not admin)", async () => {
+    await assertFails(getDoc(audit("pro")));
   });
 
   it("nobody CAN create, edit or delete a row from a client, admins included", async () => {
