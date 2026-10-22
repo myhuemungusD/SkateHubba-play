@@ -70,6 +70,7 @@ describe("PlayerProfileScreen — Bless as pro", () => {
   });
 
   it("loads the put-on-by line on a pro's profile with the flag on", () => {
+    vi.stubEnv("VITE_FEATURE_PRO_BLESSING", "true");
     vi.mocked(fetchLineage).mockClear();
     openOpponent({ ...opponentProfile, isVerifiedPro: true });
     expect(fetchLineage).toHaveBeenCalledWith("u2");
