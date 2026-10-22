@@ -81,6 +81,48 @@ jobs:
           # Empty versionName on non-tag builds falls through to the git sha.
           VITE_APP_VERSION: ${{ steps.version.outputs.name }}
           VITE_GIT_SHA: ${{ github.sha }}
+          # Public Play Store flags (compliance audit G6). Same values as
+          # ios-release.yml so both stores ship the same app, minus
+          # VITE_FEATURE_APPLE_SIGNIN_ENABLED (iOS only). Reasons for each
+          # "false" are next to the iOS list. src/__tests__/store-build-flags.test.ts
+          # fails if the two lists drift.
+          VITE_FEATURE_EXTRAS_ENABLED: "true"
+          VITE_FEATURE_MAP_CHECKINS: "true"
+          VITE_FEATURE_SPOT_PRESENCE: "true"
+          VITE_FEATURE_TIPS: "true"
+          # Off in both store builds (Jason, 2026-10-21; iOS side is #817).
+          VITE_FEATURE_PRO_BLESSING: "false"
+          VITE_FEATURE_PRO_PROFILES: "true"
+          VITE_FEATURE_PRO_SHOWCASE: "true"
+          VITE_FEATURE_PRO_CALLS: "true"
+          VITE_FEATURE_PRO_COMMUNITY: "true"
+          VITE_FEATURE_DICE_ENABLED: "false"
+          VITE_FEATURE_XP_ENABLED: "true"
+          VITE_FEATURE_REFEREE_ENABLED: "true"
+          VITE_FEATURE_TURN_LENGTH: "true"
+          VITE_FEATURE_TRICK_PICKER_ENABLED: "true"
+          VITE_FEATURE_CLIP_EDITOR: "true"
+          VITE_FEATURE_PRO_CAMERA: "true"
+          VITE_FEATURE_CLIP_MODERATION_ENABLED: "true"
+          VITE_FEATURE_FEED_MODES_ENABLED: "true"
+          VITE_FEATURE_POST_MAKES_ENABLED: "true"
+          VITE_FEATURE_PROFILE_BANNER: "true"
+          VITE_FEATURE_PROFILE_CUSTOM: "true"
+          VITE_FEATURE_SPOT_CHATS_ENABLED: "true"
+          # Closet stays off in store builds until claim, buy and equip are
+          # verified on a TestFlight build with App Check (iOS side is #829).
+          # Closet Studio (its clothes editor) goes with it.
+          VITE_FEATURE_CLOSET_ENABLED: "false"
+          VITE_FEATURE_CLOSET_DROPS_ENABLED: "false"
+          VITE_FEATURE_CLOSET_TRADING_ENABLED: "false"
+          VITE_FEATURE_CLOSET_STUDIO: "false"
+          VITE_FEATURE_SHOE_360: "true"
+          VITE_FEATURE_HUBBA_ICONS: "true"
+          VITE_FEATURE_RUNNER_ENABLED: "false"
+          VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED: "false"
+          VITE_FEATURE_SMS_2FA_ENABLED: "false"
+          # iOS turns this on only for tester builds (its "wtt" input).
+          VITE_FEATURE_WTT_ENABLED: "false"
           # Store builds must fail, not warn, when the service-worker Firebase
           # config would ship with unreplaced placeholders (see vite.config.ts).
           REQUIRE_SW_CONFIG: '1'
