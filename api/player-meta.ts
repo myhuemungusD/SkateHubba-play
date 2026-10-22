@@ -42,7 +42,7 @@ const SITE_ORIGIN = "https://skatehubba.com";
 
 /** Generic card, used whenever the profile can't be resolved. */
 const FALLBACK_TITLE = "SkateHubba™ — For the Love of the Game";
-const FALLBACK_DESCRIPTION = "The first async S.K.A.T.E. trick battle game.";
+const FALLBACK_DESCRIPTION = "S.K.A.T.E. over video. One take. No edits.";
 const FALLBACK_IMAGE = `${SITE_ORIGIN}/og-image.png`;
 
 /**

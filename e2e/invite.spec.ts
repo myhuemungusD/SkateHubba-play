@@ -69,7 +69,7 @@ test("Copy Link writes the invite blurb to the clipboard", async ({ page, contex
   // The clipboard contents are the username-less invite blurb (no @handle
   // on Landing) plus the canonical share URL.
   const clipboard = await page.evaluate(() => navigator.clipboard.readText());
-  expect(clipboard).toContain("Play S.K.A.T.E. on SkateHubba");
+  expect(clipboard).toContain("Play me in a game of S.K.A.T.E. on SkateHubba.");
   // The share URL is whatever VITE_APP_URL resolves to; absent the env var
   // the component falls back to `window.location.origin`, which under
   // playwright is the dev server.
