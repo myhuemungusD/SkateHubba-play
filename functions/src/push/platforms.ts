@@ -40,3 +40,19 @@ export function diceEligibleTokens(mirror: Record<string, unknown> | undefined, 
 export function isDicePush(data: Readonly<Record<string, string>>): boolean {
   return data.kind === "dice" || (typeof data.type === "string" && data.type.startsWith("dice_"));
 }
+
+/** Max tokens one dispatch fans out to. Matches the <=10 cap on pushTargets.tokens. */
+export const MAX_TOKENS_PER_DISPATCH = 10;
+
+/**
+ * The recipient's deliverable tokens from their pushTargets doc: non-empty
+ * strings, de-duplicated, capped at MAX_TOKENS_PER_DISPATCH. The couriers use
+ * it when a /push_dispatch doc names no tokens, so a sender never needs to see
+ * the recipient's device tokens (security audit 2026-10-21, M1).
+ */
+export function mirrorTokens(mirror: Record<string, unknown> | undefined): string[] {
+  const raw = mirror?.tokens;
+  if (!Array.isArray(raw)) return [];
+  const clean = raw.filter((t): t is string => typeof t === "string" && t.length > 0);
+  return Array.from(new Set(clean)).slice(0, MAX_TOKENS_PER_DISPATCH);
+}

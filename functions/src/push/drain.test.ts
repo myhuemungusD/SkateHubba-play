@@ -50,9 +50,14 @@ describe("parseDispatchDoc", () => {
   it("tolerates missing data and createdAt", () => {
     expect(parseDispatchDoc(good({ data: null, createdAt: "x" }))).toMatchObject({ data: {}, createdAtMs: null });
   });
+  it("returns null tokens for a doc that names none (resolve from pushTargets)", () => {
+    const { tokens: _omit, ...rest } = good();
+    expect(parseDispatchDoc(rest)).toMatchObject({ tokens: null, recipientUid: "u1" });
+  });
   it.each([
     undefined,
     good({ tokens: "a" }),
+    good({ tokens: [] }),
     good({ tokens: ["", 3] }),
     good({ notification: null }),
     good({ notification: { title: 1, body: "B" } }),
@@ -217,5 +222,55 @@ describe("drainQueue", () => {
     const old = NOW - RETRY_MIN_AGE_MS - 1;
     const s = await drainQueue([doc(good({ createdAt: ts(old), data: { kind: "dice" } }), old)], deps());
     expect(s).toMatchObject({ scanned: 1, filtered: 1, sent: 0 });
+  });
+});
+
+describe("dispatches without tokens (M1: courier looks them up)", () => {
+  const tokenless = (over: Record<string, unknown> = {}) => {
+    const { tokens: _omit, ...rest } = good(over);
+    return rest;
+  };
+
+  it("resolves the recipient's tokens from pushTargets, de-duplicated and capped at 10", async () => {
+    const many = Array.from({ length: 12 }, (_, i) => `m${i}`);
+    const dp = deps({ pushTarget: vi.fn(async () => ({ tokens: ["m0", ...many, 7, ""] })) });
+    const d = doc(tokenless());
+    expect(await deliverDispatch(d, dp)).toBe("sent");
+    expect(dp.pushTarget).toHaveBeenCalledWith("u1");
+    expect(dp.send).toHaveBeenCalledWith(expect.objectContaining({ tokens: many.slice(0, 10) }));
+    expect(d.delete).toHaveBeenCalled();
+  });
+
+  it("drops the doc unsent when the recipient has no devices", async () => {
+    const dp = deps();
+    const d = doc(tokenless());
+    expect(await deliverDispatch(d, dp)).toBe("filtered");
+    expect(dp.send).not.toHaveBeenCalled();
+    expect(d.delete).toHaveBeenCalled();
+  });
+
+  it("applies the dice filter to resolved tokens with a single mirror read", async () => {
+    const dp = deps({
+      pushTarget: vi.fn(async () => ({ tokens: ["i", "w"], platforms: { i: "ios", w: "web" } })),
+      send: vi.fn(async () => ({ failureCount: 0, responses: [{ success: true }] })),
+    });
+    const d = doc(tokenless({ data: { gameId: "g", type: "dice_your_turn", kind: "dice" } }));
+    expect(await deliverDispatch(d, dp)).toBe("sent");
+    expect(dp.pushTarget).toHaveBeenCalledTimes(1);
+    expect(dp.send).toHaveBeenCalledWith(expect.objectContaining({ tokens: ["w"] }));
+  });
+
+  it("still sends a doc that names its own tokens, without reading the mirror (backward compatible)", async () => {
+    const dp = deps();
+    expect(await deliverDispatch(doc(good()), dp)).toBe("sent");
+    expect(dp.pushTarget).not.toHaveBeenCalled();
+    expect(dp.send).toHaveBeenCalledWith(expect.objectContaining({ tokens: ["a", "b"] }));
+  });
+
+  it("keeps a token-less doc queued for retry when the mirror lookup fails", async () => {
+    const dp = deps({ pushTarget: vi.fn(async () => Promise.reject(new Error("unavailable"))) });
+    const d = doc(tokenless());
+    expect(await deliverDispatch(d, dp)).toBe("error");
+    expect(d.delete).not.toHaveBeenCalled();
   });
 });

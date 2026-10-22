@@ -51,7 +51,7 @@ import { cert, getApps, initializeApp, type App, type ServiceAccount } from "fir
 import { getFirestore, FieldValue, type Firestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import { parseServiceAccountJson } from "./_serviceAccount.js";
-import { diceEligibleTokens, isDicePush } from "./_pushPlatforms.js";
+import { diceEligibleTokens, isDicePush, mirrorTokens } from "./_pushPlatforms.js";
 import { webpushOptions } from "./_pushWebpush.js";
 import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
 
@@ -189,7 +189,8 @@ function isDryRun(req: CronRequest): boolean {
  * the sweep cron's `buildAdminDispatchDoc` writes the same shape.
  */
 interface DispatchPayload {
-  tokens: string[];
+  /** Tokens named on the doc, or null: resolve them from pushTargets at send time (M1). */
+  tokens: string[] | null;
   title: string;
   body: string;
   data: Record<string, string>;
@@ -207,10 +208,15 @@ interface DispatchPayload {
  * crash the drain or push an unbounded payload to a user's device.
  */
 function parseDispatchDoc(raw: Record<string, unknown>): DispatchPayload | null {
+  // No `tokens` key: resolve from the recipient's pushTargets doc at send
+  // time (M1). A present-but-bad list is still malformed.
   const tokensRaw = raw.tokens;
-  if (!Array.isArray(tokensRaw)) return null;
-  const tokens = tokensRaw.filter((t): t is string => typeof t === "string" && t.length > 0);
-  if (tokens.length === 0) return null;
+  let tokens: string[] | null = null;
+  if (tokensRaw !== undefined) {
+    if (!Array.isArray(tokensRaw)) return null;
+    tokens = tokensRaw.filter((t): t is string => typeof t === "string" && t.length > 0);
+    if (tokens.length === 0) return null;
+  }
 
   const notification = raw.notification;
   if (typeof notification !== "object" || notification === null) return null;
@@ -249,11 +255,11 @@ function parseDispatchDoc(raw: Record<string, unknown>): DispatchPayload | null 
  * Remove tokens FCM reported as permanently dead from BOTH the cross-readable
  * mirror and the owner-only canonical list, keeping the two in lockstep.
  *
- * Scoping note (security): the tokens passed here always come from the dispatch
- * doc's own `tokens` array, and the /push_dispatch create rule enforces
- * `tokens.hasOnly(pushTargets[recipientUid].tokens)`. So a sender can only ever
- * name tokens that genuinely belong to the recipient — a crafted dispatch doc
- * cannot make this prune an unrelated user's devices. The prune is further
+ * Scoping note (security): the tokens passed here come either from the
+ * recipient's own pushTargets doc (a dispatch that names no tokens, M1) or from
+ * the doc's `tokens` array, which the /push_dispatch create rule pins to
+ * `tokens.hasOnly(pushTargets[recipientUid].tokens)` for client writers. So a
+ * crafted dispatch doc cannot make this prune an unrelated user's devices. The prune is further
  * gated on FCM itself declaring the token dead.
  */
 async function pruneDeadTokens(db: Firestore, recipientUid: string, dead: string[]): Promise<number> {
@@ -359,15 +365,18 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
           continue;
         }
 
-        let tokens = payload.tokens;
-        if (isDicePush(payload.data)) {
-          const mirror = (await db.collection(PUSH_TARGETS_COLLECTION).doc(payload.recipientUid).get()).data();
-          tokens = diceEligibleTokens(mirror, tokens);
-          if (tokens.length === 0) {
-            summary.filtered += 1;
-            if (!dryRun) await docSnap.ref.delete();
-            continue;
-          }
+        // One mirror read serves both the token lookup (doc names none, M1)
+        // and the dice platform check.
+        const needsMirror = payload.tokens === null || isDicePush(payload.data);
+        const mirror = needsMirror
+          ? (await db.collection(PUSH_TARGETS_COLLECTION).doc(payload.recipientUid).get()).data()
+          : undefined;
+        let tokens = payload.tokens ?? mirrorTokens(mirror);
+        if (isDicePush(payload.data)) tokens = diceEligibleTokens(mirror, tokens);
+        if (tokens.length === 0) {
+          summary.filtered += 1;
+          if (!dryRun) await docSnap.ref.delete();
+          continue;
         }
 
         if (dryRun) {

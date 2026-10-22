@@ -365,7 +365,7 @@ describe("drain", () => {
   });
 
   it.each([
-    ["tokens missing", { tokens: undefined }],
+    ["tokens not a list", { tokens: "tok-a" }],
     ["tokens empty", { tokens: [] }],
     ["tokens all non-string", { tokens: [null, 7] }],
     ["notification missing", { notification: undefined }],
@@ -667,5 +667,69 @@ describe("dice pushes and the iOS build", () => {
     await handler(makeReq({ authorization: AUTH }), res);
     expect(sendEachForMulticast).toHaveBeenCalledWith(expect.objectContaining({ tokens: ["ios-1"] }));
     expect(out.body).toMatchObject({ sent: 1, filtered: 0 });
+  });
+});
+
+describe("dispatches without tokens (M1: courier looks them up)", () => {
+  const tokenless = (over: Record<string, unknown> = {}) => {
+    const d: Record<string, unknown> = dispatchDoc(over);
+    delete d.tokens;
+    return d;
+  };
+
+  it("resolves the recipient's devices from pushTargets, de-duplicated", async () => {
+    const doc = makeFakeDoc("d1", tokenless(), rec);
+    h.getFirestoreMock.mockReturnValue(
+      makeDb([doc], rec, { mirrors: { u1: { tokens: ["m-1", "m-2", "m-1", 7, ""] } } }),
+    );
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: AUTH }), res);
+    expect(sendEachForMulticast).toHaveBeenCalledWith(expect.objectContaining({ tokens: ["m-1", "m-2"] }));
+    expect(out.body).toMatchObject({ sent: 1, malformed: 0 });
+    expect(rec.deletes).toEqual(["d1"]);
+  });
+
+  it("caps the fan-out at 10 tokens", async () => {
+    const many = Array.from({ length: 12 }, (_, i) => `m-${i}`);
+    const doc = makeFakeDoc("d1", tokenless(), rec);
+    h.getFirestoreMock.mockReturnValue(makeDb([doc], rec, { mirrors: { u1: { tokens: many } } }));
+    const { res } = makeRes();
+    await handler(makeReq({ authorization: AUTH }), res);
+    expect(sendEachForMulticast).toHaveBeenCalledWith(expect.objectContaining({ tokens: many.slice(0, 10) }));
+  });
+
+  it("drops the doc without calling FCM when the recipient has no devices", async () => {
+    const doc = makeFakeDoc("d1", tokenless(), rec);
+    h.getFirestoreMock.mockReturnValue(makeDb([doc], rec));
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: AUTH }), res);
+    expect(sendEachForMulticast).not.toHaveBeenCalled();
+    expect(out.body).toMatchObject({ sent: 0, filtered: 1, malformed: 0 });
+    expect(rec.deletes).toEqual(["d1"]);
+  });
+
+  it("still applies the dice platform filter to resolved tokens", async () => {
+    const doc = makeFakeDoc("d1", tokenless({ data: { gameId: "dg1", type: "dice_your_turn", kind: "dice" } }), rec);
+    h.getFirestoreMock.mockReturnValue(
+      makeDb([doc], rec, {
+        mirrors: { u1: { tokens: ["ios-1", "web-1"], platforms: { "ios-1": "ios", "web-1": "web" } } },
+      }),
+    );
+    const { res } = makeRes();
+    await handler(makeReq({ authorization: AUTH }), res);
+    expect(sendEachForMulticast).toHaveBeenCalledWith(expect.objectContaining({ tokens: ["web-1"] }));
+  });
+
+  it("prunes a dead resolved token from that recipient only", async () => {
+    sendEachForMulticast.mockResolvedValueOnce({
+      failureCount: 1,
+      responses: [{ success: false, error: { code: "messaging/registration-token-not-registered" } }],
+    });
+    const doc = makeFakeDoc("d1", tokenless(), rec);
+    h.getFirestoreMock.mockReturnValue(makeDb([doc], rec, { mirrors: { u1: { tokens: ["dead"] } } }));
+    const { res } = makeRes();
+    await handler(makeReq({ authorization: AUTH }), res);
+    expect(rec.pushTargetSets.map((w) => w.uid)).toEqual(["u1"]);
+    expect(rec.privateSets.map((w) => w.uid)).toEqual(["u1"]);
   });
 });
