@@ -10,7 +10,7 @@
  * produced.
  */
 import { describe, it, expect } from "vitest";
-import { parseServiceAccountJson } from "../../../api/cron/_serviceAccount.js";
+import { describeInitFailure, parseServiceAccountJson } from "../../../api/cron/_serviceAccount.js";
 
 const PEM = "-----BEGIN PRIVATE KEY-----\nMIIabc\n-----END PRIVATE KEY-----\n";
 
@@ -196,5 +196,55 @@ describe("failure modes stay loud", () => {
     expect(() => parseServiceAccountJson(mangledIncomplete)).toThrow(
       "FIREBASE_SERVICE_ACCOUNT_JSON is missing required fields",
     );
+  });
+});
+
+describe("describeInitFailure (log-safe init errors)", () => {
+  /** What parseServiceAccountJson throws for `raw`. */
+  function thrownBy(raw: string): unknown {
+    try {
+      parseServiceAccountJson(raw);
+    } catch (err) {
+      return err;
+    }
+    throw new Error("expected a throw");
+  }
+
+  it("never returns any part of a parse error that quotes the key", () => {
+    // Node 22 quotes short inputs whole: the raw message carries the marker.
+    const err = thrownBy('{"pk":PRIVATE KEY}');
+    expect((err as Error).message).toContain("PRIVATE KEY");
+    const described = describeInitFailure(err);
+    expect(described).toEqual({ errorName: "SyntaxError", reason: "service account JSON invalid" });
+    expect(JSON.stringify(described)).not.toContain("PRIVATE KEY");
+  });
+
+  it("classifies the implausible-repair error without echoing its quoted parse error", () => {
+    // That message embeds the strict parse error, so it can quote the key too.
+    const implausible = new Error(
+      "FIREBASE_SERVICE_ACCOUNT_JSON repair produced an implausible private_key; fix the stored value. " +
+        "Original parse error: ...PRIVATE KEY...",
+    );
+    expect(describeInitFailure(implausible)).toEqual({
+      errorName: "Error",
+      reason: "service account repair implausible",
+    });
+  });
+
+  it.each([
+    ["FIREBASE_SERVICE_ACCOUNT_JSON is not set", "service account env not set"],
+    ["FIREBASE_SERVICE_ACCOUNT_JSON is missing required fields", "service account JSON missing fields"],
+    ["Storage bucket name could not be resolved", "storage bucket unresolved"],
+    ["Failed to parse private key: -----BEGIN PRIVATE KEY-----abc", "firebase init failed"],
+  ])("maps %j to a fixed reason", (message, reason) => {
+    const described = describeInitFailure(new Error(message));
+    expect(described).toEqual({ errorName: "Error", reason });
+    expect(JSON.stringify(described)).not.toContain("PRIVATE KEY");
+  });
+
+  it("does not trust a non-identifier error name or a non-Error throw", () => {
+    const odd = Object.assign(new Error("x"), { name: "PRIVATE KEY leak" });
+    expect(describeInitFailure(odd)).toEqual({ errorName: "Error", reason: "firebase init failed" });
+    expect(describeInitFailure("PRIVATE KEY")).toEqual({ errorName: "string", reason: "firebase init failed" });
   });
 });

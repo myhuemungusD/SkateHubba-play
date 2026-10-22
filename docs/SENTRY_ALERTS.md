@@ -80,25 +80,70 @@ Fires once per page view of `/map` when `VITE_MAPBOX_STYLE_URL` is set to a valu
 - **Action interval:** Once per issue (the event fires on every /map page view while the misconfig is live)
 - **Remediation:** Open the Sentry event, copy `extra.styleUrl`, and check Vercel → Project Settings → Environment Variables. Either correct the value (must start with `mapbox://styles/` or be a valid `https://` URL) and redeploy, or unset the var to use the default. If self-hosting on a non-Mapbox domain, also extend the `connect-src` directive in `vercel.json` to whitelist that origin.
 
+### Server-side alert rules (`api/`)
+
+The Vercel functions report through `api/_sentry.ts`. `captureServerError(event, …)` sets the Sentry tag `event:<name>` to the same name the structured log line uses, and it is the only reliable filter. The event's message is not: most server captures use `redactMessage`, which replaces the message with `<event> (<ErrorClass>; message redacted)`, and the default issue grouping does not key on it. Filter on the tag.
+
+Server events carry `environment = VERCEL_ENV`, so unlike the client caveat below, `environment:production` here really is production only (previews report as `preview`).
+
+These rules exist in Sentry org `skatehubba`, project `skatehubba-sentry`. Every one is production-only, fires on **every event** (each one is a person whose data or deletion request needs attention), and **emails issue owners** until a Slack integration exists (then add `#skatehubba-alerts`, see §3).
+
+| Rule                                                             | Filter (tag)                                         | Level   | Sent from                                      |
+| ---------------------------------------------------------------- | ---------------------------------------------------- | ------- | ---------------------------------------------- |
+| [6211523](https://skatehubba.sentry.io/monitors/alerts/6211523/) | `event:account_delete_posthog_failed`                | warning | `api/account/delete.ts` `reportPosthogErasure` |
+| [6211524](https://skatehubba.sentry.io/monitors/alerts/6211524/) | `event:account_delete_posthog_skipped`               | warning | same, production only                          |
+| [6211525](https://skatehubba.sentry.io/monitors/alerts/6211525/) | `event:account_delete_underage_raced_cascade_failed` | error   | `handleUnderage`                               |
+| [6211543](https://skatehubba.sentry.io/monitors/alerts/6211543/) | `event:account_delete_init_failed`                   | error   | boot (`getAdminApp`)                           |
+| [6211545](https://skatehubba.sentry.io/monitors/alerts/6211545/) | `event:account_delete_erasure_failed`                | error   | erasure cascade                                |
+| [6211546](https://skatehubba.sentry.io/monitors/alerts/6211546/) | `event:account_delete_auth_failed`                   | error   | Auth delete after erasure                      |
+| [6211549](https://skatehubba.sentry.io/monitors/alerts/6211549/) | `event:account_delete_underage_failed`               | error   | `handleUnderage` (COPPA)                       |
+| [6211550](https://skatehubba.sentry.io/monitors/alerts/6211550/) | `event:account_delete_unhandled`                     | error   | `withSentry("account_delete", …)` wrapper      |
+
+That is all eight. `account_delete_revoke_failed` intentionally has **no** rule: refresh-token revocation is best-effort (a warning; erasure and the Auth delete still run, and deleting the Auth user ends the session anyway), so it is visible in Sentry and the logs but pages no one.
+
+Every event carries `extra.uidHash` (`hashUid(uid)`, `src/utils/pii.ts`) where a uid is known, never the raw uid. To trace one, hash the uid the same way and search the logs for it (`docs/DEPLOYMENT.md`).
+
+#### Boot failure (`account_delete_init_failed`)
+
+`POST /api/account/delete` could not initialise firebase-admin, so **every** deletion is failing with `init_failed` and nothing was erased. The Sentry event and the log line carry only the error class and a fixed reason (`service account env not set`, `service account JSON invalid`, `service account JSON missing fields`, `service account repair implausible`, `storage bucket unresolved`, `firebase init failed`), never the error message: a `JSON.parse` failure quotes part of `FIREBASE_SERVICE_ACCOUNT_JSON`, private key included.
+
+- **Remediation:** fix `FIREBASE_SERVICE_ACCOUNT_JSON` (or `FIREBASE_STORAGE_BUCKET`) in Vercel Production per the reason, and redeploy. The crons log the same reasons as `init_failed`.
+
+#### Erasure failed (`account_delete_erasure_failed`)
+
+The cascade threw. The Auth user was deliberately left alive and the client told the user to retry; every phase is idempotent, so a retry resumes. One event is a transient failure; a run of them is an outage (Firestore, Storage, or IAM on the service account).
+
+- **Remediation:** check the log line `account_delete_erasure_failed` (its `error` has the uid replaced with `[uid]`) for the failing phase, fix it, and if the user did not retry, run `deleteUserDataAsAdmin` (`api/account/_deleteUserData.ts`) for them.
+
+#### Auth delete failed (`account_delete_auth_failed`)
+
+Data is erased, but the Auth user survived. The client treats this as success and signs out; the next call of the endpoint deletes the Auth user.
+
+- **Remediation:** find the Auth user whose `hashUid(uid)` equals `extra.uidHash` and delete it (`auth.deleteUser(uid)`); the cascade re-runs as a no-op.
+
+#### Under-13 erasure failed (`account_delete_underage_failed`)
+
+The COPPA path (`?reason=underage`) failed before it deleted the Auth user, so the sign-in still exists. The client can retry while its token is valid.
+
+- **Remediation:** find the Auth user whose `hashUid(uid)` equals `extra.uidHash` and has no `users` doc, then delete it. Under COPPA nothing about this sign-in may be kept.
+
+#### Unhandled throw (`account_delete_unhandled`)
+
+`withSentry` caught something the handler threw despite its never-throw contract; the platform returned an opaque 500. Always a bug.
+
+- **Remediation:** read the stack, fix, and add a test. Check whether the request was mid-erasure (`account_delete_attempt` without `account_delete_success` for the same `uidHash`).
+
 #### Orphaned under-13 profile (`account_delete_underage_raced_cascade_failed`)
 
 Fires when the COPPA erasure (`POST /api/account/delete?reason=underage`, `api/account/_underage.ts`) deleted the Auth user, then found a profile written in the race window and failed to erase it. The client can't retry, because its token no longer verifies, so the profile stays until someone erases it. Rare: the client shows the blocked card and no profile form. The event carries only `uidHash`.
 
-- **When:** A new issue is created
-- **Filter:** `event.environment:production AND message:"account_delete_underage_raced_cascade_failed"`
-- **Then:** Send notification to **Slack** `#skatehubba-alerts`
-- **Action interval:** Every occurrence (each one is an orphaned profile)
 - **Remediation:** With the Admin SDK on the named database (`getFirestore(app, "skatehubba")`), find `users` docs whose Auth user no longer exists (`auth.getUser(uid)` rejects with `auth/user-not-found`), and pick the one where `hashUid(uid)` (`src/utils/pii.ts`) equals the event's `uidHash`. Erase it with `deleteUserDataAsAdmin` from `api/account/_deleteUserData.ts`, the same cascade the endpoint runs; it is idempotent.
 
-#### PostHog person not deleted (`account_delete_posthog_failed`)
+#### PostHog person not deleted (`account_delete_posthog_failed`, `account_delete_posthog_skipped`)
 
 Fires when `POST /api/account/delete` erased the user's data but PostHog's bulk-delete call (`api/account/_posthogErasure.ts`) returned an error or timed out after 5 seconds. The account is still deleted; only the analytics person and events may remain. `extra.reason` is `http_<status>` or the error name. `extra.distinctId` is the PostHog distinct_id (`hashIdentity(uid)`), which is the only handle left once the account is gone.
 
-- **When:** A new issue is created
-- **Filter:** `event.environment:production AND message:"account_delete_posthog_failed"`
-- **Then:** Send notification to **Slack** `#skatehubba-alerts`
-- **Action interval:** Every occurrence (each one is a deletion request PostHog has not acted on)
-- **Skipped in production (`account_delete_posthog_skipped`):** same filter with this message. It fires when `POSTHOG_PERSONAL_API_KEY` or `POSTHOG_PROJECT_ID` is missing in Vercel Production, so every deletion is missing PostHog. Set both, redeploy, then retry each `extra.distinctId` by hand as below. Outside production a skip is expected and only logged.
+- **Skipped in production (`account_delete_posthog_skipped`):** fires when `POSTHOG_PERSONAL_API_KEY` or `POSTHOG_PROJECT_ID` is missing in Vercel Production, so every deletion is missing PostHog. Set both, redeploy, then retry each `extra.distinctId` by hand as below. Outside production a skip is expected and only logged.
 - **Remediation:** `http_401` or `http_403` means `POSTHOG_PERSONAL_API_KEY` is wrong, expired, or lacks `person:write`; `http_404` usually means a wrong `POSTHOG_PROJECT_ID` or `POSTHOG_HOST` (see `docs/DEPLOYMENT.md`). Fix the env, then retry by hand: `POST {POSTHOG_HOST}/api/projects/{POSTHOG_PROJECT_ID}/persons/bulk_delete/` with `{"distinct_ids": ["<extra.distinctId>"], "delete_events": true}` and the personal key as a Bearer token.
 
 ### 3. Slack Integration
@@ -166,6 +211,6 @@ alerting setup, not an afterthought.
 **App Check failures have no alert rule yet.** `docs/APPCHECK_ROLLOUT.md` names
 `appcheck_init_failed`, `appcheck_enabled_but_no_site_key`,
 `appcheck_native_init_failed`, and `users/{uid} permission-denied after retries` as
-rollout abort triggers, but this document defines no matching alert — it currently
-covers only the two map alerts. App Check is now on in production in monitor mode, so
+rollout abort triggers, but this document defines no matching alert — it
+covers the map and account-deletion alerts only. App Check is now on in production in monitor mode, so
 these signals are live; add the rules before Console enforcement is turned on.
