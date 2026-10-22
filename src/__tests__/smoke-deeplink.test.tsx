@@ -21,6 +21,7 @@ import { MemoryRouter, useLocation } from "react-router";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import App from "../App";
+import { captureGameLinkFromLocation } from "../lib/gameLink";
 import { verifiedUser, testProfile, activeGame } from "./smoke-helpers";
 import { withExtrasEnabled } from "./harness/featureFlags";
 import type { UserProfile } from "../services/users";
@@ -499,13 +500,24 @@ describe("Smoke: public /player/:uid for a signed-out visitor", () => {
  * A web push tap opens https://skatehubba.com/?game=<id> (fcmOptions.link /
  * click_action / the service worker's openWindow). It used to land on /lobby:
  * nothing read ?game= on a fresh load, and the auth router's "/" → "/lobby"
- * redirect dropped the query. These pin the real route table: the game opens
- * once auth and the profile are ready, the param is stripped, and a signed-out
- * tap survives sign-in.
+ * redirect dropped the query. main.tsx now parks the id and strips the param
+ * before the router mounts (captureGameLinkFromLocation); these run that same
+ * step and then pin the real route table: the game opens once auth and the
+ * profile are ready, and a signed-out tap survives sign-in.
  */
 describe("Smoke: /?game=<id> push link", () => {
   const PENDING_KEY = "skate.pendingGameLink";
   const game = activeGame({ id: "pushGame123" });
+
+  /** What main.tsx does with the page URL before the router mounts. */
+  function loadPage(search: string): string {
+    const replaceState = vi.fn();
+    captureGameLinkFromLocation({
+      location: { pathname: "/", search, hash: "" } as Location,
+      history: { state: null, replaceState } as unknown as History,
+    });
+    return replaceState.mock.calls[0]?.[2] as string;
+  }
 
   beforeEach(() => {
     sessionStorage.clear();
@@ -523,25 +535,25 @@ describe("Smoke: /?game=<id> push link", () => {
     sessionStorage.clear();
   });
 
-  it("opens the game on a cold load once auth and the profile resolve, then strips the param", async () => {
+  it("opens the game on a cold load once auth and the profile resolve", async () => {
+    expect(loadPage(`?game=${game.id}`)).toBe("/");
     // Auth still loading on the first paint, exactly like a cold load.
     mocks.auth.refs.useAuth.mockReturnValue({ loading: true, user: null, profile: null, refreshProfile: vi.fn() });
-    const view = await mountForAuthChange(`/?game=${game.id}`);
-    // Nothing routes while auth is loading, so the link is still intact.
-    expect(screen.getByTestId("location").textContent).toBe(`/?game=${game.id}`);
+    const view = await mountForAuthChange("/");
+    expect(sessionStorage.getItem(PENDING_KEY)).toBe(game.id);
 
     resolveSignedIn();
     await view.rerender();
 
-    // "/game" with no query: opened, and the param is gone for a refresh.
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/game"));
     expect(await screen.findByLabelText("TRICK NAME", undefined, { timeout: 10_000 })).toBeInTheDocument();
     expect(sessionStorage.getItem(PENDING_KEY)).toBeNull();
   });
 
   it("keeps the link through sign-in and opens the game afterwards", async () => {
+    loadPage(`?game=${game.id}`);
     mocks.auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    const view = await mountForAuthChange(`/?game=${game.id}`);
+    const view = await mountForAuthChange("/");
     // Signed out: the landing page, no game, the intent parked.
     expect(screen.getByTestId("location").textContent).toBe("/");
     expect(sessionStorage.getItem(PENDING_KEY)).toBe(game.id);
@@ -557,8 +569,9 @@ describe("Smoke: /?game=<id> push link", () => {
   });
 
   it("drops a malformed id: strips it and stays on the lobby", async () => {
+    expect(loadPage("?game=..%2Fusers%2Fu2")).toBe("/");
     resolveSignedIn();
-    await mountApp("/?game=..%2Fusers%2Fu2");
+    await mountApp("/");
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/lobby"));
     expect(sessionStorage.getItem(PENDING_KEY)).toBeNull();
     expect(mocks.games.refs.subscribeToGame).not.toHaveBeenCalled();

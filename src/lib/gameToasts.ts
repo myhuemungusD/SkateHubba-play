@@ -9,3 +9,15 @@ export const GAME_ACCESS_DENIED_TOAST = {
   title: "You can't open that game",
   message: "You don't have access to it. Back to the lobby.",
 };
+
+/**
+ * Shown when a push deep link couldn't load its game because the read never
+ * got an answer (offline or Firestore unreachable). Neutral on purpose: the
+ * user may well have access, and the link is kept and retried once the device
+ * is back online (useGameDeepLink).
+ */
+export const GAME_LINK_LOAD_FAILED_TOAST = {
+  type: "info" as const,
+  title: "Couldn't open that game",
+  message: "Check your connection. We'll open it when you're back online.",
+};
