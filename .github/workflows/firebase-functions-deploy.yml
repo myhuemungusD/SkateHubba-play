@@ -144,6 +144,9 @@ jobs:
           OVR_DICE_ENABLED: ${{ vars.DICE_ENABLED }}
           OVR_MODERATION_ENABLED: ${{ vars.MODERATION_ENABLED }}
           OVR_PRO_BLESSING_ENABLED: ${{ vars.PRO_BLESSING_ENABLED }}
+          # Deletes user videos, so the variable always wins over the secret
+          # and only exactly "true" turns it on.
+          OVR_GAME_VIDEO_RETENTION_ENABLED: ${{ vars.GAME_VIDEO_RETENTION_ENABLED }}
         run: |
           set -euo pipefail
           if [ -z "$FUNCTIONS_DOTENV" ]; then
@@ -170,7 +173,7 @@ jobs:
               echo "${key}=${val} (repository variable or default)"
             fi
           done
-          for key in XP_ENABLED DICE_ENABLED MODERATION_ENABLED PRO_BLESSING_ENABLED; do
+          for key in XP_ENABLED DICE_ENABLED MODERATION_ENABLED PRO_BLESSING_ENABLED GAME_VIDEO_RETENTION_ENABLED; do
             ovr="OVR_${key}"
             [ -n "${!ovr:-}" ] || continue
             val=$(printf '%s' "${!ovr}" | tr -d '[:space:]')
@@ -184,6 +187,8 @@ jobs:
             printf '%s=%s\n' "$key" "$val" >> "$DEST"
             echo "override ${key%_ENABLED}: ${val}"
           done
+          # No variable and no secret line: retention stays a dry run.
+          grep -Eq "^GAME_VIDEO_RETENTION_ENABLED=" "$DEST" || printf 'GAME_VIDEO_RETENTION_ENABLED=false\n' >> "$DEST"
           for key in CLOSET_TESTER_UIDS MAP_TESTER_UIDS SPOT_PRESENCE_TESTER_UIDS; do
             grep -Eq "^${key}=" "$DEST" || printf '%s=\n' "$key" >> "$DEST"
           done
@@ -201,6 +206,13 @@ jobs:
               missing=1
             fi
           done
+          # Exact match, no lowercasing: "TRUE" or "yes" in the secret refuses
+          # the deploy instead of guessing for a switch that deletes videos.
+          val=$(grep -E "^GAME_VIDEO_RETENTION_ENABLED=" "$DEST" | head -n 1 | cut -d= -f2- | tr -d '[:space:]' || true)
+          if [ "$val" != "true" ] && [ "$val" != "false" ]; then
+            echo "::error::GAME_VIDEO_RETENTION_ENABLED must be exactly true or false."
+            missing=1
+          fi
           if [ "$missing" -ne 0 ]; then
             rm -f "$DEST"
             exit 1
@@ -209,7 +221,7 @@ jobs:
           # every deploy log shows which server features went live.
           # Print a word, not "KEY=value": GitHub masks every line of the
           # secret, so echoing the raw line shows up as "***".
-          for key in XP_ENABLED DICE_ENABLED MODERATION_ENABLED PRO_BLESSING_ENABLED; do
+          for key in XP_ENABLED DICE_ENABLED MODERATION_ENABLED PRO_BLESSING_ENABLED GAME_VIDEO_RETENTION_ENABLED; do
             raw="$(grep -E "^${key}=" "$DEST" | head -n 1 | cut -d= -f2- | tr -d '[:space:]')"
             case "$raw" in
               true) state="ON" ;;

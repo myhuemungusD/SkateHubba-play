@@ -122,7 +122,7 @@ export interface CreateUserClipParams {
  * upload happen FIRST: the storage path embeds the clip id, and a Firestore
  * doc pointing at a video that failed to upload is worse than an orphaned
  * video object (the feed would render a broken clip, vs. an invisible file
- * the storage lifecycle rule reaps). Abandoning the id costs nothing — no
+ * that only costs storage). Abandoning the id costs nothing — no
  * document was created.
  */
 export function newUserClipId(): string {

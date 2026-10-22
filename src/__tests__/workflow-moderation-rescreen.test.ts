@@ -107,9 +107,7 @@ describe("moderation-rescreen.yml policy", () => {
       expect(WORKFLOW).toContain(line);
     }
     // The deploy still lets the variable replace the secret's line; if that changes, so must the rescreen.
-    expect(DEPLOY).toContain(
-      "for key in XP_ENABLED DICE_ENABLED MODERATION_ENABLED PRO_BLESSING_ENABLED; do\n            ovr=",
-    );
+    expect(DEPLOY).toMatch(/for key in [A-Z_ ]*\bMODERATION_ENABLED\b[A-Z_ ]*; do\n +ovr="OVR_\$\{key\}"/);
     expect(WORKFLOW).toContain("SWITCH: ${{ steps.switch.outputs.moderation }}");
     expect(WORKFLOW).toMatch(
       /if \[ "\$MODE" = "apply" \]; then\n(?:.*\n)*? +export MODERATION_ENABLED="\$SWITCH"\n(?:.*\n)*? +ARGS=\(--apply/,

@@ -151,7 +151,7 @@ let cachedBucketName: string | null = null;
  * Unlike the cron handlers this also needs a Storage bucket. `initializeApp`
  * with only a credential has no default bucket, so the name is derived from the
  * service account's project id using the same convention as
- * `infra/storage-lifecycle.sh` (`${PROJECT_ID}.firebasestorage.app`), with an
+ * Firebase's default bucket name (`${PROJECT_ID}.firebasestorage.app`), with an
  * env override for the case where the bucket was created under the older
  * `.appspot.com` naming.
  */

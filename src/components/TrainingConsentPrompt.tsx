@@ -64,7 +64,8 @@ export function TrainingConsentPrompt({ profile }: { profile: UserProfile }) {
       <p className="font-display text-sm text-white tracking-wide">Help train SkateHubba&apos;s trick AI?</p>
       <p className="font-body text-xs text-faint mt-2 leading-snug">
         This is off unless you say yes. If you opt in, clips you film can be used to teach a future trick recognizer.
-        You can turn it off in Settings, and we&apos;ll stop using your clips. Players under 18 can&apos;t opt in.
+        While you&apos;re opted in we keep those clips past the usual 90 days. You can turn it off in Settings, and
+        we&apos;ll stop using your clips. Players under 18 can&apos;t opt in.
       </p>
       {error && <p className="font-body text-xs text-brand-red mt-2">{error}</p>}
       <div className="mt-3 flex gap-2">

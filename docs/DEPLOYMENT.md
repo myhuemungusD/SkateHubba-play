@@ -388,8 +388,8 @@ FIREBASE_STORAGE_BUCKET
                        `api/account/delete.ts` when erasing a deleted user's
                        videos and avatar. Defaults to
                        `${project_id}.firebasestorage.app`, derived from
-                       FIREBASE_SERVICE_ACCOUNT_JSON — the same convention
-                       `infra/storage-lifecycle.sh` uses. Only set this if the
+                       FIREBASE_SERVICE_ACCOUNT_JSON — Firebase's default
+                       bucket naming. Only set this if the
                        bucket was created under the older `.appspot.com`
                        naming, in which case erasure would silently find no
                        objects to delete.
@@ -487,7 +487,7 @@ reads them **server-side** when rendering social cards.
 
 Also in the repo but not covered above: `release-please.yml` (release PR
 automation), `release-recovery.yml`, and `firebase-infra-setup.yml` (manual
-`workflow_dispatch` for Firestore backups and the 90-day Storage lifecycle).
+`workflow_dispatch` for Firestore backups).
 
 ### Mapbox token hardening
 

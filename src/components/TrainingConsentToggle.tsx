@@ -61,7 +61,7 @@ export function TrainingConsentToggle({ uid }: Props) {
           <p className="font-display text-sm text-white tracking-wide">Help train SkateHubba&apos;s trick AI</p>
           <p className="font-body text-xs text-faint mt-1 leading-snug">
             {adult
-              ? "Off unless you turn it on. Clips you film can teach a future trick recognizer. Turn it off anytime and we stop using them, including clips you already shared."
+              ? "Off unless you turn it on. Clips you film can teach a future trick recognizer, and we keep them past the usual 90 days while you're opted in. Turn it off anytime and we stop using them, including clips you already shared."
               : "Players under 18 can't opt in."}
           </p>
         </div>
