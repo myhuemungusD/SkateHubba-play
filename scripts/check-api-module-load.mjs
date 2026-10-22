@@ -45,7 +45,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
-import { PROBES } from "./api-call-time-probes.mjs";
+import { PROBES, listVacuousProbes } from "./api-call-time-probes.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // Per-run dir (parallel runs and worktrees sharing node_modules can't clobber
@@ -71,7 +71,12 @@ export function listFunctionEntries(dir = join(root, "api")) {
 
 /**
  * Every package specifier the api/ sources load at runtime: value imports
- * (type-only ones are erased) and import() calls. node: builtins excluded.
+ * (type-only ones are erased), import() calls, require("x") calls and
+ * `import x = require("x")`. node: builtins excluded. A load the scan can't
+ * tie to a package (a non-literal import()/require(), or any createRequire(),
+ * whose require can load anything) is reported as a `<...>` marker, which no
+ * probe covers, so it fails the guard until someone looks. api/ is ESM and has
+ * no require-style loads today; this keeps one from slipping past the probes.
  */
 export function listApiExternalImports(dir = join(root, "api")) {
   const found = new Set();
@@ -81,18 +86,37 @@ export function listApiExternalImports(dir = join(root, "api")) {
       if (e.isDirectory()) walk(full);
       else if (/\.ts$/.test(e.name) && !/\.(test|spec|d)\.ts$/.test(e.name)) {
         const sf = ts.createSourceFile(full, readFileSync(full, "utf8"), ts.ScriptTarget.Latest, true);
+        const file = relative(root, full).split(sep).join("/");
         const visit = (node) => {
           let spec;
+          let kind = "import()";
           if (ts.isImportDeclaration(node) && !node.importClause?.isTypeOnly) spec = node.moduleSpecifier;
           else if (ts.isExportDeclaration(node) && !node.isTypeOnly && node.moduleSpecifier)
             spec = node.moduleSpecifier;
-          else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword)
-            spec = node.arguments[0];
+          else if (
+            ts.isImportEqualsDeclaration(node) &&
+            !node.isTypeOnly &&
+            ts.isExternalModuleReference(node.moduleReference)
+          )
+            spec = node.moduleReference.expression;
+          else if (ts.isCallExpression(node)) {
+            const callee = node.expression;
+            const calleeName = ts.isIdentifier(callee)
+              ? callee.text
+              : ts.isPropertyAccessExpression(callee)
+                ? callee.name.text
+                : undefined;
+            if (callee.kind === ts.SyntaxKind.ImportKeyword) spec = node.arguments[0];
+            else if (ts.isIdentifier(callee) && callee.text === "require") {
+              kind = "require()";
+              spec = node.arguments[0] ?? callee;
+            } else if (calleeName === "createRequire") found.add(`<createRequire() in ${file}>`);
+          }
           if (spec && ts.isStringLiteralLike(spec)) {
             const name = spec.text;
             if (!name.startsWith(".") && !name.startsWith("node:")) found.add(name);
           } else if (spec) {
-            found.add(`<non-literal import() in ${relative(root, full)}>`);
+            found.add(`<non-literal ${kind} in ${file}>`);
           }
           ts.forEachChild(node, visit);
         };
@@ -234,6 +258,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const { ok, results = [], probeResults = [], error } = await checkApiModuleLoad();
   if (error) console.error(`[check-api-module-load] ${error}`);
   const uncovered = listApiExternalImports().filter((s) => !Object.values(PROBES).some((p) => p.covers.includes(s)));
+  const vacuous = listVacuousProbes();
+  if (vacuous.length > 0) {
+    console.error(
+      `[check-api-module-load] FAIL  probes with nothing to check (empty mustLoad, no noMustLoad reason): ${vacuous.join(", ")}`,
+    );
+  }
   if (uncovered.length > 0) {
     console.error(
       `[check-api-module-load] FAIL  no call-time probe covers: ${uncovered.join(", ")} (add one to scripts/api-call-time-probes.mjs)`,
@@ -250,8 +280,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     console.error(
       "[check-api-module-load] A function or SDK call above crashes while loading its modules. At boot that is a 500 FUNCTION_INVOCATION_FAILED on every request; at call time it fails that call (for account deletion: 500 erasure_failed).",
     );
-    process.exit(1);
   }
+  if (!ok || uncovered.length > 0 || vacuous.length > 0) process.exit(1);
   console.log(
     `[check-api-module-load] ${results.length} functions load and ${probeResults.length} call-time probes pass (${process.version}, ${NODE_FLAGS.join(" ")}).`,
   );

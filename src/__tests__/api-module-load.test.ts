@@ -1,7 +1,8 @@
 import { generateKeyPairSync, createPublicKey } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -26,18 +27,19 @@ const req = createRequire(resolve(root, "package.json"));
 
 type RunResult = { entry: string; ok: boolean; code: number | null; out: string };
 type CheckResult = { ok: boolean; error?: string; results: RunResult[]; probeResults: RunResult[] };
-type Probes = Record<string, { covers: string[]; mustLoad: string[] }>;
+type Probes = Record<string, { covers: string[]; mustLoad: string[]; noMustLoad?: string }>;
 
 const scriptsDir = resolve(root, "scripts");
 const loadScripts = async () => {
   const guard = (await import(/* @vite-ignore */ resolve(scriptsDir, "check-api-module-load.mjs"))) as {
     checkApiModuleLoad: () => Promise<CheckResult>;
     listFunctionEntries: () => string[];
-    listApiExternalImports: () => string[];
+    listApiExternalImports: (dir?: string) => string[];
   };
   const probes = (await import(/* @vite-ignore */ resolve(scriptsDir, "api-call-time-probes.mjs"))) as {
     PROBES: Probes;
     MODULE_LOAD_ERROR: RegExp;
+    listVacuousProbes: (probes?: Probes) => string[];
   };
   return { ...guard, ...probes };
 };
@@ -70,6 +72,67 @@ describe("api functions load like on Vercel", () => {
     expect(imports.filter((s) => !covered.has(s))).toEqual([]);
     // The deletion path's lazy Storage chain is asserted, not just reached.
     expect(PROBES["firebase-admin/storage"].mustLoad).toEqual(["@google-cloud/storage", "gaxios", "uuid"]);
+  });
+
+  it("no call-time probe can pass with nothing checked", async () => {
+    const { PROBES, listVacuousProbes } = await loadScripts();
+    // A probe with an empty mustLoad passes even if its SDK call short-circuits.
+    expect(listVacuousProbes()).toEqual([]);
+    expect(listVacuousProbes({ x: { covers: [], mustLoad: [] } })).toEqual(["x"]);
+    expect(listVacuousProbes({ x: { covers: [], mustLoad: [], noMustLoad: "  " } })).toEqual(["x"]);
+    // The first 1.2.0 crash chain (jwks-rsa → jose) and the request-time transport are asserted.
+    expect(PROBES["firebase-admin/auth"].mustLoad).toEqual(["jsonwebtoken", "jwks-rsa", "jose", "fetch-blob"]);
+    expect(PROBES["firebase-admin/messaging"].mustLoad).toEqual(
+      expect.arrayContaining(["google-auth-library", "gaxios", "firebase-admin/lib/messaging", "fetch-blob"]),
+    );
+    // @sentry/node is import()ed as ESM, invisible to require.cache: the runner's null check asserts it.
+    expect(PROBES["@sentry/node"].mustLoad).toEqual([]);
+    expect(PROBES["@sentry/node"].noMustLoad).toMatch(/ensureSentry\(\) returns null/);
+  });
+
+  it("the import scan also catches require(), createRequire() and import x = require()", async () => {
+    const { listApiExternalImports } = await loadScripts();
+    const dir = mkdtempSync(join(tmpdir(), "api-scan-"));
+    try {
+      mkdirSync(join(dir, "sub"));
+      writeFileSync(
+        join(dir, "a.ts"),
+        [
+          'import type { T } from "type-only-pkg";',
+          'import x = require("import-equals-pkg");',
+          'import type Y = require("type-only-equals-pkg");',
+          'const r = require("require-pkg");',
+          'const n = require("node:fs");',
+          'const rel = require("./local");',
+          "const dyn = require(process.env.X as string);",
+          "export { x, r, n, rel, dyn };",
+        ].join("\n"),
+      );
+      writeFileSync(
+        join(dir, "sub", "b.ts"),
+        [
+          'import { createRequire } from "node:module";',
+          'import * as mod from "node:module";',
+          "const req = createRequire(import.meta.url);",
+          "const req2 = mod.createRequire(import.meta.url);",
+          'export const z = [req, req2, await import("import-call-pkg")];',
+        ].join("\n"),
+      );
+      writeFileSync(join(dir, "c.test.ts"), 'require("test-only-pkg");');
+      const found = listApiExternalImports(dir);
+      expect(found).toEqual(expect.arrayContaining(["import-equals-pkg", "require-pkg", "import-call-pkg"]));
+      expect(found.filter((s) => s.startsWith("<"))).toHaveLength(2);
+      expect(found.some((s) => /^<non-literal require\(\) in .*a\.ts>$/.test(s))).toBe(true);
+      expect(found.some((s) => /^<createRequire\(\) in .*sub\/b\.ts>$/.test(s))).toBe(true);
+      for (const absent of ["type-only-pkg", "type-only-equals-pkg", "node:fs", "./local", "test-only-pkg"]) {
+        expect(found).not.toContain(absent);
+      }
+      expect(found.filter((s) => !s.startsWith("<"))).toEqual(["import-call-pkg", "import-equals-pkg", "require-pkg"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    // api/ itself is ESM: no require-style loads (any would need a probe or a look).
+    expect(listApiExternalImports().filter((s) => s.startsWith("<"))).toEqual([]);
   });
 
   it("recognises the prod erasure_failed error as a module-load failure", async () => {
