@@ -185,6 +185,11 @@ jobs:
 
       - name: Audit dependencies (report-only — deps untouched by this change)
         if: steps.deps.outputs.changed != 'true'
+        # Report-only, so a slow or hung registry must not eat the job's
+        # 20-minute budget (it hung for 7 min on #797/#798 and the job timed out
+        # mid-tests). Dependabot alerts and audit-nightly (manual dispatch) cover drift.
+        timeout-minutes: 2
+        continue-on-error: true
         run: |
           if ! npm audit --audit-level=moderate; then
             echo "::warning::npm audit found advisories in existing pinned dependencies. This change does not touch package.json/package-lock.json, so it is not blocked. Drift is handled by the nightly audit job and Dependabot."
