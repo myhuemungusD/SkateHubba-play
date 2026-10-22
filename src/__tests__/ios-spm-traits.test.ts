@@ -33,6 +33,19 @@ describe("iOS SwiftPM plugin traits", () => {
     expect(localPackages.find((p) => p.name === "CapacitorFirebaseAuthentication")?.traits).toEqual(["Google"]);
   });
 
+  it("has no direct facebook-ios-sdk dependency in CapApp-SPM", () => {
+    expect(capAppPackage).not.toMatch(/facebook/i);
+  });
+
+  it("still links Google Sign-In: the plugin gates GoogleSignIn on the Google trait, which we enable", () => {
+    const auth = localPackages.find((p) => p.name === "CapacitorFirebaseAuthentication");
+    const authPackage = readFileSync(resolve(capAppDir, auth?.path ?? "", "Package.swift"), "utf8");
+    expect(authPackage).toMatch(
+      /\.product\(name: "GoogleSignIn", package: "GoogleSignIn-iOS",\s*condition: \.when\(traits: \["Google"\]\)\)/,
+    );
+    expect(auth?.traits).toContain("Google");
+  });
+
   it("declares Swift tools 6.1+, which package traits require", () => {
     const [major, minor] = (spm?.swiftToolsVersion ?? "0").split(".").map(Number);
     expect(major > 6 || (major === 6 && minor >= 1)).toBe(true);
