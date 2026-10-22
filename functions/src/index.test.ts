@@ -114,6 +114,7 @@ describe("v2 runtime identity", () => {
       "moderateClipReport",
       "decideClipModeration",
       "proBlessing",
+      "proSeed",
       "mapCheckin",
       "mapPresence",
     ] as const satisfies ReadonlyArray<keyof FunctionsModule>;
@@ -128,6 +129,7 @@ describe("v2 runtime identity", () => {
       moderateClipReport: RUNTIME_SERVICE_ACCOUNT,
       decideClipModeration: RUNTIME_SERVICE_ACCOUNT,
       proBlessing: RUNTIME_SERVICE_ACCOUNT,
+      proSeed: RUNTIME_SERVICE_ACCOUNT,
       mapCheckin: RUNTIME_SERVICE_ACCOUNT,
       mapPresence: RUNTIME_SERVICE_ACCOUNT,
     });

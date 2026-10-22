@@ -23,7 +23,7 @@
  *
  * Run via:  npm run test:rules
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { assertSucceeds, assertFails, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
 import {
   doc,
@@ -266,6 +266,43 @@ describe("users/{uid} — admin CANNOT self-grant verified pro", () => {
 
   it("admin CANNOT self-grant by attributing it to another admin", async () => {
     await assertFails(updateDoc(ownUserDoc(), proGrant(OTHER_ADMIN_UID)));
+  });
+});
+
+describe("proAudit/{id} — append-only seed log", () => {
+  const audit = (caller: CallerName) => as(caller, "proAudit", "a1");
+  const row = {
+    action: "seed",
+    actorUid: ADMIN_UID,
+    targetUid: TARGET_UID,
+    targetUsername: "target",
+    reason: "Pro for Baker since 2019.",
+    evidenceCompany: "Baker",
+    evidenceUrl: "https://bakerskateboards.com/team",
+    source: "callable",
+    createdAt: serverTimestamp(),
+  };
+
+  beforeEach(async () => {
+    await getEnv().withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "proAudit", "a1"), row);
+    });
+  });
+
+  it("admin CAN read the log", async () => {
+    await assertSucceeds(getDoc(audit("admin")));
+  });
+
+  it("a non-admin CANNOT read the log", async () => {
+    await assertFails(getDoc(audit("plain")));
+    await assertFails(getDoc(audit("target")));
+  });
+
+  it("nobody CAN create, edit or delete a row from a client, admins included", async () => {
+    await assertFails(setDoc(as("admin", "proAudit", "a2"), row));
+    await assertFails(setDoc(as("plain", "proAudit", "a2"), row));
+    await assertFails(updateDoc(audit("admin"), { reason: "rewritten history" }));
+    await assertFails(deleteDoc(audit("admin")));
   });
 });
 
