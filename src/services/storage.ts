@@ -1,4 +1,4 @@
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject, listAll } from "firebase/storage";
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 import { Capacitor } from "@capacitor/core";
 import { ensureStorage, requireAuth, requireStorage } from "../firebase";
 import { analytics } from "./analytics";
@@ -436,50 +436,6 @@ export async function deleteUserClipVideo(uid: string, clipId: string): Promise<
       }
     }),
   );
-
-  return deleted;
-}
-
-/**
- * Delete all video files for a specific game.
- * Walks the games/{gameId}/ prefix in Storage and deletes every object found.
- * Best-effort: logs failures but does not throw (caller handles cleanup).
- */
-export async function deleteGameVideos(gameId: string): Promise<number> {
-  await ensureStorage();
-  const storage = requireStorage();
-  const gameRef = ref(storage, `games/${gameId}`);
-  let deleted = 0;
-
-  try {
-    const listResult = await listAll(gameRef);
-
-    // listAll returns prefixes (subdirectories) — recurse into turn-N folders
-    const subResults = await Promise.all(listResult.prefixes.map((prefix) => listAll(prefix)));
-
-    const allItems = [...listResult.items, ...subResults.flatMap((r) => r.items)];
-
-    await Promise.all(
-      allItems.map((item) =>
-        deleteObject(item)
-          .then(() => {
-            deleted++;
-          })
-          .catch((err) => {
-            logger.warn("video_delete_failed", {
-              path: item.fullPath,
-              error: err instanceof Error ? err.message : String(err),
-            });
-          }),
-      ),
-    );
-  } catch (err) {
-    // listAll may fail if the prefix doesn't exist — this is fine
-    logger.warn("video_list_failed", {
-      gameId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
 
   return deleted;
 }

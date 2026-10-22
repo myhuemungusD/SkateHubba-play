@@ -1,9 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, render, waitFor } from "@testing-library/react";
 import { Component, useEffect, useRef, type ReactNode } from "react";
 import { useAuthContext, AuthProvider } from "../AuthContext";
 import type { UserProfile } from "../../services/users";
 import { hashIdentity } from "../../utils/pii";
+import { isPushSupported, registerPushTokenIfGranted } from "../../services/pushNotifications";
+import { refreshWebPushTokenIfGranted } from "../../services/fcm";
 
 // Widened return shape so mockReturnValue can swap user/profile to non-null
 // values mid-test (the initial () => null literals would otherwise narrow the
@@ -18,7 +20,6 @@ type AuthState = {
 const {
   mockUseAuth,
   mockDeleteAccount,
-  mockDeleteUserData,
   mockLoggerError,
   mockLoggerInfo,
   mockCaptureException,
@@ -41,7 +42,6 @@ const {
     refreshProfile: vi.fn(),
   })),
   mockDeleteAccount: vi.fn(),
-  mockDeleteUserData: vi.fn(),
   mockLoggerError: vi.fn(),
   mockLoggerInfo: vi.fn(),
   mockCaptureException: vi.fn(),
@@ -73,9 +73,6 @@ vi.mock("../../services/auth", () => ({
 }));
 vi.mock("../../services/mfa", () => ({
   getMfaChallenge: (err: unknown) => mockGetMfaChallenge(err),
-}));
-vi.mock("../../services/users", () => ({
-  deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
 }));
 vi.mock("../../services/fcm", () => ({
   removeCurrentFcmToken: vi.fn().mockResolvedValue(undefined),
@@ -188,11 +185,12 @@ describe("useAuthContext", () => {
 describe("identity sync", () => {
   // Renders the provider with a signed-in u1/sk8r user and the given analytics
   // consent, or a signed-out session when `user` is null.
-  function renderIdentity(opts: { user: boolean; consent: boolean }): void {
+  function renderIdentity(opts: { user: boolean; consent: boolean; profile?: boolean }): void {
     mockConsent.mockReturnValue(opts.consent);
+    const profile = opts.profile === false ? null : { uid: "u1", username: "sk8r" };
     mockUseAuth.mockReturnValue(
       opts.user
-        ? { loading: false, user: { uid: "u1" }, profile: { uid: "u1", username: "sk8r" }, refreshProfile: vi.fn() }
+        ? { loading: false, user: { uid: "u1" }, profile, refreshProfile: vi.fn() }
         : { loading: false, user: null, profile: null, refreshProfile: vi.fn() },
     );
     function Harness() {
@@ -234,6 +232,68 @@ describe("identity sync", () => {
     expect(mockPosthogIdentify).toHaveBeenCalledWith(hashIdentity("u1"));
     // The public username is a direct identifier: it must never reach PostHog.
     expect(JSON.stringify(mockPosthogIdentify.mock.calls)).not.toContain("sk8r");
+  });
+
+  // COPPA: an under-13 is signed in (Google/Apple) before ProfileSetup asks
+  // for a DOB, so nothing may be identified or written until a profile exists.
+  describe("before a profile exists", () => {
+    afterEach(() => {
+      vi.mocked(isPushSupported).mockReturnValue(false);
+      vi.unstubAllGlobals();
+    });
+
+    it("does not identify to PostHog even with consent", () => {
+      renderIdentity({ user: true, consent: true, profile: false });
+      expect(mockPosthogIdentify).not.toHaveBeenCalled();
+    });
+
+    it("registers no native push token until the profile appears", () => {
+      vi.mocked(isPushSupported).mockReturnValue(true);
+      renderIdentity({ user: true, consent: false, profile: false });
+      expect(registerPushTokenIfGranted).not.toHaveBeenCalled();
+      renderIdentity({ user: true, consent: false });
+      expect(registerPushTokenIfGranted).toHaveBeenCalledWith("u1");
+    });
+
+    it("refreshes no web push token until the profile appears", () => {
+      vi.stubGlobal("Notification", { permission: "granted" });
+      renderIdentity({ user: true, consent: false, profile: false });
+      expect(refreshWebPushTokenIfGranted).not.toHaveBeenCalled();
+      renderIdentity({ user: true, consent: false });
+      expect(refreshWebPushTokenIfGranted).toHaveBeenCalledWith("u1");
+    });
+
+    // A sign-out that skips handleSignOut (another tab, a revoked session)
+    // leaves the old activeProfile behind; the next user must not inherit it.
+    it("does not treat the previous user's profile as the next user's", () => {
+      vi.mocked(isPushSupported).mockReturnValue(true);
+      mockConsent.mockReturnValue(true);
+      const ctx: { current: ReturnType<typeof useAuthContext> | null } = { current: null };
+      function Harness() {
+        ctx.current = useAuthContext();
+        return null;
+      }
+      const tree = () => (
+        <AuthProvider>
+          <Harness />
+        </AuthProvider>
+      );
+      mockUseAuth.mockReturnValue({
+        loading: false,
+        user: { uid: "u1" },
+        profile: { uid: "u1", username: "sk8r" },
+        refreshProfile: vi.fn(),
+      });
+      const { rerender } = render(tree());
+      expect(ctx.current?.hasProfile).toBe(true);
+      vi.clearAllMocks();
+      vi.mocked(isPushSupported).mockReturnValue(true);
+      mockUseAuth.mockReturnValue({ loading: false, user: { uid: "u2" }, profile: null, refreshProfile: vi.fn() });
+      rerender(tree());
+      expect(ctx.current?.hasProfile).toBe(false);
+      expect(registerPushTokenIfGranted).not.toHaveBeenCalled();
+      expect(mockPosthogIdentify).not.toHaveBeenCalled();
+    });
   });
 
   it("resets PostHog and clears the Sentry user on sign-out", () => {
@@ -536,7 +596,6 @@ describe("handleDeleteAccount", () => {
     const thrown = await triggerDelete();
 
     expect(thrown).toBe(authErr);
-    expect(mockDeleteUserData).not.toHaveBeenCalled();
     expect(mockCaptureException).toHaveBeenCalledWith(
       authErr,
       expect.objectContaining({
@@ -566,8 +625,6 @@ describe("handleDeleteAccount", () => {
         extra: expect.objectContaining({ code: "auth/requires-recent-login", uid: "u1" }),
       }),
     );
-    // Reverse-order invariant: no Firestore wipe happened, profile preserved.
-    expect(mockDeleteUserData).not.toHaveBeenCalled();
   });
 
   it("does NOT capture Sentry on fully successful delete", async () => {
@@ -638,7 +695,7 @@ describe("handleDeleteAccount", () => {
    * Recovery-gap tests — close the stuck state where a re-auth bounce wiped
    * Firestore but the sign-out/sign-in round-trip left activeProfile null
    * (no profile doc to re-fetch). sessionStorage["skate.pendingDeleteUid"]
-   * is the bridge that lets the retry skip deleteUserData and finish the
+   * is the bridge that lets the retry skip the profile lookup and finish the
    * auth delete.
    */
   describe("pending-delete recovery", () => {
@@ -720,8 +777,6 @@ describe("handleDeleteAccount", () => {
       expect(thrown).toBeNull();
       // Proceeds on the uid alone — no profile required.
       expect(mockDeleteAccount).toHaveBeenCalledWith("u1");
-      // Still never from the client: erasure is the server's job.
-      expect(mockDeleteUserData).not.toHaveBeenCalled();
       // Completed, so the marker is retired and the banner stops offering it.
       expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
     });
@@ -763,7 +818,6 @@ describe("handleDeleteAccount", () => {
       });
 
       expect(mockDeleteAccount).not.toHaveBeenCalled();
-      expect(mockDeleteUserData).not.toHaveBeenCalled();
     });
 
     it("clears sessionStorage when a different user signs in", async () => {

@@ -29,7 +29,6 @@ vi.mock("../avatarModeration", () => ({ isAvatarSafe: h.isAvatarSafe }));
 
 import {
   ClosetDesignError,
-  deleteAllDesignObjects,
   deleteDesign,
   deleteDesignObject,
   isDesignId,
@@ -164,12 +163,9 @@ describe("closetStudio service", () => {
     expect(await deleteDesignObject("u1", "d0")).toBe(true);
   });
 
-  it("deletes a design and every slot on account deletion", async () => {
+  it("deletes a design", async () => {
     await deleteDesign("u1", "d1");
     expect(h.fs.deleteDoc).toHaveBeenCalledWith("users/u1/closetDesigns/d1");
     expect(await code(deleteDesign("u2", "d1"))).toBe("unauthenticated");
-    h.storage.deleteObject.mockClear();
-    await deleteAllDesignObjects("u1");
-    expect(h.storage.deleteObject).toHaveBeenCalledTimes(MAX_DESIGNS);
   });
 });

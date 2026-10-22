@@ -97,7 +97,6 @@ export interface UsersServiceRefs {
   createProfile: Mock;
   isUsernameAvailable: Mock;
   getUidByUsername: Mock;
-  deleteUserData: Mock;
   getPlayerDirectory: Mock;
   getLeaderboard: Mock;
   getUserProfile: Mock;
@@ -114,7 +113,6 @@ export interface UsersServiceModule {
   createProfile: (...args: unknown[]) => unknown;
   isUsernameAvailable: (...args: unknown[]) => unknown;
   getUidByUsername: (...args: unknown[]) => unknown;
-  deleteUserData: (...args: unknown[]) => unknown;
   getPlayerDirectory: (...args: unknown[]) => unknown;
   getLeaderboard: (...args: unknown[]) => unknown;
   getUserProfile: (...args: unknown[]) => unknown;
@@ -153,7 +151,6 @@ export function createUsersServiceMocks(): UsersServiceMocks {
     createProfile: vi.fn(),
     isUsernameAvailable: vi.fn(),
     getUidByUsername: vi.fn(),
-    deleteUserData: vi.fn(),
     getPlayerDirectory: vi.fn().mockResolvedValue([]),
     getLeaderboard: vi.fn().mockResolvedValue([]),
     getUserProfile: vi.fn().mockResolvedValue(null),
@@ -167,7 +164,6 @@ export function createUsersServiceMocks(): UsersServiceMocks {
       createProfile: (...args: unknown[]) => refs.createProfile(...args),
       isUsernameAvailable: (...args: unknown[]) => refs.isUsernameAvailable(...args),
       getUidByUsername: (...args: unknown[]) => refs.getUidByUsername(...args),
-      deleteUserData: (...args: unknown[]) => refs.deleteUserData(...args),
       getPlayerDirectory: (...args: unknown[]) => refs.getPlayerDirectory(...args),
       getLeaderboard: (...args: unknown[]) => refs.getLeaderboard(...args),
       getUserProfile: (...args: unknown[]) => refs.getUserProfile(...args),

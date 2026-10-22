@@ -158,7 +158,6 @@ describe("Smoke: Account & Sign Out", () => {
     await userEvent.click(modal().getByText("Cancel"));
 
     expect(screen.queryByText("Delete Account?")).not.toBeInTheDocument();
-    expect(users.refs.deleteUserData).not.toHaveBeenCalled();
     expect(authSvc.refs.deleteAccount).not.toHaveBeenCalled();
   });
 
@@ -166,8 +165,8 @@ describe("Smoke: Account & Sign Out", () => {
     // deleteAccount is the single call site from AuthContext; it delegates to
     // the server, which erases data first and deletes the Auth user last. If it
     // throws, nothing was erased and the profile is preserved for retry.
-    // deleteUserData is NOT called from AuthContext. The username is not passed
-    // — the server reads it from the profile it is deleting.
+    // The username is not passed — the server reads it from the profile it
+    // is deleting.
     authSvc.refs.deleteAccount.mockImplementationOnce(deleteSucceedsAndSignsOut);
 
     await confirmDeleteFromSettings();
@@ -177,9 +176,6 @@ describe("Smoke: Account & Sign Out", () => {
       // After deletion, app navigates to landing
       expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     });
-    // Firestore wipe is now internal to deleteAccount — AuthContext must
-    // not call it directly (that's the old orphaning path).
-    expect(users.refs.deleteUserData).not.toHaveBeenCalled();
   });
 
   it("shows error when deleteAccount fails (profile preserved for retry)", async () => {
@@ -192,10 +188,6 @@ describe("Smoke: Account & Sign Out", () => {
     await waitFor(() => {
       expect(screen.getByText("Auth deletion failed")).toBeInTheDocument();
     });
-    // Under reverse order, a deleteAccount throw means Auth deletion failed
-    // BEFORE the Firestore wipe — so the caller never touches user data and
-    // the profile stays intact for retry.
-    expect(users.refs.deleteUserData).not.toHaveBeenCalled();
     // Modal stays open so user can retry
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
   });
@@ -210,9 +202,6 @@ describe("Smoke: Account & Sign Out", () => {
     await waitFor(() => {
       expect(screen.getByText(/sign out and sign back in/)).toBeInTheDocument();
     });
-    // No Firestore touch on requires-recent-login — reverse order means the
-    // user's profile is still intact for the retry after re-auth.
-    expect(users.refs.deleteUserData).not.toHaveBeenCalled();
     // Modal stays open
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
   });
@@ -252,8 +241,6 @@ describe("Smoke: Account & Sign Out", () => {
     await waitFor(() => {
       expect(authSvc.refs.deleteAccount).toHaveBeenCalledWith("u1");
     });
-    // AuthContext no longer calls deleteUserData directly — the server does it.
-    expect(users.refs.deleteUserData).not.toHaveBeenCalled();
     expect(sessionStorage.getItem("skate.pendingDeleteUid")).toBeNull();
   });
 
@@ -306,8 +293,6 @@ describe("Smoke: Account & Sign Out", () => {
     // Reverse-order flow. First attempt: deleteAccount throws
     // auth/requires-recent-login BEFORE any Firestore write (profile
     // preserved). User re-auths and re-triggers; second attempt succeeds.
-    // deleteUserData is never called from AuthContext — it lives inside
-    // deleteAccount now.
     authSvc.refs.deleteAccount
       .mockRejectedValueOnce(requiresRecentLoginError())
       .mockImplementationOnce(deleteSucceedsAndSignsOut);
@@ -318,7 +303,6 @@ describe("Smoke: Account & Sign Out", () => {
       expect(screen.getByText(/sign out and sign back in/)).toBeInTheDocument();
     });
     expect(authSvc.refs.deleteAccount).toHaveBeenCalledTimes(1);
-    expect(users.refs.deleteUserData).not.toHaveBeenCalled();
 
     // Second attempt (simulating user re-auth + retry) succeeds end-to-end.
     await userEvent.click(modal().getByText("Delete Forever"));
@@ -327,9 +311,6 @@ describe("Smoke: Account & Sign Out", () => {
       expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     });
     expect(authSvc.refs.deleteAccount).toHaveBeenCalledTimes(2);
-    // deleteUserData is never called directly by AuthContext under the
-    // reverse-order flow; it's called from inside deleteAccount.
-    expect(users.refs.deleteUserData).not.toHaveBeenCalled();
   });
 
   it("shows generic error message for unknown firebase auth error", async () => {

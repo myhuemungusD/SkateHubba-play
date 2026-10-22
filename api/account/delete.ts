@@ -46,6 +46,8 @@ import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { parseServiceAccountJson } from "../cron/_serviceAccount.js";
 import { deleteUserDataAsAdmin, type DeletionSummary } from "./_deleteUserData.js";
+import { eraseUnderageSignIn, RacedCascadeError, type UnderageOutcome } from "./_underage.js";
+import { hashUid } from "../../src/utils/pii.js";
 import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
 
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
@@ -64,6 +66,7 @@ const RECENT_AUTH_WINDOW_S = 5 * 60;
 interface ApiRequest {
   method?: string;
   headers: Record<string, string | string[] | undefined>;
+  query?: Record<string, string | string[] | undefined>;
 }
 interface ApiResponse {
   status: (code: number) => ApiResponse;
@@ -121,7 +124,8 @@ type FailureCode =
   | "invalid_token"
   | "requires_recent_login"
   | "init_failed"
-  | "erasure_failed";
+  | "erasure_failed"
+  | "has_profile";
 
 let cachedApp: App | null = null;
 let cachedBucketName: string | null = null;
@@ -190,6 +194,49 @@ function log(event: string, fields: Record<string, unknown>): void {
   console.warn(JSON.stringify({ event, ...fields }));
 }
 
+/** What the full erasure cascade needs, for this app. */
+function cascadeDeps(app: App) {
+  return { db: getFirestore(app, FIRESTORE_DB_NAME), storage: getStorage(app), bucketName: cachedBucketName ?? "" };
+}
+
+/**
+ * `?reason=underage`: the COPPA age gate blocked this sign-in before a profile
+ * existed (see `_underage.ts`). With a profile it deletes nothing and answers
+ * 409 `has_profile`; a real account is erased only through the normal path.
+ *
+ * Logs and Sentry get the same `uidHash` the client reports, never the uid:
+ * under COPPA a persistent identifier is personal information, and the user
+ * was told we keep nothing.
+ */
+async function handleUnderage(app: App, uid: string, res: ApiResponse): Promise<void> {
+  const uidHash = hashUid(uid);
+  let outcome: UnderageOutcome;
+  try {
+    outcome = await eraseUnderageSignIn(getFirestore(app, FIRESTORE_DB_NAME), getAuth(app), uid, () =>
+      deleteUserDataAsAdmin(cascadeDeps(app), uid),
+    );
+  } catch (err) {
+    // A raced cascade failure can't be retried (the Auth user is gone), so it
+    // gets its own error-level event: an operator must erase the orphaned
+    // profile (docs/SENTRY_ALERTS.md).
+    const raced = err instanceof RacedCascadeError;
+    const event = raced ? "account_delete_underage_raced_cascade_failed" : "account_delete_underage_failed";
+    if (raced) console.error(JSON.stringify({ event, uidHash }));
+    else log(event, { uidHash });
+    captureServerError(event, raced ? err.inner : err, { uidHash }, { redactMessage: true });
+    await flushServerErrors();
+    fail(res, 500, "erasure_failed", "Could not remove this sign-in. Please try again.");
+    return;
+  }
+  if (outcome === "has_profile") {
+    log("account_delete_underage_has_profile", { uidHash });
+    fail(res, 409, "has_profile", "This account has a profile. Delete it from Settings instead.");
+    return;
+  }
+  log(outcome === "raced" ? "account_delete_underage_raced" : "account_delete_underage_success", { uidHash });
+  res.status(200).json({ ok: true, authDeleted: true, mode: "underage" });
+}
+
 function fail(res: ApiResponse, status: number, code: FailureCode, message: string): void {
   res.status(status).json({ ok: false, code, message });
 }
@@ -251,6 +298,12 @@ async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
     return;
   }
 
+  const reason = req.query?.reason;
+  if ((Array.isArray(reason) ? reason[0] : reason) === "underage") {
+    await handleUnderage(app, uid, res);
+    return;
+  }
+
   const ageS = Math.floor(Date.now() / 1000) - authTimeS;
   if (!authTimeS || ageS > RECENT_AUTH_WINDOW_S) {
     log("account_delete_stale_auth", { uid, ageS });
@@ -279,14 +332,7 @@ async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
 
   let summary: DeletionSummary;
   try {
-    summary = await deleteUserDataAsAdmin(
-      {
-        db: getFirestore(app, FIRESTORE_DB_NAME),
-        storage: getStorage(app),
-        bucketName: cachedBucketName ?? "",
-      },
-      uid,
-    );
+    summary = await deleteUserDataAsAdmin(cascadeDeps(app), uid);
   } catch (err) {
     // The Auth user is intentionally left alive: the account keeps working and
     // the user can retry. Every phase is idempotent, so a retry resumes rather
