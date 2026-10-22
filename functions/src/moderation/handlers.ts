@@ -6,18 +6,25 @@ import { VIDEO_API_POLL_MS, VIDEO_API_TIMEOUT_MS } from "./config.js";
 import { clipBadgeDelta, nextClipsPosted } from "./clipBadge.js";
 import { adminPatch, shouldApplyUploadDecision, shouldAutoHideClip, type SaveGuard } from "./patches.js";
 import { runReportModeration } from "./runReport.js";
-import { runUploadModeration } from "./runUpload.js";
+import { runUploadModeration, type UploadOutcome } from "./runUpload.js";
 import { captureModerationFailure } from "./sentry.js";
 import { reconcileClipVideo, type ClipObjectStore } from "./publish.js";
 import { notificationCopy, statementIdFor, type StatementOfReasons } from "./statement.js";
 import { annotateStoredVideo } from "./video.js";
 
-interface HandlerOptions {
+export interface HandlerOptions {
   db: Firestore;
   enabled: boolean;
   sentryDsn: string;
   /** Copies the video onto the approved path, or back off it. Omitted in tests. */
   media?: ClipObjectStore;
+  /**
+   * Access token for Video Intelligence. The deployed trigger leaves this
+   * unset and uses the Cloud Functions metadata server. The admin rescreen
+   * script (scripts/moderation/rescreen-pending.mjs) runs off GCP, so it
+   * passes its service-account credential here instead.
+   */
+  getToken?: () => Promise<string>;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -143,13 +150,25 @@ async function notifyOwner(
   });
 }
 
-export async function handleClipCreated(options: HandlerOptions, clipId: string, raw: unknown): Promise<void> {
+/**
+ * Screen one uploaded clip. The single code path for upload moderation:
+ * the `moderateNewClip` trigger calls it with the created snapshot's data,
+ * and the admin rescreen script calls it with a fresh read of a clip that
+ * is still pending. Every write goes through `saveClip`'s transaction with
+ * the "pending-only" guard, so a decision already made elsewhere stands.
+ */
+export async function handleClipCreated(options: HandlerOptions, clipId: string, raw: unknown): Promise<UploadOutcome> {
   const clip = asRecord(raw);
-  await runUploadModeration({
+  return runUploadModeration({
     enabled: options.enabled,
     clipId,
     clip,
-    annotate: (gcsUri) => annotateStoredVideo(gcsUri, { timeoutMs: VIDEO_API_TIMEOUT_MS, pollMs: VIDEO_API_POLL_MS }),
+    annotate: (gcsUri) =>
+      annotateStoredVideo(gcsUri, {
+        timeoutMs: VIDEO_API_TIMEOUT_MS,
+        pollMs: VIDEO_API_POLL_MS,
+        getToken: options.getToken,
+      }),
     save: async (patch, guard) => {
       const applied = await saveClip(options.db, clipId, patch, guard);
       if (applied) await syncClipMedia(options, clipId, clip?.playerUid, clip?.videoUrl, patch.moderation);

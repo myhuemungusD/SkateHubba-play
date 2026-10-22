@@ -144,6 +144,62 @@ Set `VITE_FEATURE_CLIP_MODERATION_ENABLED=true` in Vercel Production and redeplo
 
 **Note:** `MODERATION_ENABLED` stays `false`. The functions remain in tester mode.
 
+### 6. Rescreen clips stuck in pending
+
+**When:** clips were posted while the client flag was on but the server
+switch `MODERATION_ENABLED` was off. They stay `moderation: pending`
+("Checking…") forever, because `moderateNewClip` only fires on create and
+turning the switch on later does not revisit them. Run this once, right after
+a deploy whose log prints `switch MODERATION: ON`.
+
+**What it does:** `scripts/moderation/rescreen-pending.mjs` lists clips with
+`moderation == "pending"` or `moderationStatus == "pending"`, oldest first,
+and runs each pending user upload through `handleClipCreated`, the same
+handler the trigger calls. Thresholds, notices, the clipsPosted badge and the
+approved-path video copy all match a live screen. It is admin-only (service
+account, no callable, nothing in the client bundle).
+
+**Safety:**
+
+- Dry run by default. `--apply` refuses to run unless `MODERATION_ENABLED` is
+  exactly `true` (environment, else the functions parameter file).
+- Each clip is re-read just before screening, and the handler's transaction
+  re-checks `pending` at write time, so a decision by the live trigger or an
+  admin is never overwritten. Re-running is safe.
+- Clips newer than `--min-age-minutes` (default 10) are left to the trigger.
+- `--limit` (default 25) and `--delay-ms` (default 5000) pace Video
+  Intelligence calls. Two screener errors in a row stop the run
+  (`--max-errors`). A failed screen sends the clip to review, never approval.
+- Clips with `moderationStatus: pending` but no `moderation: pending` are
+  listed as not screenable and left alone; clear them from `/admin`.
+
+**Credentials:** the service account needs Firestore and Storage admin on
+`sk8hub-d7806` and permission to call the Cloud Video Intelligence API (the
+API must be enabled). The script mints one access token before touching any
+clip, so a bad key fails up front. A missing IAM role shows up as
+`screener error ... annotate 403` on the first clip, which is why the first
+apply uses `--limit 1`.
+
+```bash
+npm --prefix functions ci
+npm --prefix functions run build
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/admin-sa.json
+
+# 1. Dry run: ids, owner handles, ages. No writes.
+node scripts/moderation/rescreen-pending.mjs
+
+# 2. One clip, then check the log.
+MODERATION_ENABLED=true node scripts/moderation/rescreen-pending.mjs --apply --limit 1
+
+# 3. The rest, paced.
+MODERATION_ENABLED=true node scripts/moderation/rescreen-pending.mjs --apply --limit 25 --delay-ms 5000
+```
+
+Each run appends a markdown section (clip id, @handle, age, before and after
+state, action) to `/workspace/team/qa/2026-10-21/rescreen.md`, or to
+`--log PATH`. No tokens, emails or uids are logged. Exit code 1 means a
+screener error or an early stop; read the log before rerunning.
+
 ---
 
 ## Rollback Plan
