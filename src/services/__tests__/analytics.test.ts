@@ -203,16 +203,6 @@ describe("analytics service", () => {
       });
     });
 
-    it("accountDeleted sends account_deleted event with a hashed uid + tally", () => {
-      analytics.accountDeleted("u1", 3, true);
-      expect(vaSpy).toHaveBeenCalledWith("event", {
-        name: "account_deleted",
-        uid: hashUid("u1"),
-        achievementsRemoved: 3,
-        avatarRemoved: true,
-      });
-    });
-
     it("avatarUploadStarted fires with source + size + score", () => {
       analytics.avatarUploadStarted("camera", 12345, 0.1);
       expect(vaSpy).toHaveBeenCalledWith("event", {
@@ -241,11 +231,6 @@ describe("analytics service", () => {
         source: "gallery",
         nsfwScore: 0.92,
       });
-    });
-
-    it("avatarDeleted fires with a hashed uid", () => {
-      analytics.avatarDeleted("u1");
-      expect(vaSpy).toHaveBeenCalledWith("event", { name: "avatar_deleted", uid: hashUid("u1") });
     });
 
     it("profileViewed sends profile_viewed with hashed viewer/profile + isOwn/firstPaint", () => {

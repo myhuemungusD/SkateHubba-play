@@ -1,6 +1,5 @@
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { ensureStorage, requireAuth, requireStorage } from "../firebase";
-import { analytics } from "./analytics";
 import { isAvatarSafe } from "./avatarModeration";
 import { logger } from "./logger";
 
@@ -31,12 +30,6 @@ import { logger } from "./logger";
  * Storage rules + Firestore profileImageUrl pinning are the canonical
  * security boundary; the in-app moderation is a UX/cost optimisation.
  */
-
-/** Storage extensions the rules allow. WebP is canonical; jpeg/png are
- *  legacy variants from older clients that the deletion path still has
- *  to clean up on account teardown. */
-const AVATAR_EXTENSIONS = ["webp", "jpeg", "png"] as const;
-type AvatarExt = (typeof AVATAR_EXTENSIONS)[number];
 
 /** Maximum side length of the encoded avatar in pixels. */
 const MAX_DIMENSION = 400;
@@ -196,15 +189,6 @@ async function resizeToWebp(blob: Blob): Promise<Blob> {
 }
 
 /**
- * Build the storage path for a given uid + extension. Centralised so
- * tests and `deleteAvatar` can iterate the legacy variants without
- * stringly-typed paths.
- */
-function avatarPath(uid: string, ext: AvatarExt): string {
-  return `users/${uid}/avatar.${ext}`;
-}
-
-/**
  * Upload a user's avatar.
  *
  * Pipeline (in order):
@@ -252,7 +236,7 @@ export async function uploadAvatar(uid: string, blob: Blob, opts: UploadAvatarOp
   }
 
   await ensureStorage();
-  const ref = storageRef(requireStorage(), avatarPath(uid, "webp"));
+  const ref = storageRef(requireStorage(), `users/${uid}/avatar.webp`);
   // Avatars are immutable from the client's perspective — the storage
   // rule denies UPDATE, so a re-upload requires a delete-then-create.
   // We delete the old object first so a same-path overwrite doesn't
@@ -287,48 +271,6 @@ export async function uploadAvatar(uid: string, blob: Blob, opts: UploadAvatarOp
     },
   });
   return await getDownloadURL(result.ref);
-}
-
-/**
- * Delete a user's avatar — best-effort across all three extension
- * variants the storage rules accept. `not-found` is the expected case
- * for variants the user never uploaded; any other failure is logged
- * but does not throw because the caller's user-facing flow (account
- * deletion, profile reset) shouldn't break on a transient Storage
- * outage.
- *
- * Returns `{ removed }` — true iff at least one variant was successfully
- * deleted. `users.deleteUserData` consumes this for the
- * `accountDeleted` telemetry's `avatarRemoved` field so the dashboard
- * can tell apart "no avatar was ever set" from "we wiped one".
- *
- * Does NOT touch the Firestore profile doc; the caller must still
- * `setProfileImageUrl(uid, null)` after this resolves.
- */
-export async function deleteAvatar(uid: string): Promise<{ removed: boolean }> {
-  await ensureStorage();
-  const storage = requireStorage();
-  let removed = false;
-  await Promise.all(
-    AVATAR_EXTENSIONS.map(async (ext) => {
-      try {
-        await deleteObject(storageRef(storage, avatarPath(uid, ext)));
-        removed = true;
-      } catch (err) {
-        const code = (err as { code?: string })?.code ?? "";
-        if (code === "storage/object-not-found") return;
-        logger.warn("avatar_delete_failed", {
-          uid,
-          ext,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }),
-  );
-  // Emitted unconditionally: `removed === false` is itself the signal that the
-  // user had no avatar object, and the dashboard needs the attempt either way.
-  analytics.avatarDeleted(uid);
-  return { removed };
 }
 
 /**

@@ -58,7 +58,7 @@ vi.mock("../analytics", () => ({
   },
 }));
 
-import { uploadVideo, uploadUserClip, deleteGameVideos, deleteUserClipVideo } from "../storage";
+import { uploadVideo, uploadUserClip, deleteUserClipVideo } from "../storage";
 
 /** Create a blob that passes the min-size (>1 KB) validation. */
 function validBlob(type = "video/webm"): Blob {
@@ -470,75 +470,6 @@ describe("storage service", () => {
       const url = await uploadVideo("game1", 1, "set", blob, undefined, 2);
       expect(url).toBe("https://cdn.example.com/video.webm");
       expect(callCount).toBe(2);
-    });
-  });
-
-  describe("deleteGameVideos", () => {
-    it("deletes all video files in a game's storage prefix", async () => {
-      const item1 = { fullPath: "games/g1/turn-1/set.webm" };
-      const item2 = { fullPath: "games/g1/turn-1/match.webm" };
-      mockListAll
-        .mockResolvedValueOnce({
-          items: [],
-          prefixes: ["games/g1/turn-1"],
-        })
-        .mockResolvedValueOnce({
-          items: [item1, item2],
-          prefixes: [],
-        });
-      mockDeleteObject.mockResolvedValue(undefined);
-
-      const deleted = await deleteGameVideos("g1");
-
-      expect(deleted).toBe(2);
-      expect(mockDeleteObject).toHaveBeenCalledWith(item1);
-      expect(mockDeleteObject).toHaveBeenCalledWith(item2);
-    });
-
-    it("returns 0 when no files exist", async () => {
-      mockListAll.mockResolvedValueOnce({ items: [], prefixes: [] });
-
-      const deleted = await deleteGameVideos("g1");
-
-      expect(deleted).toBe(0);
-      expect(mockDeleteObject).not.toHaveBeenCalled();
-    });
-
-    it("continues deleting other files when one delete fails", async () => {
-      const item1 = { fullPath: "games/g1/turn-1/set.webm" };
-      const item2 = { fullPath: "games/g1/turn-1/match.webm" };
-      mockListAll
-        .mockResolvedValueOnce({ items: [], prefixes: ["turn-1"] })
-        .mockResolvedValueOnce({ items: [item1, item2], prefixes: [] });
-      mockDeleteObject.mockRejectedValueOnce(new Error("permission denied")).mockResolvedValueOnce(undefined);
-
-      const deleted = await deleteGameVideos("g1");
-
-      expect(deleted).toBe(1);
-    });
-
-    it("handles listAll failure gracefully", async () => {
-      mockListAll.mockRejectedValueOnce(new Error("not found"));
-
-      const deleted = await deleteGameVideos("g1");
-
-      expect(deleted).toBe(0);
-    });
-
-    it("handles non-Error rejection in delete", async () => {
-      const item1 = { fullPath: "games/g1/turn-1/set.webm" };
-      mockListAll.mockResolvedValueOnce({ items: [item1], prefixes: [] });
-      mockDeleteObject.mockRejectedValueOnce("string error");
-
-      const deleted = await deleteGameVideos("g1");
-      expect(deleted).toBe(0);
-    });
-
-    it("handles non-Error rejection in listAll", async () => {
-      mockListAll.mockRejectedValueOnce("string error");
-
-      const deleted = await deleteGameVideos("g1");
-      expect(deleted).toBe(0);
     });
   });
 });

@@ -22,7 +22,6 @@ vi.mock("../../services/auth", () => ({
   deleteAccount: vi.fn(),
 }));
 vi.mock("../../services/users", () => ({
-  deleteUserData: vi.fn(),
   getUserProfile: vi.fn().mockResolvedValue(null),
 }));
 vi.mock("../../services/blocking", () => ({ isUserBlocked: vi.fn().mockResolvedValue(false) }));

@@ -1014,7 +1014,7 @@ account could cycle cast → delete → cast → … and add +1 to the same
 clip every lap. Forcing the paired -1 makes that cycle net zero:
 stuffing is blocked by arithmetic, not by forbidding the delete,
 which is what keeps the withdraw path (clips.votes.ts#removeClipVote)
-and the account-deletion cascade (clips.cascade.ts) working.
+and the orphan-vote cleanup in clips.votes.ts working.
 A FLIP is delete + set of the same voteId in one transaction, which
 Firestore coalesces into an UPDATE — it lands on the flip clause
 above, never here.

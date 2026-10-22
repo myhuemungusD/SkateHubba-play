@@ -404,8 +404,6 @@ All analytics flow through a single wrapper (`src/services/analytics.ts`) that f
 | `profile_viewed`                                   | Player profile screen mounts                   | hashed `viewerUid` / `profileUid`, `isOwn`, `msToFirstPaint` |
 | `profile_stat_tile_tapped`                         | Stat tile tapped on a profile                  | `statName`, hashed `profileUid`                              |
 | `avatar_upload_started` / `_completed` / `_failed` | Avatar upload pipeline stages                  | `source`, sizes, `nsfwScore`, `errorCode`                    |
-| `avatar_deleted`                                   | Avatar removed                                 | hashed `uid`                                                 |
-| `account_deleted`                                  | Account-deletion cascade completes             | hashed `uid`, `achievementsRemoved`, `avatarRemoved`         |
 
 ### Core Funnel
 

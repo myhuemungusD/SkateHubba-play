@@ -75,6 +75,7 @@ const SUMMARY = {
   games: 2,
   gameVideoObjects: 3,
   clips: 1,
+  clipThreadComments: 0,
   clipVotes: 4,
   disputes: 0,
   disputeVotes: 2,

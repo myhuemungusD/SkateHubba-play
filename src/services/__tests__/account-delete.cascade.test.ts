@@ -106,6 +106,10 @@ function fixture(): FakeStore {
       gTheirs: { player1Uid: OTHER, player2Uid: "u3", status: "completed" },
     },
     clips: { mine: { playerUid: UID, upvoteCount: 2 }, theirs: { playerUid: OTHER, upvoteCount: 4 } },
+    // Another skater's comment on MY clip goes with the clip's thread; their
+    // comment on their own clip stays.
+    "clips/mine/comments": { c1: { userId: OTHER, text: "sick" } },
+    "clips/theirs/comments": { c2: { userId: OTHER, text: "clean" } },
     disputes: {
       mine: { setterUid: UID, landVotes: 2, bailVotes: 1 },
       theirs: { setterUid: OTHER, landVotes: 1, bailVotes: 0 },
@@ -153,6 +157,7 @@ describe("full cascade over a populated account", () => {
       games: 2,
       gameVideoObjects: 3,
       clips: 1,
+      clipThreadComments: 1,
       clipVotes: 1,
       disputes: 1,
       disputeVotes: 1,
@@ -188,6 +193,7 @@ describe("full cascade over a populated account", () => {
     expect(survivors(store)).toEqual([
       "clipVotes/theirs",
       "clips/theirs",
+      "clips/theirs/comments/c2",
       "disputeVotes/theirs",
       "disputes/theirs",
       "games/gActive",
@@ -811,6 +817,7 @@ describe("idempotency", () => {
       games: 0,
       gameVideoObjects: 0,
       clips: 0,
+      clipThreadComments: 0,
       clipVotes: 0,
       disputes: 0,
       disputeVotes: 0,

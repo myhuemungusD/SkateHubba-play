@@ -18,7 +18,6 @@ type AuthState = {
 const {
   mockUseAuth,
   mockDeleteAccount,
-  mockDeleteUserData,
   mockLoggerError,
   mockLoggerInfo,
   mockCaptureException,
@@ -41,7 +40,6 @@ const {
     refreshProfile: vi.fn(),
   })),
   mockDeleteAccount: vi.fn(),
-  mockDeleteUserData: vi.fn(),
   mockLoggerError: vi.fn(),
   mockLoggerInfo: vi.fn(),
   mockCaptureException: vi.fn(),
@@ -74,9 +72,7 @@ vi.mock("../../services/auth", () => ({
 vi.mock("../../services/mfa", () => ({
   getMfaChallenge: (err: unknown) => mockGetMfaChallenge(err),
 }));
-vi.mock("../../services/users", () => ({
-  deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
-}));
+vi.mock("../../services/users", () => ({}));
 vi.mock("../../services/fcm", () => ({
   removeCurrentFcmToken: vi.fn().mockResolvedValue(undefined),
   refreshWebPushTokenIfGranted: vi.fn().mockResolvedValue(null),
@@ -536,7 +532,6 @@ describe("handleDeleteAccount", () => {
     const thrown = await triggerDelete();
 
     expect(thrown).toBe(authErr);
-    expect(mockDeleteUserData).not.toHaveBeenCalled();
     expect(mockCaptureException).toHaveBeenCalledWith(
       authErr,
       expect.objectContaining({
@@ -566,8 +561,6 @@ describe("handleDeleteAccount", () => {
         extra: expect.objectContaining({ code: "auth/requires-recent-login", uid: "u1" }),
       }),
     );
-    // Reverse-order invariant: no Firestore wipe happened, profile preserved.
-    expect(mockDeleteUserData).not.toHaveBeenCalled();
   });
 
   it("does NOT capture Sentry on fully successful delete", async () => {
@@ -638,7 +631,7 @@ describe("handleDeleteAccount", () => {
    * Recovery-gap tests — close the stuck state where a re-auth bounce wiped
    * Firestore but the sign-out/sign-in round-trip left activeProfile null
    * (no profile doc to re-fetch). sessionStorage["skate.pendingDeleteUid"]
-   * is the bridge that lets the retry skip deleteUserData and finish the
+   * is the bridge that lets the retry skip the profile lookup and finish the
    * auth delete.
    */
   describe("pending-delete recovery", () => {
@@ -720,8 +713,6 @@ describe("handleDeleteAccount", () => {
       expect(thrown).toBeNull();
       // Proceeds on the uid alone — no profile required.
       expect(mockDeleteAccount).toHaveBeenCalledWith("u1");
-      // Still never from the client: erasure is the server's job.
-      expect(mockDeleteUserData).not.toHaveBeenCalled();
       // Completed, so the marker is retired and the banner stops offering it.
       expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
     });
@@ -763,7 +754,6 @@ describe("handleDeleteAccount", () => {
       });
 
       expect(mockDeleteAccount).not.toHaveBeenCalled();
-      expect(mockDeleteUserData).not.toHaveBeenCalled();
     });
 
     it("clears sessionStorage when a different user signs in", async () => {

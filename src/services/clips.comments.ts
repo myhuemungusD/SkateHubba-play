@@ -8,8 +8,8 @@ import { containsObjectionableText, OBJECTIONABLE_COMMENT_MESSAGE } from "../uti
  *
  * The trade-off is that Firestore does NOT cascade a parent delete: removing
  * a clip leaves its comments behind as orphans reachable only by path. The
- * account-deletion cascade in `clips.cascade.ts` therefore sweeps them
- * explicitly — see the limits documented there.
+ * server account-deletion cascade (`api/account/_deleteUserData.ts`)
+ * therefore deletes each deleted clip's thread explicitly.
  *
  * Author identity is denormalized onto each comment (`userId` + `username`)
  * so a thread renders without a per-author profile read. A later username

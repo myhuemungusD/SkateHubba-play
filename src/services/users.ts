@@ -2,15 +2,12 @@ import { isObjectionableUsername, OBJECTIONABLE_USERNAME_MESSAGE } from "../util
 import {
   collection,
   doc,
-  deleteDoc,
   getDoc,
   getDocs,
   query,
-  where,
   orderBy,
   limit,
   runTransaction,
-  writeBatch,
   serverTimestamp,
   type FieldValue,
 } from "firebase/firestore";
@@ -18,15 +15,6 @@ import { requireAuth, requireDb } from "../firebase";
 import { ratedWinRate } from "../constants/stats";
 import { withRetry } from "../utils/retry";
 import { parseFirebaseError } from "../utils/helpers";
-import { deleteGameVideos } from "./storage";
-import { deleteUserClips, deleteUserClipVotes } from "./clips";
-import { deleteUserDisputeVotes, deleteUserDisputes } from "./disputes";
-import { deleteAvatar } from "./avatars";
-import { deleteBannerObject } from "./banners";
-import { deleteAllDesignObjects } from "./closetStudio";
-import { deleteUserNotifications } from "./notifications";
-import { PUSH_TARGETS_COLLECTION } from "./pushDispatch";
-import { analytics } from "./analytics";
 import { logger } from "./logger";
 
 /**
@@ -154,7 +142,7 @@ export interface UserProfile {
    * project's bucket and the calling UID by both client-side guard
    * ({@link setProfileImageUrl}) and the Firestore rule. Set `null` to
    * clear the avatar (caller must delete the underlying Storage object
-   * first via `deleteAvatar`).
+   * first).
    */
   profileImageUrl?: string | null;
   /** Profile banner URL, pinned to `users/{uid}/banner.webp` (see banners.ts). */
@@ -443,182 +431,6 @@ export async function createProfile(
 }
 
 /**
- * Delete a user's Firestore data: game documents, profile, and username reservation.
- *
- * Called AFTER deleteAccount() from auth.ts. If this fails, the auth
- * account is already gone and Firestore data is orphaned — the caller
- * should log/alert so it can be cleaned up manually or via a Cloud Function.
- *
- * Active games are preserved so the opponent isn't affected mid-game.
- *
- * Phase 1: Delete video files from Storage for non-active games.
- * Phase 2: Delete non-active game documents.
- * Phase 3: Delete clips authored by this user (App Store / GDPR cascade).
- * Phase 3b: Scrub the cross-readable FCM-token mirror (pushTargets/{uid})
- *         and received notifications. Both are owner-deletable but the
- *         delete must land BEFORE the Phase 4 identity batch wipes
- *         users/{uid}, so the owner-delete rules still resolve cleanly.
- *         The pushTargets mirror holds device identifiers (FCM tokens),
- *         which are personal data under GDPR — leaving it orphaned would
- *         keep a uid→device map readable by every signed-in user.
- * Phase 4: Atomically delete profile + username reservation + private
- *         profile doc (where sensitive fields live since the
- *         public-doc privacy split) + the owner-deletable
- *         achievements/locker subcollections.
- */
-export async function deleteUserData(uid: string, username: string): Promise<void> {
-  const db = requireDb();
-
-  // Phase 1 & 2: Find all games, delete videos then game docs for non-active ones
-  const gamesCol = collection(db, "games");
-  const [asP1, asP2] = await Promise.all([
-    getDocs(query(gamesCol, where("player1Uid", "==", uid))),
-    getDocs(query(gamesCol, where("player2Uid", "==", uid))),
-  ]);
-  const seen = new Set<string>();
-  const nonActiveGameIds: string[] = [];
-  for (const snap of [...asP1.docs, ...asP2.docs]) {
-    if (!seen.has(snap.id)) {
-      seen.add(snap.id);
-      const data = snap.data();
-      if (data.status !== "active") {
-        nonActiveGameIds.push(snap.id);
-      }
-    }
-  }
-
-  // Phase 1: Delete video files from Storage (best-effort)
-  await Promise.all(nonActiveGameIds.map((gameId) => deleteGameVideos(gameId)));
-
-  // Phase 2: Delete game documents
-  await Promise.all(nonActiveGameIds.map((gameId) => deleteDoc(doc(db, "games", gameId))));
-
-  // Phase 3: Scrub clips authored by this user from the feed AND the votes
-  // they cast on other users' clips, plus the same pair for community
-  // disputes (disputes they raised + verdicts they ruled). Best-effort — the
-  // owner-delete rules in firestore.rules only allow deleting your own
-  // docs, so this runs before the auth/profile teardown. All four are
-  // independent best-effort scrubs, so run them in parallel.
-  await Promise.all([
-    deleteUserClips(uid),
-    deleteUserClipVotes(uid),
-    deleteUserDisputes(uid),
-    deleteUserDisputeVotes(uid),
-  ]);
-
-  // Phase 3b: Scrub the cross-readable FCM-token mirror and the user's
-  // received notifications. Both are owner-deletable in firestore.rules
-  // (pushTargets/{uid}: `allow delete: if isOwner(uid)`; notifications:
-  // `allow delete` when recipientUid == request.auth.uid), but the deletes
-  // MUST run here — before the Phase 4 batch torches users/{uid} — while the
-  // just-deleted user's cached credentials still resolve those owner checks.
-  //
-  // FCM tokens are device identifiers (GDPR personal data). The pushTargets
-  // mirror is readable by every signed-in user, so an orphaned doc leaves a
-  // uid→device map exposed after erasure — exactly what the right-to-erasure
-  // cascade must close. deleteUserNotifications is folded in here so erasure
-  // no longer depends on the NotificationContext.clearAll React effect firing
-  // (which never runs during account deletion).
-  //
-  // Both are independent best-effort scrubs (matching the clips phase above):
-  // a failure in one must not abort the rest of the cascade, so each is
-  // caught and logged rather than rethrown. They run in parallel.
-  await Promise.all([
-    deleteDoc(doc(db, PUSH_TARGETS_COLLECTION, uid)).catch((err) => {
-      logger.warn("push_targets_delete_failed", {
-        uid,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }),
-    deleteUserNotifications(uid).catch((err) => {
-      logger.warn("user_notifications_delete_failed", {
-        uid,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }),
-  ]);
-
-  // Phase 4: Delete profile + username + private profile doc atomically
-  // (no reads needed, batch is cheaper). The private doc must be
-  // deleted BEFORE the parent users/{uid} doc goes, so the owner's
-  // auth context still resolves isOwner(uid) cleanly against the
-  // private-subcollection rule.
-  //
-  // The achievements AND locker subcollections are folded into the same batch
-  // so a single commit either wipes the whole identity surface or none of it.
-  // Without this, a partial failure could leave orphan docs after the parent
-  // user doc was gone — the GDPR/CCPA gap audit B10/S15 calls out.
-  //
-  // Achievements, locker, and xpMarkers are owner-deletable per
-  // `firestore.rules`. A subcollection is not removed with its parent, so any
-  // new one under users/{uid} must be swept here too. Fetched in parallel.
-  const [achievementsSnap, lockerSnap, markerSnap, designSnap, passportSnap, checkinSnap, privateSpotSnap] =
-    await Promise.all([
-      getDocs(collection(db, "users", uid, "achievements")),
-      getDocs(collection(db, "users", uid, "locker")),
-      getDocs(collection(db, "users", uid, "xpMarkers")),
-      getDocs(collection(db, "users", uid, "closetDesigns")),
-      // Map Phase 1: passport stamps, check-in log, and spots only this user can see.
-      getDocs(collection(db, "users", uid, "passport")),
-      getDocs(collection(db, "users", uid, "checkins")),
-      getDocs(query(collection(db, "privateSpots"), where("createdBy", "==", uid), where("isActive", "==", true))),
-    ]);
-  const batch = writeBatch(db);
-  for (const ownedDoc of [
-    ...achievementsSnap.docs,
-    ...lockerSnap.docs,
-    ...markerSnap.docs,
-    ...designSnap.docs,
-    ...passportSnap.docs,
-    ...checkinSnap.docs,
-    ...privateSpotSnap.docs,
-  ]) {
-    batch.delete(ownedDoc.ref);
-  }
-  batch.delete(doc(db, "mapState", uid));
-  batch.delete(doc(db, "passportSettings", uid));
-  // Spot presence: the online dot and the "Who's skating" entry (owner-deletable).
-  batch.delete(doc(db, "onlineStatus", uid));
-  batch.delete(doc(db, "skaterActivity", uid));
-  batch.delete(doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID));
-  // Customizable profile (VITE_FEATURE_PROFILE_CUSTOM); a no-op when never saved.
-  batch.delete(doc(db, "users", uid, "profileCustom", "main"));
-  batch.delete(doc(db, "users", uid));
-  batch.delete(doc(db, "usernames", username.toLowerCase().trim()));
-  await batch.commit();
-
-  // Phase 5: Best-effort scrub of avatar binaries from Storage. Delegates
-  // to `deleteAvatar` so the three-extension cleanup lives in one place
-  // (the avatar service). Failures inside `deleteAvatar` are already
-  // best-effort + logged; the outer `.catch` guards against the helper
-  // itself throwing (e.g. `requireStorage` boot error) so account
-  // deletion doesn't fail at the very last step.
-  let avatarRemoved = false;
-  try {
-    const result = await deleteAvatar(uid);
-    avatarRemoved = result.removed;
-  } catch (err) {
-    logger.warn("avatar_delete_failed", {
-      uid,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-
-  // Banner object too. deleteBannerObject never throws on a missing object;
-  // the catch covers a Storage boot failure.
-  await deleteBannerObject(uid).catch((err: unknown) => {
-    logger.warn("banner_delete_failed", { uid, error: err instanceof Error ? err.message : String(err) });
-  });
-
-  // Closet Studio pictures (VITE_FEATURE_CLOSET_STUDIO); each delete is best-effort.
-  await deleteAllDesignObjects(uid).catch((err: unknown) => {
-    logger.warn("closet_designs_delete_failed", { uid, error: err instanceof Error ? err.message : String(err) });
-  });
-
-  analytics.accountDeleted(uid, achievementsSnap.docs.length, avatarRemoved);
-}
-
-/**
  * Fetch all user profiles for the player directory.
  * Capped at 100 for MVP. No real-time listener needed —
  * this is fetched once when the Lobby mounts.
@@ -723,8 +535,7 @@ export class InvalidAvatarUrlError extends Error {
 
 /**
  * Persist a user's `profileImageUrl` field. Pass `null` to clear (caller
- * is expected to have already deleted the storage object via
- * `deleteAvatar`). The Firestore rule enforces the same predicate
+ * is expected to have already deleted the storage object). The Firestore rule enforces the same predicate
  * server-side; this guard short-circuits the network round-trip and gives
  * the UI a clear typed error to surface.
  *

@@ -167,8 +167,3 @@ export async function deleteDesign(uid: string, id: string): Promise<void> {
   await deleteDesignObject(uid, id);
   await deleteDoc(doc(requireDb(), "users", uid, "closetDesigns", id));
 }
-
-/** Account deletion: every slot's picture, best-effort. */
-export async function deleteAllDesignObjects(uid: string): Promise<void> {
-  await Promise.all(Array.from({ length: MAX_DESIGNS }, (_, i) => deleteDesignObject(uid, `d${i}`)));
-}
