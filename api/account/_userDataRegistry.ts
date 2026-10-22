@@ -61,7 +61,7 @@ export const FIRESTORE_ERASURE: Readonly<Record<string, ErasureEntry>> = {
   // ── Games ──
   games: {
     action: "delete",
-    why: "finished S.K.A.T.E. games and their videos (existing behavior); active games are left for the opponent",
+    why: "finished S.K.A.T.E. games and their videos are deleted; active games are forfeited to the opponent and anonymized (own uploads deleted, uid/username tombstoned); games this account judged are anonymized",
   },
   diceGames: { action: "anonymize", why: "the other player's match history; open matches are closed first" },
   diceStats: { action: "delete", why: "own dice stats" },

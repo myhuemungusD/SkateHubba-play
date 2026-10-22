@@ -12,7 +12,10 @@ const manifest = readFileSync(resolve(__dirname, "../../ios/App/App/PrivacyInfo.
 describe("iOS privacy manifest", () => {
   it.each([
     ["EmailAddress", "email sign-in"],
-    ["PhoneNumber", "SMS two-step verification (src/services/mfa.ts)"],
+    [
+      "PhoneNumber",
+      "SMS two-step verification (src/services/mfa.ts); VITE_FEATURE_SMS_2FA_ENABLED is off in the iOS build, declared anyway",
+    ],
     ["OtherUserContent", "clip comments, spot names and bios"],
     ["OtherDataTypes", "date of birth from the age gate (src/utils/age.ts)"],
     ["PhotosorVideos", "trick clips and avatars"],
