@@ -54,6 +54,24 @@ const config: CapacitorConfig = {
     // on contentInset. See docs/mobile-phone-layout.md.
     contentInset: "never",
   },
+  experimental: {
+    ios: {
+      spm: {
+        // Package traits need Swift tools 6.1 in the generated CapApp-SPM.
+        swiftToolsVersion: "6.1",
+        // @capacitor-firebase/authentication links the Facebook SDK by
+        // default (its SPM traits default to Google + Facebook, whatever
+        // `providers` says below). The Facebook SDK's privacy manifest
+        // declares tracking (NSPrivacyTracking, ep1.facebook.com, Device ID
+        // and User ID used for tracking), which contradicts our App Store
+        // privacy labels and would need an ATT prompt. Google only: Google
+        // sign-in uses the Google trait; Apple sign-in needs no trait.
+        packageTraits: {
+          "@capacitor-firebase/authentication": ["Google"],
+        },
+      },
+    },
+  },
   plugins: {
     FirebaseAuthentication: {
       // The native plugin only fetches a credential; src/services/auth.ts
