@@ -79,6 +79,19 @@ describe("redactPII", () => {
     expect(out.druid).toBe("also-fine");
   });
 
+  it("hashes username and camelCase *Username keys (public direct identifiers)", () => {
+    const out = redactPII({ username: "sk8r", playerUsername: "sk8r", reportedUsername: "other", empty: "" });
+    expect(out?.username).toMatch(/^name_[0-9a-f]{8}$/);
+    expect(out?.playerUsername).toBe(out?.username);
+    expect(out?.reportedUsername).not.toBe(out?.username);
+    expect(JSON.stringify(out)).not.toContain("sk8r");
+    expect(redactPII({ username: "" })?.username).toBe("");
+  });
+
+  it("does not hash keys that merely contain 'username' mid-word", () => {
+    expect(redactPII({ usernameLength: 4 })).toEqual({ usernameLength: 4 });
+  });
+
   it("leaves non-PII fields untouched", () => {
     const input = { gameId: "g1", trickName: "kickflip", landed: true, sizeBytes: 1024 };
     expect(redactPII(input)).toEqual(input);

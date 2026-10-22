@@ -43,6 +43,7 @@
 import type { Firestore } from "firebase-admin/firestore";
 import { deleteIfPresent, deletePrefix, deleteRefs, scanAll, type CascadeDeps } from "./_cascadeUtil.js";
 import { emptyClosetCounts, eraseCloset, type ClosetErasureCounts } from "./_closetErasure.js";
+import { anonymizeJudgedGames, eraseActiveSkateGames } from "./_skateErasure.js";
 import { eraseDiceGames } from "./_diceErasure.js";
 import { emptyOwnedCounts, eraseOwnedContent, type OwnedContentCounts } from "./_ownedContent.js";
 
@@ -76,6 +77,12 @@ export const OTHER_USER_SUBCOLLECTIONS = [
 export interface DeletionSummary {
   games: number;
   gameVideoObjects: number;
+  /** Active S.K.A.T.E. games closed (forfeit to the opponent) and anonymized. */
+  skateGamesForfeited: number;
+  /** S.K.A.T.E. games kept for the opponent with this account replaced by the tombstone. */
+  skateGamesAnonymized: number;
+  /** Games this account judged, with the judge replaced by the tombstone. */
+  skateGamesJudgedAnonymized: number;
   clips: number;
   clipVotes: number;
   disputes: number;
@@ -122,6 +129,9 @@ function emptySummary(): DeletionSummary {
   return {
     games: 0,
     gameVideoObjects: 0,
+    skateGamesForfeited: 0,
+    skateGamesAnonymized: 0,
+    skateGamesJudgedAnonymized: 0,
     clips: 0,
     clipVotes: 0,
     disputes: 0,
@@ -275,16 +285,20 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   const username = await readUsername(db, uid);
 
   // ── Phase 1+2: games and their video objects ──
-  // Active games are preserved so an opponent is not stranded mid-match. This
-  // matches the pre-existing product decision, not a limitation of admin access.
+  // Finished games are deleted with their videos. Active games are closed as
+  // a forfeit to the opponent and anonymized (see `_skateErasure.ts`), so the
+  // opponent is not stranded and no uid, username or video of this account
+  // stays behind in them.
   const gamesCol = db.collection("games");
   const [asP1, asP2] = await Promise.all([
     scanAll(gamesCol.where("player1Uid", "==", uid)),
     scanAll(gamesCol.where("player2Uid", "==", uid)),
   ]);
   const nonActiveGameIds = new Set<string>();
+  const activeGameIds = new Set<string>();
   for (const snap of [...asP1, ...asP2]) {
     if ((snap.data() as Record<string, unknown>).status !== "active") nonActiveGameIds.add(snap.id);
+    else activeGameIds.add(snap.id);
   }
 
   // Videos first: once the game doc is gone, nothing records which prefix to
@@ -296,6 +310,12 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
     db,
     [...nonActiveGameIds].map((id) => gamesCol.doc(id)),
   );
+  const skate = await eraseActiveSkateGames(deps, uid, [...activeGameIds], Date.now());
+  summary.skateGamesForfeited = skate.forfeited;
+  summary.skateGamesAnonymized = skate.anonymized;
+  summary.games += skate.deleted;
+  summary.gameVideoObjects += skate.videoObjects;
+  summary.skateGamesJudgedAnonymized = await anonymizeJudgedGames(db, uid);
 
   // ── Phase 2b: Roll Dice ──
   // Unlike S.K.A.T.E., an open dice match is closed rather than left active.

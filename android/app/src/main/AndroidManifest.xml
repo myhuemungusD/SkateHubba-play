@@ -59,15 +59,22 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <!-- FCM / push notifications — runtime-prompted on Android 13+ (API 33+).
          Required for @capacitor/push-notifications registration to surface a
          prompt; older platforms auto-grant and this line is a harmless no-op. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Legacy storage permission for Android 12 and below -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+    <!-- No media or storage permissions, on purpose (Google Play Photo and
+         Video Permissions policy). Every pick goes through a system picker that
+         grants access to just the chosen file:
+         - <input type="file"> (clip upload, clip editor, banner, Closet Studio)
+           opens the system chooser via BridgeWebChromeClient.showFilePicker.
+         - @capacitor/camera getPhoto(source: Photos) uses the Android Photo
+           Picker (PickVisualMedia; backported below API 33) and reports the
+           photos permission as granted.
+         - Camera capture never sets saveToGallery, so the plugin only needs
+           CAMERA. Recorded clips stay in app storage.
+         Add a READ_MEDIA_* permission only with a Play Console declaration for
+         a core, broad gallery feature. -->
 
     <!-- Video recording feature declarations (used by
          @capacitor-community/video-recorder). `required="false"` keeps the

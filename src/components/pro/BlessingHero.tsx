@@ -11,8 +11,9 @@ const STATUS_LABEL: Record<Blessing["status"], string> = {
 };
 
 /**
- * The headline pro power: blessing another skater pro. `live` is false in
- * admin review mode or with the flag off, where it previews the card only.
+ * The headline pro power: blessing another skater pro. Only rendered with
+ * VITE_FEATURE_PRO_BLESSING on; `live` is false in admin review mode, where
+ * it previews the card only.
  */
 export function BlessingHero({ uid, live }: { uid: string | null; live: boolean }) {
   const [mine, setMine] = useState<Blessing[]>([]);
