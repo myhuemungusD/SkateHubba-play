@@ -196,11 +196,11 @@ _As originally filed:_ when a matcher claimed a land on the honor path, `games.m
 
 `GET /api/player-meta` is unauthenticated, always 200s, edge-cached per-uid (`player-meta.ts:196-221`), so enumerating random uids busts the cache every request → one Firestore read + one invocation each. `POST /api/account/delete` reaches `verifyIdToken` (`:238`) with no pre-throttle.
 
-### P2-3 · App Check is OFF in production; failure mode is unmonitorable
+### P2-3 · App Check enforcement is not on in production; failure mode is unmonitorable
 
-**Status (2026-10-08): PARTIAL** — App Check is now live in production in reCAPTCHA v3 **monitor mode**: the web client mints and sends tokens, but Console enforcement is still **off** for Firestore and Storage, so non-app traffic is not yet rejected. The `getToken` probe gap and the native forced-update gap below still stand. Next step is Phase 2 of `docs/APPCHECK_ROLLOUT.md`.
+**Status (2026-10-08): PARTIAL** — App Check is now live in production in reCAPTCHA v3 **monitor mode**: the web client mints and sends tokens, but Console enforcement is still **off** for Firestore and Storage, so non-app traffic is not yet rejected. The `getToken` probe gap and the native forced-update gap below still stand. Next step is Phase 2 of `docs/APPCHECK_ROLLOUT.md`. **Re-confirmed 2026-10-22** from the live skatehubba.com bundle: web App Check is on in production (`VITE_APPCHECK_ENABLED=true`, reCAPTCHA v3 site key, `ReCaptchaV3Provider`). Enforcement mode is tracked in Firebase Console → App Check → APIs.
 
-`src/firebase.ts:141` — App Check is opt-in and disabled; `docs/APPCHECK_ROLLOUT.md:301-321` checklist is 18/18 unchecked. Firestore/Storage are unprotected against non-app traffic; every rules rate-limit is the only stand-in. Worse, `isAppCheckInitialized()` can report `true` while zero tokens mint (`firebase.ts:206-210`, `APPCHECK_ROLLOUT.md:33-40`) — the Apr 22 lockout signature — because there's no `getToken` probe. Native flag is baked into shipped binaries with no forced-update path (`android-aab.yml:73-74`).
+`src/firebase.ts:187` — App Check is opt-in via `VITE_APPCHECK_ENABLED` (on for prod web and store builds); the `docs/APPCHECK_ROLLOUT.md:383-403` final checklist still shows all 19 rows unchecked, although the Phase 1 env steps are live. While Console enforcement is off, Firestore/Storage accept non-app traffic and the rules rate-limits are the only stand-in (current mode: Console → App Check → APIs). Worse, `isAppCheckInitialized()` can report `true` while zero tokens mint (`firebase.ts:233-238`, `APPCHECK_ROLLOUT.md:104-112`) — the Apr 22 lockout signature — because there's no `getToken` probe. Native flag is baked into shipped binaries with no forced-update path (`android-aab.yml:78`, `ios-release.yml:135`).
 
 ### P2-4 · Rules tests don't run on `main` pushes or on non-rules PRs
 
