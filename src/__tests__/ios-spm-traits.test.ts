@@ -1,0 +1,97 @@
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+import config from "../../capacitor.config";
+
+/**
+ * No Facebook SDK in the iOS binary. @capacitor-firebase/authentication's
+ * SwiftPM traits default to Google + Facebook, and SwiftPM links whatever the
+ * traits enable, regardless of the plugin's runtime `providers` list. The
+ * Facebook SDK's privacy manifest declares tracking (NSPrivacyTracking,
+ * ep1.facebook.com, Device ID / User ID used for tracking), which would put
+ * tracking in the archive's Privacy Report and contradict our App Store
+ * privacy labels (1.2.0 build 1 shipped it). capacitor.config.ts pins the
+ * traits; `cap sync` writes them into CapApp-SPM/Package.swift.
+ */
+const root = resolve(__dirname, "../..");
+const capAppDir = resolve(root, "ios/App/CapApp-SPM");
+const capAppPackage = readFileSync(resolve(capAppDir, "Package.swift"), "utf8");
+const spm = config.experimental?.ios?.spm;
+
+/** Local plugin packages in CapApp-SPM: name, path and traits list (if any). */
+const localPackages = [
+  ...capAppPackage.matchAll(/\.package\(name: "([^"]+)", path: "([^"]+)"(?:, traits: \[([^\]]*)\])?\)/g),
+].map(([, name, path, traits]) => ({
+  name,
+  path,
+  traits: traits === undefined ? null : [...traits.matchAll(/"([^"]+)"|(\.defaults)/g)].map((t) => t[1] ?? t[2]),
+}));
+
+/**
+ * Runs the Capacitor CLI's Package.swift generator (what `cap sync ios` writes
+ * on CI) so a CLI that renames or drops `packageTraits` fails here, not only
+ * at the post-sync guard (scripts/check-ios-spm-traits.mjs).
+ */
+async function generateCapAppPackage(): Promise<string> {
+  const req = createRequire(import.meta.url);
+  const { loadConfig } = req("@capacitor/cli/dist/config") as { loadConfig: () => Promise<CliConfig> };
+  const { getPlugins } = req("@capacitor/cli/dist/plugin") as {
+    getPlugins: (config: CliConfig, platform: string) => Promise<unknown[]>;
+  };
+  const { getIOSPlugins } = req("@capacitor/cli/dist/ios/common") as {
+    getIOSPlugins: (plugins: unknown[]) => Promise<unknown[]>;
+  };
+  const { generatePackageText } = req("@capacitor/cli/dist/util/spm") as {
+    generatePackageText: (config: CliConfig, plugins: unknown[]) => Promise<string>;
+  };
+  const cliConfig = await loadConfig();
+  return generatePackageText(cliConfig, await getIOSPlugins(await getPlugins(cliConfig, "ios")));
+}
+type CliConfig = { readonly app: unknown };
+
+describe("iOS SwiftPM plugin traits", () => {
+  it("builds the auth plugin with the Google trait only", () => {
+    expect(spm?.packageTraits?.["@capacitor-firebase/authentication"]).toEqual(["Google"]);
+    expect(localPackages.find((p) => p.name === "CapacitorFirebaseAuthentication")?.traits).toEqual(["Google"]);
+  });
+
+  it("has no direct facebook-ios-sdk dependency in CapApp-SPM", () => {
+    expect(capAppPackage).not.toMatch(/facebook/i);
+  });
+
+  it("still links Google Sign-In: the plugin gates GoogleSignIn on the Google trait, which we enable", () => {
+    const auth = localPackages.find((p) => p.name === "CapacitorFirebaseAuthentication");
+    const authPackage = readFileSync(resolve(capAppDir, auth?.path ?? "", "Package.swift"), "utf8");
+    expect(authPackage).toMatch(
+      /\.product\(name: "GoogleSignIn", package: "GoogleSignIn-iOS",\s*condition: \.when\(traits: \["Google"\]\)\)/,
+    );
+    expect(auth?.traits).toContain("Google");
+  });
+
+  it("Capacitor's own generator writes the Google-only trait from this config", async () => {
+    const text = await generateCapAppPackage();
+    expect(text.split("\n")[0]).toBe(`// swift-tools-version: ${spm?.swiftToolsVersion}`);
+    expect(text).toMatch(/"CapacitorFirebaseAuthentication", path: "[^"]+", traits: \["Google"\]\)/);
+    expect(text).not.toMatch(/facebook/i);
+  });
+
+  it("declares Swift tools 6.1+, which package traits require", () => {
+    const [major, minor] = (spm?.swiftToolsVersion ?? "0").split(".").map(Number);
+    expect(major > 6 || (major === 6 && minor >= 1)).toBe(true);
+    expect(capAppPackage.split("\n")[0]).toBe(`// swift-tools-version: ${spm?.swiftToolsVersion}`);
+  });
+
+  it("enables no Facebook trait, or default traits, on any plugin that can link the Facebook SDK", () => {
+    expect(localPackages.length).toBeGreaterThan(5);
+    const facebookCapable = localPackages.filter((p) =>
+      readFileSync(resolve(capAppDir, p.path, "Package.swift"), "utf8").includes("facebook-ios-sdk"),
+    );
+    expect(facebookCapable.map((p) => p.name)).toContain("CapacitorFirebaseAuthentication");
+    for (const p of facebookCapable) {
+      expect(p.traits, `${p.name} must pin traits`).not.toBeNull();
+      expect(p.traits).not.toContain("Facebook");
+      expect(p.traits).not.toContain(".defaults");
+    }
+  });
+});

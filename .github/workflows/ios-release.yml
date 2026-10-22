@@ -191,6 +191,9 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync ios
 
+      - name: Guard against the Facebook SDK (auth plugin traits)
+        run: node scripts/check-ios-spm-traits.mjs
+
       - name: Show Xcode
         run: xcodebuild -version
 
