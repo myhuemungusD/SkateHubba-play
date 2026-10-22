@@ -264,16 +264,17 @@ describe("token verification", () => {
     expect(bodies[0]).not.toMatch(/revoked|malformed|audience|exploded|project/i);
   });
 
-  it("never writes the ID token into the logs, but keeps the uid", async () => {
+  it("never writes the ID token or the raw uid into the logs, only uidHash", async () => {
     // A deletion audit trail must not itself become a store of the credential
-    // that authorized it. The uid is deliberately retained — without it the log
-    // cannot evidence an erasure request.
+    // that authorized it, nor of the uid it erased (logs may be forwarded to
+    // Sentry). It carries hashUid(uid), which an operator can recompute.
     h.verifyIdTokenMock.mockRejectedValueOnce(new Error("Firebase ID token has expired."));
     await call();
     await call();
     const logged = JSON.stringify(warnSpy.mock.calls);
     expect(logged).not.toContain(TOKEN);
-    expect(logged).toContain(TOKEN_UID);
+    expect(logged).not.toContain(TOKEN_UID);
+    expect(logged).toContain(hashUid(TOKEN_UID));
   });
 });
 
@@ -291,6 +292,15 @@ describe("recent-login requirement", () => {
     h.verifyIdTokenMock.mockResolvedValueOnce({ uid: TOKEN_UID, auth_time });
     const out = await call();
     expectRefused(out, 401, "requires_recent_login");
+  });
+
+  it("logs the stale-auth refusal with uidHash, never the raw uid", async () => {
+    h.verifyIdTokenMock.mockResolvedValueOnce({ uid: TOKEN_UID, auth_time: NOW_S - 3600 });
+    await call();
+    const logged = JSON.stringify(warnSpy.mock.calls);
+    expect(logged).toContain("account_delete_stale_auth");
+    expect(logged).toContain(hashUid(TOKEN_UID));
+    expect(logged).not.toContain(TOKEN_UID);
   });
 
   const FRESH: [string, number][] = [
@@ -625,11 +635,29 @@ describe("error reporting (server-side Sentry)", () => {
       () => h.cascadeMock.mockRejectedValueOnce(new Error(`no doc users/${TOKEN_UID}`)),
     ],
     ["account_delete_auth_failed", () => h.deleteUserMock.mockRejectedValueOnce(new Error(`no user ${TOKEN_UID}`))],
-  ])("redacts the %s message (Firebase errors can quote the uid)", async (event, fail) => {
+    ["account_delete_revoke_failed", () => h.revokeMock.mockRejectedValueOnce(new Error(`no user ${TOKEN_UID}`))],
+  ])("keeps the uid out of the %s report and log line (Firebase errors can quote it)", async (event, fail) => {
     fail();
     await call();
     const reported = captures().find((c) => c[1].tags.event === event)?.[0] as Error;
     expect(`${reported.message} ${reported.stack}`).not.toContain(TOKEN_UID);
+    const line = JSON.parse(loggedLine(event) ?? "{}") as Record<string, unknown>;
+    expect(line).toMatchObject({ event, uidHash: hashUid(TOKEN_UID), error: expect.stringContaining("[uid]") });
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain(TOKEN_UID);
+  });
+
+  it("logs the attempt and success with uidHash, never the raw uid", async () => {
+    await call();
+    expect(JSON.parse(loggedLine("account_delete_attempt") ?? "{}")).toEqual({
+      event: "account_delete_attempt",
+      uidHash: hashUid(TOKEN_UID),
+    });
+    expect(JSON.parse(loggedLine("account_delete_success") ?? "{}")).toEqual({
+      event: "account_delete_success",
+      uidHash: hashUid(TOKEN_UID),
+      ...SUMMARY,
+    });
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain(TOKEN_UID);
   });
 
   it("reports a revoke failure as a warning with the hash only, and still erases", async () => {

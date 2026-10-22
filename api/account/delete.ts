@@ -186,13 +186,25 @@ function readBearer(req: ApiRequest): string | null {
 }
 
 /**
- * Structured log line. Never includes the ID token, and never the username or
- * email — a deletion audit trail should not itself be a store of the personal
- * data that was just erased. The uid is retained because without it the log
- * cannot support an erasure request the way a regulator would expect.
+ * Structured log line. Never includes the ID token, the username, the email,
+ * or the raw uid — a deletion audit trail should not itself be a store of the
+ * personal data that was just erased, and these lines may be forwarded to
+ * Sentry. Lines carry `uidHash` (`hashUid(uid)`, `src/utils/pii.ts`), the same
+ * pseudonym Sentry and the client use; to trace one deletion, hash the uid the
+ * same way and search for it (docs/DEPLOYMENT.md).
  */
 function log(event: string, fields: Record<string, unknown>): void {
   console.warn(JSON.stringify({ event, ...fields }));
+}
+
+/**
+ * An error's message for a log line, with the uid swapped for `[uid]`:
+ * Firebase errors can quote it (`no doc users/<uid>`), and the line already
+ * carries `uidHash`.
+ */
+function errorText(err: unknown, uid: string): string {
+  const text = err instanceof Error ? err.message : String(err);
+  return uid ? text.split(uid).join("[uid]") : text;
 }
 
 /**
@@ -333,15 +345,16 @@ async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
     return;
   }
 
+  const uidHash = hashUid(uid);
   const ageS = Math.floor(Date.now() / 1000) - authTimeS;
   if (!authTimeS || ageS > RECENT_AUTH_WINDOW_S) {
-    log("account_delete_stale_auth", { uid, ageS });
+    log("account_delete_stale_auth", { uidHash, ageS });
     fail(res, 401, "requires_recent_login", "Please sign in again to confirm account deletion.");
     return;
   }
 
   // ── Erasure, then Auth ──
-  log("account_delete_attempt", { uid });
+  log("account_delete_attempt", { uidHash });
 
   // Revoke first. The caller stays signed in for the whole cascade (seconds to
   // minutes), so without this the client can re-create what has just been
@@ -355,8 +368,9 @@ async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
   try {
     await getAuth(app).revokeRefreshTokens(uid);
   } catch (err) {
-    log("account_delete_revoke_failed", { uid, error: err instanceof Error ? err.message : String(err) });
-    captureServerError("account_delete_revoke_failed", err, { uidHash: hashUid(uid) }, { level: "warning" });
+    log("account_delete_revoke_failed", { uidHash, error: errorText(err, uid) });
+    // redactMessage: like the erasure and Auth errors below, it can quote the uid.
+    captureServerError("account_delete_revoke_failed", err, { uidHash }, { level: "warning", redactMessage: true });
   }
 
   let summary: DeletionSummary;
@@ -366,16 +380,17 @@ async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
     // The Auth user is intentionally left alive: the account keeps working and
     // the user can retry. Every phase is idempotent, so a retry resumes rather
     // than double-deleting.
-    log("account_delete_erasure_failed", { uid, error: err instanceof Error ? err.message : String(err) });
-    captureServerError("account_delete_erasure_failed", err, { uidHash: hashUid(uid) }, { redactMessage: true });
+    log("account_delete_erasure_failed", { uidHash, error: errorText(err, uid) });
+    captureServerError("account_delete_erasure_failed", err, { uidHash }, { redactMessage: true });
     await flushServerErrors();
     fail(res, 500, "erasure_failed", "Could not delete your data. Your account is unchanged — please try again.");
     return;
   }
 
   // Analytics next, best-effort: PostHog trouble never fails or blocks a
-  // deletion. Logged with the hash only; the Vercel log above already holds
-  // the uid as the erasure audit trail.
+  // deletion. Logged with the hash only, like every line here; the
+  // account_delete_attempt line above and account_delete_success below are
+  // the erasure audit trail.
   await reportPosthogErasure(uid);
 
   // Auth last. Reaching here means the data is already gone, so a failure now
@@ -385,14 +400,14 @@ async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
   try {
     await getAuth(app).deleteUser(uid);
   } catch (err) {
-    log("account_delete_auth_failed", { uid, error: err instanceof Error ? err.message : String(err) });
-    captureServerError("account_delete_auth_failed", err, { uidHash: hashUid(uid) }, { redactMessage: true });
+    log("account_delete_auth_failed", { uidHash, error: errorText(err, uid) });
+    captureServerError("account_delete_auth_failed", err, { uidHash }, { redactMessage: true });
     await flushServerErrors();
     res.status(200).json({ ok: true, authDeleted: false, summary });
     return;
   }
 
-  log("account_delete_success", { uid, ...summary });
+  log("account_delete_success", { uidHash, ...summary });
   // Sends a queued revoke_failed warning, if any; immediate when nothing is queued.
   await flushServerErrors();
   res.status(200).json({ ok: true, authDeleted: true, summary });
