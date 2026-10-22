@@ -150,7 +150,7 @@ export function AuthScreen({
     let verifiedDob: string | undefined;
     let verifiedConsent = false;
     if (showDob) {
-      const gate = checkInlineDob(month, day, year, parentConsent);
+      const gate = checkInlineDob(month, day, year, parentConsent, "email_signup");
       if (gate.kind === "error") {
         setError(gate.message);
         return;
@@ -255,13 +255,14 @@ export function AuthScreen({
     return (
       <CoppaBlockedCard
         onBack={() => {
-          // Clear the failing DOB so the form doesn't re-block immediately on
-          // next submit (it held the values that triggered the block).
+          // Leave the form: the block is sticky for 24h (checkInlineDob), so
+          // staying here to type another date would only block again.
           setMonth("");
           setDay("");
           setYear("");
           setParentConsent(false);
           setAgeBlocked(false);
+          onBack?.();
         }}
       />
     );

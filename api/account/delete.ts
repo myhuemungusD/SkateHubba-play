@@ -46,6 +46,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { parseServiceAccountJson } from "../cron/_serviceAccount.js";
 import { deleteUserDataAsAdmin, type DeletionSummary } from "./_deleteUserData.js";
+import { eraseUnderageSignIn, hasProfile } from "./_underage.js";
 import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
 
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
@@ -64,6 +65,7 @@ const RECENT_AUTH_WINDOW_S = 5 * 60;
 interface ApiRequest {
   method?: string;
   headers: Record<string, string | string[] | undefined>;
+  query?: Record<string, string | string[] | undefined>;
 }
 interface ApiResponse {
   status: (code: number) => ApiResponse;
@@ -116,12 +118,7 @@ function applyCors(req: ApiRequest, res: ApiResponse): void {
 
 /** Machine-readable failure codes. The client branches on these, not on prose. */
 type FailureCode =
-  | "method_not_allowed"
-  | "missing_token"
-  | "invalid_token"
-  | "requires_recent_login"
-  | "init_failed"
-  | "erasure_failed";
+  "method_not_allowed" | "missing_token" | "invalid_token" | "requires_recent_login" | "init_failed" | "erasure_failed";
 
 let cachedApp: App | null = null;
 let cachedBucketName: string | null = null;
@@ -190,6 +187,31 @@ function log(event: string, fields: Record<string, unknown>): void {
   console.warn(JSON.stringify({ event, ...fields }));
 }
 
+/**
+ * `?reason=underage`: the COPPA age gate blocked this sign-in before a profile
+ * existed (see `_underage.ts`). Returns true when it answered the request,
+ * false when the caller has a profile and must take the normal path.
+ */
+async function handleUnderage(app: App, uid: string, res: ApiResponse): Promise<boolean> {
+  const db = getFirestore(app, FIRESTORE_DB_NAME);
+  try {
+    if (await hasProfile(db, uid)) {
+      log("account_delete_underage_has_profile", { uid });
+      return false;
+    }
+    await eraseUnderageSignIn(db, getAuth(app), uid);
+  } catch (err) {
+    log("account_delete_underage_failed", { uid, error: err instanceof Error ? err.message : String(err) });
+    captureServerError("account_delete_underage_failed", err, { uid });
+    await flushServerErrors();
+    fail(res, 500, "erasure_failed", "Could not remove this sign-in. Please try again.");
+    return true;
+  }
+  log("account_delete_underage_success", { uid });
+  res.status(200).json({ ok: true, authDeleted: true, mode: "underage" });
+  return true;
+}
+
 function fail(res: ApiResponse, status: number, code: FailureCode, message: string): void {
   res.status(status).json({ ok: false, code, message });
 }
@@ -250,6 +272,9 @@ async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
     fail(res, 401, "invalid_token", "Invalid or expired credentials.");
     return;
   }
+
+  const reason = req.query?.reason;
+  if ((Array.isArray(reason) ? reason[0] : reason) === "underage" && (await handleUnderage(app, uid, res))) return;
 
   const ageS = Math.floor(Date.now() / 1000) - authTimeS;
   if (!authTimeS || ageS > RECENT_AUTH_WINDOW_S) {

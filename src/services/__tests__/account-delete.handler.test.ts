@@ -560,3 +560,68 @@ describe("error reporting (server-side Sentry)", () => {
     expect(out.body).toEqual({ ok: true, authDeleted: true, summary: SUMMARY });
   });
 });
+
+describe("?reason=underage (COPPA block before a profile exists)", () => {
+  const STALE_S = NOW_S - WINDOW_S - 60;
+  function fakeDb(profileExists: boolean, commit = vi.fn(async () => undefined)) {
+    const deleted: string[] = [];
+    const db = {
+      doc: (path: string) => ({ path, get: vi.fn(async () => ({ exists: profileExists })) }),
+      batch: () => ({ delete: (ref: { path: string }) => deleted.push(ref.path), commit }),
+    };
+    h.getFirestoreMock.mockReturnValue(db);
+    return { deleted, commit };
+  }
+
+  it("deletes a profile-less sign-in past the recent-login window, without the full cascade", async () => {
+    h.verifyIdTokenMock.mockResolvedValue({ uid: TOKEN_UID, auth_time: STALE_S });
+    const { deleted } = fakeDb(false);
+    const out = await call({ query: { reason: "underage" } });
+    expect(out.code).toBe(200);
+    expect(out.body).toEqual({ ok: true, authDeleted: true, mode: "underage" });
+    expect(deleted).toEqual([
+      `onlineStatus/${TOKEN_UID}`,
+      `users/${TOKEN_UID}/private/profile`,
+      `pushTargets/${TOKEN_UID}`,
+    ]);
+    expect(h.deleteUserMock).toHaveBeenCalledWith(TOKEN_UID);
+    expect(h.cascadeMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts the reason from an array query value", async () => {
+    fakeDb(false);
+    const out = await call({ query: { reason: ["underage"] } as unknown as Record<string, string> });
+    expect(out.body).toEqual({ ok: true, authDeleted: true, mode: "underage" });
+  });
+
+  it("never skips the recency check for an account that has a profile", async () => {
+    h.verifyIdTokenMock.mockResolvedValue({ uid: TOKEN_UID, auth_time: STALE_S });
+    fakeDb(true);
+    const out = await call({ query: { reason: "underage" } });
+    expectRefused(out, 401, "requires_recent_login");
+  });
+
+  it("falls through to the normal erasure for a fresh sign-in that has a profile", async () => {
+    fakeDb(true);
+    const out = await call({ query: { reason: "underage" } });
+    expect(out.code).toBe(200);
+    expect(h.cascadeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports erasure_failed and keeps the Auth user when the doc cleanup fails", async () => {
+    fakeDb(
+      false,
+      vi.fn(async () => Promise.reject(new Error("unavailable"))),
+    );
+    const out = await call({ query: { reason: "underage" } });
+    expectRefused(out, 500, "erasure_failed");
+  });
+
+  it("reports a non-Error failure as erasure_failed", async () => {
+    fakeDb(false);
+    h.deleteUserMock.mockRejectedValueOnce("boom");
+    const out = await call({ query: { reason: "underage" } });
+    expect(out.code).toBe(500);
+    expect(out.body).toMatchObject({ code: "erasure_failed" });
+  });
+});

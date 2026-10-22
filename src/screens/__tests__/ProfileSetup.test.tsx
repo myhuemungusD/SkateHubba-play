@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ProfileSetup } from "../ProfileSetup";
+import { markCoppaBlocked } from "../../utils/coppaNotice";
 
 const mockCreateProfile = vi.fn();
 const mockGetUserProfile = vi.fn();
@@ -41,6 +42,9 @@ vi.mock("../../services/auth.underage", () => ({ blockUnderageSignIn: () => mock
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // An under-13 block is sticky for 24h on the device; don't let one test's block leak into the next.
+  localStorage.clear();
+  sessionStorage.clear();
   mockBlockUnderage.mockResolvedValue("deleted");
   // Default: new user with no existing profile
   mockGetUserProfile.mockResolvedValue(null);
@@ -421,6 +425,37 @@ describe("ProfileSetup", () => {
     expect((screen.getByLabelText("Birth day") as HTMLInputElement).value).toBe("");
     expect((screen.getByLabelText("Birth year") as HTMLInputElement).value).toBe("");
     expect((screen.getByPlaceholderText("sk8legend") as HTMLInputElement).value).toBe("newuser");
+  });
+
+  it("re-blocks and re-runs the sign-in removal after Go Back, whatever DOB comes next", async () => {
+    render(<ProfileSetup {...defaultProps} dob={null} />);
+    await typeAvailableUsername();
+    await userEvent.type(screen.getByLabelText("Birth month"), "01");
+    await userEvent.type(screen.getByLabelText("Birth day"), "01");
+    await userEvent.type(screen.getByLabelText("Birth year"), "2020");
+    await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Go Back" }));
+    await userEvent.type(screen.getByLabelText("Birth month"), "01");
+    await userEvent.type(screen.getByLabelText("Birth day"), "15");
+    await userEvent.type(screen.getByLabelText("Birth year"), "2000");
+    await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
+
+    expect(screen.getByRole("heading", { name: "Sorry!" })).toBeInTheDocument();
+    expect(mockCreateProfile).not.toHaveBeenCalled();
+    expect(mockBlockUnderage).toHaveBeenCalledTimes(2);
+  });
+
+  it("states the deletion outcome on its blocked card", async () => {
+    render(<ProfileSetup {...defaultProps} dob={null} />);
+    await typeAvailableUsername();
+    await userEvent.type(screen.getByLabelText("Birth month"), "01");
+    await userEvent.type(screen.getByLabelText("Birth day"), "01");
+    await userEvent.type(screen.getByLabelText("Birth year"), "2020");
+    await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
+    // blockUnderageSignIn is mocked, so no notice is stored: the card says pending, never "removed".
+    expect(screen.getByText(/will be deleted/)).toBeInTheDocument();
+    act(() => markCoppaBlocked("deleted"));
+    expect(screen.getByText(/has been removed/)).toBeInTheDocument();
   });
 
   it("requires parental consent before submitting for users 13-17", async () => {

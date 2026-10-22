@@ -217,7 +217,8 @@ function AppScreens() {
       <OfflineBanner />
       <DeleteAccountRetryBanner />
       <GameNotificationWatcher />
-      {queueUid && <PresenceRunner uid={queueUid} />}
+      {/* No presence writes before a profile exists (COPPA: a blocked sign-up must leave nothing behind). */}
+      {queueUid && auth.activeProfile && <PresenceRunner uid={queueUid} />}
       <AppEmailVerifyBanner />
       <AppRoutes />
       <ToastContainer />
@@ -252,7 +253,7 @@ function LandingRoute({
 }: LandingBridge & { authLoading: boolean; signedIn: boolean }) {
   const shellActive = useSyncExternalStore(subscribeBootShell, isBootShellActive);
   const holdShell = shellActive && !signedIn;
-  const [coppaBlocked, dismissCoppa] = useCoppaBlockedNotice();
+  const [coppaOutcome, dismissCoppa] = useCoppaBlockedNotice();
 
   // Taps before auth resolves are queued the same way the boot landing does
   // and replayed by AppScreens.
@@ -274,8 +275,8 @@ function LandingRoute({
   }, [shellActive, signedIn]);
 
   if (holdShell) return null;
-  // An under-13 Google/Apple sign-up was just blocked and its account removed.
-  if (coppaBlocked && !signedIn) return <CoppaBlockedCard onBack={dismissCoppa} />;
+  // An under-13 Google/Apple sign-up was just blocked and its sign-in removed (or queued for removal).
+  if (coppaOutcome && !signedIn) return <CoppaBlockedCard outcome={coppaOutcome} onBack={dismissCoppa} />;
   return (
     <Landing
       onGo={onGo}

@@ -1,62 +1,123 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockDeleteUser, mockSignOut, mockCapture, authState } = vi.hoisted(() => ({
-  mockDeleteUser: vi.fn(),
-  mockSignOut: vi.fn(),
-  mockCapture: vi.fn(),
-  authState: { currentUser: null as { uid: string } | null },
+const h = vi.hoisted(() => ({
+  deleteUser: vi.fn(),
+  signOut: vi.fn(),
+  capture: vi.fn(),
+  markNotice: vi.fn(),
+  markSticky: vi.fn(),
+  url: vi.fn(),
+  fetch: vi.fn(),
+  user: null as { uid: string; getIdToken: () => Promise<string> } | null,
 }));
 
-vi.mock("firebase/auth", () => ({ deleteUser: (u: unknown) => mockDeleteUser(u) }));
-vi.mock("../../firebase", () => ({ requireAuth: () => authState }));
-vi.mock("../../lib/sentry", () => ({ captureException: (...a: unknown[]) => mockCapture(...a) }));
-vi.mock("../auth", () => ({ signOut: () => mockSignOut() }));
+vi.mock("firebase/auth", () => ({ deleteUser: (u: unknown) => h.deleteUser(u) }));
+vi.mock("../../firebase", () => ({
+  requireAuth: () => ({
+    get currentUser() {
+      return h.user;
+    },
+  }),
+}));
+vi.mock("../../lib/sentry", () => ({ captureException: (...a: unknown[]) => h.capture(...a) }));
+vi.mock("../auth", () => ({ signOut: () => h.signOut() }));
 vi.mock("../logger", () => ({ logger: { info: vi.fn(), warn: vi.fn() } }));
-const { mockMark } = vi.hoisted(() => ({ mockMark: vi.fn() }));
-vi.mock("../../utils/coppaNotice", () => ({ markCoppaBlocked: () => mockMark() }));
+vi.mock("../auth.deleteAccount", async (orig) => ({
+  ...(await orig<typeof import("../auth.deleteAccount")>()),
+  accountDeleteUrl: () => h.url(),
+}));
+vi.mock("../../utils/coppaNotice", () => ({
+  markCoppaBlocked: (o: string) => h.markNotice(o),
+  markAgeGateBlocked: () => h.markSticky(),
+}));
 
 import { blockUnderageSignIn } from "../auth.underage";
+import { hashUid } from "../../utils/pii";
+
+const recentLogin = Object.assign(new Error("old"), { code: "auth/requires-recent-login" });
+const json = (status: number, body: unknown) => ({ ok: status < 300, status, json: async () => body });
 
 beforeEach(() => {
   vi.clearAllMocks();
-  authState.currentUser = { uid: "kid" };
-  mockDeleteUser.mockResolvedValue(undefined);
-  mockSignOut.mockResolvedValue(undefined);
+  h.user = { uid: "kid", getIdToken: async () => "tok" };
+  h.deleteUser.mockResolvedValue(undefined);
+  h.signOut.mockResolvedValue(undefined);
+  h.url.mockReturnValue("https://skatehubba.com/api/account/delete");
+  h.fetch.mockResolvedValue(json(200, { ok: true, authDeleted: true, mode: "underage" }));
+  vi.stubGlobal("fetch", h.fetch);
 });
 
 describe("blockUnderageSignIn", () => {
-  it("deletes the Auth user, then clears the native session", async () => {
+  it("sets the sticky block, deletes on the client, then clears the native session", async () => {
     expect(await blockUnderageSignIn()).toBe("deleted");
-    expect(mockDeleteUser).toHaveBeenCalledWith({ uid: "kid" });
-    expect(mockSignOut).toHaveBeenCalledTimes(1);
-    expect(mockCapture).not.toHaveBeenCalled();
-    expect(mockMark).toHaveBeenCalledTimes(1);
+    expect(h.markSticky).toHaveBeenCalledTimes(1);
+    expect(h.markNotice.mock.calls).toEqual([["pending"], ["deleted"]]);
+    expect(h.deleteUser).toHaveBeenCalledWith(h.user);
+    expect(h.fetch).not.toHaveBeenCalled();
+    expect(h.signOut).toHaveBeenCalledTimes(1);
+    expect(h.capture).not.toHaveBeenCalled();
   });
 
   it("still reports deleted when the follow-up sign-out fails", async () => {
-    mockSignOut.mockRejectedValue(new Error("plugin"));
+    h.signOut.mockRejectedValue(new Error("plugin"));
     expect(await blockUnderageSignIn()).toBe("deleted");
   });
 
-  it("signs out and reports the orphan when the delete fails", async () => {
-    mockDeleteUser.mockRejectedValue(Object.assign(new Error("old"), { code: "auth/requires-recent-login" }));
-    expect(await blockUnderageSignIn()).toBe("signed_out");
-    expect(mockSignOut).toHaveBeenCalledTimes(1);
-    expect(mockCapture).toHaveBeenCalledWith(expect.any(Error), {
-      extra: { context: "blockUnderageSignIn", uid: "kid", code: "auth/requires-recent-login" },
+  it("falls back to the server's underage mode when the sign-in is too old", async () => {
+    h.deleteUser.mockRejectedValue(recentLogin);
+    expect(await blockUnderageSignIn()).toBe("deleted");
+    expect(h.fetch).toHaveBeenCalledWith("https://skatehubba.com/api/account/delete?reason=underage", {
+      method: "POST",
+      headers: { Authorization: "Bearer tok" },
     });
+    expect(h.markNotice).toHaveBeenLastCalledWith("deleted");
+    expect(h.signOut).toHaveBeenCalledTimes(1);
   });
 
-  it("reports failed, without rejecting, when the delete and the sign-out both fail", async () => {
-    mockDeleteUser.mockRejectedValue(new Error("offline"));
-    mockSignOut.mockRejectedValue(new Error("offline"));
+  it("signs out, leaves the notice pending, and reports only the hashed uid when both deletes fail", async () => {
+    h.deleteUser.mockRejectedValue(recentLogin);
+    h.fetch.mockResolvedValue(json(500, { code: "erasure_failed" }));
+    expect(await blockUnderageSignIn()).toBe("signed_out");
+    expect(h.markNotice.mock.calls).toEqual([["pending"]]);
+    expect(h.signOut).toHaveBeenCalledTimes(1);
+    expect(h.capture).toHaveBeenCalledWith(expect.any(Error), {
+      extra: {
+        context: "blockUnderageSignIn",
+        uidHash: hashUid("kid"),
+        clientCode: "auth/requires-recent-login",
+        serverCode: "account-delete/erasure_failed",
+      },
+    });
+    expect(JSON.stringify(h.capture.mock.calls)).not.toContain('"kid"');
+  });
+
+  it("uses the HTTP status when the server sends no code", async () => {
+    h.deleteUser.mockRejectedValue(recentLogin);
+    h.fetch.mockResolvedValue({ ok: false, status: 502, json: async () => Promise.reject(new Error("html")) });
+    expect(await blockUnderageSignIn()).toBe("signed_out");
+    expect(h.capture.mock.calls[0][1].extra.serverCode).toBe("account-delete/502");
+  });
+
+  it("does not call the server from a native build with no API origin", async () => {
+    h.deleteUser.mockRejectedValue(recentLogin);
+    h.url.mockReturnValue(null);
+    expect(await blockUnderageSignIn()).toBe("signed_out");
+    expect(h.fetch).not.toHaveBeenCalled();
+    expect(h.capture.mock.calls[0][1].extra.serverCode).toBe("account-delete/misconfigured");
+  });
+
+  it("reports failed, without rejecting, when both deletes and the sign-out fail", async () => {
+    h.deleteUser.mockRejectedValue(new Error("offline"));
+    h.fetch.mockRejectedValue(new TypeError("offline"));
+    h.signOut.mockRejectedValue(new Error("offline"));
     expect(await blockUnderageSignIn()).toBe("failed");
   });
 
-  it("does nothing with no one signed in", async () => {
-    authState.currentUser = null;
+  it("still sets the sticky block with no one signed in", async () => {
+    h.user = null;
     expect(await blockUnderageSignIn()).toBe("no_user");
-    expect(mockDeleteUser).not.toHaveBeenCalled();
-    expect(mockSignOut).not.toHaveBeenCalled();
+    expect(h.markSticky).toHaveBeenCalledTimes(1);
+    expect(h.deleteUser).not.toHaveBeenCalled();
+    expect(h.signOut).not.toHaveBeenCalled();
   });
 });

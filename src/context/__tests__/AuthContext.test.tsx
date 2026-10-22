@@ -1,9 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, render, waitFor } from "@testing-library/react";
 import { Component, useEffect, useRef, type ReactNode } from "react";
 import { useAuthContext, AuthProvider } from "../AuthContext";
 import type { UserProfile } from "../../services/users";
 import { hashIdentity } from "../../utils/pii";
+import { isPushSupported, registerPushTokenIfGranted } from "../../services/pushNotifications";
+import { refreshWebPushTokenIfGranted } from "../../services/fcm";
 
 // Widened return shape so mockReturnValue can swap user/profile to non-null
 // values mid-test (the initial () => null literals would otherwise narrow the
@@ -188,11 +190,12 @@ describe("useAuthContext", () => {
 describe("identity sync", () => {
   // Renders the provider with a signed-in u1/sk8r user and the given analytics
   // consent, or a signed-out session when `user` is null.
-  function renderIdentity(opts: { user: boolean; consent: boolean }): void {
+  function renderIdentity(opts: { user: boolean; consent: boolean; profile?: boolean }): void {
     mockConsent.mockReturnValue(opts.consent);
+    const profile = opts.profile === false ? null : { uid: "u1", username: "sk8r" };
     mockUseAuth.mockReturnValue(
       opts.user
-        ? { loading: false, user: { uid: "u1" }, profile: { uid: "u1", username: "sk8r" }, refreshProfile: vi.fn() }
+        ? { loading: false, user: { uid: "u1" }, profile, refreshProfile: vi.fn() }
         : { loading: false, user: null, profile: null, refreshProfile: vi.fn() },
     );
     function Harness() {
@@ -230,6 +233,36 @@ describe("identity sync", () => {
     renderIdentity({ user: true, consent: true });
 
     expect(mockPosthogIdentify).toHaveBeenCalledWith(hashIdentity("u1"), { username: "sk8r" });
+  });
+
+  // COPPA: an under-13 is signed in (Google/Apple) before ProfileSetup asks
+  // for a DOB, so nothing may be identified or written until a profile exists.
+  describe("before a profile exists", () => {
+    afterEach(() => {
+      vi.mocked(isPushSupported).mockReturnValue(false);
+      vi.unstubAllGlobals();
+    });
+
+    it("does not identify to PostHog even with consent", () => {
+      renderIdentity({ user: true, consent: true, profile: false });
+      expect(mockPosthogIdentify).not.toHaveBeenCalled();
+    });
+
+    it("registers no native push token until the profile appears", () => {
+      vi.mocked(isPushSupported).mockReturnValue(true);
+      renderIdentity({ user: true, consent: false, profile: false });
+      expect(registerPushTokenIfGranted).not.toHaveBeenCalled();
+      renderIdentity({ user: true, consent: false });
+      expect(registerPushTokenIfGranted).toHaveBeenCalledWith("u1");
+    });
+
+    it("refreshes no web push token until the profile appears", () => {
+      vi.stubGlobal("Notification", { permission: "granted" });
+      renderIdentity({ user: true, consent: false, profile: false });
+      expect(refreshWebPushTokenIfGranted).not.toHaveBeenCalled();
+      renderIdentity({ user: true, consent: false });
+      expect(refreshWebPushTokenIfGranted).toHaveBeenCalledWith("u1");
+    });
   });
 
   it("resets PostHog and clears the Sentry user on sign-out", () => {

@@ -14,7 +14,9 @@ import { logger, metrics } from "../services/logger";
 import { captureException } from "../lib/sentry";
 import { hashUid } from "../utils/pii";
 import { useUsernameAvailability } from "../hooks/useUsernameAvailability";
-import { isMinorDob, parseDob } from "../utils/age";
+import { isMinorDob } from "../utils/age";
+import { useCoppaBlockedNotice } from "../utils/coppaNotice";
+import { checkInlineDob } from "./authScreenHelpers";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
@@ -70,6 +72,7 @@ export function ProfileSetup({
   const [year, setYear] = useState("");
   const [parentConsent, setParentConsent] = useState(false);
   const [ageBlocked, setAgeBlocked] = useState(false);
+  const [coppaOutcome] = useCoppaBlockedNotice();
   const isMinor = needsDobCollection && isMinorDob(month, day, year);
 
   const updateDob = (field: "month" | "day" | "year", value: string) => {
@@ -191,25 +194,20 @@ export function ProfileSetup({
     let effectiveDob = dob ?? undefined;
     let effectiveConsent = parentalConsent;
     if (needsDobCollection) {
-      const result = parseDob(month, day, year);
-      if (result.kind === "invalid") {
-        setLocalError(result.message);
+      const gate = checkInlineDob(month, day, year, parentConsent, "profile_setup");
+      if (gate.kind === "error") {
+        setLocalError(gate.message);
         return;
       }
-      if (result.kind === "blocked") {
-        logger.info("age_gate_blocked", { age: result.age });
+      if (gate.kind === "blocked") {
         setAgeBlocked(true);
-        // COPPA: remove the Auth account Google/Apple made; the landing shows the card.
+        // COPPA: remove the sign-in Google/Apple made (again, on a sticky
+        // re-block); the landing shows the card once it signs out.
         void blockUnderageSignIn();
         return;
       }
-      if (result.needsParentalConsent && !parentConsent) {
-        setLocalError("Parental or guardian consent is required for users under 18");
-        return;
-      }
-      effectiveDob = result.dobString;
-      effectiveConsent = result.needsParentalConsent;
-      logger.info("age_gate_passed_inline", { age: result.age, parentalConsent: effectiveConsent });
+      effectiveDob = gate.dob;
+      effectiveConsent = gate.parentalConsent;
     }
 
     setLoading(true);
@@ -303,6 +301,7 @@ export function ProfileSetup({
   if (ageBlocked) {
     return (
       <CoppaBlockedCard
+        outcome={coppaOutcome ?? "pending"}
         onBack={() => {
           // Clear the failing DOB so the form doesn't re-block immediately on
           // next submit. Preserve username + stance so the user doesn't lose

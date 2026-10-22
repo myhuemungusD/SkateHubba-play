@@ -82,6 +82,10 @@ vi.mock("./services/onboarding", () => ({
   clearLocalDismissed: vi.fn(),
 }));
 
+// Stand-in that only shows whether presence would be written, and for whom.
+vi.mock("./components/presence/PresenceRunner", () => ({
+  PresenceRunner: ({ uid }: { uid: string }) => <span data-testid="presence-runner">{uid}</span>,
+}));
 vi.mock("./services/analytics", () => ({
   trackEvent: vi.fn(),
   analytics: {
@@ -168,9 +172,10 @@ describe("App", () => {
 
   it("shows the COPPA blocked card on the landing once after an underage sign-up is removed", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    sessionStorage.setItem("coppa_blocked_notice", "1");
+    sessionStorage.setItem("coppa_blocked_notice", "deleted");
     renderApp();
     expect(await screen.findByRole("heading", { name: "Sorry!" })).toBeInTheDocument();
+    expect(screen.getByText(/The sign-in you just used has been removed/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Go Back" }));
     expect(await screen.findByText("QUIT SCROLLING.")).toBeInTheDocument();
     expect(sessionStorage.getItem("coppa_blocked_notice")).toBeNull();
@@ -221,6 +226,8 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText("Pick your handle")).toBeInTheDocument();
     });
+    // COPPA: no presence writes until the profile exists.
+    expect(screen.queryByTestId("presence-runner")).not.toBeInTheDocument();
   });
 
   it("shows lobby when user is authenticated with a profile", async () => {
@@ -234,6 +241,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText(/@sk8r/i)).toBeInTheDocument();
     });
+    expect(screen.getByTestId("presence-runner")).toHaveTextContent("u1");
   });
 
   it("renders the privacy page at /privacy", async () => {

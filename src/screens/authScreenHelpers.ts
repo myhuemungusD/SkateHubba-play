@@ -8,6 +8,7 @@ import { passwordPolicyMessage, type SignupPasswordPolicy } from "../utils/passw
 import { getAuthErrorMessage, isBenignAuthCode } from "../utils/authCodes";
 import { captureException } from "../lib/sentry";
 import { parseDob } from "../utils/age";
+import { isAgeGateBlocked, markAgeGateBlocked } from "../utils/coppaNotice";
 
 /** Client-side email/password checks for AuthScreen. Returns the banner copy, or null when valid. */
 export function validateCredentials({
@@ -115,18 +116,35 @@ export function authRecovery(
 export type InlineDobGate =
   { kind: "error"; message: string } | { kind: "blocked" } | { kind: "ok"; dob: string; parentalConsent: boolean };
 
-/** Validate the inline signup DOB + consent (COPPA/CCPA), logging the outcome. */
-export function checkInlineDob(month: string, day: string, year: string, parentConsent: boolean): InlineDobGate {
+/**
+ * Validate an inline signup DOB + consent (COPPA/CCPA), logging the outcome.
+ * Shared by email signup (AuthScreen) and Google/Apple signup (ProfileSetup).
+ *
+ * A block is sticky for 24 hours on this device (utils/coppaNotice), so going
+ * back and typing an older date still blocks. Logs never carry the age.
+ */
+export function checkInlineDob(
+  month: string,
+  day: string,
+  year: string,
+  parentConsent: boolean,
+  source: "email_signup" | "profile_setup",
+): InlineDobGate {
+  if (isAgeGateBlocked()) {
+    logger.info("age_gate_blocked", { source, sticky: true });
+    return { kind: "blocked" };
+  }
   const result = parseDob(month, day, year);
   if (result.kind === "invalid") return { kind: "error", message: result.message };
   if (result.kind === "blocked") {
-    logger.info("age_gate_blocked", { age: result.age });
+    markAgeGateBlocked();
+    logger.info("age_gate_blocked", { source });
     return { kind: "blocked" };
   }
   if (result.needsParentalConsent && !parentConsent) {
     return { kind: "error", message: "Parental or guardian consent is required for users under 18" };
   }
-  logger.info("age_gate_passed_inline", { age: result.age, parentalConsent: result.needsParentalConsent });
+  logger.info("age_gate_passed_inline", { source, parentalConsent: result.needsParentalConsent });
   return { kind: "ok", dob: result.dobString, parentalConsent: result.needsParentalConsent };
 }
 
