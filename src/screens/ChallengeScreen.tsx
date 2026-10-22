@@ -327,10 +327,13 @@ export function ChallengeScreen({
                       type="button"
                       onClick={() => setJudgePickerOpen(true)}
                       disabled={loading}
-                      className="touch-target inline-flex items-center gap-1 font-body text-sm text-brand-orange hover:text-white transition-colors disabled:opacity-40 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+                      className="touch-target inline-flex flex-wrap items-baseline gap-x-1 text-left font-body text-sm text-brand-orange hover:text-white transition-colors disabled:opacity-40 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
                       data-testid="add-judge-toggle"
                     >
-                      + Add a referee? <span className="text-xs text-subtle">(optional — unlocks disputes)</span>
+                      <span aria-hidden="true">+</span> <span>Referee (optional):</span>{" "}
+                      <span className="text-xs text-subtle">
+                        makes the call on disputes instead of a community vote.
+                      </span>
                     </button>
                   ) : (
                     <div>
