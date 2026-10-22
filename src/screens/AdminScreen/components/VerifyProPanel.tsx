@@ -57,8 +57,8 @@ export function VerifyProPanel({ adminUid }: { adminUid: string }) {
         role="note"
         className="mb-3 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 font-body text-xs text-amber-100"
       >
-        Founder seeding and revoke only. Pros normally turn pro when another verified pro blesses them. Grant here only
-        to seed the first pros; every grant is stamped with your uid.
+        Founder seeding and revoke only. Normally a pro puts another pro on. Grant here only to seed the first pros;
+        every grant is stamped with your uid.
       </p>
       <UserLookupForm lookup={lookup} label="Player username" />
 

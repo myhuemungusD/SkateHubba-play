@@ -11,7 +11,7 @@ function monthYear(ms: number): string {
 }
 
 /**
- * Public "Blessed by @X" with the lineage above them. Renders nothing for a
+ * Public "Put on by @X" with the lineage above them. Renders nothing for a
  * founder-seeded pro (no accepted blessing on record).
  */
 export function BlessedByLine({ uid, onViewPlayer }: Props) {
@@ -44,12 +44,12 @@ export function BlessedByLine({ uid, onViewPlayer }: Props) {
 
   return (
     <section
-      aria-label="Blessed by"
+      aria-label="Put on by"
       data-testid="blessed-by"
       className="mb-4 rounded-2xl border border-amber-300/25 bg-amber-300/[0.06] p-4"
     >
       <p className="font-display text-xs tracking-wider text-white/80">
-        ✦ BLESSED BY {name(first)} <span className="text-white/50">· {monthYear(first.createdAtMs)}</span>
+        ✦ PUT ON BY {name(first)} <span className="text-white/50">· {monthYear(first.createdAtMs)}</span>
       </p>
       {first.reason && <p className="mt-2 font-body text-sm italic text-white/80">&ldquo;{first.reason}&rdquo;</p>}
       {chain.length > 1 && (

@@ -9,7 +9,7 @@ export interface InviteSocial {
 export function inviteText(username?: string): string {
   return username
     ? `I'm playing S.K.A.T.E. on SkateHubba — challenge me! My handle: @${username}`
-    : "Play S.K.A.T.E. on SkateHubba — the first async trick battle game!";
+    : "Play me in a game of S.K.A.T.E. on SkateHubba.";
 }
 
 export function inviteSocials(text: string, url: string): InviteSocial[] {

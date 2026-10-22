@@ -58,13 +58,13 @@ describe("ProToolsScreen", () => {
     expect(onBack).toHaveBeenCalled();
   });
 
-  it("leads with Bless a pro, the headline pro power", () => {
+  it("leads with Put someone on", () => {
     render(<ProToolsScreen reviewMode={false} onBack={() => {}} />);
     const hero = screen.getByTestId("blessing-hero");
-    expect(hero).toHaveTextContent("Bless a pro");
-    expect(hero).toHaveTextContent(/never earns or wins|Nobody earns or wins pro/);
+    expect(hero).toHaveTextContent("Put someone on");
+    expect(hero).toHaveTextContent("Only for skaters who are pro for real");
     const headings = screen.getAllByRole("heading").map((h) => h.textContent);
-    expect(headings.indexOf("Bless a pro")).toBe(1);
+    expect(headings.indexOf("Put someone on")).toBe(1);
   });
 
   it("exposes no admin-only feature to pros", () => {
