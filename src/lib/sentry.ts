@@ -21,6 +21,7 @@
  */
 import type * as SentryTypes from "@sentry/react";
 import { Capacitor } from "@capacitor/core";
+import { redactPII } from "../utils/pii";
 
 type SentryInitConfig = Parameters<typeof SentryTypes.init>[0];
 type AddBreadcrumbArg = Parameters<typeof SentryTypes.addBreadcrumb>[0];
@@ -59,12 +60,29 @@ export async function initSentry(config: SentryInitConfig): Promise<void> {
   }
 }
 
+/**
+ * Hash identifiers in a capture context's `extra` before it leaves the device.
+ *
+ * Call sites attach `uid` / `username` / `email` to `extra` for triage, and an
+ * event's extra is shipped verbatim (the logger's breadcrumb path already
+ * redacts; this is the same rule for the capture path). Applying it here
+ * covers every current and future call site instead of trusting each one.
+ * Only the plain-object hint form carries `extra`; a severity string, a Scope
+ * or a scope callback passes through untouched.
+ */
+function redactHint<T>(ctx: T): T {
+  if (!ctx || typeof ctx !== "object" || !("extra" in ctx)) return ctx;
+  const extra = (ctx as { extra?: unknown }).extra;
+  if (!extra || typeof extra !== "object") return ctx;
+  return { ...ctx, extra: redactPII(extra as Record<string, unknown>) };
+}
+
 export function captureException(err: unknown, ctx?: CaptureExceptionArg): void {
-  sdk?.captureException(err, ctx);
+  sdk?.captureException(err, redactHint(ctx));
 }
 
 export function captureMessage(msg: string, context?: CaptureMessageContext): void {
-  sdk?.captureMessage(msg, context);
+  sdk?.captureMessage(msg, redactHint(context));
 }
 
 export function addBreadcrumb(crumb: AddBreadcrumbArg): void {
