@@ -59,6 +59,13 @@ vi.mock("./applyGameStats.js", () => ({
   applyGameStats: (...args: unknown[]) => applyGameStatsMock(...args),
 }));
 
+const handleClipCreatedMock = vi.fn<(...args: unknown[]) => Promise<string>>();
+
+vi.mock("./moderation/handlers.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./moderation/handlers.js")>();
+  return { ...actual, handleClipCreated: (...args: unknown[]) => handleClipCreatedMock(...args) };
+});
+
 const GAME_ID = "game-1";
 const RUNTIME_SERVICE_ACCOUNT = "sk8hub-d7806@appspot.gserviceaccount.com";
 
@@ -94,6 +101,7 @@ beforeEach(async () => {
   captured.handler = null;
   captured.options = null;
   applyGameStatsMock.mockReset().mockResolvedValue("applied");
+  handleClipCreatedMock.mockReset().mockResolvedValue("skipped");
   initializeAppMock.mockReset();
   getFirestoreMock.mockClear();
   // Fresh import wires the trigger, populating `captured`.
@@ -209,5 +217,31 @@ describe("onGameCompleted trigger", () => {
   it("rethrows a close-out failure so the trigger retry can run again", async () => {
     applyGameStatsMock.mockRejectedValueOnce(new Error("unavailable"));
     await expect(captured.handler?.(event({ status: "complete", winner: "uid-1" }))).rejects.toThrow("unavailable");
+  });
+});
+
+/**
+ * The upload screener has one code path. scripts/moderation/rescreen-pending.mjs
+ * calls the same handleClipCreated; the trigger must keep passing the created
+ * snapshot's data and leave the token to the metadata server (no getToken).
+ */
+describe("moderateNewClip trigger", () => {
+  it("hands the created clip to the shared handleClipCreated with the deployed switch", async () => {
+    const clip = { source: "user", moderation: "pending" };
+    await loaded?.moderateNewClip.run({
+      params: { clipId: "clip-1" },
+      data: { data: () => clip },
+    } as never);
+    expect(handleClipCreatedMock).toHaveBeenCalledTimes(1);
+    const [options, clipId, raw] = handleClipCreatedMock.mock.calls[0] ?? [];
+    expect(clipId).toBe("clip-1");
+    expect(raw).toBe(clip);
+    expect(options).toMatchObject({ db: { __db: "skatehubba" }, enabled: false, sentryDsn: "" });
+    expect(Object.keys(options as object).sort()).toEqual(["db", "enabled", "media", "sentryDsn"]);
+  });
+
+  it("passes undefined data through when the event has no snapshot", async () => {
+    await loaded?.moderateNewClip.run({ params: { clipId: "clip-2" } } as never);
+    expect(handleClipCreatedMock).toHaveBeenCalledWith(expect.anything(), "clip-2", undefined);
   });
 });
