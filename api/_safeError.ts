@@ -14,11 +14,20 @@ export function safeErrorName(err: unknown): string {
 }
 
 /**
- * A machine code like Firebase's `auth/id-token-expired` when the error
- * carries a well-formed one; else the class name (`safeErrorName`).
+ * A machine code when the error carries a well-formed one, else the class name
+ * (`safeErrorName`). Accepted codes:
+ * - Firebase style, lowercase: `auth/id-token-expired`, `permission-denied`
+ * - Node errno style: `ENOTFOUND`, `ECONNRESET`
+ * - gRPC numeric (Firestore Admin): `5` becomes `grpc-5`
+ *
+ * Case matters on purpose: a Firebase uid is 28 mixed-case characters, so it
+ * can never pass as a code even if some SDK put one there.
  */
 export function safeErrorCode(err: unknown): string {
   const code = err !== null && typeof err === "object" ? (err as { code?: unknown }).code : undefined;
-  if (typeof code === "string" && /^[a-z][a-z0-9-]{0,39}(\/[a-z0-9-]{1,63})?$/i.test(code)) return code;
+  if (typeof code === "number" && Number.isInteger(code) && code >= 0 && code < 100) return `grpc-${code}`;
+  if (typeof code === "string" && /^(?:[a-z][a-z0-9-]{0,39}(?:\/[a-z0-9-]{1,63})?|E[A-Z0-9]{1,30})$/.test(code)) {
+    return code;
+  }
   return safeErrorName(err);
 }

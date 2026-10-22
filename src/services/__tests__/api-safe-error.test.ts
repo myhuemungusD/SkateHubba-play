@@ -40,14 +40,22 @@ describe("safeErrorName", () => {
 describe("safeErrorCode", () => {
   it.each([
     ["a Firebase auth code", { code: "auth/id-token-expired" }, "auth/id-token-expired"],
-    ["a bare code", { code: "ENOTFOUND" }, "ENOTFOUND"],
+    ["a bare Firebase code", { code: "permission-denied" }, "permission-denied"],
+    ["a Node errno code", { code: "ENOTFOUND" }, "ENOTFOUND"],
+    ["a gRPC status as grpc-<n>", { code: 5 }, "grpc-5"],
+    ["gRPC status 0", { code: 0 }, "grpc-0"],
   ])("returns %s", (_label, fields, expected) => {
     expect(safeErrorCode(Object.assign(new Error("Firebase ID token has expired."), fields))).toBe(expected);
   });
 
   it.each([
     ["a code with free text", { code: "auth/expired PRIVATE KEY" }],
-    ["a non-string code", { code: 401 }],
+    ["an out-of-range number", { code: 401 }],
+    ["a fractional number", { code: 1.5 }],
+    ["a negative number", { code: -1 }],
+    ["a Firebase uid", { code: "DVpY1kJYXsYEJN8j3jr3r0wITl72" }],
+    ["a mixed-case word", { code: "Auth/Expired" }],
+    ["a non-string, non-number code", { code: true }],
     ["no code", {}],
   ])("falls back to the class for %s", (_label, fields) => {
     expect(safeErrorCode(Object.assign(new RangeError("PRIVATE KEY"), fields))).toBe("RangeError");
