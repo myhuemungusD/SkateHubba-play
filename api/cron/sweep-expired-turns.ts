@@ -40,6 +40,7 @@ import { decideExpiredForfeit, type ForfeitGameUpdate } from "../../src/services
 import { toGameDoc, type GameDoc } from "../../src/services/games.mappers.js";
 import { applyTrainingLabelPending, materializeTrainingLabels } from "../../src/services/trainingLabels.materialize.js";
 import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
+import { safeErrorCode } from "../_safeError.js";
 
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
 const FIRESTORE_DB_NAME = "skatehubba";
@@ -347,7 +348,7 @@ async function dispatchAdminPush(
       JSON.stringify({
         event: "sweep_push_failed",
         gameId,
-        message: err instanceof Error ? err.message : String(err),
+        code: safeErrorCode(err),
       }),
     );
     captureServerError("sweep_push_failed", err, { gameId }, { level: "warning" });
@@ -533,7 +534,7 @@ async function reconcileChallengeNotifications(
         JSON.stringify({
           event: "challenge_reconcile_failed",
           gameId: docSnap.id,
-          message: err instanceof Error ? err.message : String(err),
+          code: safeErrorCode(err),
         }),
       );
       captureServerError("challenge_reconcile_failed", err, { gameId: docSnap.id }, { level: "warning" });
@@ -621,7 +622,7 @@ async function remindUpcomingDeadlines(db: Firestore, nowMs: number, dryRun: boo
         JSON.stringify({
           event: "turn_reminder_failed",
           gameId: docSnap.id,
-          message: err instanceof Error ? err.message : String(err),
+          code: safeErrorCode(err),
         }),
       );
       captureServerError("turn_reminder_failed", err, { gameId: docSnap.id }, { level: "warning" });
@@ -664,7 +665,7 @@ async function runNotificationPasses(db: Firestore, summary: SweepSummary, dryRu
         JSON.stringify({
           event: "notify_pass_failed",
           pass: name,
-          message: err instanceof Error ? err.message : String(err),
+          code: safeErrorCode(err),
         }),
       );
       captureServerError("notify_pass_failed", err, { pass: name });
@@ -749,7 +750,7 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
           JSON.stringify({
             event: "sweep_game_failed",
             gameId: docSnap.id,
-            message: err instanceof Error ? err.message : String(err),
+            code: safeErrorCode(err),
           }),
         );
         captureServerError("sweep_game_failed", err, { gameId: docSnap.id }, { level: "warning" });
@@ -772,7 +773,7 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
       console.warn(
         JSON.stringify({
           event: "training_labels_failed",
-          message: err instanceof Error ? err.message : String(err),
+          code: safeErrorCode(err),
         }),
       );
       captureServerError("training_labels_failed", err, {}, { level: "warning" });
@@ -783,7 +784,7 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
   } catch (err) {
     // Query-level failure (index missing, permission, etc). Never throw to the
     // platform — return what we have plus the error so the cron logs surface it.
-    console.warn(JSON.stringify({ event: "sweep_failed", message: err instanceof Error ? err.message : String(err) }));
+    console.warn(JSON.stringify({ event: "sweep_failed", code: safeErrorCode(err) }));
     captureServerError("sweep_failed", err);
     await flushServerErrors();
     res.status(500).json({ ...summary, error: "sweep_failed" });

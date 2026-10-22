@@ -113,7 +113,7 @@ Every event carries `extra.uidHash` (`hashUid(uid)`, `src/utils/pii.ts`) where a
 
 The cascade threw. The Auth user was deliberately left alive and the client told the user to retry; every phase is idempotent, so a retry resumes. One event is a transient failure; a run of them is an outage (Firestore, Storage, or IAM on the service account).
 
-- **Remediation:** check the log line `account_delete_erasure_failed` (its `error` has the uid replaced with `[uid]`) for the failing phase, fix it, and if the user did not retry, run `deleteUserDataAsAdmin` (`api/account/_deleteUserData.ts`) for them.
+- **Remediation:** check the log line `account_delete_erasure_failed` (its `code` is the error's machine code; the full error is in the Sentry event) for the failing phase, fix it, and if the user did not retry, run `deleteUserDataAsAdmin` (`api/account/_deleteUserData.ts`) for them.
 
 #### Auth delete failed (`account_delete_auth_failed`)
 
