@@ -323,12 +323,12 @@ minutes, the Console toggle takes seconds.
 
 ## Kill switches
 
-| Switch                                          | Latency | Scope                    | Use when                                        |
-| ----------------------------------------------- | ------- | ------------------------ | ----------------------------------------------- |
-| Console → App Check → APIs → **Unenforced**     | seconds | server, all clients      | **Always first** during a lockout.              |
-| Vercel **Instant Rollback** to pre-flip deploy  | seconds | web clients on next load | Client is minting bad tokens / noisy Sentry.    |
-| `VITE_APPCHECK_ENABLED=false` + redeploy        | minutes | web clients              | Durable follow-up so the next deploy stays off. |
-| GitHub secret `VITE_APPCHECK_ENABLED` + new AAB | days    | native                   | Not a kill switch. See below.                   |
+| Switch                                         | Latency | Scope                    | Use when                                        |
+| ---------------------------------------------- | ------- | ------------------------ | ----------------------------------------------- |
+| Console → App Check → APIs → **Unenforced**    | seconds | server, all clients      | **Always first** during a lockout.              |
+| Vercel **Instant Rollback** to pre-flip deploy | seconds | web clients on next load | Client is minting bad tokens / noisy Sentry.    |
+| `VITE_APPCHECK_ENABLED=false` + redeploy       | minutes | web clients              | Durable follow-up so the next deploy stays off. |
+| New AAB/IPA (flag is hardcoded `"true"`)       | days    | native                   | Not a kill switch. See below.                   |
 
 ---
 
@@ -339,9 +339,14 @@ minutes, the Console toggle takes seconds.
 
 Three things that will bite:
 
-1. **The flag is baked into the shipped binary.** `android-aab.yml:73–74` reads
-   `VITE_APPCHECK_ENABLED` / `VITE_RECAPTCHA_SITE_KEY` from **GitHub Actions
-   secrets**, at build time. A build already in the field cannot be flipped.
+1. **The flag is baked into the shipped binary.** Store builds
+   (`android-aab.yml`, `ios-release.yml`, Xcode Cloud `ci_post_clone.sh`) set
+   `VITE_APPCHECK_ENABLED` to the literal `"true"` (Play Integrity and
+   DeviceCheck are free; only web reCAPTCHA costs money, and that stays on the
+   Vercel switch). The Closet callables enforce App Check, so a store build
+   without it cannot use Closet. Guarded by
+   `src/__tests__/release-workflows-appcheck.test.ts`. A build already in the
+   field cannot be flipped.
 2. **Therefore Phase 2 enforcement locks out any installed native build that
    does not already mint tokens** — and the only remedy is Console rollback,
    because you cannot ship an app-store update in minutes.
@@ -351,11 +356,10 @@ Three things that will bite:
 
 **Decision required before Phase 2:**
 
-- If **no native build is in users' hands** — proceed web-only. Set the GitHub
-  secret `VITE_APPCHECK_ENABLED=true` before the _first_ store release so it
-  ships token-enabled from day one.
+- If **no native build is in users' hands** — proceed web-only. Store builds
+  already ship token-enabled from day one (hardcoded, see 1).
 - If **a native build is live** — do a full Phase 0/1 for native first: ship an
-  AAB/IPA built with the secret set, wait for adoption of that version (Play
+  AAB/IPA built with the flag on, wait for adoption of that version (Play
   Console → Statistics → by app version) to clear ~95 %, confirm
   `appcheck_native_initialized` appears in Sentry and `appcheck_native_init_failed`
   does not, and only then enforce. Users on older versions will be locked out

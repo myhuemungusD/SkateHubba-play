@@ -79,6 +79,8 @@ export VITE_FEATURE_RUNNER_ENABLED=false
 export VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED=false
 export VITE_FEATURE_SMS_2FA_ENABLED=false
 export VITE_FEATURE_WTT_ENABLED="${VITE_FEATURE_WTT_ENABLED:-false}"
+# App Check always on (DeviceCheck is free), like ios-release.yml.
+export VITE_APPCHECK_ENABLED=true
 export REQUIRE_SW_CONFIG=1
 npm run build
 

@@ -72,7 +72,10 @@ jobs:
           VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
           VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
           VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
-          VITE_APPCHECK_ENABLED: ${{ secrets.VITE_APPCHECK_ENABLED }}
+          # Always on in store builds: Play Integrity is free (only the website's
+          # reCAPTCHA costs money). Without it the enforceAppCheck callables
+          # (Closet, pro seed) reject every call. See ios-release.yml.
+          VITE_APPCHECK_ENABLED: "true"
           VITE_RECAPTCHA_SITE_KEY: ${{ secrets.VITE_RECAPTCHA_SITE_KEY }}
           # Release tagging for Sentry/PostHog (APP_RELEASE in src/main.tsx).
           # Empty versionName on non-tag builds falls through to the git sha.
