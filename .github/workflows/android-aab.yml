@@ -87,7 +87,8 @@ jobs:
           VITE_FEATURE_MAP_CHECKINS: "true"
           VITE_FEATURE_SPOT_PRESENCE: "true"
           VITE_FEATURE_TIPS: "true"
-          VITE_FEATURE_PRO_BLESSING: "true"
+          # Off in both store builds (Jason, 2026-10-21; iOS side is #817).
+          VITE_FEATURE_PRO_BLESSING: "false"
           VITE_FEATURE_PRO_PROFILES: "true"
           VITE_FEATURE_PRO_SHOWCASE: "true"
           VITE_FEATURE_PRO_CALLS: "true"
@@ -105,8 +106,10 @@ jobs:
           VITE_FEATURE_PROFILE_BANNER: "true"
           VITE_FEATURE_PROFILE_CUSTOM: "true"
           VITE_FEATURE_SPOT_CHATS_ENABLED: "true"
-          VITE_FEATURE_CLOSET_ENABLED: "true"
-          VITE_FEATURE_CLOSET_DROPS_ENABLED: "true"
+          # Closet stays off in store builds until claim, buy and equip are
+          # verified on a TestFlight build with App Check (iOS side is #829).
+          VITE_FEATURE_CLOSET_ENABLED: "false"
+          VITE_FEATURE_CLOSET_DROPS_ENABLED: "false"
           VITE_FEATURE_CLOSET_TRADING_ENABLED: "false"
           VITE_FEATURE_CLOSET_STUDIO: "true"
           VITE_FEATURE_SHOE_360: "true"
