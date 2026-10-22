@@ -22,6 +22,8 @@ describe("parseArgs", () => {
       maxErrors: 2,
       log: "rescreen-2026-10-21.md",
       database: "skatehubba",
+      redact: false,
+      summary: "",
     });
   });
 
@@ -38,8 +40,21 @@ describe("parseArgs", () => {
         "--log",
         "/x/r.md",
         "--database=other",
+        "--redact",
+        "--summary",
+        "/x/s.md",
       ]),
-    ).toEqual({ apply: true, limit: 3, delayMs: 0, minAgeMinutes: 0, maxErrors: 5, log: "/x/r.md", database: "other" });
+    ).toEqual({
+      apply: true,
+      limit: 3,
+      delayMs: 0,
+      minAgeMinutes: 0,
+      maxErrors: 5,
+      log: "/x/r.md",
+      database: "other",
+      redact: true,
+      summary: "/x/s.md",
+    });
     expect(rescreen.parseArgs(["--apply", "--dry-run"]).apply).toBe(false);
   });
 
@@ -49,6 +64,8 @@ describe("parseArgs", () => {
     expect(() => rescreen.parseArgs(["--delay-ms", "-1"])).toThrow("--delay-ms needs a whole number");
     expect(() => rescreen.parseArgs(["--log"])).toThrow("--log needs a path");
     expect(() => rescreen.parseArgs(["--database"])).toThrow("--database needs an id");
+    expect(() => rescreen.parseArgs(["--summary"])).toThrow("--summary needs a path");
+    expect(() => rescreen.parseArgs(["--no-redact"])).toThrow("Unknown flag --no-redact");
     expect(() => rescreen.parseArgs(["--force"])).toThrow("Unknown flag --force");
   });
 });
@@ -80,6 +97,15 @@ describe("defaultLogPath", () => {
     expect(rescreen.defaultLogPath(new Date("2026-10-22T06:30:00Z"))).toBe("rescreen-2026-10-21.md");
     expect(rescreen.defaultLogPath(new Date("2026-10-22T08:00:00Z"))).toBe("rescreen-2026-10-22.md");
     expect(rescreen.parseArgs([]).log).toMatch(/^rescreen-\d{4}-\d{2}-\d{2}\.md$/);
+  });
+});
+
+describe("redactFrom (public CI logs never carry owners)", () => {
+  it("is on with --redact, and always on when GITHUB_ACTIONS=true", () => {
+    expect(rescreen.redactFrom(rescreen.parseArgs([]), {})).toBe(false);
+    expect(rescreen.redactFrom(rescreen.parseArgs(["--redact"]), {})).toBe(true);
+    expect(rescreen.redactFrom(rescreen.parseArgs([]), { GITHUB_ACTIONS: "true" })).toBe(true);
+    expect(rescreen.redactFrom(rescreen.parseArgs([]), { GITHUB_ACTIONS: "false" })).toBe(false);
   });
 });
 

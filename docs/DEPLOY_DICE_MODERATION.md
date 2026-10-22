@@ -164,8 +164,16 @@ team box.
 **Safety:**
 
 - Dry run by default. `mode=apply` needs `confirm=rescreen` and the `main`
-  branch, and the workflow sets `MODERATION_ENABLED=true` for the script. The
-  script still refuses `--apply` unless that is exactly `true`.
+  branch.
+- **Moderation must be ON in production, or apply refuses.** The workflow's
+  "Resolve moderation switch" step reads `MODERATION_ENABLED` exactly the way
+  `firebase-functions-deploy.yml` does: a `MODERATION_ENABLED=` line in the
+  `FUNCTIONS_DOTENV` secret wins, then the `MODERATION_ENABLED` repository
+  variable (whitespace stripped, case-insensitive). Anything but `true`,
+  including missing, stops apply with exit 2 before anything is installed or
+  read; a dry run still runs. Only that one key is extracted, and only
+  `true`/`false` is printed. The derived value is passed to the script, which
+  refuses `--apply` again unless it is exactly `true`. Nothing hard-codes it.
 - Each clip is re-read just before screening, and the handler's transaction
   re-checks `pending` at write time, so a decision by the live trigger or an
   admin is never overwritten. Re-running is safe.
@@ -186,49 +194,28 @@ Application Default Credentials, which read the short-lived config the auth
 step writes. There is no `FIREBASE_TOKEN` fallback; that token cannot sign
 Admin SDK or Video Intelligence calls.
 
-**Prerequisite (as of 2026-10-21):** `FIREBASE_WIF_PROVIDER` was malformed,
-so the deploy workflows have been running on their `FIREBASE_TOKEN` fallback.
-This workflow has no fallback and fails at the "Check Workload Identity
-Federation secrets" or "Authenticate" step until the secret is fixed. The
-check expects
-`projects/NUMBER/locations/global/workloadIdentityPools/POOL_ID/providers/PROVIDER_ID`.
-Read the value straight from GCP:
-`gcloud iam workload-identity-pools providers describe PROVIDER_ID --location=global --workload-identity-pool=POOL_ID --format='value(name)'`.
-The deploy log line "Authenticated via Workload Identity Federation" confirms
-the fix.
-
-That service account needs, on `sk8hub-d7806`:
-
-| Why                                                                | Role                                      | Scope                                     |
-| ------------------------------------------------------------------ | ----------------------------------------- | ----------------------------------------- |
-| Read pending clips, write decisions                                | `roles/datastore.user`                    | project                                   |
-| Video Intelligence reads the clip as the caller; approve copies it | `roles/storage.objectUser`                | bucket `sk8hub-d7806.firebasestorage.app` |
-| Call `videos:annotate` (no dedicated role)                         | `roles/serviceusage.serviceUsageConsumer` | project                                   |
-
-The Cloud Video Intelligence API must be enabled (step 1). Grant once, as a
-project owner:
+**Service account and APIs:** WIF is fixed and live (2026-10-22). The
+service account is `firebase-deployer@`, which already holds Cloud Datastore
+Owner, Storage Admin and Service Usage Consumer on `sk8hub-d7806`, so no IAM
+grant is needed. The only thing to check is that the Cloud Video Intelligence
+API (`videointelligence.googleapis.com`) is enabled (step 1):
 
 ```bash
-PROJECT=sk8hub-d7806
-SA="PASTE_THE_FIREBASE_WIF_SERVICE_ACCOUNT_EMAIL"
-gcloud projects add-iam-policy-binding "$PROJECT" \
-  --member="serviceAccount:${SA}" --role="roles/datastore.user" --condition=None
-gcloud projects add-iam-policy-binding "$PROJECT" \
-  --member="serviceAccount:${SA}" --role="roles/serviceusage.serviceUsageConsumer" --condition=None
-gcloud storage buckets add-iam-policy-binding gs://sk8hub-d7806.firebasestorage.app \
-  --member="serviceAccount:${SA}" --role="roles/storage.objectUser"
-gcloud services enable videointelligence.googleapis.com --project="$PROJECT"
+gcloud services list --enabled --project=sk8hub-d7806 | grep videointelligence
 ```
 
-A missing role shows up as `screener error ... annotate 403` (Video
-Intelligence or Storage) or `PERMISSION_DENIED` from Firestore on the first
-clip, which is why the first apply uses `limit=1`. Apply also mints one
+If it is not, the first `limit=1` apply shows `screener error (annotate
+403)` and sends that one clip to review. Enable it and rerun.
+
+A missing API or role shows up as `screener error (annotate 403)` or
+`PERMISSION_DENIED` from Firestore on the first clip, which is why the first
+apply uses `limit=1`. Apply also mints one
 access token before touching any clip, so a broken WIF setup fails up front.
 
 **Run it** after a deploy whose log prints `switch MODERATION: ON`:
 
 ```bash
-# 1. Dry run: ids, owner handles, ages. No writes.
+# 1. Dry run: clip ids, ages, states. No writes.
 gh workflow run moderation-rescreen.yml -f mode=dry-run
 
 # 2. One clip, then read the log.
@@ -242,13 +229,21 @@ gh run watch "$(gh run list --workflow moderation-rescreen.yml --limit 1 --json 
 gh run download --name rescreen
 ```
 
-Each run prints a markdown section (clip id, @handle, age, before and after
-state, action) to the job log and job summary, and uploads it as the
-`rescreen` artifact (kept 30 days). No tokens, emails or uids are logged.
-The owner's profile is read only for rows inside `limit`; other rows show
-the handle stored on the clip, or `(unknown)`. A
-failed run means a screener error or an early stop; read the log before
-rerunning.
+**The workflow output is redacted.** The repo is public, so its Actions logs
+and artifacts are too, and they must never tie a skater to a moderation
+outcome. In CI the script runs with `--redact` (also forced on by
+`GITHUB_ACTIONS=true`, with no way to turn it off): each row is clip id, age,
+before and after state, action and note only. There are no @handles, uids or
+screener error text (that can quote a storage path, which holds the uid), and
+no `users/{uid}` reads. The job log prints that redacted section, the
+`rescreen` artifact (kept 30 days) is the redacted log, and the job summary is
+counts by action only. To see who owns a clip, look its id up in `/admin` or
+the Firebase console. Local emulator runs keep handles: the owner's profile
+is read only for rows inside `limit`, and other rows show the handle stored on
+the clip, or `(unknown)`.
+
+A failed run means a screener error or an early stop. Read the log, and the
+Sentry event for a screener error, before rerunning.
 
 **Clips the rescreen cannot screen.** The log lists them with action
 `skipped-not-screenable`, the state as `moderation/moderationStatus`, and a

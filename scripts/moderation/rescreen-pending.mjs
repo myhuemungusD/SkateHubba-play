@@ -41,11 +41,19 @@
  *                        ./rescreen-YYYY-MM-DD.md in the current directory,
  *                        Pacific date). The workflow always passes --log.
  *   --database ID        Firestore database (default skatehubba).
+ *   --redact             Public-log mode: no owner handles or uids anywhere
+ *                        in the output, and no users/{uid} reads. Always on
+ *                        when GITHUB_ACTIONS=true (the repo is public, so its
+ *                        Actions logs and artifacts are too).
+ *   --summary PATH       Also write a counts-only markdown summary (the
+ *                        workflow's job summary).
  *
  * MODERATION_ENABLED: --apply fails closed unless it is exactly "true", read
  * from the environment, else from the functions parameter file
  * (scripts/lib/functions-env.mjs). That is the same switch and the same
- * strict parse as the deployed param, which defaults to off.
+ * strict parse as the deployed param, which defaults to off. The workflow
+ * derives it from FUNCTIONS_DOTENV / vars.MODERATION_ENABLED, exactly as the
+ * deploy does, and never hard-codes it.
  *
  * Idempotent: a clip is re-read right before screening and skipped unless it
  * is still a pending user upload, and the handler's transaction re-checks
@@ -55,9 +63,10 @@
  * log), 2 refused (switch off, missing build) before anything was read.
  *
  * The log holds clip ids, usernames, ages and states. Never tokens, emails,
- * uids or credentials.
+ * uids or credentials. Redacted (CI) logs drop usernames and screener error
+ * text too: clip ids, ages and states only.
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { DATABASE_ID, functionsEnvPath, parseDotenv } from "../lib/functions-env.mjs";
@@ -82,6 +91,8 @@ const DEFAULTS = {
   minAgeMinutes: 10,
   maxErrors: 2,
   database: DATABASE_ID,
+  redact: false,
+  summary: "",
 };
 
 function positiveInt(flag, raw, { allowZero = false } = {}) {
@@ -130,6 +141,15 @@ export function parseArgs(argv, now = new Date()) {
         out.database = db;
         break;
       }
+      case "--redact":
+        out.redact = true;
+        break;
+      case "--summary": {
+        const path = value();
+        if (!path) throw new Error("--summary needs a path");
+        out.summary = path;
+        break;
+      }
       default:
         throw new Error(`Unknown flag ${arg}. See the header of scripts/moderation/rescreen-pending.mjs.`);
     }
@@ -158,6 +178,11 @@ export function moderationSwitch(env = process.env, readFile = readFileSync) {
   return { on: value.trim() === "true", source: "functions parameter file" };
 }
 
+/** Redaction is forced on in GitHub Actions; there is no flag to turn it off there. */
+export function redactFrom(args, env = process.env) {
+  return args.redact === true || env.GITHUB_ACTIONS === "true";
+}
+
 /** Project to pin: GOOGLE_CLOUD_PROJECT (set by the workflow), then GCLOUD_PROJECT, else let ADC decide. */
 export function projectIdFrom(env = process.env) {
   return (env.GOOGLE_CLOUD_PROJECT ?? env.GCLOUD_PROJECT ?? "").trim();
@@ -178,6 +203,7 @@ export function pacific(date = new Date()) {
 
 export async function main(argv = process.argv.slice(2), env = process.env, io = console) {
   const args = parseArgs(argv);
+  const redact = redactFrom(args, env);
   if (args.apply) {
     const sw = moderationSwitch(env);
     if (!sw.on) {
@@ -201,7 +227,9 @@ export async function main(argv = process.argv.slice(2), env = process.env, io =
   });
   const emulator = env.FIRESTORE_EMULATOR_HOST ? ` (emulator ${env.FIRESTORE_EMULATOR_HOST})` : "";
   const target = `${runtime.projectId || "(default project)"}${emulator}`;
-  io.log(`rescreen: ${args.apply ? "APPLY" : "dry run"} on ${target}, database ${args.database}`);
+  io.log(
+    `rescreen: ${args.apply ? "APPLY" : "dry run"} on ${target}, database ${args.database}${redact ? " (redacted: no owners)" : ""}`,
+  );
   if (args.apply && !env.FIRESTORE_EMULATOR_HOST) await runtime.checkToken();
 
   const options = {
@@ -210,6 +238,7 @@ export async function main(argv = process.argv.slice(2), env = process.env, io =
     delayMs: args.delayMs,
     minAgeMs: args.minAgeMinutes * 60_000,
     maxErrors: args.maxErrors,
+    redact,
   };
   const startedAt = pacific();
   const result = await lib.rescreenPending(runtime.deps, options);
@@ -222,6 +251,8 @@ export async function main(argv = process.argv.slice(2), env = process.env, io =
     options,
   });
   appendLog(args.log, markdown);
+  if (args.summary) writeFileSync(args.summary, lib.renderRescreenCounts(result, { apply: args.apply }));
+  // Only the rendered (redacted in CI) markdown is printed, never row objects.
   io.log(markdown);
   io.log(`rescreen: log appended to ${args.log}`);
   const failed = result.stopped || result.rows.some((row) => row.action === "error");

@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   isScreenable,
+  noteFor,
   rescreenPending,
+  renderRescreenCounts,
   renderRescreenLog,
   stateOf,
   type PendingClip,
@@ -266,5 +268,71 @@ describe("log output", () => {
     expect(empty).toContain("Listed 0. Nothing pending.");
     expect(empty).not.toContain("| Clip |");
     expect(renderRescreenLog({ rows: [], stopped: true }, meta)).toContain("Stopped early");
+  });
+
+  describe("redacted (public CI) output", () => {
+    const failing = () =>
+      harness(
+        [clip("a", 600, { playerUsername: "secret_sk8r" }), clip("b", 500, { playerUsername: "" }), clip("c", 400)],
+        (id) =>
+          id === "c"
+            ? {
+                moderation: "review",
+                moderationStatus: "hidden",
+                moderationScores: { error: "annotate 403 on gs://bucket/userClips/uid-c/v.mp4 for @sk8_c" },
+              }
+            : { moderation: "approved", moderationStatus: "active" },
+      );
+
+    it("never resolves an owner: no handle lookup, no users/{uid} read", async () => {
+      const { deps } = failing();
+      const result = await rescreenPending(deps, { ...OPTIONS, redact: true });
+      expect(deps.ownerHandle).not.toHaveBeenCalled();
+      expect(result.rows.every((r) => r.owner === "")).toBe(true);
+    });
+
+    it("has no '@', handle, uid or screener error text; ids, ages, states and actions remain", async () => {
+      const { deps } = failing();
+      const options = { ...OPTIONS, redact: true };
+      const result = await rescreenPending(deps, options);
+      const md = renderRescreenLog(result, { ...meta, options });
+      expect(md).not.toContain("@");
+      for (const leak of ["secret_sk8r", "sk8_", "uid-", "Owner", "gs://", "userClips"]) expect(md).not.toContain(leak);
+      expect(md).toContain("| Clip | Age | Before | After | Action | Note |");
+      expect(md).toContain("| a | 10h 0m | pending/pending | approved/active | screened | outcome approved |");
+      expect(md).toContain(
+        "| c | 6h 40m | pending/pending | review/hidden | error | screener error (annotate 403); details are in Sentry |",
+      );
+      expect(md).toContain("Redacted: no owners.");
+    });
+
+    it("keeps only a fixed error vocabulary in redacted notes", () => {
+      const row = (note: string) => ({ action: "error" as const, note });
+      expect(noteFor(row("7 PERMISSION_DENIED: users/uid-9 for @x"), true)).toBe(
+        "screener error (PERMISSION_DENIED); details are in Sentry",
+      );
+      expect(noteFor(row("boom at gs://b/userClips/uid-9/v.mp4"), true)).toBe("screener error; details are in Sentry");
+      expect(noteFor(row("boom @x"), false)).toBe("boom @x");
+      expect(noteFor({ action: "screened", note: "outcome approved" }, true)).toBe("outcome approved");
+    });
+
+    it("the local (unredacted) log still shows handles", async () => {
+      const { deps } = failing();
+      const md = renderRescreenLog(await rescreenPending(deps, OPTIONS), meta);
+      expect(md).toContain("| a | @secret_sk8r |");
+      expect(deps.ownerHandle).toHaveBeenCalled();
+    });
+
+    it("the job summary is counts by outcome only", async () => {
+      const { deps } = failing();
+      const result = await rescreenPending(deps, { ...OPTIONS, redact: true });
+      const summary = renderRescreenCounts(result, { apply: true });
+      expect(summary).toBe(
+        "Moderation rescreen APPLY: 3 listed.\n\n| Action | Clips |\n|---|---|\n| error | 1 |\n| screened | 2 |\n",
+      );
+      expect(renderRescreenCounts({ rows: [], stopped: true }, { apply: false })).toBe(
+        "Moderation rescreen DRY RUN: 0 listed.\n\n**Stopped early after repeated screener errors.**\n",
+      );
+    });
   });
 });

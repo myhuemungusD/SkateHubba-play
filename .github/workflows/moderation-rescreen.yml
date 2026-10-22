@@ -23,13 +23,19 @@ name: Moderation Rescreen (pending clips)
 #
 # Guards:
 #   - Dry run by default. A dry run only reads Firestore.
-#   - Apply needs confirm=rescreen and the main branch, and sets
-#     MODERATION_ENABLED=true for the script. The script still fails closed
-#     on its own and only touches clips that are still pending.
+#   - Apply needs confirm=rescreen and the main branch, and production
+#     moderation must be ON: MODERATION_ENABLED is read exactly the way
+#     firebase-functions-deploy.yml reads it (a MODERATION_ENABLED= line in the
+#     FUNCTIONS_DOTENV secret wins, then vars.MODERATION_ENABLED). Anything
+#     but true refuses apply with exit 2; a dry run is still allowed. The
+#     derived value is passed through, and the script fails closed on it again.
 #   - One run at a time (concurrency group, never cancelled mid-run).
-#   - limit 1-50, delay_ms 0-600000. The log (clip id, @handle, age, states;
-#     no tokens, emails or uids) is uploaded as the `rescreen` artifact and
-#     copied to the job summary.
+#   - limit 1-50, delay_ms 0-600000.
+#   - The repo is public, so its logs and artifacts are too. The script runs
+#     redacted (--redact, also forced by GITHUB_ACTIONS=true): clip id, age and
+#     states only, no @handles, uids or screener error text, and no users/{uid}
+#     reads. The job summary is counts by outcome only. The redacted log is the
+#     `rescreen` artifact.
 
 on:
   workflow_dispatch:
@@ -114,6 +120,46 @@ jobs:
           fi
           echo "Mode ${MODE}, limit ${LIMIT}, delay ${DELAY_MS} ms."
 
+      # Production's moderation switch, checked before any install so a refused
+      # apply costs nothing. Read like firebase-functions-deploy.yml
+      # "Write function parameters": the first MODERATION_ENABLED= line of the
+      # FUNCTIONS_DOTENV secret (whitespace stripped, lowercased) wins, then
+      # the repository variable. Only that key is extracted; the secret is
+      # never written to disk and nothing else from it is printed.
+      - name: Resolve moderation switch
+        id: switch
+        env:
+          MODE: ${{ inputs.mode }}
+          FUNCTIONS_DOTENV: ${{ secrets.FUNCTIONS_DOTENV }}
+          VAR_MODERATION_ENABLED: ${{ vars.MODERATION_ENABLED }}
+        run: |
+          set -euo pipefail
+          val=""
+          origin="missing"
+          if line=$(printf '%s\n' "${FUNCTIONS_DOTENV:-}" | grep -E '^MODERATION_ENABLED=' | head -n 1); then
+            val=$(printf '%s' "${line#*=}" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+            origin="FUNCTIONS_DOTENV"
+          elif [ -n "${VAR_MODERATION_ENABLED:-}" ]; then
+            val=$(printf '%s' "$VAR_MODERATION_ENABLED" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+            origin="repository variable"
+          fi
+          case "$val" in
+            true|false) shown="$val" ;;
+            "") shown="(missing)" ;;
+            *) shown="(not true or false)" ;;
+          esac
+          echo "MODERATION_ENABLED=${shown} (${origin})"
+          if [ "$val" = "true" ]; then
+            echo "moderation=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "moderation=false" >> "$GITHUB_OUTPUT"
+          if [ "$MODE" = "apply" ]; then
+            echo "::error::Refusing to apply: production moderation is not ON (MODERATION_ENABLED=${shown} from ${origin}). Set MODERATION_ENABLED=true in the FUNCTIONS_DOTENV secret (or vars.MODERATION_ENABLED), deploy functions, then rerun. A dry run is still allowed."
+            exit 2
+          fi
+          echo "Moderation is not on in production. Dry run only."
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -134,9 +180,11 @@ jobs:
 
       - name: Resolve Firebase project
         id: project
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
         run: |
           set -euo pipefail
-          PROJECT_ID="${{ secrets.FIREBASE_PROJECT_ID }}"
+          PROJECT_ID="${FIREBASE_PROJECT_ID:-}"
           if [ -z "$PROJECT_ID" ]; then
             echo "FIREBASE_PROJECT_ID secret is empty — falling back to .firebaserc"
             PROJECT_ID=$(jq -r '.projects.default // empty' .firebaserc)
@@ -183,6 +231,7 @@ jobs:
           MODE: ${{ inputs.mode }}
           LIMIT: ${{ inputs.limit }}
           DELAY_MS: ${{ inputs.delay_ms }}
+          SWITCH: ${{ steps.switch.outputs.moderation }}
           GOOGLE_CLOUD_PROJECT: ${{ steps.project.outputs.project_id }}
           GCLOUD_PROJECT: ${{ steps.project.outputs.project_id }}
         run: |
@@ -190,31 +239,33 @@ jobs:
           LOG_DIR="$RUNNER_TEMP/rescreen"
           mkdir -p "$LOG_DIR"
           echo "log=$LOG_DIR/rescreen.md" >> "$GITHUB_OUTPUT"
-          ARGS=(--limit "$LIMIT" --delay-ms "$DELAY_MS" --log "$LOG_DIR/rescreen.md")
+          echo "summary=$LOG_DIR/summary.md" >> "$GITHUB_OUTPUT"
+          ARGS=(--redact --limit "$LIMIT" --delay-ms "$DELAY_MS" --log "$LOG_DIR/rescreen.md" --summary "$LOG_DIR/summary.md")
           if [ "$MODE" = "apply" ]; then
-            # The screener must already be on in production (deploy log
-            # "switch MODERATION: ON"). The script refuses --apply without it.
-            export MODERATION_ENABLED=true
+            # Production's switch as derived above, passed through unchanged
+            # (never a literal). The script refuses --apply unless it is true.
+            export MODERATION_ENABLED="$SWITCH"
             ARGS=(--apply "${ARGS[@]}")
           else
             unset MODERATION_ENABLED
           fi
           node scripts/moderation/rescreen-pending.mjs "${ARGS[@]}"
 
+      # Counts by outcome only. Clip rows stay in the (redacted) artifact.
       - name: Job summary
-        if: always() && steps.run.outputs.log != ''
+        if: always() && steps.run.outputs.summary != ''
         env:
-          LOG: ${{ steps.run.outputs.log }}
+          SUMMARY: ${{ steps.run.outputs.summary }}
           MODE: ${{ inputs.mode }}
           OUTCOME: ${{ steps.run.outcome }}
         run: |
           {
             echo "### Moderation rescreen (${MODE}): ${OUTCOME}"
             echo ""
-            if [ -f "$LOG" ]; then
-              cat "$LOG"
+            if [ -f "$SUMMARY" ]; then
+              cat "$SUMMARY"
             else
-              echo "No log was written. Read the Rescreen step output."
+              echo "No summary was written. Read the Rescreen step output."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 

@@ -19,6 +19,8 @@
  *  - Clips younger than `minAgeMs` are left to the live trigger.
  *  - `maxErrors` screener failures in a row stop the run, so a missing IAM
  *    role or quota sends at most that many clips to review.
+ *  - `redact` (on in CI) keeps owners out of the log entirely, so a public
+ *    Actions log never ties a skater to a moderation outcome.
  */
 import { applicationDefault, initializeApp } from "firebase-admin/app";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
@@ -54,6 +56,12 @@ export interface RescreenOptions {
   minAgeMs: number;
   /** Stop after this many screener errors in a row. */
   maxErrors: number;
+  /**
+   * Public-log mode (the workflow; the repo and its Actions logs are public).
+   * No owner is resolved or recorded: no handle, no uid, and no users/{uid}
+   * read. Rows carry only the clip id, age and states.
+   */
+  redact?: boolean;
 }
 
 export type RescreenAction =
@@ -142,8 +150,8 @@ export async function rescreenPending(deps: RescreenDeps, options: RescreenOptio
     const row: RescreenRow = {
       clipId: listed.id,
       // Free: the handle stored on the clip. users/{uid} is only read below,
-      // for rows that count against --limit.
-      owner: storedHandle(listed.data),
+      // for rows that count against --limit. Redacted runs record no owner.
+      owner: options.redact ? "" : storedHandle(listed.data),
       ageMs: createdMs === null ? null : Math.max(0, deps.now() - createdMs),
       before: stateOf(listed.data),
       after: stateOf(listed.data),
@@ -174,7 +182,7 @@ export async function rescreenPending(deps: RescreenDeps, options: RescreenOptio
       continue;
     }
     used += 1;
-    row.owner = await deps.ownerHandle(listed.data);
+    if (!options.redact) row.owner = await deps.ownerHandle(listed.data);
     if (!options.apply) continue;
 
     if (used > 1 && options.delayMs > 0) await deps.sleep(options.delayMs);
@@ -250,14 +258,41 @@ export interface RescreenLogMeta {
   options: RescreenOptions;
 }
 
-/** One markdown section per run. Ids, handles, ages and states only. */
-export function renderRescreenLog(result: RescreenResult, meta: RescreenLogMeta): string {
-  const counts = new Map<string, number>();
+/** Rows per action, sorted by action name. */
+export function countByAction(result: RescreenResult): Array<[RescreenAction, number]> {
+  const counts = new Map<RescreenAction, number>();
   for (const row of result.rows) counts.set(row.action, (counts.get(row.action) ?? 0) + 1);
-  const summary = [...counts.entries()]
-    .sort(([a], [b]) => (a < b ? -1 : 1))
+  return [...counts.entries()].sort(([a], [b]) => (a < b ? -1 : 1));
+}
+
+const GRPC_CODES =
+  /\b(PERMISSION_DENIED|UNAUTHENTICATED|NOT_FOUND|RESOURCE_EXHAUSTED|DEADLINE_EXCEEDED|UNAVAILABLE|INVALID_ARGUMENT|FAILED_PRECONDITION)\b/;
+
+/**
+ * Note text for the log. A redacted log drops screener error text, which can
+ * quote a storage path (those embed the owner's uid). It keeps only a fixed
+ * vocabulary: "annotate", an HTTP status and a gRPC code, so a missing API or
+ * role still reads as e.g. "screener error (annotate 403)".
+ */
+export function noteFor(row: Pick<RescreenRow, "action" | "note">, redact: boolean): string {
+  if (!redact || row.action !== "error") return row.note;
+  const parts = [
+    /annotate/i.test(row.note) ? "annotate" : "",
+    /\b[45]\d\d\b/.exec(row.note)?.[0] ?? "",
+    GRPC_CODES.exec(row.note)?.[0] ?? "",
+  ].filter((part) => part.length > 0);
+  return `screener error${parts.length > 0 ? ` (${parts.join(" ")})` : ""}; details are in Sentry`;
+}
+
+/**
+ * One markdown section per run. Ids, handles, ages and states only; with
+ * `options.redact`, ids, ages and states only (no Owner column).
+ */
+export function renderRescreenLog(result: RescreenResult, meta: RescreenLogMeta): string {
+  const summary = countByAction(result)
     .map(([action, n]) => `${action} ${n}`)
     .join(", ");
+  const redact = meta.options.redact === true;
   const o = meta.options;
   const lines = [
     `## Rescreen ${meta.apply ? "APPLY" : "DRY RUN"}: ${meta.startedAt}`,
@@ -266,18 +301,37 @@ export function renderRescreenLog(result: RescreenResult, meta: RescreenLogMeta)
     `- limit ${o.limit}, delay ${o.delayMs} ms, min age ${Math.round(o.minAgeMs / 60_000)} min, max errors in a row ${o.maxErrors}.`,
     `- Listed ${result.rows.length}. ${summary.length > 0 ? summary : "Nothing pending"}.${result.stopped ? " **Stopped early after repeated screener errors.**" : ""}`,
     "- State is `moderation/moderationStatus`.",
+    ...(redact ? ["- Redacted: no owners. Run the dry run locally against the emulator for handles."] : []),
     "",
   ];
   if (result.rows.length > 0) {
-    lines.push("| Clip | Owner | Age | Before | After | Action | Note |", "|---|---|---|---|---|---|---|");
+    if (redact) {
+      lines.push("| Clip | Age | Before | After | Action | Note |", "|---|---|---|---|---|---|");
+    } else {
+      lines.push("| Clip | Owner | Age | Before | After | Action | Note |", "|---|---|---|---|---|---|---|");
+    }
     for (const row of result.rows) {
+      const owner = redact ? "" : ` ${row.owner.length > 0 ? `@${cell(row.owner)}` : "(unknown)"} |`;
       lines.push(
-        `| ${cell(row.clipId)} | ${row.owner.length > 0 ? `@${cell(row.owner)}` : "(unknown)"} | ${formatAge(row.ageMs)} | ${cell(row.before)} | ${cell(row.after)} | ${row.action} | ${cell(row.note)} |`,
+        `| ${cell(row.clipId)} |${owner} ${formatAge(row.ageMs)} | ${cell(row.before)} | ${cell(row.after)} | ${row.action} | ${cell(noteFor(row, redact))} |`,
       );
     }
     lines.push("");
   }
   return lines.join("\n") + "\n";
+}
+
+/** Counts only, for the public job summary: no clip ids, owners or notes. */
+export function renderRescreenCounts(result: RescreenResult, meta: Pick<RescreenLogMeta, "apply">): string {
+  const lines = [`Moderation rescreen ${meta.apply ? "APPLY" : "DRY RUN"}: ${result.rows.length} listed.`, ""];
+  const counts = countByAction(result);
+  if (counts.length > 0) {
+    lines.push("| Action | Clips |", "|---|---|");
+    for (const [action, n] of counts) lines.push(`| ${action} | ${n} |`);
+    lines.push("");
+  }
+  if (result.stopped) lines.push("**Stopped early after repeated screener errors.**", "");
+  return lines.join("\n");
 }
 
 /** Firestore-backed deps. `screen` is supplied by the caller (handleClipCreated). */
