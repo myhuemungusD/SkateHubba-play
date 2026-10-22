@@ -15,3 +15,8 @@ and drives those call-time paths.
 | `"uuid": "^11.1.1"`                 | Patches GHSA-w5hq-g745-h8pq for every copy of uuid in the tree. Pinned to **11.x** because uuid 12+ is ESM-only, and gaxios 6 (under `@google-cloud/storage` 7, which `firebase-admin/storage` lazy-loads on the first `getStorage()` call) `require()`s it. `^14` made `/api/account/delete` fail with 500 `erasure_failed` (the "Failed to import the Cloud Storage client library … ERR_REQUIRE_ESM" error). It also covers xcode (dev, Capacitor CLI). | firebase-admin depends on `@google-cloud/storage` ≥ 8 (that uses gaxios 7, which has no uuid dependency), and nothing else in the tree `require()`s uuid. Before dropping it, check `npm ls uuid` and `npm audit`, then run `npm run check:api-load`. Don't raise it past 11 while any CJS consumer remains. |
 
 The other overrides are security floors. For any of them that sit on an `api/` runtime path, `npm run check:api-load` catches a module-format break.
+
+Two floors raised for new advisories (Oct 2026):
+
+- `"dompurify": "^3.4.17"`: patches GHSA-cg2g-xh64-v4q7 (critical), GHSA-mrv2-3pqr-j5jr and GHSA-c6gr-qvv4-5v3f. dompurify ships in the client bundle through `posthog-js` (its range is `^3.4.13`). Drop it once posthog-js's own dompurify range starts at 3.4.17 or later.
+- `"ip-address": "^10.7.4"`: patches GHSA-rxp7-6hxx-x8q5 (moderate). It's dev-only, through `express-rate-limit` (range `^10.2.0`), so it has no bundle or `api/` impact. Drop it once express-rate-limit's range starts at 10.7.4 or later.
