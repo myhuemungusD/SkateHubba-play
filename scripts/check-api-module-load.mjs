@@ -26,6 +26,16 @@
  * require(esm) into ERR_REQUIRE_ESM on this Node, so the guard can't go
  * vacuous on a future Node that drops the flag.
  *
+ * Then, because loading an entry is not using it, it runs the call-time probes
+ * in api-call-time-probes.mjs: the SDK calls the functions make (Firestore,
+ * Storage, Auth, Messaging, Sentry) and the real account-deletion handler and
+ * erasure helpers, each in its own child under the same flags, credential-free
+ * and with the network refused. firebase-admin loads most SDKs on first use, so
+ * that is where the second 1.2.0 deletion crash hid (getStorage() → gaxios 6 →
+ * require("uuid") with uuid forced to ESM-only 14: 500 erasure_failed).
+ * `listApiExternalImports` + the guard test make sure every package api/
+ * imports (statically or with import()) is covered by a probe.
+ *
  * Usage: node scripts/check-api-module-load.mjs
  */
 
@@ -35,9 +45,13 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
+import { PROBES } from "./api-call-time-probes.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const outDir = join(root, "node_modules", ".tmp", "api-load-check");
+// Per-run dir (parallel runs and worktrees sharing node_modules can't clobber
+// each other), still under node_modules so packages resolve like in /var/task.
+const tmpBase = join(root, "node_modules", ".tmp");
+const probeScript = join(root, "scripts", "api-call-time-probes.mjs");
 const NODE_FLAGS = ["--no-experimental-require-module"];
 const TIMEOUT_MS = 60_000;
 
@@ -55,8 +69,43 @@ export function listFunctionEntries(dir = join(root, "api")) {
   return entries.sort();
 }
 
+/**
+ * Every package specifier the api/ sources load at runtime: value imports
+ * (type-only ones are erased) and import() calls. node: builtins excluded.
+ */
+export function listApiExternalImports(dir = join(root, "api")) {
+  const found = new Set();
+  const walk = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const full = join(d, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (/\.ts$/.test(e.name) && !/\.(test|spec|d)\.ts$/.test(e.name)) {
+        const sf = ts.createSourceFile(full, readFileSync(full, "utf8"), ts.ScriptTarget.Latest, true);
+        const visit = (node) => {
+          let spec;
+          if (ts.isImportDeclaration(node) && !node.importClause?.isTypeOnly) spec = node.moduleSpecifier;
+          else if (ts.isExportDeclaration(node) && !node.isTypeOnly && node.moduleSpecifier)
+            spec = node.moduleSpecifier;
+          else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword)
+            spec = node.arguments[0];
+          if (spec && ts.isStringLiteralLike(spec)) {
+            const name = spec.text;
+            if (!name.startsWith(".") && !name.startsWith("node:")) found.add(name);
+          } else if (spec) {
+            found.add(`<non-literal import() in ${relative(root, full)}>`);
+          }
+          ts.forEachChild(node, visit);
+        };
+        visit(sf);
+      }
+    }
+  };
+  walk(dir);
+  return [...found].sort();
+}
+
 /** Transpile the api tsconfig's files one by one (isolatedModules), ESM out. */
-function transpileApi() {
+function transpileApi(outDir) {
   const configPath = join(root, "tsconfig.api.json");
   const parsed = ts.getParsedCommandLineOfConfigFile(
     configPath,
@@ -64,7 +113,6 @@ function transpileApi() {
     { ...ts.sys, onUnRecoverableConfigFileDiagnostic: () => {} },
   );
   if (!parsed || parsed.errors.length > 0) throw new Error("could not read tsconfig.api.json");
-  rmSync(outDir, { recursive: true, force: true });
   const compilerOptions = {
     ...parsed.options,
     noEmit: false,
@@ -128,8 +176,25 @@ if (typeof handler !== "function" && typeof handler?.fetch !== "function" && typ
 console.log("loaded");
 `;
 
-export async function checkApiModuleLoad() {
+/** Run one call-time probe in a fresh child; it prints one JSON result line. */
+async function runProbe(name, outDir, home) {
+  const r = await runNode([probeScript, name, outDir], root, childEnv(home));
+  const last = r.out.trim().split("\n").pop() ?? "";
+  let parsed = null;
+  try {
+    parsed = JSON.parse(last);
+  } catch {
+    // fall through: a crash before the result line
+  }
+  const ok = r.code === 0 && parsed?.ok === true;
+  const out = parsed ? parsed.problems.join("\n") : r.out;
+  return { entry: `probe:${name}`, ok, code: r.code, signal: r.signal, out };
+}
+
+export async function checkApiModuleLoad({ probes = true } = {}) {
   const home = mkdtempSync(join(tmpdir(), "api-load-home-"));
+  mkdirSync(tmpBase, { recursive: true });
+  const outDir = mkdtempSync(join(tmpBase, "api-load-check-"));
   try {
     if (!(await selfTest(home))) {
       return {
@@ -138,7 +203,7 @@ export async function checkApiModuleLoad() {
         error: `this Node (${process.version}) no longer turns require(esm) into ERR_REQUIRE_ESM under ${NODE_FLAGS.join(" ")}; update the loader model`,
       };
     }
-    transpileApi();
+    transpileApi(outDir);
     const entries = listFunctionEntries();
     const results = await Promise.all(
       entries.map(async (entry) => {
@@ -151,29 +216,43 @@ export async function checkApiModuleLoad() {
         return { entry, ok: r.code === 0 && r.out.includes("loaded"), code: r.code, signal: r.signal, out: r.out };
       }),
     );
-    return { ok: results.length > 0 && results.every((r) => r.ok), results };
+    const probeResults = probes
+      ? await Promise.all(Object.keys(PROBES).map((name) => runProbe(name, outDir, home)))
+      : [];
+    return {
+      ok: results.length > 0 && results.every((r) => r.ok) && probeResults.every((r) => r.ok),
+      results,
+      probeResults,
+    };
   } finally {
     rmSync(home, { recursive: true, force: true });
+    rmSync(outDir, { recursive: true, force: true });
   }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const { ok, results, error } = await checkApiModuleLoad();
+  const { ok, results = [], probeResults = [], error } = await checkApiModuleLoad();
   if (error) console.error(`[check-api-module-load] ${error}`);
-  for (const r of results) {
+  const uncovered = listApiExternalImports().filter((s) => !Object.values(PROBES).some((p) => p.covers.includes(s)));
+  if (uncovered.length > 0) {
+    console.error(
+      `[check-api-module-load] FAIL  no call-time probe covers: ${uncovered.join(", ")} (add one to scripts/api-call-time-probes.mjs)`,
+    );
+  }
+  for (const r of [...results, ...probeResults]) {
     if (r.ok) console.log(`[check-api-module-load] ok    ${r.entry}`);
     else {
       const why = r.signal ? `killed (${r.signal}) after ${TIMEOUT_MS} ms` : `exit ${r.code}`;
       console.error(`[check-api-module-load] FAIL  ${r.entry}: ${why}\n${r.out.trim()}\n`);
     }
   }
-  if (!ok) {
+  if (!ok || uncovered.length > 0) {
     console.error(
-      "[check-api-module-load] A function above crashes while loading its modules. On Vercel that is a 500 FUNCTION_INVOCATION_FAILED on every request.",
+      "[check-api-module-load] A function or SDK call above crashes while loading its modules. At boot that is a 500 FUNCTION_INVOCATION_FAILED on every request; at call time it fails that call (for account deletion: 500 erasure_failed).",
     );
     process.exit(1);
   }
   console.log(
-    `[check-api-module-load] ${results.length} functions load cleanly (${process.version}, ${NODE_FLAGS.join(" ")}).`,
+    `[check-api-module-load] ${results.length} functions load and ${probeResults.length} call-time probes pass (${process.version}, ${NODE_FLAGS.join(" ")}).`,
   );
 }
