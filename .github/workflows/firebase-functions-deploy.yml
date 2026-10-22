@@ -186,8 +186,16 @@ jobs:
           fi
           # Print the on/off switches (true/false only, never uids or DSNs) so
           # every deploy log shows which server features went live.
+          # Print a word, not "KEY=value": GitHub masks every line of the
+          # secret, so echoing the raw line shows up as "***".
           for key in XP_ENABLED DICE_ENABLED MODERATION_ENABLED PRO_BLESSING_ENABLED; do
-            echo "${key}=$(grep -E "^${key}=" "$DEST" | head -n 1 | cut -d= -f2- | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]') (FUNCTIONS_DOTENV)"
+            raw="$(grep -E "^${key}=" "$DEST" | head -n 1 | cut -d= -f2- | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+            case "$raw" in
+              true) state="ON" ;;
+              "") state="MISSING (off)" ;;
+              *) state="OFF" ;;
+            esac
+            echo "switch ${key%_ENABLED}: ${state} (FUNCTIONS_DOTENV)"
           done
           # Mask longer values (uids, DSNs) so a later CLI log line cannot
           # echo them. Short values like true/false stay readable.
