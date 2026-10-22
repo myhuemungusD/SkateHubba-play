@@ -186,7 +186,7 @@ describe("writeNotification", () => {
       recipientUid: "user123",
       type: "your_turn",
       title: "Your Turn!",
-      body: "Match @alice's Kickflip",
+      body: "Match @alice's Heelflip",
       gameId: "game456",
     });
 
