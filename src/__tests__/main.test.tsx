@@ -98,7 +98,12 @@ vi.mock("react-dom/client", async (importOriginal) => {
 
 /** Wait for main's async first render, then unmount every root it made. */
 async function unmountRoots(): Promise<void> {
-  if (createdRoots.length > 0) await vi.waitFor(() => expect(mockRootRendered).toHaveBeenCalled());
+  const expected = createdRoots.length;
+  if (expected > 0) {
+    await vi.waitFor(() => expect(mockRootRendered.mock.calls.length).toBeGreaterThanOrEqual(expected), {
+      timeout: 2000,
+    });
+  }
   for (const root of createdRoots.splice(0)) root.unmount();
 }
 
