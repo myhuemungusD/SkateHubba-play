@@ -97,6 +97,14 @@ describe("fanOutAnnouncement", () => {
     expect(sets).toHaveLength(1);
     expect(sets[0]).toMatchObject({ recipientUid: "mixed", tokens: ["and1"] });
   });
+  it("still pushes an everyone announcement to iPhones and untagged tokens", async () => {
+    const { db, sets } = fakeDb({
+      "announcements/a": {},
+      "pushTargets/u": { tokens: ["ios1", "old1"], platforms: { ios1: "ios" } },
+    });
+    expect(await fanOutAnnouncement(db, "a", ann("all"))).toEqual({ queued: 1 });
+    expect(sets[0]).toMatchObject({ tokens: ["ios1", "old1"] });
+  });
   it("still pushes pro announcements to iPhones", async () => {
     const { db, sets } = fakeDb({
       "announcements/a": {},
