@@ -3,7 +3,7 @@ import { act, render, waitFor } from "@testing-library/react";
 import { Component, useEffect, useRef, type ReactNode } from "react";
 import { useAuthContext, AuthProvider } from "../AuthContext";
 import type { UserProfile } from "../../services/users";
-import { hashIdentity } from "../../utils/pii";
+import { hashIdentity, hashUid } from "../../utils/pii";
 import { isPushSupported, registerPushTokenIfGranted } from "../../services/pushNotifications";
 import { refreshWebPushTokenIfGranted } from "../../services/fcm";
 
@@ -601,11 +601,14 @@ describe("handleDeleteAccount", () => {
       expect.objectContaining({
         extra: expect.objectContaining({
           context: expect.stringContaining("erasure did not run"),
-          uid: "u1",
-          username: "sk8r",
+          uidHash: hashUid("u1"),
         }),
       }),
     );
+    // Sentry is a third party: the raw uid and the username never reach it.
+    const extra = mockCaptureException.mock.calls[0][1].extra;
+    expect(extra).not.toHaveProperty("uid");
+    expect(extra).not.toHaveProperty("username");
   });
 
   it("captures Sentry and rethrows friendly message on auth/requires-recent-login", async () => {
@@ -622,7 +625,7 @@ describe("handleDeleteAccount", () => {
     expect(mockCaptureException).toHaveBeenCalledWith(
       authErr,
       expect.objectContaining({
-        extra: expect.objectContaining({ code: "auth/requires-recent-login", uid: "u1" }),
+        extra: expect.objectContaining({ code: "auth/requires-recent-login", uidHash: hashUid("u1") }),
       }),
     );
   });
@@ -670,7 +673,7 @@ describe("handleDeleteAccount", () => {
     expect(mockCaptureException).toHaveBeenCalledWith(
       authErr,
       expect.objectContaining({
-        extra: expect.objectContaining({ uid: "u1", username: "sk8r" }),
+        extra: expect.objectContaining({ uidHash: hashUid("u1") }),
       }),
     );
   });
@@ -700,6 +703,7 @@ describe("handleDeleteAccount", () => {
    */
   describe("pending-delete recovery", () => {
     const STORAGE_KEY = "skate.pendingDeleteUid";
+    const ERASED_KEY = "skate.pendingDeleteErased";
 
     it("captures uid to sessionStorage when deleteAccount bounces with requires-recent-login", async () => {
       const recentErr = new Error("requires-recent-login");
@@ -709,7 +713,7 @@ describe("handleDeleteAccount", () => {
       const { triggerDelete } = renderWithTrigger(profile);
       const thrown = await triggerDelete();
 
-      expect(thrown?.message).toMatch(/Finish deletion/);
+      expect(thrown?.message).toMatch(/sign back in, then delete your account again/);
       expect(sessionStorage.getItem(STORAGE_KEY)).toBe("u1");
       expect(mockLoggerInfo).toHaveBeenCalledWith(
         "delete_account_pending_retry_captured",
@@ -731,6 +735,60 @@ describe("handleDeleteAccount", () => {
       );
     });
 
+    it("marks the pending delete erased only when the server confirmed erasure", async () => {
+      // Data gone, Auth record survived: the one state where the banner may
+      // say "your data is deleted". The marker stays so Finish stays reachable.
+      mockDeleteAccount.mockResolvedValueOnce({ authDeleted: false });
+
+      const { triggerDelete } = renderWithTrigger(profile);
+      expect(await triggerDelete()).toBeNull();
+
+      expect(sessionStorage.getItem(STORAGE_KEY)).toBe("u1");
+      expect(sessionStorage.getItem(ERASED_KEY)).toBe("u1");
+    });
+
+    it("does not mark the pending delete erased when the request fails", async () => {
+      // A 500 / network failure: erasure did not complete, so the banner must
+      // offer an honest retry rather than claim the data is gone.
+      mockDeleteAccount.mockRejectedValueOnce(Object.assign(new Error("boom"), { code: "account-delete/http-500" }));
+
+      const { triggerDelete } = renderWithTrigger(profile);
+      expect(await triggerDelete()).not.toBeNull();
+
+      expect(sessionStorage.getItem(STORAGE_KEY)).toBe("u1");
+      expect(sessionStorage.getItem(ERASED_KEY)).toBeNull();
+    });
+
+    it("a profile-less retry that still leaves the Auth record marks it erased", async () => {
+      sessionStorage.setItem(STORAGE_KEY, "u1");
+      mockDeleteAccount.mockResolvedValueOnce({ authDeleted: false });
+      mockUseAuth.mockReturnValue({
+        loading: false,
+        user: { uid: "u1" } as { uid: string },
+        profile: null,
+        refreshProfile: vi.fn(),
+      });
+      let trigger: (() => Promise<unknown>) | null = null;
+      function Harness() {
+        const ctx = useAuthContext();
+        useEffect(() => {
+          trigger = () => ctx.handleDeleteAccount();
+        }, [ctx]);
+        return null;
+      }
+      render(
+        <AuthProvider>
+          <Harness />
+        </AuthProvider>,
+      );
+      await act(async () => {
+        await trigger?.();
+      });
+
+      expect(sessionStorage.getItem(STORAGE_KEY)).toBe("u1");
+      expect(sessionStorage.getItem(ERASED_KEY)).toBe("u1");
+    });
+
     it("resume with null activeProfile + matching pending uid completes the deletion", async () => {
       // Post-bounce / post-sign-in state: sessionStorage still holds the
       // pending uid, useAuth reports the SAME user but no profile.
@@ -742,6 +800,7 @@ describe("handleDeleteAccount", () => {
       // could never be cleaned up from the UI. The server derives the
       // username itself now, so the retry needs nothing but the uid.
       sessionStorage.setItem(STORAGE_KEY, "u1");
+      mockDeleteAccount.mockResolvedValueOnce({ authDeleted: true });
       mockUseAuth.mockReturnValue({
         loading: false,
         user: { uid: "u1" } as { uid: string },

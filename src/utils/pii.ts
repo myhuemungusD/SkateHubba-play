@@ -66,6 +66,13 @@ export function hashIdentity(uid: string): string {
   return `uid_${fnv1a64(uid)}`;
 }
 
+// Surrogates the call site already made: hashing them again would break
+// correlation with it. Each is kept only under its own kind of key, and
+// neither can be a real value there: Firebase uids have no "_", and
+// usernames (USERNAME_RE, [a-z0-9_]) have no "-".
+const HASHED_UID_RE = /^uid_[0-9a-f]{8}(?:[0-9a-f]{8})?$/;
+const HASHED_USERNAME_RE = /^name-[0-9a-f]{8}$/;
+
 export function redactPII(data: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
   if (!data) return data;
   const out: Record<string, unknown> = {};
@@ -73,9 +80,9 @@ export function redactPII(data: Record<string, unknown> | undefined): Record<str
     if (typeof value === "string" && EMAIL_KEY_RE.test(key)) {
       out[key] = EMAIL_PLACEHOLDER;
     } else if (typeof value === "string" && UID_KEY_RE.test(key)) {
-      out[key] = hashUid(value);
+      out[key] = HASHED_UID_RE.test(value) ? value : hashUid(value);
     } else if (typeof value === "string" && USERNAME_KEY_RE.test(key)) {
-      out[key] = value ? `name_${fnv1a(value)}` : value;
+      out[key] = !value || HASHED_USERNAME_RE.test(value) ? value : `name-${fnv1a(value)}`;
     } else {
       out[key] = value;
     }
