@@ -288,7 +288,8 @@ describe("moderation-rescreen.yml policy", () => {
       }
       // Sanity: the matrix has both outcomes (var true/" true" over every line, plus the two secret-true cases).
       expect(on).toBe(2 * lines.length + 2);
-    });
+      // ~100 real bash runs; the default 5 s is too tight on a loaded CI runner with coverage on.
+    }, 60_000);
   });
 
   describe("Check inputs step", () => {
