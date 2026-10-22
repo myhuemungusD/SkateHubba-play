@@ -56,15 +56,17 @@ export async function main(argv = process.argv.slice(2), env = process.env, admi
     tutorialVersion: tutorialVersion(),
     tipsDisabled: emulator !== null,
   });
+  // Logs carry counts only. Doc paths embed the reviewer uid and username,
+  // and nothing derived from the REVIEW_* env (credentials) is ever printed.
   if (dry) {
-    for (const [p] of docs) console.log(`  would write ${p}`);
+    console.log(`[review:seed] dry run: would write ${docs.length} docs`);
     return 0;
   }
   const batch = admin.db.batch();
   for (const [p, data] of docs) batch.set(admin.db.doc(p), data);
   await batch.commit();
   console.log(
-    `[review:seed] wrote ${docs.length} docs for @${cfg.username}. Put the email/password in App Store Connect → App Review Information.`,
+    `[review:seed] wrote ${docs.length} docs. Put the reviewer email/password in App Store Connect → App Review Information.`,
   );
   return 0;
 }

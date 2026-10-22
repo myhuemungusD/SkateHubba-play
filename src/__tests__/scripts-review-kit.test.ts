@@ -117,6 +117,19 @@ describe("seed main", () => {
     expect(await seed.main([], ENV, f.admin)).toBe(0);
     expect(f.writes).toContain("users/NEW");
   });
+  it("never prints the reviewer credentials or username (CodeQL js/clear-text-logging #13)", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const f = fakeAdmin(false);
+    const env = { ...ENV, REVIEW_USERNAME: "reviewer_x" };
+    expect(await seed.main(["--dry-run"], env, f.admin)).toBe(0);
+    expect(await seed.main([], env, f.admin)).toBe(0);
+    const printed = JSON.stringify(log.mock.calls);
+    for (const [key, value] of Object.entries(env)) {
+      if (/EMAIL|PASSWORD|USERNAME/.test(key) && typeof value === "string" && value.length > 0) {
+        expect(printed).not.toContain(value);
+      }
+    }
+  });
   it("rethrows unexpected auth errors and reads the tutorial version", async () => {
     const f = fakeAdmin(true);
     f.admin.auth.getUserByEmail.mockRejectedValueOnce(new Error("boom"));
