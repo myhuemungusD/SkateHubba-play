@@ -24,10 +24,8 @@ vi.mock("../../services/users", () => ({
 }));
 
 const mockCaptureMessage = vi.fn();
-const mockSetSentryUser = vi.fn();
 vi.mock("../../lib/sentry", () => ({
   captureMessage: (...args: unknown[]) => mockCaptureMessage(...args),
-  setUser: (...args: unknown[]) => mockSetSentryUser(...args),
   // logger.ts (transitively imported) calls addBreadcrumb on every warn/error
   // emit; stub it so the mock is a complete swap, not a partial one.
   addBreadcrumb: vi.fn(),
@@ -42,6 +40,7 @@ vi.mock("../../firebase", () => ({
 }));
 
 import { useAuth } from "../useAuth";
+import { hashIdentity } from "../../utils/pii";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -169,7 +168,7 @@ describe("useAuth hook", () => {
       expect.objectContaining({
         level: "error",
         extra: expect.objectContaining({
-          uid: "u-denied",
+          uidHash: hashIdentity("u-denied"),
           appCheckInitialized: false,
           dbName: "skatehubba",
         }),

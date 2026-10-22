@@ -4,10 +4,10 @@ import { onAuthChange, reloadUser } from "../services/auth";
 import { getUserProfile, getUserProfileOnAuth, type UserProfile } from "../services/users";
 import { logger } from "../services/logger";
 import { parseFirebaseError } from "../utils/helpers";
-import { captureMessage, setUser as setSentryUser } from "../lib/sentry";
+import { captureMessage } from "../lib/sentry";
 import { FIRESTORE_DB_NAME, ensureAppCheck, isAppCheckInitialized } from "../firebase";
 import { env } from "../lib/env";
-import { hashUid } from "../utils/pii";
+import { hashIdentity } from "../utils/pii";
 
 interface AuthState {
   loading: boolean;
@@ -74,10 +74,8 @@ export function useAuth(): AuthState {
       if (u) await ensureAppCheck();
       setUser(u);
       userRef.current = u;
-      // Hash the uid before it leaves the app so Sentry never receives the raw
-      // Firebase identifier. hashUid is deterministic, so scoped issues stay
-      // correlatable per user without shipping raw PII to a third party.
-      setSentryUser(u ? { id: hashUid(u.uid) } : null);
+      // The Sentry user is set in AuthContext (one owner, one hash:
+      // hashIdentity), so extras that carry uidHash line up with it.
       if (u) {
         // Keep loading=true while we fetch the profile so the routing effect
         // doesn't see a user with no profile and prematurely navigate to
@@ -125,7 +123,7 @@ export function useAuth(): AuthState {
             captureMessage("users/{uid} permission-denied after retries", {
               level: "error",
               extra: {
-                uid: u.uid,
+                uidHash: hashIdentity(u.uid),
                 appCheckInitialized: isAppCheckInitialized(),
                 dbName: FIRESTORE_DB_NAME,
                 projectId: env?.VITE_FIREBASE_PROJECT_ID,

@@ -62,6 +62,7 @@ import {
   deleteAccount,
   resolveGoogleRedirect,
 } from "../auth";
+import { hashIdentity } from "../../utils/pii";
 import { auth, ensureAppCheck } from "../../firebase";
 
 beforeEach(() => {
@@ -528,7 +529,7 @@ describe("auth service", () => {
       expect(mockSignOut).toHaveBeenCalledWith(auth);
       expect(mockCaptureException).toHaveBeenCalledWith(
         expect.objectContaining({ message: expect.stringContaining("Auth user survived") }),
-        expect.objectContaining({ level: "warning", extra: expect.objectContaining({ uid: "u1" }) }),
+        expect.objectContaining({ level: "warning", extra: expect.objectContaining({ uidHash: hashIdentity("u1") }) }),
       );
     });
 
@@ -578,7 +579,7 @@ describe("auth service", () => {
         expect.objectContaining({ message: expect.stringContaining("erase_failed") }),
         expect.objectContaining({
           level: "error",
-          extra: expect.objectContaining({ uid: "u1", status: 500, serverCode: "erase_failed" }),
+          extra: expect.objectContaining({ uidHash: hashIdentity("u1"), status: 500, serverCode: "erase_failed" }),
         }),
       );
     });
@@ -587,7 +588,9 @@ describe("auth service", () => {
       signInAs("u1");
       serverResponds({ ok: false, status: 502, unparsable: true });
       const err = await rejectionOf(deleteAccount("u1"));
-      expect(err.code).toBe("account-delete/unknown");
+      // Named by HTTP status, so a crash (500) and a proxy error (502) are
+      // distinguishable in triage instead of both reading "unknown".
+      expect(err.code).toBe("account-delete/http-502");
       expect(err.message).toMatch(/Could not delete your account/);
     });
 
@@ -598,7 +601,7 @@ describe("auth service", () => {
       signInAs("u1");
       serverResponds({ ok: false, status: 500, body: { code: 42, message: { detail: "nope" } } });
       const err = await rejectionOf(deleteAccount("u1"));
-      expect(err.code).toBe("account-delete/unknown");
+      expect(err.code).toBe("account-delete/http-500");
       expect(err.message).toMatch(/Could not delete your account/);
     });
   });

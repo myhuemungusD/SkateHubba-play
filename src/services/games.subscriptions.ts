@@ -5,6 +5,7 @@ import { logger } from "./logger";
 import { captureException } from "../lib/sentry";
 import { toGameDoc, type GameDoc } from "./games.mappers";
 import { gamesRef } from "./games.turns";
+import { hashIdentity } from "../utils/pii";
 
 /* ────────────────────────────────────────────
  * One-time queries
@@ -161,7 +162,7 @@ export function subscribeToMyGames(
 
   const handleError = (slice: Slice) => (err: Error) => {
     logger.warn("game_subscription_error", { uid, error: err.message });
-    captureException(err, { extra: { context: "subscribeToMyGames", uid } });
+    captureException(err, { extra: { context: "subscribeToMyGames", uidHash: hashIdentity(uid) } });
     // Preserve whatever the slice last delivered. The Firestore SDK
     // auto-reconnects on transient errors and the next successful snapshot
     // replaces the slice atomically — zeroing here would silently empty the

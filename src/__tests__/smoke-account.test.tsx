@@ -235,13 +235,39 @@ describe("Smoke: Account & Sign Out", () => {
     withGames([]);
     await renderApp();
 
-    const finishBtn = await screen.findByRole("button", { name: /finish deleting your account/i });
-    await userEvent.click(finishBtn);
+    // Nothing was erased, so the banner must not claim the data is gone.
+    const retryBtn = await screen.findByRole("button", { name: /retry deleting your account/i });
+    expect(screen.getByText("ACCOUNT NOT DELETED")).toBeInTheDocument();
+    expect(screen.getByText(/deletion didn't finish/i)).toBeInTheDocument();
+    expect(screen.queryByText(/your data is deleted/i)).not.toBeInTheDocument();
+    await userEvent.click(retryBtn);
 
     await waitFor(() => {
       expect(authSvc.refs.deleteAccount).toHaveBeenCalledWith("u1");
     });
     expect(sessionStorage.getItem("skate.pendingDeleteUid")).toBeNull();
+  });
+
+  it("banner says the data is deleted only after the server confirmed erasure", async () => {
+    // The one state where that copy is true: the server erased everything and
+    // only the final Auth delete failed, so the pending uid is marked erased.
+    sessionStorage.setItem("skate.pendingDeleteUid", "u1");
+    sessionStorage.setItem("skate.pendingDeleteErased", "u1");
+    authSvc.refs.deleteAccount.mockResolvedValueOnce({ authDeleted: true });
+    asUnverifiedUser();
+    withGames([]);
+    await renderApp();
+
+    const finishBtn = await screen.findByRole("button", { name: /finish deleting your account/i });
+    expect(screen.getByText("FINISH ACCOUNT DELETION")).toBeInTheDocument();
+    expect(screen.getByText(/your data is deleted/i)).toBeInTheDocument();
+    expect(finishBtn).toHaveTextContent("Finish");
+    await userEvent.click(finishBtn);
+
+    await waitFor(() => {
+      expect(sessionStorage.getItem("skate.pendingDeleteUid")).toBeNull();
+    });
+    expect(sessionStorage.getItem("skate.pendingDeleteErased")).toBeNull();
   });
 
   it("banner surfaces error message when retry fails", async () => {
@@ -251,8 +277,8 @@ describe("Smoke: Account & Sign Out", () => {
     withGames([]);
     await renderApp();
 
-    const finishBtn = await screen.findByRole("button", { name: /finish deleting your account/i });
-    await userEvent.click(finishBtn);
+    const retryBtn = await screen.findByRole("button", { name: /retry deleting your account/i });
+    await userEvent.click(retryBtn);
 
     await waitFor(() => {
       expect(screen.getByText(/Finish deletion/i)).toBeInTheDocument();
@@ -268,7 +294,7 @@ describe("Smoke: Account & Sign Out", () => {
 
     // Give the app a tick to settle on whichever screen it routes to.
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: /finish deleting your account/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /(finish|retry) deleting your account/i })).not.toBeInTheDocument();
     });
   });
 
@@ -281,7 +307,7 @@ describe("Smoke: Account & Sign Out", () => {
     await renderApp();
 
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: /finish deleting your account/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /(finish|retry) deleting your account/i })).not.toBeInTheDocument();
     });
     // And the effect clears the stale flag.
     await waitFor(() => {
