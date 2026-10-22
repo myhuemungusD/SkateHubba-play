@@ -264,6 +264,11 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 
 **Status (2026-10-22): RESOLVED in code; switch off.** Jason decided to keep any video a clip uses and delete the rest. The blanket rule (`infra/storage-lifecycle.*` and the `storage-lifecycle` task in `firebase-infra-setup.yml`) is removed and was never applied to prod. Instead the `gameVideoRetention` Cloud Function (`functions/src/retention/`) deletes `games/` videos older than 90 days that nothing pins, once `GAME_VIDEO_RETENTION_ENABLED` is on (it runs as a dry run that only logs counts until then). A feed clip pins its video; a dispute, report or moderation statement pins every video in its game (they hold ids, not paths); a training label pins its clip only while the skater is opted in; an active game pins its current turn. Videos of games whose doc is gone (erased accounts) are deleted after a 1-day grace unless something pins them. It aborts if it finds objects but no game docs, deletes at most 500 per run (oldest first), and logs only safe error codes. Turning the switch on is Jason's call after reviewing a dry-run log line (`event: game_video_retention`).
 
+Sign-off record (Jason only, in writing; merging by the maintainer is not sign-off):
+
+- Gate sign-off: Jason, _date_, PR #857 _comment link_.
+- Switch on: Jason, _date_, after reviewing the dry-run line from _date_.
+
 Original finding:
 
 `infra/storage-lifecycle.json` deletes `games/` objects at 90 days, but clips reuse game video URLs (`clips.writes.ts:67,91` → `storage.ts:309`). Running `firebase-infra-setup.yml` with the lifecycle rule silently breaks every clip in the public feed and every `TurnHistoryViewer` replay at 90 days. Decide: exempt clip-backed videos, or accept feed decay — **before** anyone runs that workflow.
