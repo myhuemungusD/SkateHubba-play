@@ -167,12 +167,8 @@ counts as collecting approximate location for the store forms. 2. **Sentry is no
 acceptable for diagnostics, but it means crash/diagnostic collection must
 be declared as non-optional in the Play form (drafted that way above).
 Confirm you're comfortable, or gate it behind consent. 3. **Are FNV-hashed uids "linked to identity"?** _Resolved Oct 22, 2026: answered **Linked: Yes** for Usage Data and Diagnostics (the tables above). `identify()` is now called with `hashIdentity(uid)` once a profile exists, so the conservative answer is also the accurate one._ `hashUid`/`hashIdentity`
-(`src/utils/pii.ts`) are deterministic, non-cryptographic hashes the
-developer could re-derive from a uid. Draft answers say "Not linked" for
-Usage Data and Diagnostics on the basis that no raw identifier leaves the
-device and `identify()` is never called — but Apple could view a
-re-derivable hash as linked. Declaring "Linked: Yes" is the zero-risk
-option. Owner's call; both consoles accept either. 4. **Vercel Analytics on native builds.** `<Analytics />`/`<SpeedInsights />`
+(`src/utils/pii.ts`) are deterministic hashes the developer could re-derive
+from a uid, so Linked: Yes is the accurate answer. 4. **Vercel Analytics on native builds.** `<Analytics />`/`<SpeedInsights />`
 load from the serving origin; confirm whether the Capacitor shell serves
 the Vercel-hosted bundle (analytics active on native) or a local bundle
 (web-only). Affects nothing in the draft — both are declared — but worth
