@@ -27,6 +27,7 @@ describe("iOS privacy manifest", () => {
     ["ProductInteraction", "last-seen / Who's skating + analytics"],
     ["UserID", "account uid"],
     ["DeviceID", "push tokens"],
+    ["EmailsOrTextMessages", "spot chat messages (src/services/spotMessages.ts), on in the store build"],
     ["CrashData", "Sentry"],
   ])("declares %s (%s)", (type) => {
     expect(manifest).toContain(`<string>NSPrivacyCollectedDataType${type}</string>`);
@@ -57,6 +58,13 @@ describe("iOS privacy manifest", () => {
     expect(block).toMatch(/NSPrivacyCollectedDataTypeLinked<\/key>\s*<true\/>/);
     expect(block).toContain("NSPrivacyCollectedDataTypePurposeAppFunctionality");
     expect(block).toContain("NSPrivacyCollectedDataTypePurposeAnalytics");
+  });
+
+  // Opt-in trick-AI training keeps a skater's labeled clips (TrainingConsentPrompt).
+  it.each(["PhotosorVideos", "AudioData", "GameplayContent"])("declares %s for Other Purposes too", (type) => {
+    const block = manifest.split(`<string>NSPrivacyCollectedDataType${type}</string>`)[1]?.split("</dict>")[0] ?? "";
+    expect(block).toContain("NSPrivacyCollectedDataTypePurposeAppFunctionality");
+    expect(block).toContain("NSPrivacyCollectedDataTypePurposeOther");
   });
 
   it("declares no tracking and no tracking domains", () => {
