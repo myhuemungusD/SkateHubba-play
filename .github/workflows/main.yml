@@ -187,13 +187,21 @@ jobs:
         if: steps.deps.outputs.changed != 'true'
         # Report-only, so a slow or hung registry must not eat the job's
         # 20-minute budget (it hung for 7 min on #797/#798 and the job timed out
-        # mid-tests). Dependabot alerts and audit-nightly (manual dispatch) cover drift.
-        timeout-minutes: 2
+        # mid-tests). The audit itself gets 110 s and says so when it's cut off;
+        # the step timeout is only a backstop. Dependabot alerts and
+        # audit-nightly (manual dispatch) cover drift.
+        timeout-minutes: 3
         continue-on-error: true
         run: |
-          if ! npm audit --audit-level=moderate; then
-            echo "::warning::npm audit found advisories in existing pinned dependencies. This change does not touch package.json/package-lock.json, so it is not blocked. Drift is handled by the nightly audit job and Dependabot."
+          set +e
+          timeout 110 npm audit --audit-level=moderate
+          rc=$?
+          if [ "$rc" -eq 124 ]; then
+            echo "::notice::npm audit timed out after 110 s (registry slow) and was skipped for this run. It is report-only here; run audit-nightly by hand if you need a result."
+          elif [ "$rc" -ne 0 ]; then
+            echo "::warning::npm audit found advisories in existing pinned dependencies. This change does not touch package.json/package-lock.json, so it is not blocked. Drift is handled by audit-nightly (manual dispatch) and Dependabot."
           fi
+          exit 0
 
       - name: Guard against as-any in production code
         run: |
