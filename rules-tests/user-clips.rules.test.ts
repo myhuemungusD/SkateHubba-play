@@ -12,7 +12,7 @@
 import { describe, it, expect } from "vitest";
 import { assertSucceeds, assertFails, type RulesTestContext } from "@firebase/rules-unit-testing";
 import { deleteDoc, doc, getDoc, setDoc, updateDoc, serverTimestamp, writeBatch } from "firebase/firestore";
-import { seedUsernameReservation, setupRulesTestEnv } from "./_fixtures";
+import { makeUserClipDoc, seedUsernameReservation, setupRulesTestEnv } from "./_fixtures";
 
 const UID = "u-alice";
 const OTHER_UID = "u-bob";
@@ -34,22 +34,7 @@ function videoUrl(uid: string, name = "clip1"): string {
 }
 
 function makeUserClip(uid: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  return {
-    source: "user",
-    gameId: null,
-    turnNumber: null,
-    role: null,
-    playerUid: uid,
-    playerUsername: "alice",
-    trickName: "switch heel",
-    videoUrl: videoUrl(uid),
-    spotId: null,
-    moderationStatus: "active",
-    upvoteCount: 0,
-    downvoteCount: 0,
-    createdAt: serverTimestamp(),
-    ...overrides,
-  };
+  return makeUserClipDoc(uid, videoUrl(uid), overrides);
 }
 
 /**

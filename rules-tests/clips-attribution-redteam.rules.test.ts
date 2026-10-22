@@ -19,7 +19,7 @@
 import { describe, it } from "vitest";
 import { assertFails, assertSucceeds, type RulesTestContext } from "@firebase/rules-unit-testing";
 import { doc, serverTimestamp, setDoc, writeBatch } from "firebase/firestore";
-import { makeValidGame, setupRulesTestEnv } from "./_fixtures";
+import { makeUserClipDoc, makeValidGame, setupRulesTestEnv } from "./_fixtures";
 
 const P1 = "p1-alice";
 const P2 = "p2-bob";
@@ -127,22 +127,7 @@ function userVideo(uid: string, prefix = "userClips"): string {
 function createUserClip(ctx: RulesTestContext, uid: string, overrides: Record<string, unknown> = {}): Promise<void> {
   const db = ctx.firestore();
   const batch = writeBatch(db);
-  batch.set(doc(db, "clips", USER_CLIP_ID), {
-    source: "user",
-    gameId: null,
-    turnNumber: null,
-    role: null,
-    playerUid: uid,
-    playerUsername: "alice",
-    trickName: "switch heel",
-    videoUrl: userVideo(uid),
-    spotId: null,
-    moderationStatus: "active",
-    upvoteCount: 0,
-    downvoteCount: 0,
-    createdAt: serverTimestamp(),
-    ...overrides,
-  });
+  batch.set(doc(db, "clips", USER_CLIP_ID), makeUserClipDoc(uid, userVideo(uid), overrides));
   batch.update(doc(db, "users", uid), { lastClipCreatedAt: serverTimestamp() });
   return batch.commit();
 }
