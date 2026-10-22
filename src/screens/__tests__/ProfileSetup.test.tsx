@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ProfileSetup } from "../ProfileSetup";
+import { markAgeGateBlocked, markCoppaBlocked } from "../../utils/coppaNotice";
 
 const mockCreateProfile = vi.fn();
 const mockGetUserProfile = vi.fn();
@@ -36,8 +37,15 @@ vi.mock("../../services/users", () => ({
   USERNAME_RE: /^[a-z0-9_]+$/,
 }));
 
+const { mockBlockUnderage } = vi.hoisted(() => ({ mockBlockUnderage: vi.fn() }));
+vi.mock("../../services/auth.underage", () => ({ blockUnderageSignIn: () => mockBlockUnderage() }));
+
 beforeEach(() => {
   vi.clearAllMocks();
+  // An under-13 block is sticky for 24h on the device; don't let one test's block leak into the next.
+  localStorage.clear();
+  sessionStorage.clear();
+  mockBlockUnderage.mockResolvedValue("deleted");
   // Default: new user with no existing profile
   mockGetUserProfile.mockResolvedValue(null);
 });
@@ -396,6 +404,8 @@ describe("ProfileSetup", () => {
     expect(screen.getByRole("heading", { name: "Sorry!" })).toBeInTheDocument();
     expect(screen.getByText(/at least 13 years old/)).toBeInTheDocument();
     expect(mockCreateProfile).not.toHaveBeenCalled();
+    // COPPA: the Google/Apple Auth account made before the DOB step is removed.
+    expect(mockBlockUnderage).toHaveBeenCalledTimes(1);
   });
 
   it("clears the failing DOB when the user taps Go Back on the blocked card", async () => {
@@ -415,6 +425,65 @@ describe("ProfileSetup", () => {
     expect((screen.getByLabelText("Birth day") as HTMLInputElement).value).toBe("");
     expect((screen.getByLabelText("Birth year") as HTMLInputElement).value).toBe("");
     expect((screen.getByPlaceholderText("sk8legend") as HTMLInputElement).value).toBe("newuser");
+  });
+
+  it("re-blocks and re-runs the sign-in removal after Go Back, whatever DOB comes next", async () => {
+    render(<ProfileSetup {...defaultProps} dob={null} />);
+    await typeAvailableUsername();
+    await userEvent.type(screen.getByLabelText("Birth month"), "01");
+    await userEvent.type(screen.getByLabelText("Birth day"), "01");
+    await userEvent.type(screen.getByLabelText("Birth year"), "2020");
+    await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Go Back" }));
+    await userEvent.type(screen.getByLabelText("Birth month"), "01");
+    await userEvent.type(screen.getByLabelText("Birth day"), "15");
+    await userEvent.type(screen.getByLabelText("Birth year"), "2000");
+    await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
+
+    expect(screen.getByRole("heading", { name: "Sorry!" })).toBeInTheDocument();
+    expect(mockCreateProfile).not.toHaveBeenCalled();
+    expect(mockBlockUnderage).toHaveBeenCalledTimes(2);
+  });
+
+  it("states the deletion outcome on its blocked card", async () => {
+    render(<ProfileSetup {...defaultProps} dob={null} />);
+    await typeAvailableUsername();
+    await userEvent.type(screen.getByLabelText("Birth month"), "01");
+    await userEvent.type(screen.getByLabelText("Birth day"), "01");
+    await userEvent.type(screen.getByLabelText("Birth year"), "2020");
+    await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
+    // blockUnderageSignIn is mocked, so no notice is stored: the card says pending, never "removed".
+    expect(screen.getByText(/will be deleted/)).toBeInTheDocument();
+    act(() => markCoppaBlocked("deleted"));
+    expect(screen.getByText(/has been removed/)).toBeInTheDocument();
+  });
+
+  it("retries a pending removal on open while the 24h block is set, once no profile is confirmed", async () => {
+    markAgeGateBlocked();
+    let resolveLookup: (p: null) => void = () => {};
+    mockGetUserProfile.mockReturnValueOnce(new Promise((r) => (resolveLookup = r)));
+    render(<ProfileSetup {...defaultProps} dob={null} />);
+    expect(mockBlockUnderage).not.toHaveBeenCalled();
+    await act(async () => resolveLookup(null));
+    expect(screen.getByText(/will be deleted/)).toBeInTheDocument();
+    expect(mockBlockUnderage).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Pick your handle")).not.toBeInTheDocument();
+  });
+
+  it("never retries a removal for an account the lookup finds a profile for", async () => {
+    markAgeGateBlocked();
+    const onDone = vi.fn();
+    mockGetUserProfile.mockResolvedValueOnce({ uid: "u1", username: "adult" });
+    render(<ProfileSetup {...defaultProps} dob={null} onDone={onDone} />);
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(mockBlockUnderage).not.toHaveBeenCalled();
+  });
+
+  it("ignores the 24h block when the DOB came from email sign-up", async () => {
+    markAgeGateBlocked();
+    render(<ProfileSetup {...defaultProps} />);
+    await waitForForm();
+    expect(mockBlockUnderage).not.toHaveBeenCalled();
   });
 
   it("requires parental consent before submitting for users 13-17", async () => {

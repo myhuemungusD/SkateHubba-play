@@ -129,8 +129,8 @@ describe("clipVotes delete — red-team against vote stuffing", () => {
   });
 
   it("legitimate: BARE delete is ALLOWED when the clip doc is gone (orphan)", async () => {
-    // Account-deletion cascade case: clips.cascade.ts drops the vote bare when
-    // the clip no longer exists — there is no aggregate left to keep honest.
+    // Orphan case: clips.votes.ts drops the vote bare when the clip no longer
+    // exists — there is no aggregate left to keep honest.
     await seedVote(1);
     await assertSucceeds(deleteDoc(voteDoc(voter())));
   });

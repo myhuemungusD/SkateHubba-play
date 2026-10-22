@@ -114,5 +114,8 @@
         }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/account/delete.ts": { "maxDuration": 60 }
+  }
 }

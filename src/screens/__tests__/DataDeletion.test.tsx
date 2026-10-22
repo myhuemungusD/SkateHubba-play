@@ -13,9 +13,22 @@ describe("DataDeletion", () => {
   it("points export and deletion at Settings", () => {
     render(<DataDeletion onBack={vi.fn()} />);
     const text = document.body.textContent ?? "";
-    expect(text).toContain('open Settings and tap "Download my data"');
-    expect(text).toContain('open Settings and tap "Delete account"');
+    expect(text).toContain('under Account, tap "Download my data"');
+    expect(text).toContain('under Account, tap "Delete account"');
     expect(text.toLowerCase()).not.toContain("lobby");
+  });
+
+  it("shows the same after-deletion facts as the Privacy Policy", () => {
+    render(<DataDeletion onBack={vi.fn()} />);
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("Kept with your name removed");
+    expect(text).toContain("daily database backups expire within 7 days");
+    expect(text).toContain("We tell PostHog to delete your analytics profile and its events");
+    expect(text).toContain("If that request fails, we're alerted and send it again");
+    expect(text).toContain("Pro blessing records you gave or received, including the usernames on them");
+    expect(text).not.toContain("Events already sent to PostHog");
+    expect(text).not.toContain("within 90 days of the game ending");
+    expect(text).not.toContain("All game records");
   });
 
   it("calls onBack when back button is clicked", async () => {

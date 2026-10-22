@@ -84,6 +84,8 @@ export interface DeletionSummary {
   /** Games this account judged, with the judge replaced by the tombstone. */
   skateGamesJudgedAnonymized: number;
   clips: number;
+  /** Comments by anyone under this account's deleted clips (Firestore never deletes a subcollection with its parent). */
+  clipThreadComments: number;
   clipVotes: number;
   disputes: number;
   disputeVotes: number;
@@ -133,6 +135,7 @@ function emptySummary(): DeletionSummary {
     skateGamesAnonymized: 0,
     skateGamesJudgedAnonymized: 0,
     clips: 0,
+    clipThreadComments: 0,
     clipVotes: 0,
     disputes: 0,
     disputeVotes: 0,
@@ -217,8 +220,8 @@ async function deleteVotes(
  * format-valid username and does NOT require that a matching reservation is
  * actually held (`match /users/{uid}`, `allow create`). So an attacker can sign
  * up, write `users/{attacker}` claiming a victim's username without ever
- * reserving it, and then invoke deletion. The client cascade was safe from this
- * by accident: `usernames/{name}` delete requires
+ * reserving it, and then invoke deletion. The old client cascade was safe from
+ * this by accident: `usernames/{name}` delete requires
  * `resource.data.uid == request.auth.uid`, so the batch was simply rejected.
  * Admin credentials bypass that rule, which turns an accidental safeguard into
  * a username-hijack primitive.
@@ -265,9 +268,9 @@ async function releaseUsername(db: Firestore, uid: string, candidate: string): P
 /**
  * Erase all data belonging to `uid`.
  *
- * Phase order is deliberate and must not be rearranged casually. It is the same
- * order the client cascade used, for a different reason: rules no longer force
- * it, but it still means an interrupted run leaves the *identity* documents
+ * Phase order is deliberate and must not be rearranged casually. It is the
+ * same order the old client cascade used, for a different reason: rules no
+ * longer force it, but it still means an interrupted run leaves the *identity* documents
  * (`users/{uid}`, the username reservation) alive longest. Those are what a
  * retry needs in order to find the rest, so a crash mid-cascade stays
  * recoverable instead of stranding orphans nothing can locate.
@@ -340,13 +343,22 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   summary.trainingRevocations = await deleteIfPresent(db, "trainingRevocations", uid);
 
   // ── Phase 3: authored community content ──
-  // Ownership fields mirror the client cascade exactly: clips are keyed by
-  // `playerUid`, disputes by `setterUid` (the setter is the only one who can
-  // create the doc), and both vote collections by `uid`.
+  // Ownership fields: clips are keyed by `playerUid`, disputes by `setterUid`
+  // (the setter is the only one who can create the doc), and both vote
+  // collections by `uid`.
   const [clips, disputes] = await Promise.all([
     scanAll(db.collection("clips").where("playerUid", "==", uid)),
     scanAll(db.collection("disputes").where("setterUid", "==", uid)),
   ]);
+  // A clip's comment thread lives in clips/{id}/comments, which a parent
+  // delete leaves behind as unreachable orphans, so it goes first.
+  for (const clip of clips) {
+    const thread = await scanAll(clip.ref.collection("comments"));
+    summary.clipThreadComments += await deleteRefs(
+      db,
+      thread.map((d) => d.ref),
+    );
+  }
   summary.clips = await deleteRefs(
     db,
     clips.map((d) => d.ref),
@@ -364,10 +376,9 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   summary.clipVotes = await deleteVotes(db, "clipVotes", "clips", "clipId", () => "upvoteCount", uid);
 
   // Dispute votes are the same shape, but the field depends on which way the
-  // vote went. Guards mirror `deleteUserDisputeVotes`: an unusable target id or
-  // verdict still gets the vote deleted (just untargetable for the tally), a
-  // parent that is already gone needs no decrement, and a non-positive count is
-  // never driven negative.
+  // vote went. Guards: an unusable target id or verdict still gets the vote
+  // deleted (just untargetable for the tally), a parent that is already gone
+  // needs no decrement, and a non-positive count is never driven negative.
   summary.disputeVotes = await deleteVotes(
     db,
     "disputeVotes",
@@ -399,9 +410,9 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   );
 
   // Queued push dispatches embed the recipient's FCM tokens, so an undrained
-  // queue would keep device identifiers alive past erasure. The client cascade
-  // never covered these — it couldn't, since /push_dispatch is write-only to
-  // clients — which is one of the gaps admin credentials close.
+  // queue would keep device identifiers alive past erasure. The old client
+  // cascade never covered these — it couldn't, since /push_dispatch is
+  // write-only to clients — which is one of the gaps admin credentials close.
   summary.pushDispatch = await deleteRefs(
     db,
     (await scanAll(db.collection("push_dispatch").where("recipientUid", "==", uid))).map((d) => d.ref),
@@ -455,10 +466,10 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   // guarantee the single-batch shape suggests.
   //
   // Locker mirrors achievements exactly: both are Admin-SDK-minted economy
-  // subcollections under users/{uid}, and both are swept by the client cascade
-  // in `src/services/users.ts`. A subcollection is NOT deleted by deleting its
-  // parent document in Firestore, so each one has to be enumerated by name —
-  // any future subcollection added under users/{uid} must be added here too.
+  // subcollections under users/{uid}. A subcollection is NOT deleted by
+  // deleting its parent document in Firestore, so each one has to be
+  // enumerated by name — any future subcollection added under users/{uid}
+  // must be added here too.
   const achievements = await scanAll(db.collection("users").doc(uid).collection("achievements"));
   const locker = await scanAll(db.collection("users").doc(uid).collection("locker"));
   const xpMarkers = await scanAll(db.collection("users").doc(uid).collection("xpMarkers"));

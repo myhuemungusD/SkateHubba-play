@@ -80,6 +80,27 @@ Fires once per page view of `/map` when `VITE_MAPBOX_STYLE_URL` is set to a valu
 - **Action interval:** Once per issue (the event fires on every /map page view while the misconfig is live)
 - **Remediation:** Open the Sentry event, copy `extra.styleUrl`, and check Vercel → Project Settings → Environment Variables. Either correct the value (must start with `mapbox://styles/` or be a valid `https://` URL) and redeploy, or unset the var to use the default. If self-hosting on a non-Mapbox domain, also extend the `connect-src` directive in `vercel.json` to whitelist that origin.
 
+#### Orphaned under-13 profile (`account_delete_underage_raced_cascade_failed`)
+
+Fires when the COPPA erasure (`POST /api/account/delete?reason=underage`, `api/account/_underage.ts`) deleted the Auth user, then found a profile written in the race window and failed to erase it. The client can't retry, because its token no longer verifies, so the profile stays until someone erases it. Rare: the client shows the blocked card and no profile form. The event carries only `uidHash`.
+
+- **When:** A new issue is created
+- **Filter:** `event.environment:production AND message:"account_delete_underage_raced_cascade_failed"`
+- **Then:** Send notification to **Slack** `#skatehubba-alerts`
+- **Action interval:** Every occurrence (each one is an orphaned profile)
+- **Remediation:** With the Admin SDK on the named database (`getFirestore(app, "skatehubba")`), find `users` docs whose Auth user no longer exists (`auth.getUser(uid)` rejects with `auth/user-not-found`), and pick the one where `hashUid(uid)` (`src/utils/pii.ts`) equals the event's `uidHash`. Erase it with `deleteUserDataAsAdmin` from `api/account/_deleteUserData.ts`, the same cascade the endpoint runs; it is idempotent.
+
+#### PostHog person not deleted (`account_delete_posthog_failed`)
+
+Fires when `POST /api/account/delete` erased the user's data but PostHog's bulk-delete call (`api/account/_posthogErasure.ts`) returned an error or timed out after 5 seconds. The account is still deleted; only the analytics person and events may remain. `extra.reason` is `http_<status>` or the error name. `extra.distinctId` is the PostHog distinct_id (`hashIdentity(uid)`), which is the only handle left once the account is gone.
+
+- **When:** A new issue is created
+- **Filter:** `event.environment:production AND message:"account_delete_posthog_failed"`
+- **Then:** Send notification to **Slack** `#skatehubba-alerts`
+- **Action interval:** Every occurrence (each one is a deletion request PostHog has not acted on)
+- **Skipped in production (`account_delete_posthog_skipped`):** same filter with this message. It fires when `POSTHOG_PERSONAL_API_KEY` or `POSTHOG_PROJECT_ID` is missing in Vercel Production, so every deletion is missing PostHog. Set both, redeploy, then retry each `extra.distinctId` by hand as below. Outside production a skip is expected and only logged.
+- **Remediation:** `http_401` or `http_403` means `POSTHOG_PERSONAL_API_KEY` is wrong, expired, or lacks `person:write`; `http_404` usually means a wrong `POSTHOG_PROJECT_ID` or `POSTHOG_HOST` (see `docs/DEPLOYMENT.md`). Fix the env, then retry by hand: `POST {POSTHOG_HOST}/api/projects/{POSTHOG_PROJECT_ID}/persons/bulk_delete/` with `{"distinct_ids": ["<extra.distinctId>"], "delete_events": true}` and the personal key as a Bearer token.
+
 ### 3. Slack Integration
 
 1. Sentry → **Settings** → **Integrations** → **Slack**

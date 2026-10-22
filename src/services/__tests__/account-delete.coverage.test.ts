@@ -206,6 +206,7 @@ describe("erasing an account with data everywhere", () => {
       crewListsUpdated: 1,
       spotMessageReports: 1,
       wttVotes: 1,
+      notificationsSent: 1,
       proContent: 6,
       rateLimits: 4,
       mediaObjects: 0,

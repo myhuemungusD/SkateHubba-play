@@ -12,6 +12,8 @@ const manifest = readFileSync(resolve(__dirname, "../../ios/App/App/PrivacyInfo.
 describe("iOS privacy manifest", () => {
   it.each([
     ["EmailAddress", "email sign-in"],
+    ["Name", "Google and Apple sign-in pass the account name"],
+    ["CoarseLocation", "Mapbox tile requests and telemetry"],
     [
       "PhoneNumber",
       "SMS two-step verification (src/services/mfa.ts); VITE_FEATURE_SMS_2FA_ENABLED is off in the iOS build, declared anyway",
@@ -27,6 +29,16 @@ describe("iOS privacy manifest", () => {
     ["CrashData", "Sentry"],
   ])("declares %s (%s)", (type) => {
     expect(manifest).toContain(`<string>NSPrivacyCollectedDataType${type}</string>`);
+  });
+
+  it.each([
+    ["Name", true],
+    ["CoarseLocation", false],
+  ])("declares %s linked=%s, App Functionality only", (type, linked) => {
+    const block = manifest.split(`<string>NSPrivacyCollectedDataType${type}</string>`)[1]?.split("</dict>")[0] ?? "";
+    expect(block).toMatch(new RegExp(`NSPrivacyCollectedDataTypeLinked</key>\\s*<${linked}/>`));
+    expect(block).toContain("NSPrivacyCollectedDataTypePurposeAppFunctionality");
+    expect(block).not.toContain("NSPrivacyCollectedDataTypePurposeAnalytics");
   });
 
   it("links Product Interaction to the user for App Functionality and Analytics", () => {

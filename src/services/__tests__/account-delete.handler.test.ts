@@ -29,9 +29,11 @@ const h = vi.hoisted(() => ({
   getAuthMock: vi.fn(),
   verifyIdTokenMock: vi.fn(),
   deleteUserMock: vi.fn(),
+  revokeMock: vi.fn(),
   getFirestoreMock: vi.fn(),
   getStorageMock: vi.fn(),
   cascadeMock: vi.fn(),
+  posthogMock: vi.fn(),
 }));
 
 vi.mock("firebase-admin/app", () => ({
@@ -44,6 +46,7 @@ vi.mock("firebase-admin/auth", () => ({ getAuth: h.getAuthMock }));
 vi.mock("firebase-admin/firestore", () => ({ getFirestore: h.getFirestoreMock }));
 vi.mock("firebase-admin/storage", () => ({ getStorage: h.getStorageMock }));
 vi.mock("../../../api/account/_deleteUserData.js", () => ({ deleteUserDataAsAdmin: h.cascadeMock }));
+vi.mock("../../../api/account/_posthogErasure.js", () => ({ erasePosthogPerson: h.posthogMock }));
 // Only loaded when SENTRY_DSN is set (see the "error reporting" block).
 vi.mock("@sentry/node", async () => (await import("./sentry-node.test-helpers")).sentryNodeMock);
 
@@ -54,6 +57,7 @@ import {
   type AccountRequestOpts,
   type AccountResponseCapture,
 } from "./account-delete.test-helpers";
+import { hashIdentity, hashUid } from "../../utils/pii";
 import { recordSentryOrder, resetSentryNodeMock, sentryNodeMock, TEST_SENTRY_DSN } from "./sentry-node.test-helpers";
 
 const TOKEN = "eyJhbGciOi.PAYLOAD.SIGNATURE";
@@ -75,6 +79,7 @@ const SUMMARY = {
   games: 2,
   gameVideoObjects: 3,
   clips: 1,
+  clipThreadComments: 0,
   clipVotes: 4,
   disputes: 0,
   disputeVotes: 2,
@@ -126,15 +131,21 @@ beforeEach(() => {
   delete process.env.FIREBASE_STORAGE_BUCKET;
   delete process.env.ACCOUNT_DELETE_ALLOWED_ORIGIN;
   delete process.env.SENTRY_DSN;
+  delete process.env.VERCEL_ENV;
   // No pre-existing app: the default path is a cold start that initializes one.
   h.getAppsMock.mockReturnValue([]);
   h.initializeAppMock.mockReturnValue(APP);
-  h.getAuthMock.mockReturnValue({ verifyIdToken: h.verifyIdTokenMock, deleteUser: h.deleteUserMock });
+  h.getAuthMock.mockReturnValue({
+    verifyIdToken: h.verifyIdTokenMock,
+    deleteUser: h.deleteUserMock,
+    revokeRefreshTokens: h.revokeMock,
+  });
   h.verifyIdTokenMock.mockResolvedValue({ uid: TOKEN_UID, auth_time: NOW_S });
   h.deleteUserMock.mockResolvedValue(undefined);
   h.getFirestoreMock.mockReturnValue(DB);
   h.getStorageMock.mockReturnValue(STORAGE);
   h.cascadeMock.mockResolvedValue(SUMMARY);
+  h.posthogMock.mockResolvedValue({ status: "skipped", reason: "not_configured" });
   warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
@@ -253,16 +264,17 @@ describe("token verification", () => {
     expect(bodies[0]).not.toMatch(/revoked|malformed|audience|exploded|project/i);
   });
 
-  it("never writes the ID token into the logs, but keeps the uid", async () => {
+  it("never writes the ID token or the raw uid into the logs, only uidHash", async () => {
     // A deletion audit trail must not itself become a store of the credential
-    // that authorized it. The uid is deliberately retained — without it the log
-    // cannot evidence an erasure request.
+    // that authorized it, nor of the uid it erased (logs may be forwarded to
+    // Sentry). It carries hashUid(uid), which an operator can recompute.
     h.verifyIdTokenMock.mockRejectedValueOnce(new Error("Firebase ID token has expired."));
     await call();
     await call();
     const logged = JSON.stringify(warnSpy.mock.calls);
     expect(logged).not.toContain(TOKEN);
-    expect(logged).toContain(TOKEN_UID);
+    expect(logged).not.toContain(TOKEN_UID);
+    expect(logged).toContain(hashUid(TOKEN_UID));
   });
 });
 
@@ -280,6 +292,15 @@ describe("recent-login requirement", () => {
     h.verifyIdTokenMock.mockResolvedValueOnce({ uid: TOKEN_UID, auth_time });
     const out = await call();
     expectRefused(out, 401, "requires_recent_login");
+  });
+
+  it("logs the stale-auth refusal with uidHash, never the raw uid", async () => {
+    h.verifyIdTokenMock.mockResolvedValueOnce({ uid: TOKEN_UID, auth_time: NOW_S - 3600 });
+    await call();
+    const logged = JSON.stringify(warnSpy.mock.calls);
+    expect(logged).toContain("account_delete_stale_auth");
+    expect(logged).toContain(hashUid(TOKEN_UID));
+    expect(logged).not.toContain(TOKEN_UID);
   });
 
   const FRESH: [string, number][] = [
@@ -507,6 +528,9 @@ describe("error reporting (server-side Sentry)", () => {
     return { out, order };
   }
   const captures = () => sentryNodeMock.captureException.mock.calls;
+  /** The first console.warn JSON line whose text contains `fragment`. */
+  const loggedLine = (fragment: string): string | undefined =>
+    (warnSpy.mock.calls as unknown[][]).map((c) => String(c[0])).find((l) => l.includes(fragment));
 
   beforeEach(() => {
     process.env.SENTRY_DSN = TEST_SENTRY_DSN;
@@ -528,7 +552,8 @@ describe("error reporting (server-side Sentry)", () => {
     expect(out.body).toMatchObject({ code: "erasure_failed" });
     expect(order.slice(-3)).toEqual(["error:account_delete_erasure_failed", "flush", "respond"]);
     const ctx = captures().find((c) => c[1].tags.event === "account_delete_erasure_failed")?.[1];
-    expect(ctx).toMatchObject({ level: "error", extra: { uid: TOKEN_UID } });
+    expect(ctx).toMatchObject({ level: "error", extra: { uidHash: hashUid(TOKEN_UID) } });
+    expect(JSON.stringify(captures())).not.toContain(TOKEN_UID);
   });
 
   it("never sends the ID token to Sentry", async () => {
@@ -553,10 +578,270 @@ describe("error reporting (server-side Sentry)", () => {
     expect(order.slice(-3)).toEqual(["error:account_delete_auth_failed", "flush", "respond"]);
   });
 
+  it("reports a PostHog failure as a warning with the hash only, and still deletes", async () => {
+    h.posthogMock.mockResolvedValueOnce({ status: "failed", reason: "http_503" });
+    const { out, order } = await callRecordingOrder();
+    expect(out.body).toEqual({ ok: true, authDeleted: true, summary: SUMMARY });
+    expect(order).toEqual(["warning:account_delete_posthog_failed", "flush", "respond"]);
+    const ctx = captures().find((c) => c[1].tags.event === "account_delete_posthog_failed")?.[1];
+    expect(ctx).toMatchObject({
+      level: "warning",
+      extra: { uidHash: hashUid(TOKEN_UID), distinctId: hashIdentity(TOKEN_UID) },
+    });
+    expect(JSON.stringify(captures())).not.toContain(TOKEN_UID);
+    expect(loggedLine("posthog_failed")).not.toContain(TOKEN_UID);
+  });
+
+  it("logs a queued PostHog deletion after erasure and before the Auth delete", async () => {
+    const seq: string[] = [];
+    h.cascadeMock.mockImplementationOnce(async () => (seq.push("cascade"), SUMMARY));
+    h.posthogMock.mockImplementationOnce(async () => (seq.push("posthog"), { status: "queued", personsFound: 1 }));
+    h.deleteUserMock.mockImplementationOnce(async () => void seq.push("auth"));
+    await call();
+    expect(seq).toEqual(["cascade", "posthog", "auth"]);
+    expect(h.posthogMock).toHaveBeenCalledWith(TOKEN_UID);
+    const line = loggedLine("posthog_queued");
+    expect(JSON.parse(line ?? "{}")).toEqual({
+      event: "account_delete_posthog_queued",
+      uidHash: hashUid(TOKEN_UID),
+      personsFound: 1,
+    });
+    expect(captures()).toHaveLength(0);
+  });
+
+  it("logs a skipped PostHog deletion outside production, without a Sentry event", async () => {
+    process.env.VERCEL_ENV = "preview";
+    await call();
+    const line = loggedLine("posthog_skipped");
+    expect(JSON.parse(line ?? "{}")).toMatchObject({ reason: "not_configured", uidHash: hashUid(TOKEN_UID) });
+    expect(captures()).toHaveLength(0);
+  });
+
+  it("reports a skipped PostHog deletion in production as a warning (the env is missing)", async () => {
+    process.env.VERCEL_ENV = "production";
+    const { out, order } = await callRecordingOrder();
+    expect(out.body).toEqual({ ok: true, authDeleted: true, summary: SUMMARY });
+    expect(order).toEqual(["warning:account_delete_posthog_skipped", "flush", "respond"]);
+    expect(captures()[0][1]).toMatchObject({
+      level: "warning",
+      extra: { uidHash: hashUid(TOKEN_UID), distinctId: hashIdentity(TOKEN_UID) },
+    });
+    expect(JSON.stringify(captures())).not.toContain(TOKEN_UID);
+  });
+
+  it.each([
+    [
+      "account_delete_erasure_failed",
+      () => h.cascadeMock.mockRejectedValueOnce(new Error(`no doc users/${TOKEN_UID}`)),
+    ],
+    ["account_delete_auth_failed", () => h.deleteUserMock.mockRejectedValueOnce(new Error(`no user ${TOKEN_UID}`))],
+    ["account_delete_revoke_failed", () => h.revokeMock.mockRejectedValueOnce(new Error(`no user ${TOKEN_UID}`))],
+  ])("keeps the uid out of the %s report and log line (Firebase errors can quote it)", async (event, fail) => {
+    fail();
+    await call();
+    const reported = captures().find((c) => c[1].tags.event === event)?.[0] as Error;
+    expect(`${reported.message} ${reported.stack}`).not.toContain(TOKEN_UID);
+    const line = JSON.parse(loggedLine(event) ?? "{}") as Record<string, unknown>;
+    expect(line).toMatchObject({ event, uidHash: hashUid(TOKEN_UID), error: expect.stringContaining("[uid]") });
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain(TOKEN_UID);
+  });
+
+  it("logs the attempt and success with uidHash, never the raw uid", async () => {
+    await call();
+    expect(JSON.parse(loggedLine("account_delete_attempt") ?? "{}")).toEqual({
+      event: "account_delete_attempt",
+      uidHash: hashUid(TOKEN_UID),
+    });
+    expect(JSON.parse(loggedLine("account_delete_success") ?? "{}")).toEqual({
+      event: "account_delete_success",
+      uidHash: hashUid(TOKEN_UID),
+      ...SUMMARY,
+    });
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain(TOKEN_UID);
+  });
+
+  it("reports a revoke failure as a warning with the hash only, and still erases", async () => {
+    h.revokeMock.mockRejectedValueOnce(new Error("auth backend down"));
+    const { out, order } = await callRecordingOrder();
+    expect(out.body).toEqual({ ok: true, authDeleted: true, summary: SUMMARY });
+    expect(order).toEqual(["warning:account_delete_revoke_failed", "flush", "respond"]);
+    expect(captures()[0][1]).toMatchObject({ extra: { uidHash: hashUid(TOKEN_UID) } });
+    expect(JSON.stringify(captures())).not.toContain(TOKEN_UID);
+  });
+
+  it("does not touch PostHog when erasure fails", async () => {
+    h.cascadeMock.mockRejectedValueOnce(new Error("firestore unavailable"));
+    await call();
+    expect(h.posthogMock).not.toHaveBeenCalled();
+  });
+
   it("keeps the success path unchanged when Sentry itself is down", async () => {
     sentryNodeMock.flush.mockRejectedValue(new Error("sentry unreachable"));
     const out = await call();
     expect(out.code).toBe(200);
     expect(out.body).toEqual({ ok: true, authDeleted: true, summary: SUMMARY });
+  });
+});
+
+describe("?reason=underage (COPPA block before a profile exists)", () => {
+  const STALE_S = NOW_S - WINDOW_S - 60;
+  /** `profile` answers the three users/{uid} reads in order: pre-check, in-transaction, after deleteUser. */
+  function fakeDb(profile: [boolean, boolean?, boolean?] = [false], commit = vi.fn(async () => undefined)) {
+    const deleted: string[] = [];
+    const reads = [...profile];
+    const read = vi.fn(async () => ({ exists: reads.length > 1 ? reads.shift() : reads[0] }));
+    const db = {
+      doc: (path: string) => ({ path, get: read }),
+      runTransaction: async (fn: (tx: unknown) => Promise<unknown>) => {
+        const staged: string[] = [];
+        const out = await fn({
+          get: (ref: { get: typeof read }) => ref.get(),
+          delete: (ref: { path: string }) => staged.push(ref.path),
+        });
+        await commit();
+        deleted.push(...staged);
+        return out;
+      },
+    };
+    h.getFirestoreMock.mockReturnValue(db);
+    return { deleted, read };
+  }
+  const underage = () => call({ query: { reason: "underage" } });
+  /** Everything that left the function: log lines, plus Sentry events with error messages spelled out. */
+  const raw = () =>
+    JSON.stringify([warnSpy.mock.calls, sentryNodeMock.captureException.mock.calls], (_, v: unknown) =>
+      v instanceof Error ? v.message : v,
+    );
+
+  /** A 200 underage answer that removed exactly the three pre-profile docs. */
+  function expectErased(out: AccountResponseCapture, deleted: string[]): void {
+    expect(out.code).toBe(200);
+    expect(out.body).toEqual({ ok: true, authDeleted: true, mode: "underage" });
+    expect(deleted).toEqual([
+      `onlineStatus/${TOKEN_UID}`,
+      `users/${TOKEN_UID}/private/profile`,
+      `pushTargets/${TOKEN_UID}`,
+    ]);
+  }
+
+  it("deletes the pre-profile docs, then the Auth user, past the recent-login window, without revoking", async () => {
+    h.verifyIdTokenMock.mockResolvedValue({ uid: TOKEN_UID, auth_time: STALE_S });
+    const { deleted } = fakeDb();
+    const out = await underage();
+    expectErased(out, deleted);
+    // A revoke would make verifyIdToken(token, true) reject this session for
+    // good, so a failure after it could never be retried.
+    expect(h.revokeMock).not.toHaveBeenCalled();
+    expect(h.deleteUserMock).toHaveBeenCalledWith(TOKEN_UID);
+    expect(h.cascadeMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts the reason from an array query value", async () => {
+    fakeDb();
+    const out = await call({ query: { reason: ["underage"] } as unknown as Record<string, string> });
+    expect(out.body).toEqual({ ok: true, authDeleted: true, mode: "underage" });
+  });
+
+  it.each([
+    ["a stale", STALE_S],
+    ["a fresh", NOW_S],
+  ])("answers 409 has_profile and touches nothing for %s sign-in with a profile", async (_, authTime) => {
+    h.verifyIdTokenMock.mockResolvedValue({ uid: TOKEN_UID, auth_time: authTime });
+    const { deleted } = fakeDb([true]);
+    expectRefused(await underage(), 409, "has_profile");
+    expect(deleted).toEqual([]);
+    expect(h.revokeMock).not.toHaveBeenCalled();
+    expect(h.deleteUserMock).not.toHaveBeenCalled();
+    expect(h.cascadeMock).not.toHaveBeenCalled();
+  });
+
+  it("answers has_profile when the profile commits before the transaction reads it", async () => {
+    const { deleted } = fakeDb([false, true]);
+    expectRefused(await underage(), 409, "has_profile");
+    expect(deleted).toEqual([]);
+    expect(h.deleteUserMock).not.toHaveBeenCalled();
+  });
+
+  it("erases a profile that appears after the Auth user is gone", async () => {
+    fakeDb([false, false, true]);
+    const out = await underage();
+    expect(out.body).toEqual({ ok: true, authDeleted: true, mode: "underage" });
+    expect(h.cascadeMock).toHaveBeenCalledWith(expect.objectContaining({ db: expect.anything() }), TOKEN_UID);
+    expect(h.deleteUserMock.mock.invocationCallOrder[0]).toBeLessThan(h.cascadeMock.mock.invocationCallOrder[0]);
+    expect(raw()).toContain("account_delete_underage_raced");
+  });
+
+  it("reports erasure_failed and keeps the Auth user when the doc cleanup fails", async () => {
+    fakeDb(
+      [false],
+      vi.fn(async () => Promise.reject(new Error(`unavailable for ${TOKEN_UID}`))),
+    );
+    const out = await underage();
+    expectRefused(out, 500, "erasure_failed");
+    expect(h.deleteUserMock).not.toHaveBeenCalled();
+  });
+
+  it("lets the same token retry after a failed commit and erase the sign-in", async () => {
+    h.verifyIdTokenMock.mockResolvedValue({ uid: TOKEN_UID, auth_time: STALE_S });
+    const commit = vi.fn(async () => undefined).mockRejectedValueOnce(new Error("unavailable"));
+    const { deleted } = fakeDb([false], commit);
+    expectRefused(await underage(), 500, "erasure_failed");
+    expect(h.deleteUserMock).not.toHaveBeenCalled();
+    const out = await underage();
+    expectErased(out, deleted);
+    expect(h.deleteUserMock).toHaveBeenCalledTimes(1);
+    expect(h.revokeMock).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed raced cascade as its own error-level event", async () => {
+    process.env.SENTRY_DSN = TEST_SENTRY_DSN;
+    resetSentryNodeMock();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      fakeDb([false, false, true]);
+      h.cascadeMock.mockRejectedValueOnce(new Error(`cascade down for ${TOKEN_UID}`));
+      const out = await underage();
+      expect(out.code).toBe(500);
+      expect(out.body).toMatchObject({ ok: false, code: "erasure_failed" });
+      expect(h.deleteUserMock).toHaveBeenCalledWith(TOKEN_UID);
+      expect(errorSpy.mock.calls).toEqual([
+        [JSON.stringify({ event: "account_delete_underage_raced_cascade_failed", uidHash: hashUid(TOKEN_UID) })],
+      ]);
+      expect(raw()).not.toContain("account_delete_underage_failed");
+      expect(sentryNodeMock.captureException).toHaveBeenCalledTimes(1);
+      expect(
+        JSON.stringify(sentryNodeMock.captureException.mock.calls, (_, v: unknown) =>
+          v instanceof Error ? v.message : v,
+        ),
+      ).toContain("account_delete_underage_raced_cascade_failed");
+      expect(JSON.stringify(errorSpy.mock.calls) + raw()).not.toContain(TOKEN_UID);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("reports a non-Error failure as erasure_failed", async () => {
+    fakeDb();
+    h.deleteUserMock.mockRejectedValueOnce("boom");
+    const out = await underage();
+    expect(out.code).toBe(500);
+    expect(out.body).toMatchObject({ code: "erasure_failed" });
+  });
+
+  it("never logs or reports the raw uid, only its hash", async () => {
+    process.env.SENTRY_DSN = TEST_SENTRY_DSN;
+    resetSentryNodeMock();
+    fakeDb(
+      [false],
+      vi.fn(async () => Promise.reject(new Error(`unavailable for ${TOKEN_UID}`))),
+    );
+    await underage();
+    fakeDb([true]);
+    await underage();
+    fakeDb([false, false, true]);
+    await underage();
+    expect(sentryNodeMock.captureException).toHaveBeenCalledTimes(1);
+    expect(raw()).not.toContain(TOKEN_UID);
+    expect(raw()).toContain(hashUid(TOKEN_UID));
   });
 });

@@ -3305,9 +3305,9 @@ service cloud.firestore {
         && clipVoteDeltaOk(clipId);
 
       // The owning player (the one who actually landed the trick) can delete
-      // their own clip. This backs the account-deletion cascade in
-      // clips.ts#deleteUserClips and lets a user scrub a clip they no longer
-      // want in the feed. Strangers, the opponent, and even the judge cannot
+      // their own clip, to scrub a clip they no longer want in the feed.
+      // Account deletion runs server-side with the Admin SDK and doesn't
+      // need this rule. Strangers, the opponent, and even the judge cannot
       // delete — only the clip's author.
       allow delete: if isSignedIn()
         && request.auth.uid == resource.data.playerUid;
@@ -3393,8 +3393,8 @@ service cloud.firestore {
         && request.auth.uid == resource.data.uid
         && (
           // Legacy/malformed vote carrying no clipId: no counter to target,
-          // so there is nothing to keep consistent (the cascade drops these
-          // bare — see deleteUserClipVotes).
+          // so there is nothing to keep consistent (the server erasure
+          // cascade drops these bare).
           !('clipId' in resource.data)
           // Orphan: the clip is already gone, and its aggregates with it.
           || !fsExists('clips', resource.data.clipId)
