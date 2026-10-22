@@ -138,7 +138,16 @@ export const TIP_SETS: Record<string, TipSet> = {
   },
   pro: {
     id: "pro",
-    tips: [{ title: "pro tools", body: "your pro stuff lives here: calls, challenges and featured clips." }],
+    // Needs the Pro tools screen itself: a non-pro on /pro gets the "Bail!"
+    // not-found page, and the tip must not sit on top of it.
+    tips: [
+      {
+        title: "pro tools",
+        body: "your pro stuff lives here: calls, challenges and featured clips.",
+        anchor: "pro-tools",
+        requiresAnchor: true,
+      },
+    ],
   },
   settings: {
     id: "settings",

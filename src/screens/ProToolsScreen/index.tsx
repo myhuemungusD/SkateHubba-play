@@ -66,7 +66,9 @@ export function ProToolsScreen({ uid = null, reviewMode, onBack }: ScreenProps) 
         BACK
       </button>
       <span className="pro-username font-display text-[10px] tracking-[0.3em]">✦ VERIFIED PRO</span>
-      <h1 className="mt-1 mb-2 font-display text-2xl tracking-wide text-white">Pro tools</h1>
+      <h1 data-tutorial="pro-tools" className="mt-1 mb-2 font-display text-2xl tracking-wide text-white">
+        Pro tools
+      </h1>
       <p className="mb-4 font-body text-sm text-white/70">
         Your toolkit for shaping SkateHubba. Each tool launches to testers first.
       </p>

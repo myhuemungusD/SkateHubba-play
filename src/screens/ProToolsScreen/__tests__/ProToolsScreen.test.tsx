@@ -92,11 +92,14 @@ describe("ProToolsRoute", () => {
     expect(screen.getByTestId("pro-tools-screen")).toBeInTheDocument();
     expect(screen.queryByRole("note")).toBeNull();
     expect(mockIsAdmin).toHaveBeenCalledWith("");
+    // The anchor the Pro tools tip needs (it is dropped on the not-found page).
+    expect(document.querySelector('[data-tutorial="pro-tools"]')).not.toBeNull();
   });
 
   it("hides from a verified pro while the flag is off", () => {
     render(<ProToolsRoute uid="p1" isVerifiedPro onBack={() => {}} />);
     expect(screen.getByText("not-found")).toBeInTheDocument();
+    expect(document.querySelector('[data-tutorial="pro-tools"]')).toBeNull();
   });
 
   it("shows admins review mode while the flag is off", () => {
