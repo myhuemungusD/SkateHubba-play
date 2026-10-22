@@ -516,11 +516,12 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   summary.blockedUsers = blocked.length;
 
   // ── Phase 5: the account's Storage folder ──
-  // Everything left under `users/{uid}/`: the avatar in any of the three
-  // extensions `avatars.ts` writes, plus the Resize Images extension's
-  // `*_200x200.*` thumbnails of the avatar and banner (G8). Deleting by exact
-  // file name missed those thumbnails; deleting the folder cannot. The banner
-  // original was already removed in Phase 3c (`ownedMediaPrefixes`).
+  // This phase is the single owner of everything under `users/{uid}/`: the
+  // avatar in any of the three extensions `avatars.ts` writes, the banner, and
+  // the Resize Images extension's `*_200x200.*` thumbnails of both (G8).
+  // Deleting by exact file name missed those thumbnails; deleting the folder
+  // cannot. `ownedMediaPrefixes` (Phase 3c) deliberately leaves this folder
+  // out, so every object here is deleted and counted once, in `avatarObjects`.
   summary.avatarObjects += await deletePrefix(deps, userFolder);
 
   return summary;

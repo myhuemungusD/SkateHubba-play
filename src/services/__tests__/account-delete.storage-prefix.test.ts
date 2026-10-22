@@ -14,6 +14,7 @@ vi.mock("firebase-admin/firestore", () => ({
 
 import { deleteUserDataAsAdmin } from "../../../api/account/_deleteUserData";
 import { deletePrefix, userStoragePrefix } from "../../../api/account/_cascadeUtil";
+import { ownedMediaPrefixes } from "../../../api/account/_ownedContent";
 import { makeFakeStore } from "./account-delete.test-helpers";
 
 const UID = "abc";
@@ -52,9 +53,22 @@ describe("account delete erases the users/{uid}/ folder (G8)", () => {
     expect(store.fileDeletes.map((f) => f.name)).toEqual(
       expect.arrayContaining(["users/abc/avatar_200x200.webp", "users/abc/banner_200x200.webp"]),
     );
-    // banner.webp goes in Phase 3c (owned media); the rest in Phase 5.
-    expect(summary.content.mediaObjects).toBe(1);
-    expect(summary.avatarObjects).toBe(4);
+    // Phase 5 is the single owner of users/{uid}/: all 5 objects, counted once.
+    expect(summary.content.mediaObjects).toBe(0);
+    expect(summary.avatarObjects).toBe(5);
+  });
+
+  it("gives users/{uid}/ a single owner: Phase 3c lists no prefix inside it", () => {
+    expect(ownedMediaPrefixes(UID).filter((p) => p.startsWith(userStoragePrefix(UID)))).toEqual([]);
+  });
+
+  it("deletes each profile object exactly once", async () => {
+    const store = makeFakeStore({}, profileFolder(UID));
+
+    await deleteUserDataAsAdmin(store.deps, UID);
+
+    const names = store.fileDeletes.map((f) => f.name).filter((n) => n.startsWith("users/abc/"));
+    expect(names.sort()).toEqual(profileFolder(UID).sort());
   });
 
   it("leaves a sibling account whose uid shares the string prefix untouched", async () => {
