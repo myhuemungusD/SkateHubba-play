@@ -211,16 +211,6 @@ function log(event: string, fields: Record<string, unknown>): void {
 }
 
 /**
- * An error's message for a log line, with the uid swapped for `[uid]`:
- * Firebase errors can quote it (`no doc users/<uid>`), and the line already
- * carries `uidHash`.
- */
-function errorText(err: unknown, uid: string): string {
-  const text = err instanceof Error ? err.message : String(err);
-  return uid ? text.split(uid).join("[uid]") : text;
-}
-
-/**
  * Runs the PostHog person deletion and logs its outcome. Never throws.
  *
  * A failure, or a skip in production (the env is missing there, so every
@@ -383,7 +373,7 @@ async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
   try {
     await getAuth(app).revokeRefreshTokens(uid);
   } catch (err) {
-    log("account_delete_revoke_failed", { uidHash, error: errorText(err, uid) });
+    log("account_delete_revoke_failed", { uidHash, code: safeErrorCode(err) });
     // redactMessage: like the erasure and Auth errors below, it can quote the uid.
     captureServerError("account_delete_revoke_failed", err, { uidHash }, { level: "warning", redactMessage: true });
   }
@@ -395,7 +385,7 @@ async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
     // The Auth user is intentionally left alive: the account keeps working and
     // the user can retry. Every phase is idempotent, so a retry resumes rather
     // than double-deleting.
-    log("account_delete_erasure_failed", { uidHash, error: errorText(err, uid) });
+    log("account_delete_erasure_failed", { uidHash, code: safeErrorCode(err) });
     captureServerError("account_delete_erasure_failed", err, { uidHash }, { redactMessage: true });
     await flushServerErrors();
     fail(res, 500, "erasure_failed", "Could not delete your data. Your account is unchanged — please try again.");
@@ -415,7 +405,7 @@ async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
   try {
     await getAuth(app).deleteUser(uid);
   } catch (err) {
-    log("account_delete_auth_failed", { uidHash, error: errorText(err, uid) });
+    log("account_delete_auth_failed", { uidHash, code: safeErrorCode(err) });
     captureServerError("account_delete_auth_failed", err, { uidHash }, { redactMessage: true });
     await flushServerErrors();
     res.status(200).json({ ok: true, authDeleted: false, summary });

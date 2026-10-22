@@ -113,7 +113,7 @@ Every event carries `extra.uidHash` (`hashUid(uid)`, `src/utils/pii.ts`) where a
 
 The cascade threw. The Auth user was deliberately left alive and the client told the user to retry; every phase is idempotent, so a retry resumes. One event is a transient failure; a run of them is an outage (Firestore, Storage, or IAM on the service account).
 
-- **Remediation:** check the log line `account_delete_erasure_failed` (its `error` has the uid replaced with `[uid]`) for the failing phase, fix it, and if the user did not retry, run `deleteUserDataAsAdmin` (`api/account/_deleteUserData.ts`) for them.
+- **Remediation:** the log line `account_delete_erasure_failed` carries only `code` (the Firebase or gRPC machine code, else the error's class name), and the Sentry event is message-redacted too (`redactMessage: true`), so neither shows the failing phase. Run `deleteUserDataAsAdmin` (`api/account/_deleteUserData.ts`) for the user: it is idempotent, resumes where the cascade stopped, and in a local or admin run re-throws at the failing phase with the full error. Fix that cause.
 
 #### Auth delete failed (`account_delete_auth_failed`)
 

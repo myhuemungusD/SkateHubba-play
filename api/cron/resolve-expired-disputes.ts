@@ -64,6 +64,7 @@ import { applyTrainingLabelPending } from "../../src/services/trainingLabels.mat
 import { toGameDoc, type GameDoc } from "../../src/services/games.mappers.js";
 import { ACHIEVEMENTS, CALL_XP, DAILY_XP_CAP, levelForXp, utcDayFromMs } from "../../src/constants/xp.js";
 import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
+import { safeErrorCode } from "../_safeError.js";
 
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
 const FIRESTORE_DB_NAME = "skatehubba";
@@ -625,7 +626,7 @@ async function dispatchAdminPush(db: Firestore, gameId: string, n: ResolveNotifi
       JSON.stringify({
         event: "resolve_push_failed",
         gameId,
-        message: err instanceof Error ? err.message : String(err),
+        code: safeErrorCode(err),
       }),
     );
     captureServerError("resolve_push_failed", err, { gameId }, { level: "warning" });
@@ -668,7 +669,7 @@ async function runPass(
           event: "resolve_game_failed",
           phase,
           gameId: docSnap.id,
-          message: err instanceof Error ? err.message : String(err),
+          code: safeErrorCode(err),
         }),
       );
       captureServerError("resolve_game_failed", err, { phase, gameId: docSnap.id }, { level: "warning" });
@@ -717,9 +718,7 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
   } catch (err) {
     // Query-level failure (index missing, permission, etc). Never throw to the
     // platform — return what we have plus the error so the cron logs surface it.
-    console.warn(
-      JSON.stringify({ event: "resolve_failed", message: err instanceof Error ? err.message : String(err) }),
-    );
+    console.warn(JSON.stringify({ event: "resolve_failed", code: safeErrorCode(err) }));
     captureServerError("resolve_failed", err);
     await flushServerErrors();
     res.status(500).json({ ...summary, error: "resolve_failed" });

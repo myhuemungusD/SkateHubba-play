@@ -725,7 +725,7 @@ describe("error reporting (server-side Sentry)", () => {
     const reported = captures().find((c) => c[1].tags.event === event)?.[0] as Error;
     expect(`${reported.message} ${reported.stack}`).not.toContain(TOKEN_UID);
     const line = JSON.parse(loggedLine(event) ?? "{}") as Record<string, unknown>;
-    expect(line).toMatchObject({ event, uidHash: hashUid(TOKEN_UID), error: expect.stringContaining("[uid]") });
+    expect(line).toEqual({ event, uidHash: hashUid(TOKEN_UID), code: "Error" });
     expect(JSON.stringify(warnSpy.mock.calls)).not.toContain(TOKEN_UID);
   });
 
