@@ -21,6 +21,16 @@ import { diceEligibleTokens, isDicePush } from "./platforms.js";
 /** Drop undelivered pushes older than this. Matches the endpoint's TTL. */
 export const PUSH_TTL_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Docs created before this instant are dropped unsent. pushDispatchOnCreate and
+ * pushDispatchSweep were never deployed between #721 (2026-10-17) and
+ * 2026-10-21 (run 39634702670 silently skipped them), so /push_dispatch holds
+ * a backlog. Sending it hours late would ping people about turns that already
+ * moved on. Anything queued after the go-live deploy is newer than this, so
+ * the cutoff is a no-op from then on.
+ */
+export const PUSH_BACKLOG_CUTOFF_MS = Date.parse("2026-10-22T04:00:00Z");
+
 /** The scheduled retry pass leaves docs younger than this to the create trigger. */
 export const RETRY_MIN_AGE_MS = 2 * 60 * 1000;
 
@@ -134,7 +144,10 @@ export async function deliverDispatch(doc: QueuedDoc, deps: DrainDeps): Promise<
       await doc.delete();
       return "malformed";
     }
-    if (payload.createdAtMs !== null && deps.nowMs - payload.createdAtMs > PUSH_TTL_MS) {
+    if (
+      payload.createdAtMs !== null &&
+      (deps.nowMs - payload.createdAtMs > PUSH_TTL_MS || payload.createdAtMs < PUSH_BACKLOG_CUTOFF_MS)
+    ) {
       await doc.delete();
       return "expired";
     }
