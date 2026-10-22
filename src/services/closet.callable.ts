@@ -45,8 +45,7 @@ export async function callCloset<Req, Res>(name: string, data: Req): Promise<Res
       return await invoke<Req, Res>(name, data);
     } catch (err) {
       if (!isDeviceCheckFailure(err)) throw err;
-      const code = (err as { code?: unknown }).code;
-      logger.warn("closet_device_check_failed", { name, code: typeof code === "string" ? code : "unknown" });
+      logger.warn("closet_device_check_failed", { name, code: String((err as { code?: unknown }).code) });
       if (!(await askDeviceCheckRetry())) throw err instanceof DeviceCheckError ? err : new DeviceCheckError();
     }
   }
