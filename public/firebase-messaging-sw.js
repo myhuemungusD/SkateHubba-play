@@ -4,8 +4,8 @@
 // with the correct scope.
 //
 // ⚠️  Keep the CDN version below in sync with the `firebase` version in package.json.
-importScripts("https://www.gstatic.com/firebasejs/12.11.0/firebase-app-compat.js");
-importScripts("https://www.gstatic.com/firebasejs/12.11.0/firebase-messaging-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/12.19.0/firebase-messaging-compat.js");
 importScripts("/asset-cache-logic.js");
 
 // Firebase config is injected at build time by the Vite plugin (see vite.config.ts).
@@ -30,10 +30,15 @@ firebase.initializeApp({
 var messaging = firebase.messaging();
 
 messaging.onBackgroundMessage(function (payload) {
-  var notification = payload.notification || {};
-  var title = notification.title || "SkateHubba";
+  // A message with a `notification` block is already shown by the Firebase SDK
+  // itself, and its tap opens webpush.fcmOptions.link (set by the couriers in
+  // functions/src/push/drain.ts and api/cron/drain-push-dispatch.ts). Showing
+  // it again here produced two notifications per push, one of which did
+  // nothing on tap. Only data-only messages are drawn by hand below.
+  if (payload.notification) return;
+  var title = "SkateHubba";
   var options = {
-    body: notification.body || "You have a new notification",
+    body: "You have a new notification",
     icon: "/icon-192.png",
     badge: "/icon-192.png",
     data: payload.data || {},

@@ -17,6 +17,7 @@
  * by any future writer, still never reaches an iPhone while dice is off there.
  */
 import { diceEligibleTokens, isDicePush } from "./platforms.js";
+import { webpushOptions, type WebpushOptions } from "./webpush.js";
 
 /** Drop undelivered pushes older than this. Matches the endpoint's TTL. */
 export const PUSH_TTL_MS = 24 * 60 * 60 * 1000;
@@ -54,6 +55,7 @@ export interface DrainDeps {
     tokens: string[];
     notification: { title: string; body: string };
     data: Record<string, string>;
+    webpush: WebpushOptions;
   }) => Promise<MulticastResult>;
   /** Remove dead tokens from pushTargets + private profile. */
   prune: (recipientUid: string, dead: string[]) => Promise<void>;
@@ -152,6 +154,8 @@ export async function deliverDispatch(doc: QueuedDoc, deps: DrainDeps): Promise<
       tokens,
       notification: { title: payload.title, body: payload.body },
       data: payload.data,
+      // Tap link, icon and per-game tag for web tokens (see webpush.ts).
+      webpush: webpushOptions(payload.data),
     });
 
     const dead: string[] = [];
