@@ -1,9 +1,10 @@
 /**
  * Store one device's push token for a user: the owner-only canonical list in
  * users/{uid}/private/profile.fcmTokens and the cross-readable mirror in
- * pushTargets/{uid} (tokens plus the per-token platform tag). Shared by the
- * web path (src/services/fcm.ts) and the native path
- * (src/services/pushNotifications.ts) so both obey the same cap.
+ * pushTargets/{uid} (tokens plus the per-token platform tag). Used by the
+ * native path (src/services/pushNotifications.ts). The web path
+ * (src/services/fcm.ts) carries the same cap from #804; once both are on main
+ * it should call this helper too, so there is one copy of the rule.
  *
  * The two writes are separate on purpose: each doc has its own rules, and a
  * partial write (private lands, mirror fails) heals on the next registration.
