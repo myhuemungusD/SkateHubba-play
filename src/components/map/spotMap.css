@@ -1,0 +1,50 @@
+/*
+ * Spot map markers: the pulsing spot ring and the "you are here" dot.
+ *
+ * A real stylesheet, bundled with the map chunk next to mapbox-gl.css. It used
+ * to be a <style> element injected at runtime (injectPulseCSS), which the
+ * production CSP (vercel.json style-src 'self' https://api.mapbox.com) blocks
+ * on every map load, so the ring and dot rendered unstyled. A file served from
+ * 'self' needs no 'unsafe-inline' and no hash.
+ *
+ * prefers-reduced-motion users get a static ring instead of the infinite
+ * pulse (WCAG 2.3.3).
+ */
+@keyframes spot-pulse {
+  0%   { transform: scale(1);   opacity: 1; }
+  70%  { transform: scale(2.2); opacity: 0; }
+  100% { transform: scale(1);   opacity: 0; }
+}
+.spot-pulse-ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid #F97316;
+  animation: spot-pulse 1.8s ease-out infinite;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .spot-pulse-ring {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+.spot-user-dot {
+  width: 12px;
+  height: 12px;
+  background: #F97316;
+  border: 3px solid white;
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(249,115,22,0.5);
+}
+.spot-user-accuracy {
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: rgba(249,115,22,0.15);
+  pointer-events: none;
+}
