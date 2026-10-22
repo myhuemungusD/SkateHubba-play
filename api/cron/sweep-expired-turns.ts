@@ -31,7 +31,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { cert, getApps, initializeApp, type App, type ServiceAccount } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp, type Firestore } from "firebase-admin/firestore";
-import { parseServiceAccountJson } from "./_serviceAccount.js";
+import { describeInitFailure, parseServiceAccountJson } from "./_serviceAccount.js";
 // Relative imports in this file's traced graph need explicit .js extensions:
 // Vercel compiles each file separately (no bundling) and the ESM loader does
 // not do extension resolution. Extensionless specifiers crash the function at
@@ -708,10 +708,10 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
   } catch (err) {
     // Misconfiguration (missing/malformed service account) — surface as 500.
     // The raw error (e.g. a JSON.parse failure on FIREBASE_SERVICE_ACCOUNT_JSON)
-    // can embed a snippet of the secret it failed to parse, so it's logged
-    // server-side only — the client gets a flat message, matching the same
-    // init_failed path in api/account/delete.ts.
-    console.warn(JSON.stringify({ event: "init_failed", message: err instanceof Error ? err.message : String(err) }));
+    // can embed a snippet of the secret it failed to parse, so neither the log
+    // nor the response carries it: the log gets the class and a fixed reason,
+    // matching the init_failed path in api/account/delete.ts.
+    console.warn(JSON.stringify({ event: "init_failed", ...describeInitFailure(err) }));
     captureServerError("sweep_init_failed", err, {}, { redactMessage: true });
     await flushServerErrors();
     res.status(500).json({ error: "init_failed", message: "Server misconfiguration." });

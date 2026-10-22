@@ -113,7 +113,7 @@ describe("sweep handler auth (fail-closed)", () => {
     };
   }
 
-  it("does not leak the raw init error to the client on a malformed service account", async () => {
+  it("does not leak the raw init error to the client or the log on a malformed service account", async () => {
     process.env.CRON_SECRET = "s3cret";
     process.env.FIREBASE_SERVICE_ACCOUNT_JSON = "{not valid json";
     getAppsMock.mockReturnValue([]);
@@ -128,6 +128,11 @@ describe("sweep handler auth (fail-closed)", () => {
     // to parse) goes to the server log only, never the HTTP response.
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("init_failed"));
     expect(JSON.stringify(out.body)).not.toContain("not valid json");
+    // Nor the server log: the line carries the class and a fixed reason only.
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain("not valid json");
+    expect(warnSpy).toHaveBeenCalledWith(
+      JSON.stringify({ event: "init_failed", errorName: "SyntaxError", reason: "service account JSON invalid" }),
+    );
     warnSpy.mockRestore();
   });
 

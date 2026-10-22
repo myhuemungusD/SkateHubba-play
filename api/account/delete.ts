@@ -44,7 +44,7 @@ import { getAuth } from "firebase-admin/auth";
 import { cert, getApps, initializeApp, type App, type ServiceAccount } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
-import { parseServiceAccountJson } from "../cron/_serviceAccount.js";
+import { describeInitFailure, parseServiceAccountJson } from "../cron/_serviceAccount.js";
 import { deleteUserDataAsAdmin, type DeletionSummary } from "./_deleteUserData.js";
 import { erasePosthogPerson } from "./_posthogErasure.js";
 import { eraseUnderageSignIn, RacedCascadeError, type UnderageOutcome } from "./_underage.js";
@@ -80,10 +80,17 @@ interface ApiResponse {
  * Origins allowed to call this endpoint cross-origin.
  *
  * On the web this is same-origin and CORS never engages. It engages on native:
- * the Capacitor webview serves the app from `capacitor://localhost` (iOS) or
- * `https://localhost` (Android), so a call to the deployed API is cross-origin
- * and the browser will preflight it. Without this the native delete-account
- * flow cannot work at all — which the App Store requires to exist.
+ * the Capacitor webview serves the app from `https://localhost` (both
+ * platforms, `capacitor.config.ts` sets `iosScheme`/`androidScheme: "https"`;
+ * `capacitor://localhost` is Capacitor's iOS default and stays listed so a
+ * scheme change can't silently break deletion), so a call to the deployed API
+ * is cross-origin and the browser will preflight it. Without this the native
+ * delete-account flow cannot work at all — which the App Store requires to exist.
+ *
+ * Plain-http dev origins (`DEV_ORIGINS`) are allowed only outside production
+ * (`VERCEL_ENV !== "production"`: local `vercel dev`, preview deploys). In
+ * production a page on someone's own machine has no reason to drive this
+ * endpoint, and no shipped build serves from http.
  *
  * CORS is not the security boundary here; the ID token is. This allowlist only
  * decides who may *ask*, and every request still has to present a freshly
@@ -91,13 +98,18 @@ interface ApiResponse {
  * rather than `*` so a hostile page cannot silently drive the endpoint with a
  * token it somehow obtained.
  */
+const PRODUCTION_ORIGINS = [
+  "https://skatehubba.com",
+  "https://www.skatehubba.com",
+  "capacitor://localhost",
+  "https://localhost",
+];
+/** Local dev only: bare localhost, the Vite dev server and `vite preview`. */
+const DEV_ORIGINS = ["http://localhost", "http://localhost:5173", "http://localhost:4173"];
 const ALLOWED_ORIGINS = new Set(
   [
-    "https://skatehubba.com",
-    "https://www.skatehubba.com",
-    "capacitor://localhost",
-    "https://localhost",
-    "http://localhost",
+    ...PRODUCTION_ORIGINS,
+    ...(process.env.VERCEL_ENV === "production" ? [] : DEV_ORIGINS),
     process.env.ACCOUNT_DELETE_ALLOWED_ORIGIN,
   ].filter((o): o is string => typeof o === "string" && o.length > 0),
 );
@@ -313,9 +325,10 @@ async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
   try {
     app = getAdminApp();
   } catch (err) {
-    log("account_delete_init_failed", { error: err instanceof Error ? err.message : String(err) });
-    // redactMessage: a parse failure on FIREBASE_SERVICE_ACCOUNT_JSON quotes
-    // part of the secret in its message.
+    // Never err.message: a parse failure on FIREBASE_SERVICE_ACCOUNT_JSON quotes
+    // part of the secret. The log gets the class and a fixed reason; Sentry
+    // gets a message-free error (redactMessage).
+    log("account_delete_init_failed", describeInitFailure(err));
     captureServerError("account_delete_init_failed", err, {}, { redactMessage: true });
     await flushServerErrors();
     fail(res, 500, "init_failed", "Server misconfiguration.");
