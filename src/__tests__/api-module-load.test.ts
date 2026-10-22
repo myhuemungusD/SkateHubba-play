@@ -13,34 +13,99 @@ import { describe, expect, it } from "vitest";
  * (ERR_REQUIRE_ESM). package.json overrides jwks-rsa's jose to 5.x (dual
  * CJS/ESM). scripts/check-api-module-load.mjs loads every function in a fresh
  * Node with require(esm) disabled, the way Vercel does.
+ *
+ * Then it crashed again one step later: getStorage() lazy-loads
+ * @google-cloud/storage → gaxios 6 → require("uuid"), and the root override
+ * forced ESM-only uuid 14 → 500 erasure_failed. The override is now uuid
+ * ^11.1.1 (patched for GHSA-w5hq-g745-h8pq, still ships CJS), and the guard
+ * also runs call-time probes (scripts/api-call-time-probes.mjs) that drive the
+ * SDK calls and the real deletion handler/helpers, offline and credential-free.
  */
 const root = resolve(__dirname, "../..");
 const req = createRequire(resolve(root, "package.json"));
 
-type CheckResult = {
-  ok: boolean;
-  error?: string;
-  results: { entry: string; ok: boolean; code: number | null; out: string }[];
+type RunResult = { entry: string; ok: boolean; code: number | null; out: string };
+type CheckResult = { ok: boolean; error?: string; results: RunResult[]; probeResults: RunResult[] };
+type Probes = Record<string, { covers: string[]; mustLoad: string[] }>;
+
+const scriptsDir = resolve(root, "scripts");
+const loadScripts = async () => {
+  const guard = (await import(/* @vite-ignore */ resolve(scriptsDir, "check-api-module-load.mjs"))) as {
+    checkApiModuleLoad: () => Promise<CheckResult>;
+    listFunctionEntries: () => string[];
+    listApiExternalImports: () => string[];
+  };
+  const probes = (await import(/* @vite-ignore */ resolve(scriptsDir, "api-call-time-probes.mjs"))) as {
+    PROBES: Probes;
+    MODULE_LOAD_ERROR: RegExp;
+  };
+  return { ...guard, ...probes };
 };
 
 describe("api functions load like on Vercel", () => {
-  it("every function entry loads its full dependency graph without crashing", async () => {
-    const script = resolve(root, "scripts/check-api-module-load.mjs");
-    const { checkApiModuleLoad, listFunctionEntries } = (await import(/* @vite-ignore */ script)) as {
-      checkApiModuleLoad: () => Promise<CheckResult>;
-      listFunctionEntries: () => string[];
-    };
+  it("every function entry loads, and every call-time SDK path runs, without a module-load crash", async () => {
+    const { checkApiModuleLoad, listFunctionEntries, PROBES } = await loadScripts();
     const entries = listFunctionEntries();
     expect(entries).toContain("api/account/delete.ts");
     expect(entries.some((e) => e.split("/").some((part) => part.startsWith("_")))).toBe(false);
 
-    const { ok, error, results } = await checkApiModuleLoad();
-    const failures = results.filter((r) => !r.ok).map((r) => `${r.entry} (exit ${r.code}):\n${r.out}`);
+    const { ok, error, results, probeResults } = await checkApiModuleLoad();
+    const failures = [...results, ...probeResults]
+      .filter((r) => !r.ok)
+      .map((r) => `${r.entry} (exit ${r.code}):\n${r.out}`);
     expect(error).toBeUndefined();
     expect(failures).toEqual([]);
     expect(results.map((r) => r.entry)).toEqual(entries);
+    expect(probeResults.map((r) => r.entry)).toEqual(Object.keys(PROBES).map((n) => `probe:${n}`));
+    expect(probeResults.map((r) => r.entry)).toContain("probe:api/account/delete");
     expect(ok).toBe(true);
   }, 120_000);
+
+  it("every package api/ loads at runtime (import or import()) has a call-time probe", async () => {
+    const { listApiExternalImports, PROBES } = await loadScripts();
+    const imports = listApiExternalImports();
+    // Sanity: the scan sees the static SDK imports and api/_sentry.ts's import("@sentry/node").
+    expect(imports).toEqual(expect.arrayContaining(["firebase-admin/storage", "@sentry/node"]));
+    const covered = new Set(Object.values(PROBES).flatMap((p) => p.covers));
+    expect(imports.filter((s) => !covered.has(s))).toEqual([]);
+    // The deletion path's lazy Storage chain is asserted, not just reached.
+    expect(PROBES["firebase-admin/storage"].mustLoad).toEqual(["@google-cloud/storage", "gaxios", "uuid"]);
+  });
+
+  it("recognises the prod erasure_failed error as a module-load failure", async () => {
+    const { MODULE_LOAD_ERROR } = await loadScripts();
+    const prod =
+      'Failed to import the Cloud Storage client library for Node.js. Make sure to install the "@google-cloud/storage" npm package. Original error: Error [ERR_REQUIRE_ESM]: require() of ES Module /var/task/node_modules/uuid/dist-node/index.js from /var/task/node_modules/gaxios/build/src/gaxios.js not supported.';
+    expect(MODULE_LOAD_ERROR.test(prod)).toBe(true);
+    expect(
+      MODULE_LOAD_ERROR.test("request to https://www.googleapis.com/oauth2/v4/token failed, reason: network disabled"),
+    ).toBe(false);
+  });
+
+  it("pins uuid to the newest patched major that still ships CommonJS, everywhere in the tree", () => {
+    const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as {
+      overrides?: Record<string, unknown>;
+    };
+    // uuid 12+ is ESM-only; gaxios 6 (prod: @google-cloud/storage) and xcode (dev) require() it.
+    // 11.1.1 is the GHSA-w5hq-g745-h8pq fix for the 11.x line.
+    expect(pkg.overrides?.uuid).toBe("^11.1.1");
+    const lock = JSON.parse(readFileSync(resolve(root, "package-lock.json"), "utf8")) as {
+      packages: Record<string, { version?: string }>;
+    };
+    const copies = Object.entries(lock.packages).filter(([path]) => /(^|\/)node_modules\/uuid$/.test(path));
+    expect(copies.length).toBeGreaterThan(0);
+    for (const [path, { version }] of copies) {
+      const [major, minor, patch] = (version ?? "0.0.0").split(".").map(Number);
+      expect({ path, major }).toEqual({ path, major: 11 });
+      expect(minor * 1000 + patch, `${path}@${version}`).toBeGreaterThanOrEqual(1001);
+      const installed = JSON.parse(readFileSync(resolve(root, path, "package.json"), "utf8")) as {
+        exports: Record<string, { node?: { require?: string } }>;
+      };
+      expect(installed.exports["."].node?.require, `${path} has a CommonJS entry`).toBeTruthy();
+    }
+    const gaxiosReq = createRequire(req.resolve("gaxios"));
+    expect((gaxiosReq("uuid/package.json") as { version: string }).version).toMatch(/^11\./);
+  });
 
   it("pins jwks-rsa's jose to a CommonJS-loadable 5.x", () => {
     const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as {
