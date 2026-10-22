@@ -184,6 +184,11 @@ jobs:
             rm -f "$DEST"
             exit 1
           fi
+          # Print the on/off switches (true/false only, never uids or DSNs) so
+          # every deploy log shows which server features went live.
+          for key in XP_ENABLED DICE_ENABLED MODERATION_ENABLED PRO_BLESSING_ENABLED; do
+            echo "${key}=$(grep -E "^${key}=" "$DEST" | head -n 1 | cut -d= -f2- | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]') (FUNCTIONS_DOTENV)"
+          done
           # Mask longer values (uids, DSNs) so a later CLI log line cannot
           # echo them. Short values like true/false stay readable.
           while IFS= read -r line || [ -n "$line" ]; do
