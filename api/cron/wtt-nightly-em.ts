@@ -6,6 +6,8 @@
  * NOT YET DEPLOYED — stubbed behind WTT_ENABLED flag.
  */
 
+import { wttFailureResponse } from "./_wttFailure.js";
+
 // WTT_ENABLED would be imported from config when this is deployed
 const WTT_ENABLED = false;
 
@@ -65,13 +67,7 @@ export default async function wttNightlyEm(req: Request): Promise<Response> {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error("[WTT] wttNightlyEm error:", error);
-    return Response.json(
-      {
-        error: "Failed to run WTT nightly EM",
-        message: error instanceof Error ? error.message : String(error),
-      },
-      { status: 500 },
-    );
+    // Never error.message, in the log or the body (api/_safeError.ts).
+    return wttFailureResponse("wtt_nightly_em_failed", error, "Failed to run WTT nightly EM");
   }
 }

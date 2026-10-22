@@ -50,7 +50,7 @@ import {
   type QueryDocumentSnapshot,
   type Transaction,
 } from "firebase-admin/firestore";
-import { parseServiceAccountJson } from "./_serviceAccount.js";
+import { describeInitFailure, parseServiceAccountJson } from "./_serviceAccount.js";
 // Relative imports in this file's traced graph need explicit .js extensions:
 // Vercel compiles each file separately (no bundling) and the ESM loader does
 // not do extension resolution. Extensionless specifiers crash the function at
@@ -705,9 +705,12 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
   try {
     db = getAdminFirestore();
   } catch (err) {
+    // Never err.message, in the log or the body: a JSON.parse failure on
+    // FIREBASE_SERVICE_ACCOUNT_JSON quotes part of the secret.
+    console.warn(JSON.stringify({ event: "init_failed", ...describeInitFailure(err) }));
     captureServerError("resolve_init_failed", err, {}, { redactMessage: true });
     await flushServerErrors();
-    res.status(500).json({ error: "init_failed", message: err instanceof Error ? err.message : String(err) });
+    res.status(500).json({ error: "init_failed", message: "Server misconfiguration." });
     return;
   }
 
