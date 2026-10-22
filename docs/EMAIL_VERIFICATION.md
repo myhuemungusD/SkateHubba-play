@@ -27,7 +27,28 @@ Play is gated on a verified email. `firestore.rules` requires `request.auth.toke
 
 `getActionCodeSettings()` sets `url` to `VITE_APP_URL` or, if that is unset, `window.location.origin`, and `handleCodeInApp: false`. The host of that URL has to be an authorized domain or the first send is rejected and the fallback sends Firebase's own handler link.
 
-There is **no custom SMTP, sender address, or email template in this repository**. Password reset uses the same continue URL. Delivery is entirely the Firebase Authentication email pipeline configured in the console.
+There is **no SMTP code, sender address, or email template in this repository**. Password reset uses the same continue URL. Delivery is the Firebase Authentication email pipeline configured in the console.
+
+### Current sender (since 2026-10-21)
+
+Firebase Auth mail (verification and password reset) goes out as **`SkateHubba <noreply@skatehubba.com>`**. Reply-to is `info@skatehubba.com`.
+
+- `skatehubba.com` is verified as a custom domain under Authentication → Templates. That gives the Firebase sender an aligned From domain, which is why Gmail now delivers it. The old `noreply@sk8hub-d7806.firebaseapp.com` sender was being dropped.
+- Custom SMTP is **off**. Firebase's built-in sender still does the sending, so there is no third-party mail account, API key or send log to maintain.
+- The earlier plan to send through Resend is dropped. Nothing in the app depends on it.
+- Delivery to a Gmail inbox was confirmed on 2026-10-21 with the `mailtest1022` account below.
+
+If the domain verification is ever removed (for example after DNS records change), mail falls back to the `firebaseapp.com` sender, and Gmail starts dropping it again. Check the DNS records under Authentication → Templates first.
+
+### Known prod test accounts
+
+These are QA accounts on prod. Exclude them from metrics, and don't treat them as real players when you look at reports or the directory.
+
+| Handle                         | Email                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------- |
+| `qa_tester_1` to `qa_tester_3` | see [AUDIT_2026-10-10.md](audits/AUDIT_2026-10-10.md#test-accounts)       |
+| `hesher_rips`, `hesher_grinds` | `skatehubba.ai+hesher.a@gmail.com`, `skatehubba.ai+hesher.b@gmail.com`    |
+| `mailtest1022`                 | `skatehubba.ai+mailtest1022@gmail.com` (email delivery check, 2026-10-21) |
 
 App Check did not block these three signups. A 403 from `exchangeRecaptchaV3Token` is the headless/datacenter case documented in [APPCHECK_ROLLOUT.md](APPCHECK_ROLLOUT.md); Auth still created the accounts. If Identity Toolkit App Check were **Enforced**, `sendEmailVerification` would throw and the app would have shown a failure, not "accepted". It showed acceptance, so the send was not rejected.
 
@@ -36,10 +57,10 @@ App Check did not block these three signups. A 403 from `exchangeRecaptchaV3Toke
 Open [the Firebase console](https://console.firebase.google.com) for project **sk8hub-d7806**. Do not flip enforcement while checking.
 
 1. **Authentication → Templates → Email address verification**
-   - Sender name and From address. The default is a `noreply@<project>.firebaseapp.com` address. Gmail frequently files or drops that sender, including past the spam folder (it never appears).
-   - Reply-to, if set.
+   - Sender name and From address. Both should read `SkateHubba <noreply@skatehubba.com>` with the custom domain shown as verified. If the address shows `noreply@<project>.firebaseapp.com` instead, the domain verification was lost; Gmail drops that sender, past the spam folder.
+   - Reply-to should be `info@skatehubba.com`.
    - Whether the template is still the Firebase default or a custom one, and that the action link is still in the body.
-   - **SMTP settings** on that same Templates page (or Authentication → Templates → SMTP). If a custom SMTP host is connected, check its send log and bounce log for these three addresses. If no custom SMTP is connected, Firebase's built-in sender is what shipped the mail — and that is the likely reason Gmail has nothing.
+   - **SMTP settings** on that same Templates page should be **off**. Built-in sending with the verified custom domain is the supported setup (see "Current sender" above).
 
 2. **Authentication → Settings → Authorized domains**
    - Must include `skatehubba.com` and `www.skatehubba.com`.
