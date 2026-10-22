@@ -38,14 +38,39 @@ describe("safeErrorName", () => {
 describe("safeErrorCode", () => {
   it.each([
     ["a Firebase auth code", { code: "auth/id-token-expired" }, "auth/id-token-expired"],
-    ["a bare code", { code: "ENOTFOUND" }, "ENOTFOUND"],
+    ["a bare Firebase code", { code: "permission-denied" }, "permission-denied"],
+    ["a Node errno code", { code: "ENOTFOUND" }, "ENOTFOUND"],
+    ["a Node errno code with an underscore", { code: "EAI_AGAIN" }, "EAI_AGAIN"],
+    ["a Node ERR_ code", { code: "ERR_REQUIRE_ESM" }, "ERR_REQUIRE_ESM"],
+    ["a Node ERR_ code with digits", { code: "ERR_HTTP2_STREAM_ERROR" }, "ERR_HTTP2_STREAM_ERROR"],
+    ["a TLS code", { code: "CERT_HAS_EXPIRED" }, "CERT_HAS_EXPIRED"],
+    ["an undici code", { code: "UND_ERR_SOCKET" }, "UND_ERR_SOCKET"],
+    [
+      "the longest Firebase Auth code",
+      { code: "auth/account-exists-with-different-credential" },
+      "auth/account-exists-with-different-credential",
+    ],
+    ["a gRPC status as grpc-<n>", { code: 5 }, "grpc-5"],
+    ["gRPC status 0", { code: 0 }, "grpc-0"],
   ])("returns %s", (_label, fields, expected) => {
     expect(safeErrorCode(Object.assign(new Error("Firebase ID token has expired."), fields))).toBe(expected);
   });
 
   it.each([
     ["a code with free text", { code: "auth/expired PRIVATE KEY" }],
-    ["a non-string code", { code: 401 }],
+    ["an out-of-range number", { code: 401 }],
+    ["a fractional number", { code: 1.5 }],
+    ["a negative number", { code: -1 }],
+    // Synthetic uid-shaped values (28 chars): never a real uid in this public repo.
+    ["a mixed-case uid", { code: "Ab3dEf6hIj9kLm2nOp5qRs8tUv1w" }],
+    ["an all-lowercase uid", { code: "ab3def6hij9klm2nop5qrs8tuv1w" }],
+    ["an all-uppercase uid starting with E", { code: "EB3DEF6HIJ9KLM2NOP5QRS8TUV1W" }],
+    ["a code with digits", { code: "auth/error-42" }],
+    ["an uppercase uid with digits but no underscore", { code: "AB3DEF6HIJ9KLM2NOP5QRS8TUV1W" }],
+    ["an underscore code with a lowercase letter", { code: "ERR_Http2" }],
+    ["an over-long code", { code: `auth/${"a".repeat(60)}` }],
+    ["a mixed-case word", { code: "Auth/Expired" }],
+    ["a non-string, non-number code", { code: true }],
     ["no code", {}],
   ])("falls back to the class for %s", (_label, fields) => {
     expect(safeErrorCode(Object.assign(new RangeError("PRIVATE KEY"), fields))).toBe("RangeError");

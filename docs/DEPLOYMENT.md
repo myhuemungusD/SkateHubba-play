@@ -582,8 +582,9 @@ the workflow's query string.
 > The endpoint's log lines never carry the raw uid (they may be forwarded to
 > Sentry, and an audit trail shouldn't hold the identifier it erased). Every
 > line carries `uidHash` instead: `hashUid(uid)` from `src/utils/pii.ts`, the
-> same value its Sentry events carry. Firebase error text that quotes the uid is
-> logged with `[uid]` in its place. To trace one deletion, hash the uid the
+> same value its Sentry events carry. Failure lines log the error's `code`
+> (`safeErrorCode`, `api/_safeError.ts`), never its message, which can quote the
+> uid or other users' doc paths. To trace one deletion, hash the uid the
 > same way and search the logs for `account_delete_attempt` and
 > `account_delete_success` with that `uidHash`.
 

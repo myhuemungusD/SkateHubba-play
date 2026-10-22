@@ -54,6 +54,7 @@ import { describeInitFailure, parseServiceAccountJson } from "./_serviceAccount.
 import { diceEligibleTokens, isDicePush } from "./_pushPlatforms.js";
 import { webpushOptions } from "./_pushWebpush.js";
 import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
+import { safeErrorCode } from "../_safeError.js";
 
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
 const FIRESTORE_DB_NAME = "skatehubba";
@@ -275,7 +276,7 @@ async function pruneDeadTokens(db: Firestore, recipientUid: string, dead: string
       JSON.stringify({
         event: "drain_prune_failed",
         recipientUid,
-        message: err instanceof Error ? err.message : String(err),
+        code: safeErrorCode(err),
       }),
     );
     captureServerError("drain_prune_failed", err, { recipientUid }, { level: "warning" });
@@ -396,7 +397,7 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
           JSON.stringify({
             event: "drain_dispatch_failed",
             dispatchId: docSnap.id,
-            message: err instanceof Error ? err.message : String(err),
+            code: safeErrorCode(err),
           }),
         );
         captureServerError("drain_dispatch_failed", err, { dispatchId: docSnap.id }, { level: "warning" });
@@ -408,7 +409,7 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
   } catch (err) {
     // Query-level failure (index missing, permission, etc). Never throw to the
     // platform — return what we have plus the error so the cron logs surface it.
-    console.warn(JSON.stringify({ event: "drain_failed", message: err instanceof Error ? err.message : String(err) }));
+    console.warn(JSON.stringify({ event: "drain_failed", code: safeErrorCode(err) }));
     captureServerError("drain_failed", err);
     await flushServerErrors();
     res.status(500).json({ ...summary, error: "drain_failed" });
