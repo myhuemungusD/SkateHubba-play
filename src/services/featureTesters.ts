@@ -1,6 +1,6 @@
 import { doc, getDoc } from "firebase/firestore";
 import { requireDb } from "../firebase";
-import { FEATURE_TESTER_STORAGE_KEY } from "../lib/featureFlags";
+import { FEATURE_TESTER_STORAGE_KEY, isNativeShell } from "../lib/featureFlags";
 import { logger } from "./logger";
 
 /**
@@ -42,12 +42,14 @@ function writeStored(uid: string | null): void {
 /**
  * Bring the stored override in line with the signed-in user. Flags are read
  * synchronously during render, so a change reloads the page once; returns
- * true when it did. A non-tester with nothing stored never reloads.
+ * true when it did. A non-tester with nothing stored never reloads. Native
+ * builds ignore the override (App Store 2.3.1), so there it does nothing.
  */
 export async function syncFeatureTester(
   uid: string | null,
   reload: () => void = () => window.location.reload(),
 ): Promise<boolean> {
+  if (isNativeShell()) return false;
   const want = uid && (await fetchIsFeatureTester(uid)) ? uid : null;
   if (want === readStored()) return false;
   writeStored(want);
