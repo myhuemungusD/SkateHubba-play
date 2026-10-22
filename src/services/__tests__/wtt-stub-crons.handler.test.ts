@@ -1,7 +1,7 @@
 /**
  * The WTT stub crons (`api/cron/build-wtt-items.ts`, `api/cron/wtt-nightly-em.ts`)
- * while WTT is disabled: cron auth first (401), then verb (405), then an
- * immediate 204. They must use the Web signature (`export default { fetch }`):
+ * while WTT is disabled: cron auth first (401), then verb (GET only,
+ * anything else 405), then an immediate 204. They must use the Web signature (`export default { fetch }`):
  * Vercel runs a default-exported function as a Node `(req, res)` handler and
  * drops its returned Response, so the request hung until the function timed out.
  */
@@ -44,11 +44,6 @@ describe.each([
     expect(log).not.toHaveBeenCalled();
   });
 
-  it("returns 204 for an authorized POST", async () => {
-    const res = await handler(req("POST", `Bearer ${SECRET}`));
-    expect(res.status).toBe(204);
-  });
-
   it.each([
     ["no Authorization header", undefined],
     ["an empty header", ""],
@@ -72,9 +67,14 @@ describe.each([
     expect(res.status).toBe(401);
   });
 
-  it("refuses other verbs with 405 once authorized", async () => {
-    const res = await handler(req("DELETE", `Bearer ${SECRET}`));
+  it.each(["POST", "PUT", "PATCH", "DELETE"])("refuses %s with 405 once authorized (GET only)", async (method) => {
+    const res = await handler(req(method, `Bearer ${SECRET}`));
     expect(res.status).toBe(405);
     expect(await res.json()).toEqual({ error: "method_not_allowed" });
+  });
+
+  it("checks auth before the verb for POST too, so an unauthenticated POST gets 401", async () => {
+    const res = await handler(req("POST"));
+    expect(res.status).toBe(401);
   });
 });

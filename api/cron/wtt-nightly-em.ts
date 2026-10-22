@@ -25,7 +25,8 @@ export async function wttNightlyEm(req: Request): Promise<Response> {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  if (req.method !== "GET" && req.method !== "POST") {
+  // GET only, like the live crons (Vercel Cron sends GET); POST included gets 405.
+  if (req.method !== "GET") {
     return Response.json({ error: "method_not_allowed" }, { status: 405 });
   }
 
