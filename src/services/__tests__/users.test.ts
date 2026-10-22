@@ -868,6 +868,20 @@ describe("users service", () => {
       const result = await getPlayerDirectory();
       expect(result).toEqual([]);
     });
+
+    it("skips test accounts but keeps docs with the flag absent or false", async () => {
+      const profiles = [
+        { uid: "u1", username: "real", stance: "regular" },
+        { uid: "u2", username: "qa_tester_1", stance: "goofy", isTestAccount: true },
+        { uid: "u3", username: "flag_off", stance: "goofy", isTestAccount: false },
+      ];
+      mockGetDocs.mockResolvedValueOnce({ docs: profiles.map((p) => ({ data: () => p })) });
+
+      const result = await getPlayerDirectory();
+      expect(result.map((p) => p.username)).toEqual(["real", "flag_off"]);
+      // No server-side filter: a where() on the flag would drop every doc without it.
+      expect(mockWhere).not.toHaveBeenCalledWith("isTestAccount", expect.anything(), expect.anything());
+    });
   });
 
   describe("getUidByUsername", () => {
@@ -974,6 +988,18 @@ describe("users service", () => {
       const result = await getLeaderboard();
 
       expect(result.map((p) => p.username)).toEqual(["ripper", "grinder"]);
+    });
+
+    it("leaves test accounts off the leaderboard", async () => {
+      const profiles = [
+        { uid: "u1", username: "qa_tester_2", wins: 9, losses: 0, isTestAccount: true, stance: "regular" },
+        { uid: "u2", username: "real", wins: 5, losses: 0, stance: "goofy" },
+      ];
+      mockGetDocs.mockResolvedValueOnce({ docs: profiles.map((p) => ({ data: () => p })) });
+
+      const result = await getLeaderboard();
+
+      expect(result.map((p) => p.username)).toEqual(["real"]);
     });
 
     it("defaults missing wins/losses to 0 and sorts alphabetically as tiebreaker", async () => {

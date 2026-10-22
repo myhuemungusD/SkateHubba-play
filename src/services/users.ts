@@ -159,6 +159,22 @@ export interface UserProfile {
   profileImageUrl?: string | null;
   /** Profile banner URL, pinned to `users/{uid}/banner.webp` (see banners.ts). */
   bannerImageUrl?: string | null;
+  /**
+   * Internal QA / test account. Set only by the Admin SDK
+   * (scripts/set-test-account.mjs); the rules deny it on client create and
+   * update. Absent means a real player. Public lists skip these accounts.
+   */
+  isTestAccount?: boolean;
+}
+
+/**
+ * Public lists (directory, opponent pickers, leaderboard) skip test accounts.
+ * Filtered here rather than in the query: `where("isTestAccount", "!=", true)`
+ * would drop every doc that lacks the field, which is every real player, and
+ * would need a composite index with each list's orderBy.
+ */
+function isPubliclyListed(p: UserProfile): boolean {
+  return p.isTestAccount !== true;
 }
 
 /**
@@ -626,7 +642,7 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
 export async function getPlayerDirectory(): Promise<UserProfile[]> {
   const q = query(collection(requireDb(), "users"), orderBy("createdAt", "desc"), limit(100));
   const snap = await withRetry(() => getDocs(q));
-  return snap.docs.map((d) => d.data() as UserProfile);
+  return snap.docs.map((d) => d.data() as UserProfile).filter(isPubliclyListed);
 }
 
 /**
@@ -664,7 +680,7 @@ const LEADERBOARD_CANDIDATE_POOL = LEADERBOARD_SIZE * 4;
 export async function getLeaderboard(): Promise<UserProfile[]> {
   const q = query(collection(requireDb(), "users"), orderBy("wins", "desc"), limit(LEADERBOARD_CANDIDATE_POOL));
   const snap = await withRetry(() => getDocs(q));
-  const profiles = snap.docs.map((d) => d.data() as UserProfile);
+  const profiles = snap.docs.map((d) => d.data() as UserProfile).filter(isPubliclyListed);
 
   return profiles
     .sort((a, b) => {
