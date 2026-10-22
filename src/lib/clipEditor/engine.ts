@@ -222,7 +222,15 @@ export class EditorEngine {
             if (!v) return resolve();
             const target = Math.max(0, Math.min(a.durationSec, src - a.offsetSec));
             if (Math.abs(v.currentTime - target) < 0.001) return resolve();
-            v.addEventListener("seeked", () => resolve(), { once: true });
+            // Settle on error too: a broken source never fires `seeked`, and a
+            // seek that never settles would leave play() waiting forever.
+            const done = () => {
+              v.removeEventListener("seeked", done);
+              v.removeEventListener("error", done);
+              resolve();
+            };
+            v.addEventListener("seeked", done);
+            v.addEventListener("error", done);
             v.currentTime = target;
           }),
       ),

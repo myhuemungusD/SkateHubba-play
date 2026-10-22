@@ -4,6 +4,7 @@ import { within, render, screen, fireEvent, waitFor, act } from "@testing-librar
 const engine = vi.hoisted(() => ({
   instances: [] as unknown[],
   throwOnCreate: false,
+  seekRejects: false,
   playing: false,
 }));
 
@@ -14,7 +15,9 @@ vi.mock("../../../lib/clipEditor/engine", () => ({
       setSources: vi.fn(),
       setProject: vi.fn(),
       loadAudio: vi.fn().mockResolvedValue(undefined),
-      seek: vi.fn().mockResolvedValue(undefined),
+      seek: vi.fn(async () => {
+        if (engine.seekRejects) throw new Error("draw failed");
+      }),
       play: vi.fn(async () => {
         engine.playing = true;
       }),
@@ -48,6 +51,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   engine.instances = [];
   engine.throwOnCreate = false;
+  engine.seekRejects = false;
   engine.playing = false;
   readAngle.mockImplementation(async (_b: Blob, id: string, label: string) => angle(id, label));
   support.mockResolvedValue({ available: false, supports4k: false, supports60: false });
@@ -145,6 +149,12 @@ describe("ClipEditor", () => {
     expect(await screen.findByText("Couldn't open this clip.")).toBeInTheDocument();
     fireEvent.click(screen.getByText("Back"));
     expect(onCancel).toHaveBeenCalled();
+  });
+
+  it("shows an error instead of an unhandled rejection when the first seek fails", async () => {
+    engine.seekRejects = true;
+    renderEditor();
+    expect(await screen.findByText("Couldn't open this clip.")).toBeInTheDocument();
   });
 
   it("explains when WebGL is missing", async () => {

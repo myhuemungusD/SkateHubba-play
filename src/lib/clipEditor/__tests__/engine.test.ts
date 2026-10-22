@@ -45,3 +45,38 @@ describe("EditorEngine", () => {
     expect(() => new EditorEngine(canvas, p)).toThrow("WebGL unavailable");
   });
 });
+
+describe("EditorEngine.seek", () => {
+  // Every WebGL call is a no-op that returns a truthy handle.
+  const fakeGl = (): WebGLRenderingContext =>
+    new Proxy({} as Record<string | symbol, unknown>, {
+      get: (_t, k) => (typeof k === "string" && /^[A-Z_0-9]+$/.test(k) ? 1 : () => ({})),
+    }) as unknown as WebGLRenderingContext;
+  const makeEngine = () => {
+    const canvas = { getContext: () => fakeGl(), width: 1, height: 1 } as unknown as HTMLCanvasElement;
+    const p = createProject({ id: "m", label: "A", durationSec: 5, offsetSec: 0, width: 1, height: 1, fps: 30 });
+    const e = new EditorEngine(canvas, p);
+    e.setSources({ m: "blob:m" });
+    vi.spyOn(e, "draw").mockImplementation(() => {});
+    return e;
+  };
+
+  it("settles when the video reports an error instead of seeked", async () => {
+    const e = makeEngine();
+    const video = (e as unknown as { videos: Map<string, HTMLVideoElement> }).videos.get("m")!;
+    const done = e.seek(2);
+    video.dispatchEvent(new Event("error"));
+    await expect(done).resolves.toBeUndefined();
+  });
+
+  it("settles on seeked and detaches both listeners", async () => {
+    const e = makeEngine();
+    const video = (e as unknown as { videos: Map<string, HTMLVideoElement> }).videos.get("m")!;
+    const remove = vi.spyOn(video, "removeEventListener");
+    const done = e.seek(3);
+    video.dispatchEvent(new Event("seeked"));
+    await expect(done).resolves.toBeUndefined();
+    expect(remove).toHaveBeenCalledWith("seeked", expect.any(Function));
+    expect(remove).toHaveBeenCalledWith("error", expect.any(Function));
+  });
+});

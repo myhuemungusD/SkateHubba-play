@@ -241,6 +241,27 @@ describe("AvatarPicker — native capture failure surfaces user-visible error (a
       vi.doUnmock("@capacitor/camera");
     }
   });
+
+  it("treats backing out of the native picker as a silent no-op, not a denial", async () => {
+    const { Capacitor } = await import("@capacitor/core");
+    const spy = vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(true);
+    const getPhoto = vi.fn().mockRejectedValue(new Error("User cancelled photos app"));
+    vi.doMock("@capacitor/camera", () => ({
+      Camera: { getPhoto },
+      CameraResultType: { Base64: "base64" },
+      CameraSource: { Camera: "CAMERA", Photos: "PHOTOS" },
+    }));
+    try {
+      renderPicker();
+      await userEvent.click(screen.getByText("Choose From Gallery"));
+      await waitFor(() => expect(getPhoto).toHaveBeenCalled());
+      expect(screen.queryByText(/access denied/)).not.toBeInTheDocument();
+      expect(screen.getByText("Choose From Gallery")).toBeInTheDocument();
+    } finally {
+      spy.mockRestore();
+      vi.doUnmock("@capacitor/camera");
+    }
+  });
 });
 
 describe("AvatarPicker — URL scheme validation (audit B-ISSUE-1)", () => {
@@ -355,5 +376,14 @@ describe("AvatarPicker — native capture success", () => {
       spy.mockRestore();
       vi.doUnmock("@capacitor/camera");
     }
+  });
+});
+
+describe("isPickerCancel", () => {
+  it("matches the Capacitor cancel rejection in either shape", async () => {
+    const { isPickerCancel } = await import("../avatarPickerShared");
+    expect(isPickerCancel(new Error("User cancelled photos app"))).toBe(true);
+    expect(isPickerCancel("User cancelled photos app")).toBe(true);
+    expect(isPickerCancel(new Error("Photos permission denied"))).toBe(false);
   });
 });

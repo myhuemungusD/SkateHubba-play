@@ -60,7 +60,7 @@ export function ClipEditor({ blob, onDone, onCancel }: ClipEditorProps) {
           try {
             engineRef.current = new EditorEngine(canvasRef.current, p, setPlayhead);
             engineRef.current.setSources({ main: a.url });
-            void engineRef.current.seek(0);
+            void engineRef.current.seek(0).catch(() => setError("Couldn't open this clip."));
           } catch {
             setError("Your device can't preview edits here. Update your browser or use the iPhone app.");
           }

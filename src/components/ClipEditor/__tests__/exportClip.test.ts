@@ -131,6 +131,7 @@ describe("readAngle", () => {
   it("defaults size and rejects zero duration", async () => {
     stubVideo({ duration: Infinity, videoWidth: 0, videoHeight: 0 }, "onloadedmetadata");
     await expect(readAngle(new Blob(["x"]), "a", "A")).rejects.toThrow("no duration");
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:x");
   });
 
   it("falls back to 1080p when dimensions are missing", async () => {
