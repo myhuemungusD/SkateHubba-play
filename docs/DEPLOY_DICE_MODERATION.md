@@ -186,6 +186,17 @@ Application Default Credentials, which read the short-lived config the auth
 step writes. There is no `FIREBASE_TOKEN` fallback; that token cannot sign
 Admin SDK or Video Intelligence calls.
 
+**Prerequisite (as of 2026-10-21):** `FIREBASE_WIF_PROVIDER` was malformed,
+so the deploy workflows have been running on their `FIREBASE_TOKEN` fallback.
+This workflow has no fallback and fails at the "Check Workload Identity
+Federation secrets" or "Authenticate" step until the secret is fixed. The
+check expects
+`projects/NUMBER/locations/global/workloadIdentityPools/POOL_ID/providers/PROVIDER_ID`.
+Read the value straight from GCP:
+`gcloud iam workload-identity-pools providers describe PROVIDER_ID --location=global --workload-identity-pool=POOL_ID --format='value(name)'`.
+The deploy log line "Authenticated via Workload Identity Federation" confirms
+the fix.
+
 That service account needs, on `sk8hub-d7806`:
 
 | Why                                                                | Role                                      | Scope                                     |

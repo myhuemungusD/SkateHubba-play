@@ -18,7 +18,8 @@ name: Moderation Rescreen (pending clips)
 # the script reads it through Application Default Credentials. Unlike the
 # deploy there is NO `FIREBASE_TOKEN` fallback: that token only drives the
 # Firebase CLI and cannot sign Admin SDK or Video Intelligence calls, so a WIF
-# failure stops the run.
+# failure stops the run. Needs a well-formed FIREBASE_WIF_PROVIDER (it was
+# malformed until the 2026-10-21 fix, while deploys used the token fallback).
 #
 # Guards:
 #   - Dry run by default. A dry run only reads Firestore.
