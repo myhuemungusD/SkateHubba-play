@@ -218,24 +218,32 @@ describe("Smoke: Account & Sign Out", () => {
     });
   });
 
-  it("banner surfaces after sign-back-in and finishes deletion", async () => {
-    // Reproduces the full recovery-gap scenario end-to-end through the
-    // real UI surface under the reverse-order flow:
-    //   1. First delete attempt bounces on auth/requires-recent-login.
-    //      No Firestore data was touched — profile still intact. Pending
-    //      uid is captured in sessionStorage.
-    //   2. User signs out and signs back in with the SAME uid; their
-    //      profile reloads (it was never deleted).
-    //   3. DeleteAccountRetryBanner matches sessionStorage to the user and
-    //      exposes a "Finish" affordance; tapping it re-runs the full
-    //      reverse-order deleteAccount and the flag is cleared.
+  it("banner stays hidden while the profile is intact (Settings still deletes)", async () => {
+    // A requires-recent-login bounce (or a failure before erasure) leaves the
+    // profile in place. Settings → Delete Account still works and its modal
+    // shows the error, so a global "not deleted" alert would only announce
+    // itself during the first attempt and nag a user who changed their mind.
     sessionStorage.setItem("skate.pendingDeleteUid", "u1");
-    authSvc.refs.deleteAccount.mockResolvedValueOnce({ authDeleted: true });
     asUnverifiedUser();
     withGames([]);
     await renderApp();
 
-    // Nothing was erased, so the banner must not claim the data is gone.
+    expect(screen.queryByRole("button", { name: /(finish|retry) deleting your account/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("ACCOUNT NOT DELETED")).not.toBeInTheDocument();
+    // …and the way back is still there.
+    await openDeleteAccountModal();
+    expect(screen.getByText("Delete Account?")).toBeInTheDocument();
+  });
+
+  it("banner offers a retry when the profile is gone but erasure was never confirmed", async () => {
+    // The request failed part-way (or the app was closed mid-way): no profile
+    // to reach Settings from, and no server confirmation that data is gone.
+    sessionStorage.setItem("skate.pendingDeleteUid", "u1");
+    authSvc.refs.deleteAccount.mockResolvedValueOnce({ authDeleted: true });
+    asUnverifiedUser(null);
+    withGames([]);
+    await renderApp();
+
     const retryBtn = await screen.findByRole("button", { name: /retry deleting your account/i });
     expect(screen.getByText("ACCOUNT NOT DELETED")).toBeInTheDocument();
     expect(screen.getByText(/deletion didn't finish/i)).toBeInTheDocument();
@@ -254,7 +262,7 @@ describe("Smoke: Account & Sign Out", () => {
     sessionStorage.setItem("skate.pendingDeleteUid", "u1");
     sessionStorage.setItem("skate.pendingDeleteErased", "u1");
     authSvc.refs.deleteAccount.mockResolvedValueOnce({ authDeleted: true });
-    asUnverifiedUser();
+    asUnverifiedUser(null);
     withGames([]);
     await renderApp();
 
@@ -273,7 +281,7 @@ describe("Smoke: Account & Sign Out", () => {
   it("banner surfaces error message when retry fails", async () => {
     sessionStorage.setItem("skate.pendingDeleteUid", "u1");
     authSvc.refs.deleteAccount.mockRejectedValueOnce(requiresRecentLoginError("re-auth needed"));
-    asUnverifiedUser();
+    asUnverifiedUser(null);
     withGames([]);
     await renderApp();
 
@@ -281,7 +289,7 @@ describe("Smoke: Account & Sign Out", () => {
     await userEvent.click(retryBtn);
 
     await waitFor(() => {
-      expect(screen.getByText(/Finish deletion/i)).toBeInTheDocument();
+      expect(screen.getByText(/re-auth needed/i)).toBeInTheDocument();
     });
     // Retry path preserves the flag so the user can try again.
     expect(sessionStorage.getItem("skate.pendingDeleteUid")).toBe("u1");

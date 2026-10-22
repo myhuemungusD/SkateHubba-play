@@ -44,6 +44,19 @@ describe("hashIdentity", () => {
 });
 
 describe("redactPII", () => {
+  it("leaves values that are already hashed surrogates untouched", () => {
+    const short = hashUid("u1");
+    const wide = hashIdentity("u1");
+    const name = redactPII({ username: "sk8" })?.username as string;
+    expect(redactPII({ uid: short, ownerUid: wide, username: name })).toEqual({
+      uid: short,
+      ownerUid: wide,
+      username: name,
+    });
+    // A raw value that merely starts with the prefix is still hashed.
+    expect(redactPII({ uid: "uid_not-hex" })?.uid).toBe(hashUid("uid_not-hex"));
+  });
+
   it("returns undefined when data is undefined", () => {
     expect(redactPII(undefined)).toBeUndefined();
   });

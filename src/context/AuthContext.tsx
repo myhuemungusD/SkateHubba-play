@@ -20,7 +20,7 @@ import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
 import { captureException, setUser as setSentryUser } from "../lib/sentry";
 import { identify as posthogIdentify, resetIdentity as posthogReset } from "../lib/posthog";
-import { hashIdentity } from "../utils/pii";
+import { hashIdentity, hashUid } from "../utils/pii";
 import { useAnalyticsConsent } from "../hooks/useAnalyticsConsent";
 
 // sessionStorage key that survives the sign-out/sign-in round-trip required
@@ -501,6 +501,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // deletion" affordance surfaces after the user re-authenticates.
     writePendingDeleteUid(uid);
     setPendingDeleteUid(uid);
+    // An erased marker only ever describes the attempt for its own uid. Drop any
+    // left from a different account on this device before the new attempt.
+    setErasedUid((prev) => (prev === uid ? prev : null));
     logger.info("delete_account_pending_retry_captured", { uid });
     // Unregister native push BEFORE Auth deletion — the owner-only rule on
     // users/{uid}/private/profile denies the arrayRemove write once the
@@ -529,7 +532,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       captureException(err, {
         extra: {
           context: "deleteAccount failed — erasure did not run, account left intact",
-          uidHash: hashIdentity(uid),
+          uidHash: hashUid(uid),
           code,
         },
       });
@@ -540,10 +543,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw err;
       }
       if (code === "auth/requires-recent-login") {
-        throw new Error(
-          "For security, please sign out and sign back in, then tap Finish deletion to finish removing your account.",
-          { cause: err },
-        );
+        throw new Error("For security, sign out and sign back in, then delete your account again.", { cause: err });
       }
       // Other failure modes (network, quota, etc.) — bubble the raw error
       // back. pending flag stays set so a retry still shows the banner.
@@ -553,7 +553,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     metrics.accountDeleted(uid);
     // The data is gone either way. Only clear the pending marker once the Auth
     // record is gone too — if it survived, keeping the marker is what leaves
-    // the "Finish deletion" affordance reachable so the orphaned Auth record
+    // the banner's Finish affordance reachable so the orphaned Auth record
     // can still be cleaned up by the user rather than only by an operator.
     if (result.authDeleted) {
       clearPendingDeleteUid();
@@ -602,7 +602,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     } catch (err) {
       captureException(err, {
-        extra: { context: "download_data_failed", uidHash: hashIdentity(activeProfile.uid) },
+        extra: { context: "download_data_failed", uidHash: hashUid(activeProfile.uid) },
       });
       throw err; // Lobby still surfaces the message to the user
     }

@@ -3,7 +3,7 @@ import { act, render, waitFor } from "@testing-library/react";
 import { Component, useEffect, useRef, type ReactNode } from "react";
 import { useAuthContext, AuthProvider } from "../AuthContext";
 import type { UserProfile } from "../../services/users";
-import { hashIdentity } from "../../utils/pii";
+import { hashIdentity, hashUid } from "../../utils/pii";
 import { isPushSupported, registerPushTokenIfGranted } from "../../services/pushNotifications";
 import { refreshWebPushTokenIfGranted } from "../../services/fcm";
 
@@ -601,7 +601,7 @@ describe("handleDeleteAccount", () => {
       expect.objectContaining({
         extra: expect.objectContaining({
           context: expect.stringContaining("erasure did not run"),
-          uidHash: hashIdentity("u1"),
+          uidHash: hashUid("u1"),
         }),
       }),
     );
@@ -625,7 +625,7 @@ describe("handleDeleteAccount", () => {
     expect(mockCaptureException).toHaveBeenCalledWith(
       authErr,
       expect.objectContaining({
-        extra: expect.objectContaining({ code: "auth/requires-recent-login", uidHash: hashIdentity("u1") }),
+        extra: expect.objectContaining({ code: "auth/requires-recent-login", uidHash: hashUid("u1") }),
       }),
     );
   });
@@ -673,7 +673,7 @@ describe("handleDeleteAccount", () => {
     expect(mockCaptureException).toHaveBeenCalledWith(
       authErr,
       expect.objectContaining({
-        extra: expect.objectContaining({ uidHash: hashIdentity("u1") }),
+        extra: expect.objectContaining({ uidHash: hashUid("u1") }),
       }),
     );
   });
@@ -713,7 +713,7 @@ describe("handleDeleteAccount", () => {
       const { triggerDelete } = renderWithTrigger(profile);
       const thrown = await triggerDelete();
 
-      expect(thrown?.message).toMatch(/Finish deletion/);
+      expect(thrown?.message).toMatch(/sign back in, then delete your account again/);
       expect(sessionStorage.getItem(STORAGE_KEY)).toBe("u1");
       expect(mockLoggerInfo).toHaveBeenCalledWith(
         "delete_account_pending_retry_captured",

@@ -62,7 +62,7 @@ import {
   deleteAccount,
   resolveGoogleRedirect,
 } from "../auth";
-import { hashIdentity } from "../../utils/pii";
+import { hashUid } from "../../utils/pii";
 import { auth, ensureAppCheck } from "../../firebase";
 
 beforeEach(() => {
@@ -523,13 +523,13 @@ describe("auth service", () => {
       signInAs("u1");
       serverResponds({ ok: true, body: { authDeleted: false } });
       // Reported to the caller, which keeps the pending-delete marker set so
-      // the "Finish deletion" affordance stays reachable for the orphaned
+      // the banner's Finish affordance stays reachable for the orphaned
       // Auth record.
       await expect(deleteAccount("u1")).resolves.toEqual({ authDeleted: false });
       expect(mockSignOut).toHaveBeenCalledWith(auth);
       expect(mockCaptureException).toHaveBeenCalledWith(
         expect.objectContaining({ message: expect.stringContaining("Auth user survived") }),
-        expect.objectContaining({ level: "warning", extra: expect.objectContaining({ uidHash: hashIdentity("u1") }) }),
+        expect.objectContaining({ level: "warning", extra: expect.objectContaining({ uidHash: hashUid("u1") }) }),
       );
     });
 
@@ -553,7 +553,7 @@ describe("auth service", () => {
     });
 
     // Both codes have the same remedy — re-authenticate — and AuthContext has a
-    // single branch on the Firebase code plus a "Finish deletion" affordance.
+    // single branch on the Firebase code plus the sign-out, sign-in, delete-again message.
     it.each(["requires_recent_login", "invalid_token"])(
       "maps server code %s to auth/requires-recent-login",
       async (serverCode) => {
@@ -579,7 +579,7 @@ describe("auth service", () => {
         expect.objectContaining({ message: expect.stringContaining("erase_failed") }),
         expect.objectContaining({
           level: "error",
-          extra: expect.objectContaining({ uidHash: hashIdentity("u1"), status: 500, serverCode: "erase_failed" }),
+          extra: expect.objectContaining({ uidHash: hashUid("u1"), status: 500, serverCode: "erase_failed" }),
         }),
       );
     });

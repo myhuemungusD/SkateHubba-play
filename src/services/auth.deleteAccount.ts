@@ -3,7 +3,7 @@ import { Capacitor } from "@capacitor/core";
 import { requireAuth } from "../firebase";
 import { captureException } from "../lib/sentry";
 import { parseFirebaseError } from "../utils/helpers";
-import { hashIdentity } from "../utils/pii";
+import { hashUid } from "../utils/pii";
 import { logger } from "./logger";
 import { revokeAppleTokensIfNeeded } from "./auth.appleRevoke";
 
@@ -132,16 +132,18 @@ export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean
 
     if (serverCode === "requires_recent_login" || serverCode === "invalid_token") {
       // Re-authenticating is the remedy for both, and the caller already has a
-      // dedicated branch (plus a "Finish deletion" affordance) for this code.
+      // dedicated branch for this code (it tells the user to sign out, sign
+      // back in and delete again).
       throw new CodedError("auth/requires-recent-login", message);
     }
     captureException(new Error(`account delete failed: ${serverCode}`), {
       level: "error",
-      // Sentry is a third-party processor: identify the account only by the same
-      // hashed id the Sentry user is keyed on, never the raw uid.
+      // Sentry is a third-party processor: identify the account only by the
+      // short hashUid the server's delete logs use (api/account/delete.ts), so
+      // a client event and its server log line correlate. Never the raw uid.
       extra: {
         context: "server-side account deletion rejected",
-        uidHash: hashIdentity(uid),
+        uidHash: hashUid(uid),
         status: res.status,
         serverCode,
       },
@@ -161,7 +163,7 @@ export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean
     logger.warn("delete_account_auth_survived", { uid });
     captureException(new Error("account data erased but Auth user survived"), {
       level: "warning",
-      extra: { context: "server erased all data; Auth deletion failed and needs a sweep", uidHash: hashIdentity(uid) },
+      extra: { context: "server erased all data; Auth deletion failed and needs a sweep", uidHash: hashUid(uid) },
     });
   }
 

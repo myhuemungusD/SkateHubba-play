@@ -7,7 +7,7 @@ import { parseFirebaseError } from "../utils/helpers";
 import { captureMessage } from "../lib/sentry";
 import { FIRESTORE_DB_NAME, ensureAppCheck, isAppCheckInitialized } from "../firebase";
 import { env } from "../lib/env";
-import { hashIdentity } from "../utils/pii";
+import { hashUid } from "../utils/pii";
 
 interface AuthState {
   loading: boolean;
@@ -74,8 +74,8 @@ export function useAuth(): AuthState {
       if (u) await ensureAppCheck();
       setUser(u);
       userRef.current = u;
-      // The Sentry user is set in AuthContext (one owner, one hash:
-      // hashIdentity), so extras that carry uidHash line up with it.
+      // The Sentry user is set in AuthContext (one owner). Extras carry the
+      // short hashUid as uidHash, the same surrogate the server logs use.
       if (u) {
         // Keep loading=true while we fetch the profile so the routing effect
         // doesn't see a user with no profile and prematurely navigate to
@@ -123,7 +123,7 @@ export function useAuth(): AuthState {
             captureMessage("users/{uid} permission-denied after retries", {
               level: "error",
               extra: {
-                uidHash: hashIdentity(u.uid),
+                uidHash: hashUid(u.uid),
                 appCheckInitialized: isAppCheckInitialized(),
                 dbName: FIRESTORE_DB_NAME,
                 projectId: env?.VITE_FIREBASE_PROJECT_ID,

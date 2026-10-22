@@ -10,20 +10,28 @@ import { useAuthContext } from "../context/AuthContext";
  *    (`pendingDeleteErased`). The data really is gone, the profile doc with
  *    it, so the Lobby "Delete Account" button is hidden and this banner is the
  *    only way to finish.
- *  - Anything else: the request failed (a 500, the network, a stale sign-in)
- *    or the app was closed mid-way. Erasure did not complete, so the copy says
- *    so and offers a retry. Claiming the data was deleted here would be false.
+ *  - The profile is gone but the server never confirmed the erasure (the
+ *    request failed part-way, or the app was closed mid-way). Erasure did not
+ *    complete, so the copy says so and offers a retry. Claiming the data was
+ *    deleted here would be false. With the profile still there, the banner
+ *    stays hidden and Settings → Delete Account is the way back.
  *
  * Mounted globally in AppScreens so it renders regardless of whether the
  * user lands on ProfileSetup or anywhere else post-sign-in.
  */
 export function DeleteAccountRetryBanner() {
-  const { user, pendingDeleteUid, pendingDeleteErased, handleDeleteAccount } = useAuthContext();
+  const { user, activeProfile, pendingDeleteUid, pendingDeleteErased, handleDeleteAccount } = useAuthContext();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Banner is visible only when the signed-in user is the one mid-deletion.
   if (!user || !pendingDeleteUid || user.uid !== pendingDeleteUid) return null;
+  // While the profile is intact, nothing was erased: Settings still has Delete
+  // Account and its modal shows any error. Showing this banner then would
+  // announce "not deleted" during the first attempt (the marker is written
+  // before the request) and nag a user who changed their mind, with no way to
+  // dismiss it. It is for the states Settings can't reach.
+  if (activeProfile && !pendingDeleteErased) return null;
 
   const onFinish = async () => {
     setSubmitting(true);
@@ -50,7 +58,7 @@ export function DeleteAccountRetryBanner() {
           {error ??
             (pendingDeleteErased
               ? "Your data is deleted. One tap removes your sign-in credentials."
-              : "Your account deletion didn't finish. Tap Retry to try again.")}
+              : "Your account deletion didn't finish.")}
         </span>
       </div>
       <button

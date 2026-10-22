@@ -66,12 +66,18 @@ export function hashIdentity(uid: string): string {
   return `uid_${fnv1a64(uid)}`;
 }
 
+// Values that already are one of the surrogates above: hashing them again
+// would break correlation with the call site that hashed them on purpose.
+const ALREADY_HASHED_RE = /^(?:uid_[0-9a-f]{8}(?:[0-9a-f]{8})?|name_[0-9a-f]{8})$/;
+
 export function redactPII(data: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
   if (!data) return data;
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
     if (typeof value === "string" && EMAIL_KEY_RE.test(key)) {
       out[key] = EMAIL_PLACEHOLDER;
+    } else if (typeof value === "string" && ALREADY_HASHED_RE.test(value)) {
+      out[key] = value;
     } else if (typeof value === "string" && UID_KEY_RE.test(key)) {
       out[key] = hashUid(value);
     } else if (typeof value === "string" && USERNAME_KEY_RE.test(key)) {
