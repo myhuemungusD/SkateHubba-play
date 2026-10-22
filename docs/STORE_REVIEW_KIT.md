@@ -28,33 +28,32 @@ npm run review:seed -- --emulator     # seed the local emulators instead (for sc
 
 ```bash
 REVIEW_EMAIL=... REVIEW_PASSWORD=... npm run review:screenshots
-npm run review:screenshots -- --only ios-6.9,play-phone
+npm run review:screenshots -- --only ios-6.9,ios-6.3
 npm run review:screenshots -- --base-url http://localhost:5173 --out ./shots
 ```
 
-It signs in as the reviewer with Playwright (`npx playwright install chromium` once), then saves six screens at each size into `store-screenshots/<size>/` (gitignored): a game mid-turn, the clips feed, the map, the profile, the Closet and the lobby. It stops if any screen lands on Roll Dice or Skate Runner. Set `REVIEW_BROWSER_CHANNEL=chrome` to capture with Google Chrome, which plays the H.264 demo clip (Playwright's own Chromium can't).
+It signs in as the reviewer with Playwright (`npx playwright install chromium` once), then saves the screens below at each size into `store-screenshots/<size>/` (gitignored), in store order: `01-game` (a game mid-turn), `02-record` (your record), `03-vs-you` (head-to-head with kai), `04-passport` (spot passport), `05-lobby` (the turn stack) and, optionally, `06-clock` (the challenge form's turn length; leave it out with `--skip-optional`). Each one backs a promise in the iOS listing. Before every shot it stops if the page is on `/dice`, `/play/runner`, `/map`, `/feed`, `/closet` or `/trading`, shows "temporarily unavailable", "No video recorded", "Something went wrong", Roll Dice, Skate Runner or blessing, or has a dialog, sheet or toast open. Set `REVIEW_BROWSER_CHANNEL=chrome` to capture with Google Chrome, which plays the H.264 demo clip (Playwright's own Chromium can't).
 
-| id         | Store       | Device                                                       | Pixels    |
-| ---------- | ----------- | ------------------------------------------------------------ | --------- |
-| ios-6.9    | App Store   | iPhone 6.9"                                                  | 1320×2868 |
-| ios-6.5    | App Store   | iPhone 6.5"                                                  | 1284×2778 |
-| ios-5.5    | App Store   | iPhone 5.5"                                                  | 1242×2208 |
-| ipad-13    | App Store   | iPad 13" (the app supports iPad: TARGETED_DEVICE_FAMILY 1,2) | 2064×2752 |
-| play-phone | Google Play | Phone                                                        | 1080×1920 |
-| play-7in   | Google Play | 7" tablet                                                    | 1200×1920 |
-| play-10in  | Google Play | 10" tablet                                                   | 1600×2560 |
+| id         | Store       | Device      | Pixels    |
+| ---------- | ----------- | ----------- | --------- |
+| ios-6.9    | App Store   | iPhone 6.9" | 1320×2868 |
+| ios-6.5    | App Store   | iPhone 6.5" | 1284×2778 |
+| ios-5.5    | App Store   | iPhone 5.5" | 1242×2208 |
+| play-phone | Google Play | Phone       | 1080×1920 |
+| play-7in   | Google Play | 7" tablet   | 1200×1920 |
+| play-10in  | Google Play | 10" tablet  | 1600×2560 |
 
 Run `review:seed` first so the screens have content. These are captures of the web build at device size. Look them over before uploading, because the native status bar isn't included.
 
 ### App Store set, without touching production
 
-Capture the store set from a local build with the iPhone launch flags (from `.github/workflows/ios-release.yml`: everything on except `VITE_FEATURE_DICE_ENABLED`, Skate Runner, Bucks purchase and SMS 2FA), against the emulators:
+The App Store set is `ios-6.9` (1320×2868, the source set) and `ios-6.3` (1206×2622, the 6.3" size Apple lists as required). The app is iPhone-only, so there is no iPad set. Capture it from a local build with the iPhone launch flags (from `.github/workflows/ios-release.yml`: everything on except `VITE_FEATURE_DICE_ENABLED`, Skate Runner, Bucks purchase and SMS 2FA), against the emulators:
 
 ```bash
 npm run emulators                                  # auth, firestore, storage
-# start Vite on :5173 with the iOS release flags and a real VITE_MAPBOX_TOKEN (the map shows "unavailable" without one)
+# start Vite on :5173 with the iOS release flags (no map shot, so no Mapbox token needed)
 REVIEW_BASE_URL=http://localhost:5173 npm run review:seed -- --emulator
-REVIEW_BASE_URL=http://localhost:5173 REVIEW_BROWSER_CHANNEL=chrome npm run review:screenshots -- --only ios-6.9,ios-6.5
+REVIEW_BASE_URL=http://localhost:5173 REVIEW_BROWSER_CHANNEL=chrome npm run review:screenshots -- --only ios-6.9,ios-6.3
 ```
 
-An emulator seed turns the tip bubbles off so they don't cover the screens, and the screenshot script serves Storage URLs from the Storage emulator. Check every shot before uploading: no Roll Dice, no Skate Runner, only the seeded demo handles, and no empty screens.
+An emulator seed turns the tip bubbles off so they don't cover the screens, and the screenshot script serves Storage URLs from the Storage emulator. Check every shot before uploading: only the seeded demo handles, no empty screens, and nothing from the feed, Closet, XP, map, dice, trading or blessing.

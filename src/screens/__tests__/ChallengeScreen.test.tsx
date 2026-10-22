@@ -539,7 +539,7 @@ describe("ChallengeScreen", () => {
       expect(screen.getByTestId("challenge-extras")).toBeInTheDocument();
       // Referee nomination is off by default — rules and invite still show.
       expect(screen.queryByTestId("add-judge-toggle")).not.toBeInTheDocument();
-      expect(screen.queryByText(/Add a referee/)).not.toBeInTheDocument();
+      expect(screen.queryByText("Referee (optional):")).not.toBeInTheDocument();
       expect(screen.getByTestId("open-rules-sheet")).toBeInTheDocument();
     });
 
@@ -547,8 +547,12 @@ describe("ChallengeScreen", () => {
       enableReferee();
       renderWithRouter(<ChallengeScreen {...defaultProps} />);
       await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
-      expect(screen.getByTestId("add-judge-toggle")).toBeInTheDocument();
-      expect(screen.getByText(/Add a referee/)).toBeInTheDocument();
+      // The label says what a referee does (makes the call); disputes still
+      // work without one, through the community vote.
+      expect(screen.getByTestId("add-judge-toggle")).toHaveTextContent(
+        "+ Referee (optional): makes the call on disputes instead of a community vote.",
+      );
+      expect(screen.queryByText(/unlocks disputes/)).not.toBeInTheDocument();
     });
 
     it("keeps the extras hidden when the opponent field matches the current user", async () => {

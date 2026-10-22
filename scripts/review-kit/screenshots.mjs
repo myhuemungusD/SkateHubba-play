@@ -6,7 +6,8 @@
  *   REVIEW_EMAIL=... REVIEW_PASSWORD=... npm run review:screenshots
  *   options: --base-url URL (default REVIEW_BASE_URL or https://skatehubba.com)
  *            --out DIR (default store-screenshots/, gitignored)
- *            --only ios-6.9,play-phone
+ *            --only ios-6.9,ios-6.3 (the App Store set; the app is iPhone-only)
+ *            --skip-optional (leave out optional shots such as 06-clock)
  * Run `npm run review:seed` first so the screens have content. For the store
  * set, build with the iPhone launch flags and seed the emulators
  * (docs/STORE_REVIEW_KIT.md).
@@ -14,7 +15,17 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DEMO_OPPONENTS, FORBIDDEN_PATHS, SCREENS, SIZES, pixelSize, reviewEnv, shotPath } from "./plan.mjs";
+import {
+  DEMO_OPPONENTS,
+  FORBIDDEN_PATHS,
+  FORBIDDEN_TEXT,
+  OVERLAY_SELECTOR,
+  SCREENS,
+  SIZES,
+  pixelSize,
+  reviewEnv,
+  shotPath,
+} from "./plan.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -28,10 +39,23 @@ export function isLocalUrl(url) {
   return ["localhost", "127.0.0.1"].includes(new URL(url).hostname);
 }
 
-/** True when a URL is a screen the iPhone launch build hides (Roll Dice, Skate Runner). */
+/** True when a URL is a screen no store shot may show (see FORBIDDEN_PATHS). */
 export function isForbiddenUrl(url) {
   const path = new URL(url, "http://x").pathname;
   return FORBIDDEN_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
+}
+
+/**
+ * Why a shot can't be used, or null when it's clean: it landed on a forbidden
+ * route, its text shows an error or an unpromised feature, or a dialog, sheet
+ * or toast is open on top of it.
+ */
+export function shotProblem({ id, url, text, overlays }) {
+  if (isForbiddenUrl(url)) return `${id} landed on ${url}, which store shots must not show`;
+  const hit = FORBIDDEN_TEXT.exec(text ?? "");
+  if (hit) return `${id} shows "${hit[0]}"`;
+  if (overlays > 0) return `${id} has ${overlays} dialog/toast overlay(s) open`;
+  return null;
 }
 
 export function parseArgs(argv, env) {
@@ -49,6 +73,7 @@ export function parseArgs(argv, env) {
     baseUrl: (val("--base-url") || reviewEnv(env).appUrl).replace(/\/$/, ""),
     out: resolve(val("--out") || resolve(ROOT, "store-screenshots")),
     sizes,
+    screens: argv.includes("--skip-optional") ? SCREENS.filter((s) => !s.optional) : SCREENS,
   };
 }
 
@@ -105,7 +130,7 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
           await route.fulfill({ response: await route.fetch({ url }) });
         });
       }
-      for (const screen of SCREENS) {
+      for (const screen of opts.screens) {
         await page.goto(`${opts.baseUrl}${screen.path}`);
         await page.waitForLoadState("networkidle").catch(() => {});
         if (screen.open === "game") {
@@ -138,8 +163,19 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
         await page.addStyleTag({ content: HIDE_VIDEO_CONTROLS_CSS });
         await page.evaluate(() => document.querySelectorAll("video").forEach((v) => v.removeAttribute("controls")));
         await page.waitForTimeout(2500);
-        if (isForbiddenUrl(page.url()))
-          throw new Error(`${screen.id} landed on ${page.url()}, which the iPhone build hides`);
+        const seen = await page.evaluate(
+          (sel) => ({
+            text: document.body.innerText,
+            overlays: [...document.querySelectorAll(sel)].filter((el) => {
+              const r = el.getBoundingClientRect();
+              const cs = getComputedStyle(el);
+              return r.width > 0 && r.height > 0 && cs.visibility !== "hidden" && cs.display !== "none";
+            }).length,
+          }),
+          OVERLAY_SELECTOR,
+        );
+        const problem = shotProblem({ id: screen.id, url: page.url(), ...seen });
+        if (problem) throw new Error(problem);
         const file = shotPath(opts.out, size, screen);
         mkdirSync(dirname(file), { recursive: true });
         await page.screenshot({ path: file });
