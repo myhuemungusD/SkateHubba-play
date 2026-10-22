@@ -36,3 +36,31 @@ describe("store builds set VITE_APPCHECK_ENABLED to true", () => {
     expect(exportAt).toBeLessThan(script.indexOf("npm run build"));
   });
 });
+
+/**
+ * Until App Check is verified on a TestFlight device, the iPhone build ships
+ * with the Closet off, and Closet Studio (its clothes editor, reachable from
+ * Settings) has to go with it. Otherwise review sees a Closet feature the
+ * listing and the review notes say isn't there, and the photo-library prompt
+ * would be describing a screen that doesn't exist.
+ */
+describe("iPhone builds with the Closet off", () => {
+  const closetOff = /^\s+VITE_FEATURE_CLOSET_ENABLED: "false"$/m.test(
+    buildStepEnv(".github/workflows/ios-release.yml"),
+  );
+
+  it.runIf(closetOff)("turn Closet Studio off in both iPhone build paths", () => {
+    expect(buildStepEnv(".github/workflows/ios-release.yml")).toMatch(/^\s+VITE_FEATURE_CLOSET_STUDIO: "false"$/m);
+    const script = read("ios/App/ci_scripts/ci_post_clone.sh");
+    expect(script).toMatch(/^export VITE_FEATURE_CLOSET_ENABLED=false$/m);
+    expect(script).toMatch(/^export VITE_FEATURE_CLOSET_STUDIO=false$/m);
+  });
+
+  it.runIf(closetOff)("don't mention the Closet in any permission prompt", () => {
+    const prompts = [
+      ...read("ios/App/App/Info.plist").matchAll(/<key>NS\w+UsageDescription<\/key>\s*<string>([^<]*)</g),
+    ];
+    expect(prompts.length).toBeGreaterThan(0);
+    for (const [, text] of prompts) expect(text).not.toMatch(/closet/i);
+  });
+});

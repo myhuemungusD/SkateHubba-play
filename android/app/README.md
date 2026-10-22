@@ -43,10 +43,12 @@ native call returns `DEVELOPER_ERROR` (status code 10).
   `FirebaseApp.configure()` in `ios/App/SkatehubbaFcm`. Needs App Attest on
   the App ID (Apple Developer → Identifiers) and the iOS app registered in
   Firebase Console → App Check → Apps. The simulator uses the debug provider.
-- **Debug builds:** the app initialises App Check with `debug: true`, which
-  prints a debug token on first launch. Paste that token into the Firebase
-  Console (App Check → Apps → Manage debug tokens) to whitelist the device
-  for testing against a production-enforced backend.
+- **Debug provider:** Android uses it only when the web bundle is a Vite dev
+  build or points at the emulators (`import.meta.env.DEV` or emulator mode in
+  `src/firebase.ts`), not because of the Gradle build type. It prints a debug
+  token on first launch; paste it into Firebase Console (App Check → Apps →
+  Manage debug tokens) to allow that device against an enforced backend. The
+  iPhone simulator uses the debug provider; iPhone devices never do.
 - The opt-in flag `VITE_APPCHECK_ENABLED=true` must be set for App Check to
   initialise at all (same flag gates the web reCAPTCHA v3 flow). Keep it off
   in any environment where App Check has not been fully provisioned — an
