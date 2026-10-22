@@ -24,13 +24,19 @@ name: Moderation Rescreen (pending clips)
 # Guards:
 #   - Dry run by default. A dry run only reads Firestore.
 #   - Apply needs confirm=rescreen and the main branch, and production
-#     moderation must be ON: MODERATION_ENABLED is read exactly the way
-#     firebase-functions-deploy.yml reads it: a required MODERATION_ENABLED=
-#     line in the FUNCTIONS_DOTENV secret, with no repository-variable
-#     fallback (the deploy fails without that line, so no deploy could have
-#     turned moderation on from anywhere else). Missing, or anything but
-#     true, refuses apply with exit 2; a dry run is still allowed. The
-#     derived value is passed through, and the script fails closed on it again.
+#     moderation must be ON. MODERATION_ENABLED is resolved the way
+#     firebase-functions-deploy.yml "Write function parameters" resolves it:
+#     when the repository variable MODERATION_ENABLED is set (passed in as
+#     OVR_MODERATION_ENABLED, the deploy's name), it must be exactly true or
+#     false after whitespace is stripped, and it wins over the secret, because
+#     the deploy replaces the secret's line with it. When the variable is
+#     unset, the first MODERATION_ENABLED= line of the FUNCTIONS_DOTENV secret
+#     is used (whitespace stripped; ON only if exactly true, matching the
+#     deploy log's "switch MODERATION: ON"). An empty secret, or a missing,
+#     invalid or false value, refuses apply with exit 2; a dry run is still
+#     allowed. Nothing is hard-coded: the derived value is passed through,
+#     and the script fails closed on it again. Both jobs run in the
+#     `production` environment, so they see the same vars and secrets.
 #   - One run at a time (concurrency group, never cancelled mid-run).
 #   - limit 1-50, delay_ms 0-600000.
 #   - The repo is public, so its logs and artifacts are too. The script runs
@@ -123,37 +129,61 @@ jobs:
           echo "Mode ${MODE}, limit ${LIMIT}, delay ${DELAY_MS} ms."
 
       # Production's moderation switch, checked before any install so a refused
-      # apply costs nothing. Read like firebase-functions-deploy.yml
-      # "Write function parameters": the first MODERATION_ENABLED= line of the
-      # FUNCTIONS_DOTENV secret, whitespace stripped and lowercased. It is a
-      # required key there with no vars.* fallback (only the CLOSET_*,
-      # MAP_CHECKINS and SPOT_PRESENCE switches fall back), so there is none
-      # here either: a missing line refuses apply. Only that key is extracted;
-      # the secret is never written to disk and nothing else from it is printed.
+      # apply costs nothing. Mirrors firebase-functions-deploy.yml "Write
+      # function parameters" (keep the two in step):
+      #   1. vars.MODERATION_ENABLED, as OVR_MODERATION_ENABLED. If it is set
+      #      (non-empty) the deploy strips whitespace, requires exactly true or
+      #      false (case-sensitive), and replaces the secret's line with it.
+      #      So a set variable wins; anything else in it is invalid.
+      #   2. Otherwise the first MODERATION_ENABLED= line of FUNCTIONS_DOTENV,
+      #      whitespace stripped. ON only when that is exactly true: the deploy
+      #      log's "switch MODERATION:" line and the deployed defineBoolean are
+      #      case-sensitive, so a line like TRUE passes the deploy's
+      #      validation but deploys OFF, and is treated as off here.
+      # An empty secret, or a missing or invalid value, refuses apply (the
+      # deploy refuses to run on any of them). There is no fallback to a
+      # literal.
+      # Only that key is read; the secret is never written to disk and nothing
+      # else from it is printed. Only true/false or a placeholder is shown.
       - name: Resolve moderation switch
         id: switch
         env:
           MODE: ${{ inputs.mode }}
           FUNCTIONS_DOTENV: ${{ secrets.FUNCTIONS_DOTENV }}
+          OVR_MODERATION_ENABLED: ${{ vars.MODERATION_ENABLED }}
         run: |
           set -euo pipefail
           val=""
-          if line=$(printf '%s\n' "${FUNCTIONS_DOTENV:-}" | grep -E '^MODERATION_ENABLED=' | head -n 1); then
-            val=$(printf '%s' "${line#*=}" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+          if [ -z "${FUNCTIONS_DOTENV:-}" ]; then
+            # The deploy refuses to run on an empty secret, variable or not.
+            origin="FUNCTIONS_DOTENV is empty, so no deploy could run"
+          elif [ -n "${OVR_MODERATION_ENABLED:-}" ]; then
+            origin="repository variable MODERATION_ENABLED, which overrides FUNCTIONS_DOTENV"
+            val=$(printf '%s' "$OVR_MODERATION_ENABLED" | tr -d '[:space:]')
+            # The deploy refuses anything but exactly true or false here.
+            case "$val" in
+              true|false) ;;
+              *) val="invalid" ;;
+            esac
+          else
+            origin="FUNCTIONS_DOTENV; repository variable MODERATION_ENABLED unset"
+            if line=$(printf '%s\n' "$FUNCTIONS_DOTENV" | grep -E '^MODERATION_ENABLED=' | head -n 1); then
+              val=$(printf '%s' "${line#*=}" | tr -d '[:space:]')
+            fi
           fi
           case "$val" in
             true|false) shown="$val" ;;
             "") shown="(missing)" ;;
-            *) shown="(not true or false)" ;;
+            *) shown="(not exactly true or false)" ;;
           esac
-          echo "MODERATION_ENABLED=${shown} (FUNCTIONS_DOTENV)"
+          echo "MODERATION_ENABLED=${shown} (${origin})"
           if [ "$val" = "true" ]; then
             echo "moderation=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "moderation=false" >> "$GITHUB_OUTPUT"
           if [ "$MODE" = "apply" ]; then
-            echo "::error::Refusing to apply: production moderation is not ON (MODERATION_ENABLED=${shown} in FUNCTIONS_DOTENV). Set MODERATION_ENABLED=true in the FUNCTIONS_DOTENV secret, deploy functions, then rerun. A dry run is still allowed."
+            echo "::error::Refusing to apply: production moderation is not ON (MODERATION_ENABLED=${shown} from ${origin}). Turn it on the way the deploy reads it (the MODERATION_ENABLED repository variable if set, else the FUNCTIONS_DOTENV line), deploy functions, check the deploy log says \"switch MODERATION: ON\", then rerun. A dry run is still allowed."
             exit 2
           fi
           echo "Moderation is not on in production. Dry run only."
