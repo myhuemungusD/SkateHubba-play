@@ -100,4 +100,19 @@ describe("syncFeatureTester", () => {
     expect(reloadSpy).toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
+  it("is a no-op in the native shell: no read, no write, no reload", async () => {
+    const reload = vi.fn();
+    (globalThis as { Capacitor?: unknown }).Capacitor = { isNativePlatform: () => true };
+    try {
+      h.getDoc.mockResolvedValue(listed(["me"]));
+      await expect(syncFeatureTester("me", reload)).resolves.toBe(false);
+      localStorage.setItem(FEATURE_TESTER_STORAGE_KEY, "me");
+      await expect(syncFeatureTester(null, reload)).resolves.toBe(false);
+      expect(localStorage.getItem(FEATURE_TESTER_STORAGE_KEY)).toBe("me");
+      expect(h.getDoc).not.toHaveBeenCalled();
+      expect(reload).not.toHaveBeenCalled();
+    } finally {
+      delete (globalThis as { Capacitor?: unknown }).Capacitor;
+    }
+  });
 });

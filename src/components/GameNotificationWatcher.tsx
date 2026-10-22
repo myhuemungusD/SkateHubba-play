@@ -10,6 +10,7 @@ import { subscribeToDeepLinks } from "../services/nativeApp";
 import type { GameDoc } from "../services/games";
 import type { ChimeType } from "../services/sounds";
 import { isDiceEnabled } from "../lib/featureFlags";
+import { openGameTarget } from "../lib/openGameTarget";
 
 /**
  * CustomEvent name used by the service-worker deep-link bridge.
@@ -234,10 +235,9 @@ function useServiceWorkerDeepLink(uid: string | null) {
       // controller to compare against, so allow the message through and
       // rely on the data-shape check below.
       if (sw.controller && event.source && event.source !== sw.controller) return;
-      if (event.data?.type !== "OPEN_GAME") return;
-      const gameId = event.data.gameId;
-      if (typeof gameId !== "string" || gameId.length === 0) return;
-      const kind = typeof event.data.kind === "string" && event.data.kind.length > 0 ? event.data.kind : undefined;
+      const target = openGameTarget(event.data);
+      if (!target) return;
+      const { gameId, kind } = target;
       window.dispatchEvent(new CustomEvent(OPEN_GAME_EVENT, { detail: kind ? { gameId, kind } : { gameId } }));
     };
 
