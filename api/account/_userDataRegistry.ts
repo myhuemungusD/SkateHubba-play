@@ -131,10 +131,6 @@ export const FIRESTORE_ERASURE: Readonly<Record<string, ErasureEntry>> = {
     action: "retain",
     why: "a pro's answer key for a quiz clip, copied into wttGold; no personal content beyond the pro's uid. Follow-up: anonymize once WTT quiz lifecycle is settled",
   },
-  proAudit: {
-    action: "retain",
-    why: "append-only admin log of pro seeds (actor, target, reason, evidence); admin-only, kept so a deletion cannot erase who minted a pro",
-  },
   proBlessings: {
     action: "retain",
     why: "public pro lineage (who blessed whom) involving a second person. Follow-up: anonymize",
