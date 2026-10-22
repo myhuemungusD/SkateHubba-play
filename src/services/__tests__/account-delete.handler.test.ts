@@ -33,6 +33,7 @@ const h = vi.hoisted(() => ({
   getFirestoreMock: vi.fn(),
   getStorageMock: vi.fn(),
   cascadeMock: vi.fn(),
+  posthogMock: vi.fn(),
 }));
 
 vi.mock("firebase-admin/app", () => ({
@@ -45,6 +46,7 @@ vi.mock("firebase-admin/auth", () => ({ getAuth: h.getAuthMock }));
 vi.mock("firebase-admin/firestore", () => ({ getFirestore: h.getFirestoreMock }));
 vi.mock("firebase-admin/storage", () => ({ getStorage: h.getStorageMock }));
 vi.mock("../../../api/account/_deleteUserData.js", () => ({ deleteUserDataAsAdmin: h.cascadeMock }));
+vi.mock("../../../api/account/_posthogErasure.js", () => ({ erasePosthogPerson: h.posthogMock }));
 // Only loaded when SENTRY_DSN is set (see the "error reporting" block).
 vi.mock("@sentry/node", async () => (await import("./sentry-node.test-helpers")).sentryNodeMock);
 
@@ -55,7 +57,7 @@ import {
   type AccountRequestOpts,
   type AccountResponseCapture,
 } from "./account-delete.test-helpers";
-import { hashUid } from "../../utils/pii";
+import { hashIdentity, hashUid } from "../../utils/pii";
 import { recordSentryOrder, resetSentryNodeMock, sentryNodeMock, TEST_SENTRY_DSN } from "./sentry-node.test-helpers";
 
 const TOKEN = "eyJhbGciOi.PAYLOAD.SIGNATURE";
@@ -142,6 +144,7 @@ beforeEach(() => {
   h.getFirestoreMock.mockReturnValue(DB);
   h.getStorageMock.mockReturnValue(STORAGE);
   h.cascadeMock.mockResolvedValue(SUMMARY);
+  h.posthogMock.mockResolvedValue({ status: "skipped", reason: "not_configured" });
   warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
@@ -514,6 +517,9 @@ describe("error reporting (server-side Sentry)", () => {
     return { out, order };
   }
   const captures = () => sentryNodeMock.captureException.mock.calls;
+  /** The first console.warn JSON line whose text contains `fragment`. */
+  const loggedLine = (fragment: string): string | undefined =>
+    (warnSpy.mock.calls as unknown[][]).map((c) => String(c[0])).find((l) => l.includes(fragment));
 
   beforeEach(() => {
     process.env.SENTRY_DSN = TEST_SENTRY_DSN;
@@ -535,7 +541,8 @@ describe("error reporting (server-side Sentry)", () => {
     expect(out.body).toMatchObject({ code: "erasure_failed" });
     expect(order.slice(-3)).toEqual(["error:account_delete_erasure_failed", "flush", "respond"]);
     const ctx = captures().find((c) => c[1].tags.event === "account_delete_erasure_failed")?.[1];
-    expect(ctx).toMatchObject({ level: "error", extra: { uid: TOKEN_UID } });
+    expect(ctx).toMatchObject({ level: "error", extra: { uidHash: hashUid(TOKEN_UID) } });
+    expect(JSON.stringify(captures())).not.toContain(TOKEN_UID);
   });
 
   it("never sends the ID token to Sentry", async () => {
@@ -558,6 +565,59 @@ describe("error reporting (server-side Sentry)", () => {
     const { out, order } = await callRecordingOrder();
     expect(out.body).toMatchObject({ ok: true, authDeleted: false });
     expect(order.slice(-3)).toEqual(["error:account_delete_auth_failed", "flush", "respond"]);
+  });
+
+  it("reports a PostHog failure as a warning with the hash only, and still deletes", async () => {
+    h.posthogMock.mockResolvedValueOnce({ status: "failed", reason: "http_503" });
+    const { out, order } = await callRecordingOrder();
+    expect(out.body).toEqual({ ok: true, authDeleted: true, summary: SUMMARY });
+    expect(order).toEqual(["warning:account_delete_posthog_failed", "flush", "respond"]);
+    const ctx = captures().find((c) => c[1].tags.event === "account_delete_posthog_failed")?.[1];
+    expect(ctx).toMatchObject({
+      level: "warning",
+      extra: { uidHash: hashUid(TOKEN_UID), distinctId: hashIdentity(TOKEN_UID) },
+    });
+    expect(JSON.stringify(captures())).not.toContain(TOKEN_UID);
+    expect(loggedLine("posthog_failed")).not.toContain(TOKEN_UID);
+  });
+
+  it("logs a queued PostHog deletion after erasure and before the Auth delete", async () => {
+    const seq: string[] = [];
+    h.cascadeMock.mockImplementationOnce(async () => (seq.push("cascade"), SUMMARY));
+    h.posthogMock.mockImplementationOnce(async () => (seq.push("posthog"), { status: "queued", personsFound: 1 }));
+    h.deleteUserMock.mockImplementationOnce(async () => void seq.push("auth"));
+    await call();
+    expect(seq).toEqual(["cascade", "posthog", "auth"]);
+    expect(h.posthogMock).toHaveBeenCalledWith(TOKEN_UID);
+    const line = loggedLine("posthog_queued");
+    expect(JSON.parse(line ?? "{}")).toEqual({
+      event: "account_delete_posthog_queued",
+      uidHash: hashUid(TOKEN_UID),
+      personsFound: 1,
+    });
+    expect(captures()).toHaveLength(0);
+  });
+
+  it("logs a skipped PostHog deletion when it is not configured, without a Sentry event", async () => {
+    await call();
+    const line = loggedLine("posthog_skipped");
+    expect(JSON.parse(line ?? "{}")).toMatchObject({ reason: "not_configured", uidHash: hashUid(TOKEN_UID) });
+    expect(captures()).toHaveLength(0);
+  });
+
+  it("reports a revoke failure as a warning with the hash only, and still erases", async () => {
+    h.revokeMock.mockRejectedValueOnce(new Error("auth backend down"));
+    const { out, order } = await callRecordingOrder();
+    expect(out.body).toEqual({ ok: true, authDeleted: true, summary: SUMMARY });
+    expect(order).toEqual(["warning:account_delete_revoke_failed", "flush", "respond"]);
+    expect(captures()[0][1]).toMatchObject({ extra: { uidHash: hashUid(TOKEN_UID) } });
+    expect(JSON.stringify(captures())).not.toContain(TOKEN_UID);
+  });
+
+  it("does not touch PostHog when erasure fails", async () => {
+    h.cascadeMock.mockRejectedValueOnce(new Error("firestore unavailable"));
+    await call();
+    expect(h.posthogMock).not.toHaveBeenCalled();
   });
 
   it("keeps the success path unchanged when Sentry itself is down", async () => {

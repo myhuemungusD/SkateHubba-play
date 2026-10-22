@@ -29,8 +29,12 @@ export function AfterDeletionList() {
         <strong className="text-white">Backups:</strong> Copies in our daily database backups expire within 7 days.
       </li>
       <li>
-        <strong className="text-white">Analytics and error reports:</strong> Events already sent to PostHog and Sentry
-        stay under a pseudonymous ID made from your account ID. After deletion that ID no longer leads to an account.
+        <strong className="text-white">Analytics:</strong> We ask PostHog to delete your analytics profile and its
+        events, which PostHog then removes in the background.
+      </li>
+      <li>
+        <strong className="text-white">Error reports:</strong> Events already sent to Sentry stay under a pseudonymous
+        ID made from your account ID. After deletion that ID no longer leads to an account.
       </li>
     </ul>
   );

@@ -90,6 +90,16 @@ Fires when the COPPA erasure (`POST /api/account/delete?reason=underage`, `api/a
 - **Action interval:** Every occurrence (each one is an orphaned profile)
 - **Remediation:** With the Admin SDK on the named database (`getFirestore(app, "skatehubba")`), find `users` docs whose Auth user no longer exists (`auth.getUser(uid)` rejects with `auth/user-not-found`), and pick the one where `hashUid(uid)` (`src/utils/pii.ts`) equals the event's `uidHash`. Erase it with `deleteUserDataAsAdmin` from `api/account/_deleteUserData.ts`, the same cascade the endpoint runs; it is idempotent.
 
+#### PostHog person not deleted (`account_delete_posthog_failed`)
+
+Fires when `POST /api/account/delete` erased the user's data but PostHog's bulk-delete call (`api/account/_posthogErasure.ts`) returned an error or timed out after 5 seconds. The account is still deleted; only the analytics person and events may remain. `extra.reason` is `http_<status>` or the error name. `extra.distinctId` is the PostHog distinct_id (`hashIdentity(uid)`), which is the only handle left once the account is gone.
+
+- **When:** A new issue is created
+- **Filter:** `event.environment:production AND message:"account_delete_posthog_failed"`
+- **Then:** Send notification to **Slack** `#skatehubba-alerts`
+- **Action interval:** Every occurrence (each one is a deletion request PostHog has not acted on)
+- **Remediation:** `http_401` or `http_403` means `POSTHOG_PERSONAL_API_KEY` is wrong, expired, or lacks `person:write`; `http_404` usually means a wrong `POSTHOG_PROJECT_ID` or `POSTHOG_HOST` (see `docs/DEPLOYMENT.md`). Fix the env, then retry by hand: `POST {POSTHOG_HOST}/api/projects/{POSTHOG_PROJECT_ID}/persons/bulk_delete/` with `{"distinct_ids": ["<extra.distinctId>"], "delete_events": true}` and the personal key as a Bearer token.
+
 ### 3. Slack Integration
 
 1. Sentry → **Settings** → **Integrations** → **Slack**

@@ -23,6 +23,8 @@ describe("DataDeletion", () => {
     const text = document.body.textContent ?? "";
     expect(text).toContain("Kept with your name removed");
     expect(text).toContain("daily database backups expire within 7 days");
+    expect(text).toContain("We ask PostHog to delete your analytics profile and its events");
+    expect(text).not.toContain("Events already sent to PostHog");
     expect(text).not.toContain("within 90 days of the game ending");
     expect(text).not.toContain("All game records");
   });
