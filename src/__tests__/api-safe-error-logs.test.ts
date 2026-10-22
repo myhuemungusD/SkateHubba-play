@@ -20,6 +20,21 @@ const ALLOW = new Set(["_safeError.ts", "_sentry.ts", "cron/_serviceAccount.ts"]
 /** `.message` / `.stack` access, `String(err)`, and `${err}` for the usual catch names. */
 const BAD = /\.(message|stack)\b|\bString\(\s*(err|error|e|reason)\s*\)|\$\{\s*(err|error|e|reason)\s*\}/;
 
+/**
+ * A raw caught error handed to a log or serializer: Node prints the full message
+ * and stack for `console.error(err)`, and `JSON.stringify` keeps the enumerable
+ * fields firebase-admin and gRPC errors carry (`errorInfo`, `details`).
+ */
+const N = "(?:err|error|e|reason|caught|cause)";
+const RAW = new RegExp(
+  String.raw`\bconsole\.\w+\((?:[^()]*,\s*)?${N}\s*[,)]` + // console.x(err) / console.x("…", err)
+    String.raw`|\bJSON\.stringify\(\s*${N}\s*[,)]` + // JSON.stringify(err)
+    String.raw`|[{,]\s*\w+\s*:\s*${N}\s*[,}]|\{\s*${N}\s*[,}]` + // { e: err } / { err }
+    String.raw`|\{\s*message\b[^}]*\}\s*=\s*${N}\b`, // const { message } = err
+);
+
+const leaks = (line: string) => BAD.test(line) || RAW.test(line);
+
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);
@@ -45,7 +60,7 @@ describe("api/ error logging", () => {
       .flatMap((file) =>
         codeLines(readFileSync(file, "utf8"))
           .map((line, i) => ({ line, at: `${relative(apiDir, file)}:${i + 1}` }))
-          .filter(({ line }) => BAD.test(line))
+          .filter(({ line }) => leaks(line))
           .map(({ at }) => at),
       );
     expect(offenders).toEqual([]);
@@ -58,12 +73,26 @@ describe("api/ error logging", () => {
     "`failed: ${err}`",
     "(err as Error).stack",
     "error:\n  err instanceof Error\n    ? err.message\n    : String(err),",
+    "console.error(err);",
+    'console.warn("failed", err);',
+    "JSON.stringify(err)",
+    "JSON.stringify({ e: err })",
+    "const { message } = err;",
   ])("catches %j", (snippet) => {
-    expect(codeLines(snippet).some((line) => BAD.test(line))).toBe(true);
+    expect(codeLines(snippet).some(leaks)).toBe(true);
+  });
+
+  it.each([
+    'captureServerError("x", err, { gameId });',
+    'console.error(JSON.stringify({ event: "x", code: safeErrorCode(err) }));',
+    "...describeInitFailure(err),",
+    "throw raced ? err.inner : err;",
+  ])("allows %j", (snippet) => {
+    expect(codeLines(snippet).some(leaks)).toBe(false);
   });
 
   it("ignores comments and URLs", () => {
     const source = '/* err.message */\n// String(err)\nconst url = "https://example.test/x"; // e.stack\n';
-    expect(codeLines(source).some((line) => BAD.test(line))).toBe(false);
+    expect(codeLines(source).some(leaks)).toBe(false);
   });
 });
