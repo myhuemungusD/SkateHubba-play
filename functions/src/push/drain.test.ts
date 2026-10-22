@@ -95,6 +95,12 @@ describe("deliverDispatch", () => {
     expect(dp.send).not.toHaveBeenCalled();
     expect(d.delete).toHaveBeenCalled();
   });
+  it("still delivers docs created at or after the cutoff", async () => {
+    const d = doc(good({ createdAt: ts(PUSH_BACKLOG_CUTOFF_MS) }));
+    const dp = deps({ nowMs: PUSH_BACKLOG_CUTOFF_MS + 60_000 });
+    expect(await deliverDispatch(d, dp)).toBe("sent");
+    expect(dp.send).toHaveBeenCalled();
+  });
   it("prunes only dead tokens", async () => {
     const dp = deps({
       send: vi.fn(async () => ({
