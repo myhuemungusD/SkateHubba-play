@@ -23,6 +23,8 @@ and Storage. A token failure is therefore logged, not fatal. If users are
 suddenly getting `permission-denied` across the board, check first whether
 someone flipped enforcement on (§1).
 
+**Re-confirmed 2026-10-22:** see the status note at the top of [`docs/APPCHECK_ROLLOUT.md`](./APPCHECK_ROLLOUT.md); enforcement mode is read in the Firebase Console.
+
 **Code default:** App Check is still **opt-in**. `src/firebase.ts` only calls
 `initializeAppCheck()` when `VITE_APPCHECK_ENABLED=true` is set at build time.
 Builds without it (local dev, Preview unless set there) skip App Check entirely.

@@ -9,6 +9,14 @@ below, Phase 1 (token-only) is in effect and **Phase 2 (enforcement) has not
 started**. The final checklist was not maintained during the Phase 1 flip, so
 re-verify the Phase 0/1 items (allowlist, metrics) before starting Phase 2.
 
+**Re-confirmed 2026-10-22:** the live skatehubba.com bundle inlines
+`VITE_APPCHECK_ENABLED=true` and a reCAPTCHA v3 site key, and runs
+`initializeAppCheck()` with `ReCaptchaV3Provider`, so web App Check is on in
+production. Store builds set `VITE_APPCHECK_ENABLED: "true"` as a literal
+(#829). Enforcement mode (monitor vs enforced, per API) is a Firebase
+Console setting and is not visible from the repo: read it in Console → App
+Check → APIs rather than trusting the 2026-10-08 note.
+
 This document is the execution plan for getting to enforcement without
 repeating the Apr 22 lockout.
 
