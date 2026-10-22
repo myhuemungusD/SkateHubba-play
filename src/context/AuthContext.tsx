@@ -458,10 +458,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logger.info("delete_account_pending_retry_captured", { uid });
     // Unregister native push BEFORE Auth deletion — the owner-only rule on
     // users/{uid}/private/profile denies the arrayRemove write once the
-    // auth token is revoked, and the server cascade deletes
-    // the whole private doc anyway. Fire-and-forget: errors here must
-    // never block deletion, and we don't want an extra await boundary
-    // altering the observable ordering of the deleteAccount call.
+    // auth token is revoked, and the server cascade deletes the whole private
+    // doc anyway. Fire-and-forget: errors here must never block deletion, and
+    // we don't want an extra await boundary altering the observable ordering
+    // of the deleteAccount call.
     void unregisterPushToken(uid).catch((err: unknown) => {
       logger.warn("delete_account_push_scrub_failed", { uid, message: parseFirebaseError(err) });
     });

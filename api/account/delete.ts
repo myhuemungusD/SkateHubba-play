@@ -116,7 +116,12 @@ function applyCors(req: ApiRequest, res: ApiResponse): void {
 
 /** Machine-readable failure codes. The client branches on these, not on prose. */
 type FailureCode =
-  "method_not_allowed" | "missing_token" | "invalid_token" | "requires_recent_login" | "init_failed" | "erasure_failed";
+  | "method_not_allowed"
+  | "missing_token"
+  | "invalid_token"
+  | "requires_recent_login"
+  | "init_failed"
+  | "erasure_failed";
 
 let cachedApp: App | null = null;
 let cachedBucketName: string | null = null;

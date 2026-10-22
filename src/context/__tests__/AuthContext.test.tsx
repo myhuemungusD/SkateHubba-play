@@ -72,7 +72,6 @@ vi.mock("../../services/auth", () => ({
 vi.mock("../../services/mfa", () => ({
   getMfaChallenge: (err: unknown) => mockGetMfaChallenge(err),
 }));
-vi.mock("../../services/users", () => ({}));
 vi.mock("../../services/fcm", () => ({
   removeCurrentFcmToken: vi.fn().mockResolvedValue(undefined),
   refreshWebPushTokenIfGranted: vi.fn().mockResolvedValue(null),

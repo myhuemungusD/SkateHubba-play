@@ -22,7 +22,6 @@ vi.mock("../../services/auth", () => ({
   resolveGoogleRedirect: vi.fn().mockResolvedValue(null),
   deleteAccount: vi.fn(),
 }));
-vi.mock("../../services/users", () => ({}));
 // Any error handed to beginMfaChallenge counts as a second-factor challenge —
 // the real extraction is the service's business, not the router's.
 vi.mock("../../services/mfa", () => ({

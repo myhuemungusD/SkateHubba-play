@@ -141,8 +141,7 @@ export interface UserProfile {
    * Custom avatar URL — Firebase Storage download URL pinned to this
    * project's bucket and the calling UID by both client-side guard
    * ({@link setProfileImageUrl}) and the Firestore rule. Set `null` to
-   * clear the avatar (caller must delete the underlying Storage object
-   * first).
+   * clear the avatar (caller must delete the underlying Storage object first).
    */
   profileImageUrl?: string | null;
   /** Profile banner URL, pinned to `users/{uid}/banner.webp` (see banners.ts). */
@@ -535,9 +534,9 @@ export class InvalidAvatarUrlError extends Error {
 
 /**
  * Persist a user's `profileImageUrl` field. Pass `null` to clear (caller
- * is expected to have already deleted the storage object). The Firestore rule enforces the same predicate
- * server-side; this guard short-circuits the network round-trip and gives
- * the UI a clear typed error to surface.
+ * is expected to have already deleted the storage object). The Firestore
+ * rule enforces the same predicate server-side; this guard short-circuits
+ * the network round-trip and gives the UI a clear typed error to surface.
  *
  * Only the calling user's own profile may be written — the rule pins
  * the URL's UID segment to `request.auth.uid`, so a write against another
