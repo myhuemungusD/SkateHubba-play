@@ -214,6 +214,27 @@ describe("performPresence", () => {
     await performPresence(hidden, actor, beat());
     expect(hidden.docs.get(activityPath("u1"))?.visible).toBe(false);
   });
+
+  it("hide-online also hides spot presence: no here-doc, code 'hidden' (M6)", async () => {
+    const db = setup();
+    db.seed("onlineStatus/u1", { hidden: true, lastSeen: null });
+    await expect(performPresence(db, actor, beat())).resolves.toEqual({ code: "hidden", expiresAt: null });
+    expect(db.docs.has(herePath("s1", "u1"))).toBe(false);
+    expect(db.docs.get(activityPath("u1"))).toMatchObject({ visible: false, spotId: "s1" });
+  });
+
+  it("hiding mid-session ends an existing here-doc on the next heartbeat", async () => {
+    const db = setup();
+    await performPresence(db, actor, beat());
+    expect((db.docs.get(herePath("s1", "u1"))?.expiresAt as Date).getTime()).toBeGreaterThan(NOW);
+    db.seed("onlineStatus/u1", { hidden: true, lastSeen: null });
+    const t1 = NOW + MIN_BEAT_MS + 1;
+    await expect(performPresence(db, { uid: "u1", nowMs: t1 }, beat({ clientAt: t1 }))).resolves.toEqual({
+      code: "hidden",
+      expiresAt: null,
+    });
+    expect((db.docs.get(herePath("s1", "u1"))?.expiresAt as Date).getTime()).toBe(t1);
+  });
   it("walking away ends 'skating now' in the feed", async () => {
     const db = setup();
     await performPresence(db, actor, beat());

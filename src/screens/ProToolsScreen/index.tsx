@@ -78,7 +78,8 @@ export function ProToolsScreen({ uid = null, reviewMode, onBack }: ScreenProps) 
           Review mode: you are seeing what verified pros will see. Pros get these tools without admin access.
         </p>
       )}
-      <BlessingHero uid={uid} live={!reviewMode && isProBlessingEnabled()} />
+      {/* Flag off: no blessing card at all, not a dead preview (App Store 2.1 / 2.3.1). */}
+      {isProBlessingEnabled() && <BlessingHero uid={uid} live={!reviewMode} />}
       <div className="space-y-3">
         {PRO_TOOLS.map((t) => {
           const live = !reviewMode && uid ? liveTool(t.id, uid, username) : null;

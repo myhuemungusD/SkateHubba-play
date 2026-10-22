@@ -137,6 +137,13 @@ jobs:
           VAR_CLOSET_BUCKS_PURCHASE_ENABLED: ${{ vars.CLOSET_BUCKS_PURCHASE_ENABLED }}
           VAR_MAP_CHECKINS_ENABLED: ${{ vars.MAP_CHECKINS_ENABLED }}
           VAR_SPOT_PRESENCE_ENABLED: ${{ vars.SPOT_PRESENCE_ENABLED }}
+          # Overrides for switches that also live in FUNCTIONS_DOTENV. When a
+          # repository variable is set it replaces the secret's line, so a
+          # switch can be flipped (and read) without rewriting the secret.
+          OVR_XP_ENABLED: ${{ vars.XP_ENABLED }}
+          OVR_DICE_ENABLED: ${{ vars.DICE_ENABLED }}
+          OVR_MODERATION_ENABLED: ${{ vars.MODERATION_ENABLED }}
+          OVR_PRO_BLESSING_ENABLED: ${{ vars.PRO_BLESSING_ENABLED }}
         run: |
           set -euo pipefail
           if [ -z "$FUNCTIONS_DOTENV" ]; then
@@ -163,6 +170,20 @@ jobs:
               echo "${key}=${val} (repository variable or default)"
             fi
           done
+          for key in XP_ENABLED DICE_ENABLED MODERATION_ENABLED PRO_BLESSING_ENABLED; do
+            ovr="OVR_${key}"
+            [ -n "${!ovr:-}" ] || continue
+            val=$(printf '%s' "${!ovr}" | tr -d '[:space:]')
+            if [ "$val" != "true" ] && [ "$val" != "false" ]; then
+              echo "::error::Repository variable ${key} must be exactly true or false."
+              rm -f "$DEST"
+              exit 1
+            fi
+            grep -Ev "^${key}=" "$DEST" > "$DEST.tmp" || true
+            mv "$DEST.tmp" "$DEST"
+            printf '%s=%s\n' "$key" "$val" >> "$DEST"
+            echo "override ${key%_ENABLED}: ${val}"
+          done
           for key in CLOSET_TESTER_UIDS MAP_TESTER_UIDS SPOT_PRESENCE_TESTER_UIDS; do
             grep -Eq "^${key}=" "$DEST" || printf '%s=\n' "$key" >> "$DEST"
           done
@@ -184,6 +205,19 @@ jobs:
             rm -f "$DEST"
             exit 1
           fi
+          # Print the on/off switches (true/false only, never uids or DSNs) so
+          # every deploy log shows which server features went live.
+          # Print a word, not "KEY=value": GitHub masks every line of the
+          # secret, so echoing the raw line shows up as "***".
+          for key in XP_ENABLED DICE_ENABLED MODERATION_ENABLED PRO_BLESSING_ENABLED; do
+            raw="$(grep -E "^${key}=" "$DEST" | head -n 1 | cut -d= -f2- | tr -d '[:space:]')"
+            case "$raw" in
+              true) state="ON" ;;
+              "") state="MISSING (off)" ;;
+              *) state="OFF" ;;
+            esac
+            echo "switch ${key%_ENABLED}: ${state}"
+          done
           # Mask longer values (uids, DSNs) so a later CLI log line cannot
           # echo them. Short values like true/false stay readable.
           while IFS= read -r line || [ -n "$line" ]; do

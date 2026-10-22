@@ -56,6 +56,8 @@ const originalNotification = globalThis.Notification;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Some cases give getDoc a per-path implementation; restore the empty-doc default.
+  mockGetDoc.mockImplementation(() => Promise.resolve({ data: () => undefined }));
   _resetSwRegistration();
   _resetActiveFcmToken();
   _resetMessagingSupport();
@@ -421,12 +423,12 @@ describe("removeFcmToken", () => {
 describe("platform tag prune on register", () => {
   it("drops stale platform tags when registering a new token", async () => {
     mockGetToken.mockResolvedValue("fresh-token");
-    mockGetDoc.mockResolvedValueOnce({
-      data: () => ({
-        tokens: ["keep-me"],
-        platforms: { "keep-me": "web", "stale-gone": "ios", "also-gone": "android" },
-      }),
-    });
+    mockGetDoc.mockImplementation(async (ref: unknown) => ({
+      data: () =>
+        ref === "pushTargets/u1"
+          ? { tokens: ["keep-me"], platforms: { "keep-me": "web", "stale-gone": "ios", "also-gone": "android" } }
+          : undefined,
+    }));
     await requestPushPermission("u1");
     const mirrorWrite = mockSetDoc.mock.calls.find((c) => {
       const path = c[0];
@@ -444,6 +446,41 @@ describe("platform tag prune on register", () => {
     });
     // keep-me is still in the token list, so its tag is left alone (merge keeps it).
     expect(body.platforms).not.toHaveProperty("keep-me");
+  });
+});
+
+// Cap rules are unit-tested in pushTokenStore.test.ts; this checks the web path is wired to them.
+describe("10-token cap on register (web wiring)", () => {
+  const full = Array.from({ length: 10 }, (_, i) => `old-${i}`);
+
+  function seed(docs: Record<string, Record<string, unknown> | undefined>) {
+    mockGetDoc.mockImplementation(async (ref: unknown) => ({ data: () => docs[ref as string] }));
+  }
+
+  it("trims both docs to the newest 9 plus this device instead of being denied", async () => {
+    mockRequestPermission.mockResolvedValue("granted");
+    mockGetToken.mockResolvedValue("new-device");
+    seed({
+      "users/u1/private/profile": { fcmTokens: full },
+      "pushTargets/u1": { tokens: full, platforms: { "old-0": "ios", "old-5": "web" } },
+    });
+
+    expect(await requestPushPermission("u1")).toBe("new-device");
+
+    const kept = [...full.slice(1), "new-device"];
+    expect(mockSetDoc).toHaveBeenNthCalledWith(1, "users/u1/private/profile", { fcmTokens: kept }, { merge: true });
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      2,
+      "pushTargets/u1",
+      {
+        tokens: kept,
+        // The dropped token's tag goes with it; old-5 is still kept, so its tag stays.
+        platforms: { "new-device": "web", "old-0": "DELETE_FIELD" },
+        updatedAt: "SERVER_TS",
+      },
+      { merge: true },
+    );
+    expect(kept).toHaveLength(10);
   });
 });
 
