@@ -2700,12 +2700,13 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ── Push targets (cross-readable token mirror) ──
+    // ── Push targets (owner-only token mirror) ──
     // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r29
     match /pushTargets/{uid} {
-      // get only: a sender looks up one recipient it already knows. No list,
-      // so nobody can dump every user's device tokens in one query.
-      allow get: if isSignedIn();
+      // Owner-only read (security audit 2026-10-21, M1). Senders no longer
+      // look up a recipient's device tokens: client /push_dispatch docs carry
+      // no tokens and the couriers look them up with the Admin SDK. No list.
+      allow get: if isOwner(uid);
       allow list: if false;
 
       // Allowlist of accepted keys. setDoc(..., merge:true) is the only
@@ -2778,10 +2779,10 @@ service cloud.firestore {
         && request.resource.data.notification.body.size() <= 200
         && request.resource.data.data is map
         && request.resource.data.data.gameId == request.resource.data.gameId
-        // ── Tokens ──
-        && request.resource.data.tokens is list
-        && request.resource.data.tokens.size() >= 1
-        && request.resource.data.tokens.size() <= 10
+        // ── Tokens: none from clients (M1) ──
+        // The courier looks the recipient's devices up in /pushTargets with
+        // the Admin SDK, so a sender never names or learns a device token.
+        && !('tokens' in request.resource.data)
         && request.resource.data.createdAt == request.time
         // ── Participation ──
         // Sender must be a participant (player OR judge) of the referenced game.
@@ -2797,16 +2798,6 @@ service cloud.firestore {
             && fsGet('games', request.resource.data.gameId).data.judgeId != null
             && request.resource.data.recipientUid == fsGet('games', request.resource.data.gameId).data.judgeId
           )
-        )
-        // ── Token integrity ──
-        // Every token MUST appear in the recipient's /pushTargets mirror.
-        // Without this, a malicious sender could embed arbitrary tokens
-        // (their own device, a token scraped from another collection, …)
-        // and have the Extension deliver pushes to wrong devices.
-        // hasOnly is the inverse of hasAll: it checks subset, which is
-        // what we want — sender's tokens ⊆ recipient's mirror.
-        && request.resource.data.tokens.hasOnly(
-          fsGet('pushTargets', request.resource.data.recipientUid).data.tokens
         )
         // ── Companion-write rate limit (Codex P1 hardening) ──
         // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r32
