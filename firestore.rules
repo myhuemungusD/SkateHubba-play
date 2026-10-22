@@ -835,15 +835,12 @@ service cloud.firestore {
             )
           )
         );
-      // ── Verified-Pro grant / revoke (admin custom claim) ──
-      // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r12
-      allow update: if isAdmin()
-        && uid != request.auth.uid
-        && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['isVerifiedPro', 'verifiedBy', 'verifiedAt'])
-        && request.resource.data.isVerifiedPro is bool
-        && request.resource.data.verifiedBy == request.auth.uid
-        && request.resource.data.verifiedAt == request.time;
+      // ── Verified-Pro grant / revoke: NO client branch ──
+      // Seeding goes through the `proSeed` callable (admin claim + App Check,
+      // reason + evidence, append-only /proAudit row); revoke goes through
+      // `proBlessing` {action:'revoke'}. The old admin client-write branch let
+      // any admin token mint pros with no record (security audit 2026-10-21).
+      // … history: docs/FIRESTORE_RULES_NOTES.md#r12
       // ── Ban flag mirror (admin custom claim) ──
       // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r13
       allow update: if isAdmin()

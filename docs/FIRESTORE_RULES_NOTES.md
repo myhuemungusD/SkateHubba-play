@@ -295,6 +295,13 @@ would be rejected the moment the SDK fetched a download URL.
 
 Precedes: `allow update: if isAdmin()`
 
+**Removed 2026-10-21 (security audit).** The admin client-write branch
+described below no longer exists. Seeding is the `proSeed` callable
+(`functions/src/pro/seed.ts`: admin claim + App Check, required reason and
+evidence, an append-only `proAudit/{id}` row that clients cannot write and
+only admins can read). Revoke is `proBlessing` `{action:'revoke'}`. The
+historical note is kept for context.
+
 ```text
 ── Verified-Pro grant / revoke (admin custom claim) ──
 Deliberately a SEPARATE `allow update` clause: Firestore ORs allow

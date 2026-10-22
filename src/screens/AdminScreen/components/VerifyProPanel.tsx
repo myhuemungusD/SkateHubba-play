@@ -1,12 +1,19 @@
 import { useState } from "react";
 import { BadgeCheck, ShieldOff } from "lucide-react";
-import { grantVerifiedPro } from "../../../services/admin";
+import {
+  SEED_COMPANY_MAX,
+  SEED_REASON_MAX,
+  proSeedErrorMessage,
+  seedInputReady,
+  seedVerifiedPro,
+} from "../../../services/proSeed";
 import { revokePro } from "../../../services/proBlessing";
 import { useNotifications } from "../../../context/NotificationContext";
 import { useAdminUserLookup } from "../useAdminUserLookup";
 import { errorMessage } from "../utils";
 import { UserLookupForm } from "./UserLookupForm";
 import { ConfirmButton } from "./ConfirmButton";
+import { AdminTextField } from "./AdminFormFields";
 
 /**
  * Founder seeding + revoke of Verified Pro. Blessing by another pro (the
@@ -15,11 +22,18 @@ import { ConfirmButton } from "./ConfirmButton";
  * revocable (ECONOMY.md), so both directions are two-step and both refetch
  * the profile afterwards rather than flipping a local flag — the badge the
  * operator sees is always the one Firestore actually holds.
+ *
+ * Seeding goes through the `proSeed` callable and needs a reason plus
+ * evidence (company + https link); each seed writes an append-only
+ * `proAudit` row server-side (security audit 2026-10-21).
  */
-export function VerifyProPanel({ adminUid }: { adminUid: string }) {
+export function VerifyProPanel() {
   const lookup = useAdminUserLookup();
   const { notify } = useNotifications();
   const [acting, setActing] = useState(false);
+  const [reason, setReason] = useState("");
+  const [company, setCompany] = useState("");
+  const [url, setUrl] = useState("");
 
   const target = lookup.target;
   const isPro = target?.isVerifiedPro === true;
@@ -29,7 +43,10 @@ export function VerifyProPanel({ adminUid }: { adminUid: string }) {
     setActing(true);
     try {
       if (grant) {
-        await grantVerifiedPro(adminUid, target.uid);
+        await seedVerifiedPro(target.uid, reason, { company, url });
+        setReason("");
+        setCompany("");
+        setUrl("");
       } else {
         // Server path: also marks accepted blessings revoked (lineage stays honest).
         await revokePro(target.uid);
@@ -44,7 +61,7 @@ export function VerifyProPanel({ adminUid }: { adminUid: string }) {
       notify({
         type: "error",
         title: grant ? "Grant failed" : "Revoke failed",
-        message: errorMessage(err),
+        message: grant ? proSeedErrorMessage(err) : errorMessage(err),
       });
     } finally {
       setActing(false);
@@ -58,7 +75,7 @@ export function VerifyProPanel({ adminUid }: { adminUid: string }) {
         className="mb-3 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 font-body text-xs text-amber-100"
       >
         Founder seeding and revoke only. Pros normally turn pro when another verified pro blesses them. Grant here only
-        to seed the first pros; every grant is stamped with your uid.
+        to seed the first pros. Every grant needs a reason and evidence and is logged with your uid.
       </p>
       <UserLookupForm lookup={lookup} label="Player username" />
 
@@ -88,13 +105,38 @@ export function VerifyProPanel({ adminUid }: { adminUid: string }) {
               onConfirm={() => void run(false)}
             />
           ) : (
-            <ConfirmButton
-              label="Grant"
-              question={`Grant Verified Pro to @${target.username}?`}
-              confirmLabel="Grant"
-              loading={acting}
-              onConfirm={() => void run(true)}
-            />
+            <>
+              <AdminTextField
+                label="Reason"
+                value={reason}
+                onChange={setReason}
+                placeholder="Why they are a real pro"
+                maxLength={SEED_REASON_MAX}
+                note={`${reason.length}/${SEED_REASON_MAX}`}
+              />
+              <AdminTextField
+                label="Evidence company"
+                value={company}
+                onChange={setCompany}
+                placeholder="Board, shoe or video company"
+                maxLength={SEED_COMPANY_MAX}
+              />
+              <AdminTextField
+                label="Evidence link"
+                value={url}
+                onChange={setUrl}
+                placeholder="https://… team page, pro model or video part"
+                maxLength={500}
+              />
+              <ConfirmButton
+                disabled={!seedInputReady(reason, { company, url })}
+                label="Grant"
+                question={`Grant Verified Pro to @${target.username}?`}
+                confirmLabel="Grant"
+                loading={acting}
+                onConfirm={() => void run(true)}
+              />
+            </>
           )}
         </div>
       )}

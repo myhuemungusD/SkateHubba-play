@@ -199,13 +199,16 @@ async function resolveWithStatement(): Promise<void> {
 // 1. users/{uid} — Verified-Pro granting
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("users/{uid} — admin Verified-Pro grant", () => {
-  it("admin CAN grant verified pro (isVerifiedPro + verifiedBy + verifiedAt)", async () => {
-    await assertSucceeds(updateDoc(userDoc("admin"), proGrant(ADMIN_UID)));
+describe("users/{uid} — no client Verified-Pro grant, not even for admins", () => {
+  // Security audit 2026-10-21: seeding moved to the `proSeed` callable
+  // (reason + evidence + append-only /proAudit row). The old admin
+  // client-write branch let any admin token mint pros with no record.
+  it("admin CANNOT grant verified pro by writing the user doc directly", async () => {
+    await assertFails(updateDoc(userDoc("admin"), proGrant(ADMIN_UID)));
   });
 
-  it("admin CAN revoke verified pro (isVerifiedPro is bool, not just true)", async () => {
-    await assertSucceeds(updateDoc(userDoc("admin"), proGrant(ADMIN_UID, { isVerifiedPro: false })));
+  it("admin CANNOT revoke verified pro by writing the user doc directly", async () => {
+    await assertFails(updateDoc(userDoc("admin"), proGrant(ADMIN_UID, { isVerifiedPro: false })));
   });
 
   it("plain signed-in user CANNOT grant verified pro to another user", async () => {

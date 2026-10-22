@@ -12,7 +12,6 @@
  *
  * Paths written here
  * ──────────────────
- *   users/{uid}                        isVerifiedPro / verifiedBy / verifiedAt
  *   users/{uid}/achievements/{badgeId}  badge grant (doc id IS the badge key)
  *   users/{uid}/locker/{itemId}         minted gear item
  *   reports/{reportId}                  moderation status transition
@@ -26,7 +25,10 @@
  * `permission-denied` for the moderator. The payload shapes below are
  * therefore asserted field-by-field in `__tests__/admin.test.ts`.
  *
- * `adminUid` MUST be the CALLER's own uid: the rules pin `verifiedBy` and
+ * Verified Pro is NOT written here: seeding is the `proSeed` callable
+ * (`./proSeed.ts`) and revoke is `proBlessing`; rules deny the client write.
+ *
+ * `adminUid` MUST be the CALLER's own uid: the rules pin
  * `resolvedBy` to `request.auth.uid`, so a moderator cannot stamp an audit
  * trail with somebody else's name. Passing another admin's uid is rejected
  * server-side, not silently accepted.
@@ -46,7 +48,6 @@ import {
   doc,
   getDocs,
   query,
-  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -199,59 +200,6 @@ function requireText(value: string, label: string, maxLen: number): string {
     throw new Error(`Too long — ${label} must be ${maxLen} characters or fewer.`);
   }
   return trimmed;
-}
-
-/**
- * Flip the verified-pro flag on a profile inside a transaction.
- *
- * A transaction (rather than a bare `updateDoc`) because the pre-read is the
- * only thing that distinguishes "granted pro to the right skater" from
- * "created a stray field on a mistyped uid" — `update` on a missing doc fails
- * with an opaque `not-found`, and two moderators acting at once would
- * otherwise interleave the audit stamp with the flag.
- *
- * Writes EXACTLY `{ isVerifiedPro, verifiedBy, verifiedAt }`. Revocation
- * re-stamps `verifiedBy`/`verifiedAt` with the revoking admin: taking pro
- * status away is an audited admin act, not an erasure of the audit trail.
- */
-async function setVerifiedPro(adminUid: string, targetUid: string, isVerifiedPro: boolean): Promise<void> {
-  requireId(adminUid, "admin uid");
-  requireId(targetUid, "target uid");
-
-  const db = requireDb();
-  const userRef = doc(db, "users", targetUid);
-
-  try {
-    await runTransaction(db, async (tx) => {
-      const snap = await tx.get(userRef);
-      if (!snap.exists()) throw new Error("That skater's profile no longer exists.");
-      tx.update(userRef, {
-        isVerifiedPro,
-        verifiedBy: adminUid,
-        verifiedAt: serverTimestamp(),
-      });
-    });
-  } catch (err) {
-    logger.warn("admin_verified_pro_write_failed", {
-      adminUid,
-      targetUid,
-      isVerifiedPro,
-      error: parseFirebaseError(err),
-    });
-    throw err;
-  }
-}
-
-/** Grant verified-pro status to `targetUid`, stamped with the acting admin. */
-export async function grantVerifiedPro(adminUid: string, targetUid: string): Promise<void> {
-  await setVerifiedPro(adminUid, targetUid, true);
-  recordAdminAction("grant_pro", targetUid);
-}
-
-/** Revoke verified-pro status from `targetUid`, stamped with the acting admin. */
-export async function revokeVerifiedPro(adminUid: string, targetUid: string): Promise<void> {
-  await setVerifiedPro(adminUid, targetUid, false);
-  recordAdminAction("revoke_pro", targetUid);
 }
 
 /**
