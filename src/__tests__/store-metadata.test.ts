@@ -34,4 +34,20 @@ describe("App Store listing metadata", () => {
     expect(read("privacy_url.txt")).toBe("https://skatehubba.com/privacy");
     expect(read("support_url.txt")).toMatch(/^https:\/\/skatehubba\.com\/support/);
   });
+
+  it("doesn't advertise the Closet while the iPhone build ships with it off", () => {
+    // Guideline 2.3: the listing must match the submitted build. See
+    // closet-return in the screenshots plan for turning both back on together.
+    const workflow = readFileSync(resolve(__dirname, "../../.github/workflows/ios-release.yml"), "utf8");
+    const closetOff = /VITE_FEATURE_CLOSET_ENABLED:\s*"false"/.test(workflow);
+    for (const file of [
+      "description.txt",
+      "promotional_text.txt",
+      "release_notes.txt",
+      "subtitle.txt",
+      "keywords.txt",
+    ]) {
+      if (closetOff) expect(read(file)).not.toMatch(/closet/i);
+    }
+  });
 });
