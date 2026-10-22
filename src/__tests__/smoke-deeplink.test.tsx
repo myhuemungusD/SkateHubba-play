@@ -21,7 +21,7 @@ import { MemoryRouter, useLocation } from "react-router";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import App from "../App";
-import { verifiedUser, testProfile } from "./smoke-helpers";
+import { verifiedUser, testProfile, activeGame } from "./smoke-helpers";
 import { withExtrasEnabled } from "./harness/featureFlags";
 import type { UserProfile } from "../services/users";
 
@@ -84,6 +84,42 @@ async function renderAt(initialPath: string): Promise<RenderResult> {
   // coverage instrumentation that can take longer than findBy's 1s default.
   await screen.findByRole("navigation", { name: "Primary navigation" }, { timeout: 10_000 });
   return result;
+}
+
+/**
+ * Mount the route table at `initialPath` with a handle that re-renders it
+ * after the auth mock changes. A fresh element per pass: re-rendering the
+ * identical element object makes React bail out of reconciliation, so the
+ * auth change would never land.
+ */
+async function mountForAuthChange(initialPath: string): Promise<{ rerender: () => Promise<void> }> {
+  const tree = (): ReactElement => (
+    <MemoryRouter initialEntries={[initialPath]}>
+      <App />
+      <LocationProbe />
+    </MemoryRouter>
+  );
+  let view!: RenderResult;
+  await act(async () => {
+    view = render(tree());
+  });
+  return {
+    rerender: async () => {
+      await act(async () => {
+        view.rerender(tree());
+      });
+    },
+  };
+}
+
+/** Auth resolves to the verified test account with its profile loaded. */
+function resolveSignedIn(): void {
+  mocks.auth.refs.useAuth.mockReturnValue({
+    loading: false,
+    user: verifiedUser,
+    profile: testProfile as UserProfile,
+    refreshProfile: vi.fn(),
+  });
 }
 
 /** Returns the screen name marked as the active bottom-nav tab. */
@@ -364,33 +400,15 @@ describe("Smoke: /spots/:id deep link survives the auth bounce", () => {
     sessionStorage.clear();
     mocks.auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
 
-    // Fresh element per pass — re-rendering the identical element object makes
-    // React bail out of reconciliation, so the auth change would never land.
-    const tree = (): ReactElement => (
-      <MemoryRouter initialEntries={[`/spots/${SPOT_ID}`]}>
-        <App />
-        <LocationProbe />
-      </MemoryRouter>
-    );
-    let view!: RenderResult;
-    await act(async () => {
-      view = render(tree());
-    });
+    const view = await mountForAuthChange(`/spots/${SPOT_ID}`);
 
     // One settled destination, not a ping-pong between "/auth" and "/".
     expect(screen.getByTestId("location").textContent).toBe("/");
     expect(sessionStorage.getItem(DETAIL_KEY)).toBe(SPOT_ID);
 
     // Sign-in resolves: the auth router would normally land them on /lobby.
-    mocks.auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: verifiedUser,
-      profile: testProfile as UserProfile,
-      refreshProfile: vi.fn(),
-    });
-    await act(async () => {
-      view.rerender(tree());
-    });
+    resolveSignedIn();
+    await view.rerender();
 
     // The restore navigation is a router transition into a React.lazy route,
     // so the URL only commits once the chunk resolves — poll rather than
@@ -474,5 +492,75 @@ describe("Smoke: public /player/:uid for a signed-out visitor", () => {
   it("hides the bottom tab bar, whose destinations are all auth-gated", async () => {
     await renderPublicProfile();
     expect(screen.queryByRole("navigation", { name: "Primary navigation" })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * A web push tap opens https://skatehubba.com/?game=<id> (fcmOptions.link /
+ * click_action / the service worker's openWindow). It used to land on /lobby:
+ * nothing read ?game= on a fresh load, and the auth router's "/" → "/lobby"
+ * redirect dropped the query. These pin the real route table: the game opens
+ * once auth and the profile are ready, the param is stripped, and a signed-out
+ * tap survives sign-in.
+ */
+describe("Smoke: /?game=<id> push link", () => {
+  const PENDING_KEY = "skate.pendingGameLink";
+  const game = activeGame({ id: "pushGame123" });
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    mocks.games.refs.subscribeToMyGames.mockImplementation((_uid: string, cb: (g: unknown[]) => void) => {
+      cb([game]);
+      return vi.fn();
+    });
+    mocks.games.refs.subscribeToGame.mockImplementation((_id: string, cb: (g: unknown) => void) => {
+      cb(game);
+      return vi.fn();
+    });
+  });
+
+  afterEach(() => {
+    sessionStorage.clear();
+  });
+
+  it("opens the game on a cold load once auth and the profile resolve, then strips the param", async () => {
+    // Auth still loading on the first paint, exactly like a cold load.
+    mocks.auth.refs.useAuth.mockReturnValue({ loading: true, user: null, profile: null, refreshProfile: vi.fn() });
+    const view = await mountForAuthChange(`/?game=${game.id}`);
+    // Nothing routes while auth is loading, so the link is still intact.
+    expect(screen.getByTestId("location").textContent).toBe(`/?game=${game.id}`);
+
+    resolveSignedIn();
+    await view.rerender();
+
+    // "/game" with no query: opened, and the param is gone for a refresh.
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/game"));
+    expect(await screen.findByLabelText("TRICK NAME", undefined, { timeout: 10_000 })).toBeInTheDocument();
+    expect(sessionStorage.getItem(PENDING_KEY)).toBeNull();
+  });
+
+  it("keeps the link through sign-in and opens the game afterwards", async () => {
+    mocks.auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    const view = await mountForAuthChange(`/?game=${game.id}`);
+    // Signed out: the landing page, no game, the intent parked.
+    expect(screen.getByTestId("location").textContent).toBe("/");
+    expect(sessionStorage.getItem(PENDING_KEY)).toBe(game.id);
+    expect(mocks.games.refs.subscribeToGame).not.toHaveBeenCalled();
+
+    // Sign-in resolves; the auth router would normally land them on /lobby.
+    resolveSignedIn();
+    await view.rerender();
+
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/game"));
+    expect(mocks.games.refs.subscribeToGame).toHaveBeenCalledWith(game.id, expect.any(Function), expect.any(Function));
+    expect(sessionStorage.getItem(PENDING_KEY)).toBeNull();
+  });
+
+  it("drops a malformed id: strips it and stays on the lobby", async () => {
+    resolveSignedIn();
+    await mountApp("/?game=..%2Fusers%2Fu2");
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/lobby"));
+    expect(sessionStorage.getItem(PENDING_KEY)).toBeNull();
+    expect(mocks.games.refs.subscribeToGame).not.toHaveBeenCalled();
   });
 });
