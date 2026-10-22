@@ -54,4 +54,16 @@ describe("AnnouncementBanner", () => {
     await waitFor(() => expect(h.getActiveAnnouncement).toHaveBeenCalledTimes(4));
     expect(screen.queryByTestId("announcement-banner")).toBeNull();
   });
+  it("skips the tester read in the native shell and asks as a non-tester", async () => {
+    (globalThis as { Capacitor?: unknown }).Capacitor = { isNativePlatform: () => true };
+    try {
+      h.getActiveAnnouncement.mockResolvedValue(ann);
+      render(<AnnouncementBanner uid="u" isPro={false} />);
+      expect(await screen.findByText("Saturday")).toBeInTheDocument();
+      expect(h.fetchIsFeatureTester).not.toHaveBeenCalled();
+      expect(h.getActiveAnnouncement).toHaveBeenCalledWith({ isPro: false, isTester: false });
+    } finally {
+      delete (globalThis as { Capacitor?: unknown }).Capacitor;
+    }
+  });
 });
