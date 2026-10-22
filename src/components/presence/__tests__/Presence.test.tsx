@@ -16,6 +16,7 @@ const presence = vi.hoisted(() => ({
 const online = vi.hoisted(() => ({
   subscribeOnline: vi.fn(),
   startOnlineHeartbeat: vi.fn(),
+  getHideOnline: vi.fn(() => false),
 }));
 vi.mock("../../../context/AuthContext", () => ({ useAuthContext: () => auth.value }));
 vi.mock("../../../lib/featureFlags", () => ({ isSpotPresenceEnabled: () => flag.on }));
@@ -86,6 +87,13 @@ describe("WhosSkatingHere", () => {
     presence.leaveSpot.mockRejectedValueOnce(new Error("x"));
     await userEvent.click(screen.getByRole("button", { name: "Leave spot" }));
     expect(presence.leaveSpot).toHaveBeenCalledWith("s1");
+  });
+  it("tells a hidden skater they're hidden instead of 'not checked in'", () => {
+    online.getHideOnline.mockReturnValue(true);
+    renderHere();
+    act(() => emitHere([{ uid: "m", username: "mike" }]));
+    expect(screen.getByText("You're hidden")).toBeInTheDocument();
+    online.getHideOnline.mockReturnValue(false);
   });
   it("renders nothing signed out", () => {
     auth.value = { user: null };
