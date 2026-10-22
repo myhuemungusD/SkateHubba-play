@@ -43,6 +43,7 @@ describe("resolveProToolsAccess", () => {
 });
 
 describe("ProToolsScreen", () => {
+  afterEach(() => vi.unstubAllEnvs());
   it("renders every pro tool as a coming-soon placeholder with no actionable controls", async () => {
     const onBack = vi.fn();
     render(<ProToolsScreen reviewMode={false} onBack={onBack} />);
@@ -58,13 +59,31 @@ describe("ProToolsScreen", () => {
     expect(onBack).toHaveBeenCalled();
   });
 
-  it("leads with Bless a pro, the headline pro power", () => {
+  it("leads with Bless a pro, the headline pro power, when the blessing flag is on", () => {
+    vi.stubEnv("VITE_FEATURE_PRO_BLESSING", "true");
     render(<ProToolsScreen reviewMode={false} onBack={() => {}} />);
     const hero = screen.getByTestId("blessing-hero");
     expect(hero).toHaveTextContent("Bless a pro");
     expect(hero).toHaveTextContent(/never earns or wins|Nobody earns or wins pro/);
     const headings = screen.getAllByRole("heading").map((h) => h.textContent);
     expect(headings.indexOf("Bless a pro")).toBe(1);
+  });
+
+  it("shows no blessing card or blessing copy at all with the blessing flag off", () => {
+    vi.stubEnv("VITE_FEATURE_PRO_BLESSING", "");
+    for (const reviewMode of [false, true]) {
+      const { unmount } = render(<ProToolsScreen uid="p" reviewMode={reviewMode} onBack={() => {}} />);
+      expect(screen.queryByTestId("blessing-hero")).toBeNull();
+      expect(screen.queryByRole("heading", { name: "Bless a pro" })).toBeNull();
+      expect(screen.getByTestId("pro-tools-screen").textContent ?? "").not.toMatch(/bless/i);
+      unmount();
+    }
+  });
+
+  it("previews the blessing card in admin review mode when the flag is on", () => {
+    vi.stubEnv("VITE_FEATURE_PRO_BLESSING", "true");
+    render(<ProToolsScreen uid="a" reviewMode onBack={() => {}} />);
+    expect(screen.getByTestId("blessing-hero")).toHaveTextContent("Preview");
   });
 
   it("exposes no admin-only feature to pros", () => {
