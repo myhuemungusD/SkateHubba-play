@@ -189,7 +189,7 @@ jobs:
           # Print a word, not "KEY=value": GitHub masks every line of the
           # secret, so echoing the raw line shows up as "***".
           for key in XP_ENABLED DICE_ENABLED MODERATION_ENABLED PRO_BLESSING_ENABLED; do
-            raw="$(grep -E "^${key}=" "$DEST" | head -n 1 | cut -d= -f2- | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+            raw="$(grep -E "^${key}=" "$DEST" | head -n 1 | cut -d= -f2- | tr -d '[:space:]')"
             case "$raw" in
               true) state="ON" ;;
               "") state="MISSING (off)" ;;
