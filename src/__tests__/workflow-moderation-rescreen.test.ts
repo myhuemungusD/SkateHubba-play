@@ -93,10 +93,11 @@ describe("moderation-rescreen.yml policy", () => {
     expect(WORKFLOW).toContain("FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}");
   });
 
-  it("never hard-codes MODERATION_ENABLED: apply passes through the value derived from FUNCTIONS_DOTENV / vars", () => {
+  it("never hard-codes MODERATION_ENABLED: apply passes through the value derived from FUNCTIONS_DOTENV only", () => {
     expect(WORKFLOW).not.toMatch(/^\s*(export\s+)?MODERATION_ENABLED\s*[=:]\s*["']?true/im);
     expect(WORKFLOW).toContain("FUNCTIONS_DOTENV: ${{ secrets.FUNCTIONS_DOTENV }}");
-    expect(WORKFLOW).toContain("VAR_MODERATION_ENABLED: ${{ vars.MODERATION_ENABLED }}");
+    // The deploy requires MODERATION_ENABLED= in FUNCTIONS_DOTENV and never reads a variable for it.
+    expect(WORKFLOW).not.toMatch(/vars\.MODERATION_ENABLED|VAR_MODERATION_ENABLED/);
     expect(WORKFLOW).toContain("SWITCH: ${{ steps.switch.outputs.moderation }}");
     expect(WORKFLOW).toMatch(
       /if \[ "\$MODE" = "apply" \]; then\n(?:.*\n)*? +export MODERATION_ENABLED="\$SWITCH"\n(?:.*\n)*? +ARGS=\(--apply/,
@@ -155,27 +156,29 @@ describe("moderation-rescreen.yml policy", () => {
       expect(r.log).not.toContain("XP_ENABLED");
     });
 
-    it("parses like the deploy (whitespace, CRLF, case) and FUNCTIONS_DOTENV wins over the variable", () => {
+    it("parses like the deploy (whitespace, CRLF, case) and refuses apply when FUNCTIONS_DOTENV says false", () => {
       expect(resolveSwitch({ FUNCTIONS_DOTENV: dotenv(" TRUE\r") }).status).toBe(0);
-      const r = resolveSwitch({ FUNCTIONS_DOTENV: dotenv("false"), VAR_MODERATION_ENABLED: "true" });
+      const r = resolveSwitch({ FUNCTIONS_DOTENV: dotenv("false") });
       expect(r.status).toBe(2);
       expect(r.output).toBe("moderation=false\n");
       expect(r.log).toContain(
-        "Refusing to apply: production moderation is not ON (MODERATION_ENABLED=false from FUNCTIONS_DOTENV)",
+        "Refusing to apply: production moderation is not ON (MODERATION_ENABLED=false in FUNCTIONS_DOTENV)",
       );
     });
 
-    it("falls back to vars.MODERATION_ENABLED when the secret has no such line", () => {
-      const on = resolveSwitch({ FUNCTIONS_DOTENV: dotenv(null), VAR_MODERATION_ENABLED: "true" });
-      expect(on.status).toBe(0);
-      expect(on.log).toContain("MODERATION_ENABLED=true (repository variable)");
-      expect(resolveSwitch({ FUNCTIONS_DOTENV: dotenv(null), VAR_MODERATION_ENABLED: "false" }).status).toBe(2);
+    it("has no vars fallback: vars=true but no FUNCTIONS_DOTENV line refuses apply", () => {
+      for (const FUNCTIONS_DOTENV of [dotenv(null), ""]) {
+        const r = resolveSwitch({ FUNCTIONS_DOTENV, VAR_MODERATION_ENABLED: "true", MODERATION_ENABLED: "true" });
+        expect(r.status).toBe(2);
+        expect(r.output).toBe("moderation=false\n");
+        expect(r.log).toContain("MODERATION_ENABLED=(missing) in FUNCTIONS_DOTENV");
+      }
     });
 
     it("refuses apply (exit 2) when the switch is missing or not a boolean, without echoing the value", () => {
       const missing = resolveSwitch({});
       expect(missing.status).toBe(2);
-      expect(missing.log).toContain("MODERATION_ENABLED=(missing) from missing");
+      expect(missing.log).toContain("MODERATION_ENABLED=(missing) in FUNCTIONS_DOTENV");
       const junk = resolveSwitch({ FUNCTIONS_DOTENV: dotenv("yes-please-secret") });
       expect(junk.status).toBe(2);
       expect(junk.log).toContain("(not true or false)");
@@ -186,7 +189,7 @@ describe("moderation-rescreen.yml policy", () => {
       const offCases: Array<Record<string, string>> = [
         {},
         { FUNCTIONS_DOTENV: dotenv("false") },
-        { VAR_MODERATION_ENABLED: "false" },
+        { FUNCTIONS_DOTENV: dotenv(null) },
       ];
       for (const env of offCases) {
         const r = resolveSwitch({ MODE: "dry-run", ...env });

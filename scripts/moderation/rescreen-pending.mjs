@@ -52,8 +52,8 @@
  * from the environment, else from the functions parameter file
  * (scripts/lib/functions-env.mjs). That is the same switch and the same
  * strict parse as the deployed param, which defaults to off. The workflow
- * derives it from FUNCTIONS_DOTENV / vars.MODERATION_ENABLED, exactly as the
- * deploy does, and never hard-codes it.
+ * derives it from the required MODERATION_ENABLED= line of FUNCTIONS_DOTENV,
+ * exactly as the deploy does (no vars fallback), and never hard-codes it.
  *
  * Idempotent: a clip is re-read right before screening and skipped unless it
  * is still a pending user upload, and the handler's transaction re-checks
@@ -259,12 +259,42 @@ export async function main(argv = process.argv.slice(2), env = process.env, io =
   return failed ? 1 : 0;
 }
 
+const GRPC_CODES =
+  /\b(PERMISSION_DENIED|UNAUTHENTICATED|NOT_FOUND|RESOURCE_EXHAUSTED|DEADLINE_EXCEEDED|UNAVAILABLE|INVALID_ARGUMENT|FAILED_PRECONDITION|ABORTED)\b/;
+
+/**
+ * Top-level failure text. Locally, the full message. Redacted (CI), the same
+ * fixed vocabulary as the log's error notes (noteFor in rescreen.ts): the
+ * error class, "annotate", an HTTP status and a gRPC code, never the message
+ * itself, which can quote doc paths (users/{uid}, clips/...) or storage paths.
+ * Kept here rather than imported because the compiled functions code may be
+ * the thing that failed to load.
+ */
+export function failureText(error, redact) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (!redact) return message;
+  const name = error instanceof Error && /^[A-Za-z]{1,40}$/.test(error.name) ? error.name : "error";
+  const code = error && typeof error === "object" ? error.code : undefined;
+  const parts = [
+    /annotate/i.test(message) ? "annotate" : "",
+    /\b[45]\d\d\b/.exec(message)?.[0] ?? "",
+    GRPC_CODES.exec(message)?.[0] ?? "",
+    typeof code === "number" && Number.isInteger(code) ? `code ${code}` : "",
+  ].filter((part) => part.length > 0);
+  return `${name}${parts.length > 0 ? ` (${parts.join(" ")})` : ""}; details are in Sentry or a local run`;
+}
+
+/** Entry point: main() plus the redaction-aware top-level failure line. */
+export async function cli(argv = process.argv.slice(2), env = process.env, io = console) {
+  try {
+    return await main(argv, env, io);
+  } catch (error) {
+    const redact = env.GITHUB_ACTIONS === "true" || argv.includes("--redact");
+    io.error(`rescreen: failed: ${failureText(error, redact)}`);
+    return 1;
+  }
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().then(
-    (code) => process.exit(code),
-    (error) => {
-      console.error(`rescreen: failed: ${error instanceof Error ? error.message : String(error)}`);
-      process.exit(1);
-    },
-  );
+  cli().then((code) => process.exit(code));
 }

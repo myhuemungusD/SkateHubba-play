@@ -134,6 +134,43 @@ describe("appendLog", () => {
   });
 });
 
+describe("top-level failure output", () => {
+  const LEAKY = "7 PERMISSION_DENIED: users/uid-abc123 gs://b/userClips/uid-abc123/v.mp4 @sk8_handle";
+  const leaky = () => Object.assign(new Error(LEAKY), { code: 7 });
+
+  it("redacted: prints only the error class and fixed vocabulary, never the message", () => {
+    const text = rescreen.failureText(leaky(), true);
+    expect(text).toBe("Error (PERMISSION_DENIED code 7); details are in Sentry or a local run");
+    for (const leak of ["uid-", "users/", "gs://", "userClips", "@", "sk8_handle"]) expect(text).not.toContain(leak);
+    expect(rescreen.failureText(new Error("annotate 403 on clips/x"), true)).toBe(
+      "Error (annotate 403); details are in Sentry or a local run",
+    );
+    expect(rescreen.failureText("plain @who", true)).toBe("error; details are in Sentry or a local run");
+  });
+
+  it("local: keeps the full message", () => {
+    expect(rescreen.failureText(leaky(), false)).toBe(LEAKY);
+  });
+
+  it("cli redacts a thrown failure under GITHUB_ACTIONS=true or --redact, and not locally", async () => {
+    // parseArgs throws with the offending flag in its message, which stands in for any leaky top-level error.
+    const flag = "--users/uid-abc123/@sk8_handle";
+    for (const [argv, env] of [
+      [[flag], { GITHUB_ACTIONS: "true" }],
+      [["--redact", flag], {}],
+    ] as const) {
+      const io = { log: vi.fn(), error: vi.fn() };
+      expect(await rescreen.cli([...argv], env, io)).toBe(1);
+      const printed = io.error.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(printed).toBe("rescreen: failed: Error; details are in Sentry or a local run");
+      for (const leak of ["uid-", "users/", "@", "sk8_handle"]) expect(printed).not.toContain(leak);
+    }
+    const io = { log: vi.fn(), error: vi.fn() };
+    expect(await rescreen.cli([flag], {}, io)).toBe(1);
+    expect(io.error.mock.calls[0][0]).toContain(`Unknown flag ${flag}`);
+  });
+});
+
 describe("main refusals", () => {
   it("fails closed on --apply while MODERATION_ENABLED is off, before touching Firestore", async () => {
     const io = { log: vi.fn(), error: vi.fn() };

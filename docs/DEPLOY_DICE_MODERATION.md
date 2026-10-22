@@ -167,10 +167,12 @@ team box.
   branch.
 - **Moderation must be ON in production, or apply refuses.** The workflow's
   "Resolve moderation switch" step reads `MODERATION_ENABLED` exactly the way
-  `firebase-functions-deploy.yml` does: a `MODERATION_ENABLED=` line in the
-  `FUNCTIONS_DOTENV` secret wins, then the `MODERATION_ENABLED` repository
-  variable (whitespace stripped, case-insensitive). Anything but `true`,
-  including missing, stops apply with exit 2 before anything is installed or
+  `firebase-functions-deploy.yml` does: the required `MODERATION_ENABLED=`
+  line in the `FUNCTIONS_DOTENV` secret (whitespace stripped,
+  case-insensitive). There is no repository-variable fallback, because the
+  deploy has none for this key (it fails without the line; only the Closet,
+  map check-in and spot presence switches fall back to variables). Anything
+  but `true`, including a missing line, stops apply with exit 2 before anything is installed or
   read; a dry run still runs. Only that one key is extracted, and only
   `true`/`false` is printed. The derived value is passed to the script, which
   refuses `--apply` again unless it is exactly `true`. Nothing hard-codes it.
