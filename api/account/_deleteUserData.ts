@@ -41,7 +41,14 @@
  */
 
 import type { Firestore } from "firebase-admin/firestore";
-import { deleteIfPresent, deletePrefix, deleteRefs, scanAll, type CascadeDeps } from "./_cascadeUtil.js";
+import {
+  deleteIfPresent,
+  deletePrefix,
+  deleteRefs,
+  scanAll,
+  userStoragePrefix,
+  type CascadeDeps,
+} from "./_cascadeUtil.js";
 import { emptyClosetCounts, eraseCloset, type ClosetErasureCounts } from "./_closetErasure.js";
 import { anonymizeJudgedGames, eraseActiveSkateGames } from "./_skateErasure.js";
 import { eraseDiceGames } from "./_diceErasure.js";
@@ -51,9 +58,6 @@ export type { CascadeDeps } from "./_cascadeUtil.js";
 
 /** Owner-only canonical doc under `users/{uid}/private` — mirrors users.ts. */
 const PRIVATE_PROFILE_DOC_ID = "profile";
-
-/** Avatar extensions written by `src/services/avatars.ts`. */
-const AVATAR_EXTENSIONS = ["webp", "jpeg", "png"] as const;
 
 /**
  * Every subcollection under users/{uid} besides the ones counted on their own
@@ -103,6 +107,11 @@ export interface DeletionSummary {
   /** Opponent and spot markers under users/{uid}/xpMarkers. */
   xpMarkers: number;
   blockedUsers: number;
+  /**
+   * Objects removed from the `users/{uid}/` Storage folder in Phase 5: the
+   * avatar plus any Resize Images thumbnails (`*_200x200.*`). Name kept for
+   * response compatibility.
+   */
   avatarObjects: number;
   usernameReleased: boolean;
   /** Active Roll Dice matches closed so the other player is not left waiting. */
@@ -281,6 +290,9 @@ async function releaseUsername(db: Firestore, uid: string, candidate: string): P
 export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Promise<DeletionSummary> {
   const { db } = deps;
   const summary = emptySummary();
+  // Resolved before any phase runs so a malformed uid fails before anything is
+  // deleted, rather than after Phase 4 has already removed the identity docs.
+  const userFolder = userStoragePrefix(uid);
 
   // ── Phase 0: identity lookup ──
   // Read the username before anything is destroyed; the reservation is
@@ -503,11 +515,14 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   summary.xpMarkers = xpMarkers.length;
   summary.blockedUsers = blocked.length;
 
-  // ── Phase 5: avatar binaries ──
-  // Three extensions because `avatars.ts` may have written any of them.
-  for (const ext of AVATAR_EXTENSIONS) {
-    summary.avatarObjects += await deletePrefix(deps, `users/${uid}/avatar.${ext}`);
-  }
+  // ── Phase 5: the account's Storage folder ──
+  // This phase is the single owner of everything under `users/{uid}/`: the
+  // avatar in any of the three extensions `avatars.ts` writes, the banner, and
+  // the Resize Images extension's `*_200x200.*` thumbnails of both (G8).
+  // Deleting by exact file name missed those thumbnails; deleting the folder
+  // cannot. `ownedMediaPrefixes` (Phase 3c) deliberately leaves this folder
+  // out, so every object here is deleted and counted once, in `avatarObjects`.
+  summary.avatarObjects += await deletePrefix(deps, userFolder);
 
   return summary;
 }
