@@ -47,6 +47,26 @@ export const DEMO_OPPONENTS = [
   { uid: "review-demo-opp-6", username: "grind_gabe", stance: "Goofy" },
 ];
 
+/**
+ * Server-written stats for the opponent the screenshots open (kai), so his
+ * profile above VS YOU isn't all zeros. Oldest result first; his last game is
+ * the loss to the reviewer, so his current streak is 0.
+ */
+export const DEMO_OPPONENT_STATS = {
+  "review-demo-opp-1": {
+    wins: 22,
+    losses: 9,
+    gamesPlayed: 31,
+    currentWinStreak: 0,
+    bestWinStreak: 6,
+    tricksLanded: 96,
+    tricksFailed: 41,
+    lettersGiven: 137,
+    lettersTaken: 89,
+    recentResults: ["W", "W", "L", "W", "W", "W", "L", "W", "W", "L"],
+  },
+};
+
 /** Mike White Signature shoes the demo profile owns (credited in-app by DesignerCredit). */
 export const DEMO_LOCKER = [
   { id: "review-demo-gear-1", itemDefId: "mike_white_signature_001", type: "shoes", rarity: "limited", equipped: true },
@@ -122,13 +142,17 @@ export function buildSeedDocs({
     wins: 14,
     losses: 6,
     gamesPlayed: 20,
-    currentWinStreak: 3,
+    currentWinStreak: 2,
     bestWinStreak: 5,
     tricksLanded: 61,
     tricksFailed: 23,
+    // 14 wins × 5 given + ~3 a loss; 6 losses × 5 taken + ~2 a win.
+    lettersGiven: 88,
+    lettersTaken: 58,
     xp: 2460,
     level: 11,
-    recentResults: ["W", "L", "W", "W", "W"],
+    // Oldest first. Ends L, L, W, W to match the four finished games below.
+    recentResults: ["W", "W", "L", "W", "W", "W", "L", "L", "W", "W"],
   });
   put(`usernames/${username}`, { uid });
   put(`users/${uid}/private/profile`, {
@@ -140,7 +164,13 @@ export function buildSeedDocs({
     ...(tipsDisabled ? { tipsDisabled: true } : {}),
   });
   for (const o of DEMO_OPPONENTS) {
-    put(`users/${o.uid}`, { uid: o.uid, username: o.username, stance: o.stance, createdAt: at(-60) });
+    put(`users/${o.uid}`, {
+      uid: o.uid,
+      username: o.username,
+      stance: o.stance,
+      createdAt: at(-60),
+      ...(DEMO_OPPONENT_STATS[o.uid] ?? {}),
+    });
     put(`usernames/${o.username}`, { uid: o.uid });
   }
 
@@ -208,6 +238,15 @@ export function buildSeedDocs({
     p1Letters: 2,
     turnNumber: 11,
     updatedAt: at(-4),
+  });
+  // Kai won the earlier game, so head-to-head reads 1–1 over two games.
+  base("review-demo-lost-kai", a, {
+    status: "complete",
+    winner: a.uid,
+    p1Letters: 5,
+    p2Letters: 3,
+    turnNumber: 15,
+    updatedAt: at(-8),
   });
   base("review-demo-lost", e, {
     status: "complete",

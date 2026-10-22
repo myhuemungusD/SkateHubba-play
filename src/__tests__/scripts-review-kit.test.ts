@@ -31,7 +31,7 @@ describe("plan", () => {
     const paths = docs.map(([p]: [string]) => p);
     expect(paths).toContain("users/U");
     expect(paths).toContain("usernames/appreview");
-    expect(paths.filter((p: string) => p.startsWith("games/"))).toHaveLength(9);
+    expect(paths.filter((p: string) => p.startsWith("games/"))).toHaveLength(10);
     expect(paths.filter((p: string) => p.startsWith("clips/"))).toHaveLength(8);
     expect(paths.filter((p: string) => p.startsWith("spots/"))).toHaveLength(6);
     expect(paths.filter((p: string) => p.startsWith("users/U/locker/"))).toHaveLength(4);
@@ -70,6 +70,30 @@ describe("plan", () => {
       .map(([, d]: [string, { brand: string }]) => d);
     expect(locker.every((d: { brand: string }) => d.brand === "Mike White")).toBe(true);
     expect(plan.SCREENS.some((s: { path: string }) => plan.FORBIDDEN_PATHS.includes(s.path))).toBe(false);
+  });
+
+  it("seeds letters, kai's stats and a 1–1 head-to-head with kai", () => {
+    const docs = plan.buildSeedDocs({ uid: "U", username: "a", appUrl: "https://a" });
+    const doc = (path: string) => docs.find(([p]: [string]) => p === path)?.[1];
+    const me = doc("users/U");
+    expect(me).toMatchObject({ lettersGiven: 88, lettersTaken: 58, currentWinStreak: 2 });
+    // At least 5 given per win and 5 taken per loss.
+    expect(me.lettersGiven).toBeGreaterThanOrEqual(me.wins * 5);
+    expect(me.lettersTaken).toBeGreaterThanOrEqual(me.losses * 5);
+    expect(me.recentResults.slice(-2)).toEqual(["W", "W"]);
+
+    const kai = doc("users/review-demo-opp-1");
+    expect(kai).toMatchObject({ username: "kickflip_kai", wins: 22, losses: 9, gamesPlayed: 31 });
+    expect(kai.wins + kai.losses).toBe(kai.gamesPlayed);
+    expect(doc("users/review-demo-opp-2").wins).toBeUndefined();
+
+    const vsKai = docs
+      .filter(([p]: [string]) => p.startsWith("games/"))
+      .map(([, g]: [string, { player2Uid: string; status: string; winner: string }]) => g)
+      .filter(
+        (g: { player2Uid: string; status: string }) => g.player2Uid === "review-demo-opp-1" && g.status === "complete",
+      );
+    expect(vsKai.map((g: { winner: string }) => g.winner).sort()).toEqual(["U", "review-demo-opp-1"]);
   });
 });
 
