@@ -195,26 +195,32 @@ function log(event: string, fields: Record<string, unknown>): void {
   console.warn(JSON.stringify({ event, ...fields }));
 }
 
-/** Runs the PostHog person deletion and logs its outcome. Never throws. */
+/**
+ * Runs the PostHog person deletion and logs its outcome. Never throws.
+ *
+ * A failure, or a skip in production (the env is missing there, so every
+ * deletion would silently miss PostHog), also sends a Sentry warning carrying
+ * the distinct_id: it's the same pseudonym PostHog and Sentry already hold,
+ * and the only handle left for the manual retry in docs/SENTRY_ALERTS.md once
+ * the account is gone. A skip outside production is expected and only logged.
+ */
 async function reportPosthogErasure(uid: string): Promise<void> {
   const outcome = await erasePosthogPerson(uid);
   const uidHash = hashUid(uid);
   if (outcome.status === "queued") {
     log("account_delete_posthog_queued", { uidHash, personsFound: outcome.personsFound });
-  } else if (outcome.status === "skipped") {
-    log("account_delete_posthog_skipped", { uidHash, reason: outcome.reason });
-  } else {
-    // distinctId is the same pseudonymous id PostHog and Sentry already hold,
-    // and the only handle left for a manual retry once the account is gone.
-    const distinctId = hashIdentity(uid);
-    log("account_delete_posthog_failed", { uidHash, distinctId, reason: outcome.reason });
-    captureServerError(
-      "account_delete_posthog_failed",
-      new Error(`PostHog person deletion failed: ${outcome.reason}`),
-      { uidHash, distinctId },
-      { level: "warning" },
-    );
+    return;
   }
+  const event = outcome.status === "skipped" ? "account_delete_posthog_skipped" : "account_delete_posthog_failed";
+  const distinctId = hashIdentity(uid);
+  log(event, { uidHash, distinctId, reason: outcome.reason });
+  if (outcome.status === "skipped" && process.env.VERCEL_ENV !== "production") return;
+  captureServerError(
+    event,
+    new Error(`PostHog person deletion ${outcome.status}: ${outcome.reason}`),
+    { uidHash, distinctId },
+    { level: "warning" },
+  );
 }
 
 /** What the full erasure cascade needs, for this app. */
@@ -361,7 +367,7 @@ async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
     // the user can retry. Every phase is idempotent, so a retry resumes rather
     // than double-deleting.
     log("account_delete_erasure_failed", { uid, error: err instanceof Error ? err.message : String(err) });
-    captureServerError("account_delete_erasure_failed", err, { uidHash: hashUid(uid) });
+    captureServerError("account_delete_erasure_failed", err, { uidHash: hashUid(uid) }, { redactMessage: true });
     await flushServerErrors();
     fail(res, 500, "erasure_failed", "Could not delete your data. Your account is unchanged — please try again.");
     return;
@@ -380,7 +386,7 @@ async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
     await getAuth(app).deleteUser(uid);
   } catch (err) {
     log("account_delete_auth_failed", { uid, error: err instanceof Error ? err.message : String(err) });
-    captureServerError("account_delete_auth_failed", err, { uidHash: hashUid(uid) });
+    captureServerError("account_delete_auth_failed", err, { uidHash: hashUid(uid) }, { redactMessage: true });
     await flushServerErrors();
     res.status(200).json({ ok: true, authDeleted: false, summary });
     return;

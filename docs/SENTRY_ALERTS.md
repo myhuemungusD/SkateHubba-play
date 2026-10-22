@@ -98,6 +98,7 @@ Fires when `POST /api/account/delete` erased the user's data but PostHog's bulk-
 - **Filter:** `event.environment:production AND message:"account_delete_posthog_failed"`
 - **Then:** Send notification to **Slack** `#skatehubba-alerts`
 - **Action interval:** Every occurrence (each one is a deletion request PostHog has not acted on)
+- **Skipped in production (`account_delete_posthog_skipped`):** same filter with this message. It fires when `POSTHOG_PERSONAL_API_KEY` or `POSTHOG_PROJECT_ID` is missing in Vercel Production, so every deletion is missing PostHog. Set both, redeploy, then retry each `extra.distinctId` by hand as below. Outside production a skip is expected and only logged.
 - **Remediation:** `http_401` or `http_403` means `POSTHOG_PERSONAL_API_KEY` is wrong, expired, or lacks `person:write`; `http_404` usually means a wrong `POSTHOG_PROJECT_ID` or `POSTHOG_HOST` (see `docs/DEPLOYMENT.md`). Fix the env, then retry by hand: `POST {POSTHOG_HOST}/api/projects/{POSTHOG_PROJECT_ID}/persons/bulk_delete/` with `{"distinct_ids": ["<extra.distinctId>"], "delete_events": true}` and the personal key as a Bearer token.
 
 ### 3. Slack Integration

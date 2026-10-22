@@ -131,6 +131,7 @@ beforeEach(() => {
   delete process.env.FIREBASE_STORAGE_BUCKET;
   delete process.env.ACCOUNT_DELETE_ALLOWED_ORIGIN;
   delete process.env.SENTRY_DSN;
+  delete process.env.VERCEL_ENV;
   // No pre-existing app: the default path is a cold start that initializes one.
   h.getAppsMock.mockReturnValue([]);
   h.initializeAppMock.mockReturnValue(APP);
@@ -598,11 +599,37 @@ describe("error reporting (server-side Sentry)", () => {
     expect(captures()).toHaveLength(0);
   });
 
-  it("logs a skipped PostHog deletion when it is not configured, without a Sentry event", async () => {
+  it("logs a skipped PostHog deletion outside production, without a Sentry event", async () => {
+    process.env.VERCEL_ENV = "preview";
     await call();
     const line = loggedLine("posthog_skipped");
     expect(JSON.parse(line ?? "{}")).toMatchObject({ reason: "not_configured", uidHash: hashUid(TOKEN_UID) });
     expect(captures()).toHaveLength(0);
+  });
+
+  it("reports a skipped PostHog deletion in production as a warning (the env is missing)", async () => {
+    process.env.VERCEL_ENV = "production";
+    const { out, order } = await callRecordingOrder();
+    expect(out.body).toEqual({ ok: true, authDeleted: true, summary: SUMMARY });
+    expect(order).toEqual(["warning:account_delete_posthog_skipped", "flush", "respond"]);
+    expect(captures()[0][1]).toMatchObject({
+      level: "warning",
+      extra: { uidHash: hashUid(TOKEN_UID), distinctId: hashIdentity(TOKEN_UID) },
+    });
+    expect(JSON.stringify(captures())).not.toContain(TOKEN_UID);
+  });
+
+  it.each([
+    [
+      "account_delete_erasure_failed",
+      () => h.cascadeMock.mockRejectedValueOnce(new Error(`no doc users/${TOKEN_UID}`)),
+    ],
+    ["account_delete_auth_failed", () => h.deleteUserMock.mockRejectedValueOnce(new Error(`no user ${TOKEN_UID}`))],
+  ])("redacts the %s message (Firebase errors can quote the uid)", async (event, fail) => {
+    fail();
+    await call();
+    const reported = captures().find((c) => c[1].tags.event === event)?.[0] as Error;
+    expect(`${reported.message} ${reported.stack}`).not.toContain(TOKEN_UID);
   });
 
   it("reports a revoke failure as a warning with the hash only, and still erases", async () => {

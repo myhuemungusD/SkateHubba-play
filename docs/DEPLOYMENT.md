@@ -569,8 +569,12 @@ the workflow's query string.
 > with the `person:write` scope, not the public `VITE_POSTHOG_KEY`),
 > `POSTHOG_PROJECT_ID`, and optionally `POSTHOG_HOST` (defaults to
 > `https://us.posthog.com`; this is the app host, not the `us.i.posthog.com`
-> ingest host). This step is best-effort: if the key or project id is unset the
-> log shows `account_delete_posthog_skipped`, and an HTTP error or a 5-second
+> ingest host). If `VITE_POSTHOG_HOST` points at the EU cloud
+> (`https://eu.i.posthog.com`), set `POSTHOG_HOST=https://eu.posthog.com`, or
+> the deletion goes to the wrong region and returns 401. This step is
+> best-effort: if the key or project id is unset the log shows
+> `account_delete_posthog_skipped` (in Production it also sends a Sentry
+> warning, because every deletion would miss PostHog), and an HTTP error or a 5-second
 > timeout logs `account_delete_posthog_failed` and sends a Sentry warning. The
 > account is deleted either way. A healthy run logs
 > `account_delete_posthog_queued`.

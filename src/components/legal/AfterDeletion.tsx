@@ -22,15 +22,15 @@ export function AfterDeletionList() {
       <li>
         <strong className="text-white">Kept, linked to your account ID:</strong> Ban records, so a ban cannot be escaped
         by re-registering; reports other people filed about you; the admin action log and the Closet custody log; and,
-        for verified pros, quiz answer keys and records of which skaters you blessed. A daily anti-farming XP counter
-        holds only a date and a count.
+        for verified pros, quiz answer keys. Pro blessing records you gave or received, including the usernames on them,
+        stay as part of the public pro lineage. A daily anti-farming XP counter holds only a date and a count.
       </li>
       <li>
         <strong className="text-white">Backups:</strong> Copies in our daily database backups expire within 7 days.
       </li>
       <li>
-        <strong className="text-white">Analytics:</strong> We ask PostHog to delete your analytics profile and its
-        events, which PostHog then removes in the background.
+        <strong className="text-white">Analytics:</strong> We tell PostHog to delete your analytics profile and its
+        events; PostHog removes them in the background. If that request fails, we&apos;re alerted and send it again.
       </li>
       <li>
         <strong className="text-white">Error reports:</strong> Events already sent to Sentry stay under a pseudonymous
