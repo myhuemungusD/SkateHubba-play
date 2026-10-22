@@ -65,6 +65,43 @@ vi.mock("../App", () => ({
   default: () => null,
 }));
 
+/* ── mock ./boot/Root and track React roots ─────────────────────────────
+   The real Root paints BootLanding and schedules rAF/idle work; left
+   mounted, that work ran after jsdom teardown ("window is not defined",
+   "Closing rpc while onUserConsoleLog was pending") and failed the run
+   after every test had passed. Root has its own tests in boot/__tests__.
+   Each loaded entry's root is unmounted in afterEach once it has rendered. ── */
+
+const { mockRootRendered, createdRoots } = vi.hoisted(() => ({
+  mockRootRendered: vi.fn(),
+  createdRoots: [] as Array<{ unmount: () => void }>,
+}));
+
+vi.mock("../boot/Root", () => ({
+  Root: () => {
+    mockRootRendered();
+    return null;
+  },
+}));
+
+vi.mock("react-dom/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-dom/client")>();
+  return {
+    ...actual,
+    createRoot: (...args: Parameters<typeof actual.createRoot>) => {
+      const root = actual.createRoot(...args);
+      createdRoots.push(root);
+      return root;
+    },
+  };
+});
+
+/** Wait for main's async first render, then unmount every root it made. */
+async function unmountRoots(): Promise<void> {
+  if (createdRoots.length > 0) await vi.waitFor(() => expect(mockRootRendered).toHaveBeenCalled());
+  for (const root of createdRoots.splice(0)) root.unmount();
+}
+
 /* ── mock CSS side-effect import ──────────────────────────────────────── */
 
 vi.mock("../index.css", () => ({}));
@@ -113,7 +150,8 @@ describe("main entry — splash screen hide", () => {
     document.body.innerHTML = "";
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await unmountRoots();
     document.body.innerHTML = "";
   });
 
@@ -172,7 +210,8 @@ describe("main entry — push ?game= link", () => {
     sessionStorage.clear();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await unmountRoots();
     document.body.innerHTML = "";
     sessionStorage.clear();
     window.history.replaceState(null, "", "/");
