@@ -36,17 +36,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// Stand-in for macOS `plutil -convert json` on Linux CI: Python's plistlib
-// is a real (expat-based) plist reader, so comments, CDATA, entities and tag
-// spacing resolve the way Apple's parser resolves them, and malformed input
-// throws, which is exactly the property the guard relies on.
+// The reader under test: real `plutil` on macOS (ios-build.yml runs this file
+// there), and Python's plistlib as the stand-in on Linux CI. plistlib is a real
+// expat-based reader, so comments, CDATA, entities and tag spacing resolve
+// as Apple's do, but it is looser than plutil (it takes a missing <plist>
+// root, <true>no</true>, a second root). Every case below is written so the
+// guard fails under either reader.
 const pyJson = (path: string) =>
   execFileSync(
     "python3",
     ["-c", "import plistlib,json,sys; print(json.dumps(plistlib.load(open(sys.argv[1],'rb'))))", path],
     { stdio: ["ignore", "pipe", "pipe"] },
   );
-const check = (app: string) => guard.checkApp(app, (p: string) => guard.readManifest(p, pyJson));
+const convert = process.platform === "darwin" ? (p: string) => guard.plutilJson(p) : pyJson;
+const check = (app: string) => guard.checkApp(app, (p: string) => guard.readManifest(p, convert));
 const problemsOf = (app: string, path = "x.bundle/PrivacyInfo.xcprivacy") =>
   check(app).failures.find((f: { path: string }) => f.path === path)?.problems ?? [];
 /** An app with a clean root manifest plus one SDK manifest with this raw text. */
@@ -78,7 +81,7 @@ describe("readManifest", () => {
   });
 
   it("reads the app's own manifest, which declares no tracking", () => {
-    const manifest = guard.readManifest(resolve(root, "ios/App/App/PrivacyInfo.xcprivacy"), pyJson);
+    const manifest = guard.readManifest(resolve(root, "ios/App/App/PrivacyInfo.xcprivacy"), convert);
     expect(guard.manifestProblems(manifest)).toEqual([]);
     expect(manifest.NSPrivacyCollectedDataTypes.length).toBeGreaterThan(0);
   });
@@ -88,7 +91,7 @@ describe("manifestProblems", () => {
   it("reports the tracking flag, tracking domains and tracked data types", () => {
     expect(
       guard.manifestProblems(
-        guard.readManifest(join(appWith(FACEBOOK_LIKE), "x.bundle/PrivacyInfo.xcprivacy"), pyJson),
+        guard.readManifest(join(appWith(FACEBOOK_LIKE), "x.bundle/PrivacyInfo.xcprivacy"), convert),
       ),
     ).toEqual([
       "NSPrivacyTracking is true",
@@ -187,7 +190,7 @@ describe("checkApp", () => {
     ],
   ])("fails %s", (_label, raw, problem) => {
     const problems = problemsOf(appWith(raw));
-    // Parsers differ on a second root (reject it, or keep the tracking one); both fail.
+    // A reader may reject a second root (unreadable) or keep the tracking one (plistlib does). Either way it fails.
     expect(problems.length).toBeGreaterThan(0);
     expect(problems.join("\n")).toContain(problem);
   });
@@ -214,6 +217,15 @@ describe("checkApp", () => {
     ]);
     const empty = makeApp({ "Info.plist": "<plist/>" });
     expect(check(empty).failures[0].path).toBe("PrivacyInfo.xcprivacy");
+  });
+
+  it("ignores Facebook-named web assets: only native bundle types count", () => {
+    const app = makeApp({
+      "PrivacyInfo.xcprivacy": CLEAN,
+      "public/assets/facebook-icon.svg": "<svg/>",
+      "public/assets/FacebookShare-abc123.js": "",
+    });
+    expect(check(app).failures).toEqual([]);
   });
 
   it("fails on Facebook SDK bundles and frameworks by name, manifest or not", () => {
@@ -263,7 +275,7 @@ describe("summaryMarkdown", () => {
 });
 
 describe("main", () => {
-  const read = (p: string) => guard.readManifest(p, pyJson);
+  const read = (p: string) => guard.readManifest(p, convert);
 
   it("prints usage without a path", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});

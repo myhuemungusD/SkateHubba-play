@@ -61,6 +61,10 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
+      - name: Privacy manifest guard tests with real plutil
+        # Linux CI tests the guard with Python's plistlib; this runs the same
+        # tests against Apple's own parser.
+        run: npx vitest run src/__tests__/ios-privacy-manifests.test.ts
       - name: Check privacy manifests (no tracking, no Facebook SDK)
         run: node scripts/check-ios-privacy-manifests.mjs ios/build/DerivedData/Build/Products/Debug-iphonesimulator/App.app
       - name: Boot simulators and screenshot key screens

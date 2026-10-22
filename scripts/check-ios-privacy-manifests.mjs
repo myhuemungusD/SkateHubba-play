@@ -55,8 +55,10 @@ export function readManifest(path, convert = plutilJson) {
 }
 
 // Facebook SDK bundles and frameworks (FBSDKCoreKit, FacebookCore, FBAEMKit…).
-// Checked by name too, so one that ships without a manifest still fails.
-const FACEBOOK_NAME = /facebook|fbsdk|fbaem/i;
+// Checked by name too, so one that ships without a manifest still fails. Only
+// native code and resource containers count, so a web asset under public/
+// (a facebook-icon.svg, a FacebookShare-*.js chunk) never fails a release.
+const FACEBOOK_NAME = /(?:facebook|fbsdk|fbaem)[^/]*\.(?:bundle|framework|appex|dylib)$/i;
 
 /**
  * Every `*.xcprivacy` file under `dir`, sorted, plus any path whose name looks
