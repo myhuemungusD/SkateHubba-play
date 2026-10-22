@@ -31,6 +31,7 @@ import { toGameDoc, type GameDoc } from "./games.mappers";
 import { TURN_DURATION_MS } from "./turnDuration";
 import { disputeId } from "./disputes.mappers";
 import { writeNotificationInTx } from "./notifications";
+import { presetHandle, presetTrickName } from "./notificationPresets";
 import { createPushDispatchOutbox, drainPushDispatchOutbox, resetPushDispatchOutbox } from "./pushDispatch";
 
 /** The frozen-game fields the dispute gate reasons about. */
@@ -164,7 +165,7 @@ export async function raiseDispute(gameId: string): Promise<void> {
         recipientUid: matcherUid,
         type: "your_turn",
         title: "Call sent to the community",
-        body: `@${setterUsername} disputed your ${game.currentTrickName || "trick"} claim.`,
+        body: `@${presetHandle(setterUsername)} disputed your ${presetTrickName(game.currentTrickName)} claim.`,
         gameId,
       },
       pushOutbox,

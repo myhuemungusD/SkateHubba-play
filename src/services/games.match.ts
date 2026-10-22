@@ -4,6 +4,7 @@ import { requireAuth, requireDb } from "../firebase";
 import { analytics } from "./analytics";
 import { metrics } from "./logger";
 import { writeNotificationInTx } from "./notifications";
+import { presetHandle, presetTrickName } from "./notificationPresets";
 import { createPushDispatchOutbox, drainPushDispatchOutbox, resetPushDispatchOutbox } from "./pushDispatch";
 import { writeLandedClipsInTransaction } from "./clips";
 import { toGameDoc, isJudgeActive, type TurnRecord } from "./games.mappers";
@@ -78,7 +79,7 @@ export async function setTrick(
         recipientUid: matcherUid,
         type: "your_turn",
         title: "Your Turn!",
-        body: `Match @${setterUsername}'s ${safeTrickName}`,
+        body: `Match @${presetHandle(setterUsername)}'s ${presetTrickName(safeTrickName)}`,
         gameId,
       },
       pushOutbox,

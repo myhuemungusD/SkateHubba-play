@@ -3,7 +3,6 @@ import { requireAuth, requireDb } from "../firebase";
 import {
   normalizeTrickCategory,
   normalizeCustomRules,
-  trickCategoryHeadline,
   CUSTOM_CATEGORY_ID,
 } from "../constants/trickCategories";
 import { isRefereeEnabled, isTurnLengthEnabled } from "../lib/featureFlags";
@@ -11,6 +10,7 @@ import { addBreadcrumb } from "../lib/sentry";
 import { withRetry } from "../utils/retry";
 import { metrics } from "./logger";
 import { writeNotification } from "./notifications";
+import { presetChallengeHeadline, presetHandle } from "./notificationPresets";
 import {
   toGameDoc,
   normalizeSpotId,
@@ -208,13 +208,15 @@ export async function createGame(
   // write dies with the page. api/cron/sweep-expired-turns.ts carries a
   // server-side reconcile pass as the backstop for the residual window.
   //
-  // Append the agreed constraint ("— Flat Bar", or the custom rules text) so
-  // the invite states the game up front; "any"/legacy games announce nothing.
-  const categoryHeadline = trickCategoryHeadline(safeCategory, safeCustomRules);
+  // Append the agreed constraint ("— Flat Bar") so the invite states the game
+  // up front; "any"/legacy games announce nothing. Preset labels only: a
+  // custom-rules game announces "Custom Rules", never the challenger's text,
+  // because this lands on a stranger's lock screen (audit M2). The rules text
+  // is on the game screen once they open it.
   // A longer clock is part of the deal, so the invite says it up front.
   const lengthNote =
     safeTurnLength !== null && safeTurnLength !== DEFAULT_TURN_LENGTH_HOURS ? turnLengthLabel(safeTurnLength) : null;
-  const headline = [categoryHeadline, lengthNote].filter(Boolean).join(" · ");
+  const headline = presetChallengeHeadline(safeCategory, lengthNote);
   const pending: Array<Promise<void>> = [
     writeNotification(
       {
@@ -223,8 +225,8 @@ export async function createGame(
         type: "new_challenge",
         title: "New Challenge!",
         body: headline
-          ? `@${authoritativeChallengerUsername} challenged you to S.K.A.T.E. — ${headline}`
-          : `@${authoritativeChallengerUsername} challenged you to S.K.A.T.E.`,
+          ? `@${presetHandle(authoritativeChallengerUsername)} challenged you to S.K.A.T.E. — ${headline}`
+          : `@${presetHandle(authoritativeChallengerUsername)} challenged you to S.K.A.T.E.`,
         gameId: newGameId,
       },
       { awaitPush: true },
@@ -242,7 +244,7 @@ export async function createGame(
           recipientUid: judgeUid,
           type: "judge_invite",
           title: "You've been asked to referee",
-          body: `@${authoritativeChallengerUsername} vs @${opponentUsername} — accept to rule on disputes`,
+          body: `@${presetHandle(authoritativeChallengerUsername)} vs @${presetHandle(opponentUsername)} — accept to rule on disputes`,
           gameId: newGameId,
         },
         { awaitPush: true },
