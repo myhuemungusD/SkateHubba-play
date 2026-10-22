@@ -76,6 +76,18 @@ describe("storePushToken", () => {
     );
   });
 
+  it("re-registering a token already in a full list stays an arrayUnion", async () => {
+    seed({ "users/u1/private/profile": { fcmTokens: full }, "pushTargets/u1": { tokens: full } });
+    await storePushToken(db, "u1", "old-4");
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      1,
+      "users/u1/private/profile",
+      { fcmTokens: { _op: "arrayUnion", value: "old-4" } },
+      { merge: true },
+    );
+    expect(mockSetDoc.mock.calls[1][1]).toMatchObject({ tokens: { _op: "arrayUnion", value: "old-4" } });
+  });
+
   it("does not touch the mirror when the private write fails", async () => {
     mockSetDoc.mockRejectedValueOnce(new Error("permission-denied"));
     await expect(storePushToken(db, "u1", "tok")).rejects.toThrow("permission-denied");
