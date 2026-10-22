@@ -32,13 +32,15 @@
  *      different one. Fields this module does not consume are not checked;
  *      they are also never used.
  *   4. If repair doesn't help, rethrow the strict error with a safe
- *      structural fingerprint (counts only, no content) so the next
- *      occurrence is diagnosable from the 500 body alone.
+ *      structural fingerprint (counts only, no content). The message still
+ *      carries the strict error's input snippet, so handlers never surface
+ *      it: logs and bodies get `describeInitFailure` (class + fixed reason).
  *
  * The underscore prefix keeps Vercel's filesystem router from exposing this
  * module as an endpoint (verified against @vercel/fs-detectors: any path
  * containing "/_" gets no builder).
  */
+import { safeErrorName } from "../_safeError.js";
 
 /** Shape of the fields we consume from Google's service-account JSON. */
 interface RawServiceAccount {
@@ -250,9 +252,7 @@ export type InitFailureReason =
  * the handlers throw; the message itself is only inspected, never returned.
  */
 export function describeInitFailure(err: unknown): { errorName: string; reason: InitFailureReason } {
-  const rawName = err instanceof Error ? err.name : typeof err;
-  // A name is a class identifier; anything else is not trusted into the log.
-  const errorName = /^[A-Za-z][A-Za-z0-9]{0,39}$/.test(rawName) ? rawName : "Error";
+  const errorName = safeErrorName(err);
   const message = err instanceof Error ? err.message : "";
   let reason: InitFailureReason = "firebase init failed";
   if (err instanceof SyntaxError) reason = "service account JSON invalid";

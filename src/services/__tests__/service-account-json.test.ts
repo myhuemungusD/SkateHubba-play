@@ -11,6 +11,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { describeInitFailure, parseServiceAccountJson } from "../../../api/cron/_serviceAccount.js";
+import { MALFORMED_KEY_JSON } from "./cron.test-helpers";
 
 const PEM = "-----BEGIN PRIVATE KEY-----\nMIIabc\n-----END PRIVATE KEY-----\n";
 
@@ -212,7 +213,7 @@ describe("describeInitFailure (log-safe init errors)", () => {
 
   it("never returns any part of a parse error that quotes the key", () => {
     // Node 22 quotes short inputs whole: the raw message carries the marker.
-    const err = thrownBy('{"pk":PRIVATE KEY}');
+    const err = thrownBy(MALFORMED_KEY_JSON);
     expect((err as Error).message).toContain("PRIVATE KEY");
     const described = describeInitFailure(err);
     expect(described).toEqual({ errorName: "SyntaxError", reason: "service account JSON invalid" });

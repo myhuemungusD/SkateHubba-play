@@ -50,7 +50,7 @@ vi.mock("../../../api/account/_posthogErasure.js", () => ({ erasePosthogPerson: 
 // Only loaded when SENTRY_DSN is set (see the "error reporting" block).
 vi.mock("@sentry/node", async () => (await import("./sentry-node.test-helpers")).sentryNodeMock);
 
-import { VALID_SERVICE_ACCOUNT } from "./cron.test-helpers";
+import { MALFORMED_KEY_JSON, VALID_SERVICE_ACCOUNT } from "./cron.test-helpers";
 import {
   makeAccountReq,
   makeAccountRes,
@@ -247,6 +247,21 @@ describe("token verification", () => {
     h.verifyIdTokenMock.mockRejectedValueOnce(rejection);
     const out = await call();
     expectRefused(out, 401, "invalid_token");
+  });
+
+  it.each([
+    [REJECTIONS[0][1], "auth/id-token-expired"],
+    [REJECTIONS[1][1], "auth/id-token-revoked"],
+    [REJECTIONS[2][1], "Error"],
+    [REJECTIONS[4][1], "string"],
+  ])("logs the rejection's code or class, never its message (%#)", async (rejection, code) => {
+    h.verifyIdTokenMock.mockRejectedValueOnce(rejection);
+    await call();
+    const line = (warnSpy.mock.calls as unknown[][])
+      .map((c) => String(c[0]))
+      .find((l) => l.includes("account_delete_token_rejected"));
+    expect(JSON.parse(line ?? "{}")).toEqual({ event: "account_delete_token_rejected", code });
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toMatch(/Firebase ID token|exploded/);
   });
 
   it("returns byte-identical bodies for every rejection reason — no oracle", async () => {
@@ -607,8 +622,7 @@ describe("error reporting (server-side Sentry)", () => {
   });
 
   it("never writes service-account material to the console or Sentry on a malformed env", async () => {
-    // Short enough that Node 22's JSON.parse quotes the WHOLE input in its message.
-    const malformed = '{"pk":PRIVATE KEY}';
+    const malformed = MALFORMED_KEY_JSON;
     let parseMessage = "";
     try {
       JSON.parse(malformed);

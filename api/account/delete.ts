@@ -50,6 +50,7 @@ import { erasePosthogPerson } from "./_posthogErasure.js";
 import { eraseUnderageSignIn, RacedCascadeError, type UnderageOutcome } from "./_underage.js";
 import { hashIdentity, hashUid } from "../../src/utils/pii.js";
 import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
+import { safeErrorCode } from "../_safeError.js";
 
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
 const FIRESTORE_DB_NAME = "skatehubba";
@@ -347,7 +348,8 @@ async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
   } catch (err) {
     // Deliberately coarse: distinguishing expired from revoked from malformed
     // would tell an attacker which of those a captured token is.
-    log("account_delete_token_rejected", { error: err instanceof Error ? err.message : String(err) });
+    // The log gets the code (auth/id-token-expired …) or class, never the message.
+    log("account_delete_token_rejected", { code: safeErrorCode(err) });
     fail(res, 401, "invalid_token", "Invalid or expired credentials.");
     return;
   }
