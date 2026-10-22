@@ -50,6 +50,15 @@ describe("iOS privacy manifest", () => {
     expect(block).toContain("NSPrivacyCollectedDataTypePurposeAnalytics");
   });
 
+  // Vercel SpeedInsights (Web Vitals) mounts on every platform after consent
+  // (src/App.tsx), alongside Sentry tracing for App Functionality.
+  it("declares Performance Data, linked, for App Functionality and Analytics", () => {
+    const block = manifest.split("NSPrivacyCollectedDataTypePerformanceData")[1]?.split("</dict>")[0] ?? "";
+    expect(block).toMatch(/NSPrivacyCollectedDataTypeLinked<\/key>\s*<true\/>/);
+    expect(block).toContain("NSPrivacyCollectedDataTypePurposeAppFunctionality");
+    expect(block).toContain("NSPrivacyCollectedDataTypePurposeAnalytics");
+  });
+
   it("declares no tracking and no tracking domains", () => {
     expect(manifest).toMatch(/<key>NSPrivacyTracking<\/key>\s*<false\/>/);
     expect(manifest).toMatch(/<key>NSPrivacyTrackingDomains<\/key>\s*<array\/>/);

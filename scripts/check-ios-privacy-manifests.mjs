@@ -11,6 +11,9 @@
  * rejection risk (1.2.0 build 1 shipped the Facebook SDK, which declares all
  * three).
  *
+ * It also fails on an unreadable or oddly shaped manifest, a missing app
+ * manifest, and any Facebook SDK bundle or framework by name.
+ *
  * It also prints every manifest found and the combined collected data types,
  * and appends them to $GITHUB_STEP_SUMMARY. That list is the same data Xcode's
  * Privacy Report aggregates, so each release run keeps the evidence without a
@@ -20,114 +23,127 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { appendFileSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const TAG = "[check-ios-privacy-manifests]";
 
-/** Parses an XML property list into plain JS values. */
-export function parsePlistXml(xml) {
-  const tokens = [...xml.matchAll(/<(\/?)(dict|array|key|string|integer|real|date|data|true|false)(\s*\/)?>([^<]*)/g)];
-  let i = 0;
-  const value = () => {
-    const [, close, tag, selfClose, text] = tokens[i++] ?? [];
-    if (!tag || close) throw new Error("malformed plist");
-    if (tag === "true" || tag === "false") {
-      if (!selfClose) i++;
-      return tag === "true";
-    }
-    if (selfClose && tag === "dict") return {};
-    if (selfClose && tag === "array") return [];
-    if (tag === "dict") {
-      const out = {};
-      while (tokens[i] && !(tokens[i][1] && tokens[i][2] === "dict")) {
-        const [, , keyTag, , key] = tokens[i++];
-        if (keyTag !== "key") throw new Error("malformed plist");
-        i++; // </key>
-        out[decode(key)] = value();
-      }
-      i++;
-      return out;
-    }
-    if (tag === "array") {
-      const out = [];
-      while (tokens[i] && !(tokens[i][1] && tokens[i][2] === "array")) out.push(value());
-      i++;
-      return out;
-    }
-    if (selfClose) return tag === "integer" || tag === "real" ? 0 : "";
-    i++; // closing tag
-    if (tag === "integer" || tag === "real") return Number(text);
-    return decode(text);
-  };
-  const body = xml.slice(xml.indexOf("<plist"));
-  if (!body.startsWith("<plist")) throw new Error("not an XML plist");
-  return value();
+/**
+ * Converts a property list (XML or binary) to JSON with macOS `plutil`.
+ *
+ * Every manifest goes through `plutil`, never a hand-written parser: it is
+ * Apple's own CoreFoundation reader, so comments, CDATA, entities, odd tag
+ * spacing and binary files all resolve exactly as they do for Xcode's Privacy
+ * Report, and malformed input makes it exit non-zero (execFileSync throws).
+ * Manifests hold no <date>/<data>, so JSON output loses nothing; if one ever
+ * did, the conversion fails, which fails the check.
+ *
+ * Off macOS there is no `plutil`, and a weaker substitute would be the thing
+ * that lets a tracking manifest through, so it refuses instead. Tests inject
+ * a converter.
+ */
+export function plutilJson(path, platform = process.platform) {
+  if (platform !== "darwin") throw new Error("plutil required (macOS): refusing to parse a plist without it");
+  return execFileSync("plutil", ["-convert", "json", "-o", "-", path]);
 }
 
-function decode(text) {
-  return text
-    .trim()
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, "&");
+/** Reads one manifest into plain JS values. */
+export function readManifest(path, convert = plutilJson) {
+  return JSON.parse(convert(path).toString("utf8"));
 }
 
-/** Reads a manifest, converting a binary plist with macOS `plutil` first. */
-export function readManifest(path, convert = (p) => execFileSync("plutil", ["-convert", "xml1", "-o", "-", p])) {
-  const raw = readFileSync(path);
-  const xml =
-    raw.subarray(0, 6).toString("latin1") === "bplist" ? convert(path).toString("utf8") : raw.toString("utf8");
-  return parsePlistXml(xml);
-}
+// Facebook SDK bundles and frameworks (FBSDKCoreKit, FacebookCore, FBAEMKit…).
+// Checked by name too, so one that ships without a manifest still fails.
+const FACEBOOK_NAME = /facebook|fbsdk|fbaem/i;
 
-/** Every `*.xcprivacy` file under `dir`, sorted. */
-export function findManifests(dir) {
-  const out = [];
+/**
+ * Every `*.xcprivacy` file under `dir`, sorted, plus any path whose name looks
+ * like a Facebook SDK. Directory symlinks are not followed: an iOS .app is a
+ * shallow bundle, and Xcode copies resource bundles and frameworks as real
+ * folders, so a symlink would point back into the same tree at most.
+ */
+export function scanApp(dir) {
+  const manifests = [];
+  const facebook = [];
   const walk = (d) => {
     for (const entry of readdirSync(d, { withFileTypes: true })) {
       const full = join(d, entry.name);
+      if (FACEBOOK_NAME.test(entry.name)) facebook.push(relative(dir, full));
       if (entry.isDirectory()) walk(full);
-      else if (entry.name.endsWith(".xcprivacy")) out.push(full);
+      else if (entry.name.endsWith(".xcprivacy")) manifests.push(full);
     }
   };
   walk(dir);
-  return out.sort();
+  return { manifests: manifests.sort(), facebook: facebook.sort() };
 }
 
 const shortType = (t) => String(t).replace(/^NSPrivacyCollectedDataType/, "");
 
-/** Tracking problems in one parsed manifest (empty when clean). */
-export function trackingProblems(manifest) {
+const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+const isStringArray = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");
+
+/**
+ * Problems in one parsed manifest (empty when clean).
+ *
+ * The shape is validated strictly and anything unexpected is a failure, not a
+ * pass: a tracking flag written as a string or a number, or a manifest whose
+ * root isn't a dictionary, must not slip through as "no tracking".
+ */
+export function manifestProblems(manifest) {
+  if (!isObject(manifest)) return ["root is not a dictionary"];
   const problems = [];
-  if (manifest.NSPrivacyTracking === true) problems.push("NSPrivacyTracking is true");
-  const domains = manifest.NSPrivacyTrackingDomains ?? [];
-  if (domains.length > 0) problems.push(`NSPrivacyTrackingDomains lists ${domains.join(", ")}`);
-  for (const entry of manifest.NSPrivacyCollectedDataTypes ?? []) {
-    if (entry.NSPrivacyCollectedDataTypeTracking === true) {
-      problems.push(`${shortType(entry.NSPrivacyCollectedDataType)} is used for tracking`);
-    }
+  const tracking = manifest.NSPrivacyTracking;
+  if (tracking !== undefined && typeof tracking !== "boolean") problems.push("NSPrivacyTracking has unexpected type");
+  else if (tracking === true) problems.push("NSPrivacyTracking is true");
+
+  const domains = manifest.NSPrivacyTrackingDomains;
+  if (domains !== undefined && !isStringArray(domains)) problems.push("NSPrivacyTrackingDomains has unexpected type");
+  else if (domains?.length) problems.push(`NSPrivacyTrackingDomains lists ${domains.join(", ")}`);
+
+  const types = manifest.NSPrivacyCollectedDataTypes;
+  if (types !== undefined && !(Array.isArray(types) && types.every(isObject))) {
+    problems.push("NSPrivacyCollectedDataTypes has unexpected type");
+    return problems;
+  }
+  for (const entry of types ?? []) {
+    const name = shortType(entry.NSPrivacyCollectedDataType);
+    const flag = entry.NSPrivacyCollectedDataTypeTracking;
+    if (flag !== undefined && typeof flag !== "boolean") {
+      problems.push(`${name} NSPrivacyCollectedDataTypeTracking has unexpected type`);
+    } else if (flag === true) problems.push(`${name} is used for tracking`);
   }
   return problems;
 }
 
+const APP_MANIFEST = "PrivacyInfo.xcprivacy";
+
 /** Checks every manifest under `appDir` and returns a report. */
 export function checkApp(appDir, read = readManifest) {
-  const manifests = findManifests(appDir).map((path) => {
-    const manifest = read(path);
-    return {
-      path: relative(appDir, path),
-      types: (manifest.NSPrivacyCollectedDataTypes ?? []).map((e) => shortType(e.NSPrivacyCollectedDataType)),
-      problems: trackingProblems(manifest),
-    };
+  const scan = scanApp(appDir);
+  const manifests = scan.manifests.map((full) => {
+    const path = relative(appDir, full);
+    let manifest;
+    try {
+      manifest = read(full);
+    } catch (err) {
+      return { path, types: [], problems: [`unreadable: ${err instanceof Error ? err.message : String(err)}`] };
+    }
+    const problems = manifestProblems(manifest);
+    const entries =
+      isObject(manifest) && Array.isArray(manifest.NSPrivacyCollectedDataTypes)
+        ? manifest.NSPrivacyCollectedDataTypes
+        : [];
+    const types = entries.filter(isObject).map((e) => shortType(e.NSPrivacyCollectedDataType));
+    return { path, types, problems };
   });
   const types = [...new Set(manifests.flatMap((m) => m.types))].sort();
   const failures = manifests.filter((m) => m.problems.length > 0);
-  if (manifests.length === 0) failures.push({ path: "(none)", problems: ["no privacy manifest found in the app"] });
+  if (!manifests.some((m) => m.path === APP_MANIFEST)) {
+    failures.push({ path: APP_MANIFEST, problems: ["the app's own privacy manifest is missing from the bundle root"] });
+  }
+  for (const path of scan.facebook) failures.push({ path, problems: ["Facebook SDK content in the app"] });
   return { manifests, types, failures };
 }
 
@@ -139,24 +155,39 @@ export function summaryMarkdown(report) {
     "| Manifest | Collected data types | Tracking |",
     "|---|---|---|",
   ];
+  // A "|" in a path or a problem would end the cell early.
+  const cell = (text) => text.replace(/\|/g, "\\|");
   for (const m of report.manifests) {
-    lines.push(`| \`${m.path}\` | ${m.types.join(", ") || "none"} | ${m.problems.join("; ") || "no"} |`);
+    lines.push(
+      `| \`${cell(m.path)}\` | ${cell(m.types.join(", ") || "none")} | ${cell(m.problems.join("; ") || "no")} |`,
+    );
   }
   lines.push("", `Combined collected types: ${report.types.join(", ") || "none"}`, "");
+  if (report.failures.length > 0) {
+    lines.push("**Failures:**", "");
+    for (const f of report.failures) lines.push(`- \`${f.path}\`: ${f.problems.join("; ")}`);
+    lines.push("");
+  }
   return lines.join("\n");
 }
 
 /** Unzips an IPA into a temp folder and returns the Payload/*.app path. */
 function unpackIpa(ipa) {
   const dir = mkdtempSync(join(tmpdir(), "ipa-"));
-  execFileSync("unzip", ["-q", ipa, "-d", dir]);
-  const payload = join(dir, "Payload");
-  const app = readdirSync(payload).find((n) => n.endsWith(".app"));
-  if (!app) throw new Error(`no .app inside ${ipa}`);
-  return { app: join(payload, app), cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+  const cleanup = () => rmSync(dir, { recursive: true, force: true });
+  try {
+    execFileSync("unzip", ["-q", ipa, "-d", dir]);
+    const payload = join(dir, "Payload");
+    const app = readdirSync(payload).find((n) => n.endsWith(".app"));
+    if (!app) throw new Error(`no .app inside ${ipa}`);
+    return { app: join(payload, app), cleanup };
+  } catch (err) {
+    cleanup();
+    throw err;
+  }
 }
 
-export function main(argv = process.argv.slice(2), env = process.env) {
+export function main(argv = process.argv.slice(2), env = process.env, read = readManifest) {
   const target = argv[0];
   if (!target) {
     console.error(`${TAG} usage: check-ios-privacy-manifests.mjs <path to .ipa or .app>`);
@@ -166,14 +197,14 @@ export function main(argv = process.argv.slice(2), env = process.env) {
   const isDir = statSync(abs).isDirectory();
   const { app, cleanup } = isDir ? { app: abs, cleanup: () => {} } : unpackIpa(abs);
   try {
-    const report = checkApp(app);
+    const report = checkApp(app, read);
     for (const m of report.manifests) console.log(`${TAG} ${m.path}: ${m.types.join(", ") || "no data types"}`);
     console.log(`${TAG} combined collected types: ${report.types.join(", ") || "none"}`);
     if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, summaryMarkdown(report));
     if (report.failures.length > 0) {
       for (const f of report.failures) console.error(`${TAG} FAIL ${f.path}: ${f.problems.join("; ")}`);
       console.error(
-        `${TAG} Tracking would contradict the App Store answers (docs/STORE_PRIVACY_ANSWERS.md). Remove the SDK.`,
+        `${TAG} Tracking, an unreadable manifest, a missing app manifest or Facebook SDK content would contradict the App Store answers (docs/STORE_PRIVACY_ANSWERS.md).`,
       );
       return 1;
     }
