@@ -28,6 +28,7 @@ const MESSAGES: Record<string, string> = {
   bad_evidence_company: "Name the company (board, shoe or video credit).",
   bad_evidence_url: "Evidence must be an https link.",
   self_seed: "You can't seed yourself.",
+  target_is_admin: "Staff accounts can't be pro. Pros are never admins.",
   already_pro: "They're already pro.",
   target_banned: "That skater is banned.",
   not_found: "That skater's profile no longer exists.",
@@ -45,7 +46,12 @@ export function seedInputReady(reason: string, evidence: ProSeedEvidence): boole
   let urlOk = false;
   try {
     const u = new URL(evidence.url.trim());
-    urlOk = u.protocol === "https:" && u.hostname.includes(".");
+    // Same as the server: https, a dotted hostname, and not a bare IP address.
+    urlOk =
+      u.protocol === "https:" &&
+      u.hostname.includes(".") &&
+      !/^\d{1,3}(\.\d{1,3}){3}$/.test(u.hostname) &&
+      !u.hostname.startsWith("[");
   } catch {
     urlOk = false;
   }

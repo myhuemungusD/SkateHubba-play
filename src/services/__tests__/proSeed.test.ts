@@ -66,6 +66,7 @@ describe("seedVerifiedPro", () => {
 describe("proSeedErrorMessage / seedInputReady", () => {
   it("maps known codes and falls back for the rest", () => {
     expect(proSeedErrorMessage(new Error("bad_evidence_url"))).toMatch(/https link/);
+    expect(proSeedErrorMessage(new Error("target_is_admin"))).toMatch(/never admins/);
     expect(proSeedErrorMessage(new Error("weird"))).toMatch(/Seeding failed/);
     expect(proSeedErrorMessage("nope")).toMatch(/Seeding failed/);
   });
@@ -77,6 +78,8 @@ describe("proSeedErrorMessage / seedInputReady", () => {
     [REASON, { ...EVIDENCE, url: "http://baker.com" }, false],
     [REASON, { ...EVIDENCE, url: "not a url" }, false],
     [REASON, { ...EVIDENCE, url: "https://localhost" }, false],
+    [REASON, { ...EVIDENCE, url: "https://203.0.113.7/team" }, false],
+    [REASON, { ...EVIDENCE, url: "https://[2001:db8::1]/team" }, false],
   ])("ready(%s, %o) = %s", (reason, evidence, expected) => {
     expect(seedInputReady(reason, evidence)).toBe(expected);
   });
