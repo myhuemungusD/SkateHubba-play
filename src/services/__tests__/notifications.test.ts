@@ -68,6 +68,7 @@ import {
   writeNotification,
   writeNotificationInTx,
   getNotificationGame,
+  loadNotificationGame,
   _resetNotificationRateLimit,
   markNotificationRead,
   deleteNotification,
@@ -403,6 +404,60 @@ describe("getNotificationGame", () => {
 
   it("returns null when the read is denied instead of throwing at the bell", async () => {
     mockGetDoc.mockRejectedValueOnce(new Error("permission-denied"));
+    await expect(getNotificationGame("g1")).resolves.toBeNull();
+  });
+});
+
+describe("loadNotificationGame", () => {
+  const originalOnLine = Object.getOwnPropertyDescriptor(Navigator.prototype, "onLine");
+  afterEach(() => {
+    if (originalOnLine) Object.defineProperty(Navigator.prototype, "onLine", originalOnLine);
+  });
+
+  function firestoreError(code: string) {
+    return Object.assign(new Error(`FirebaseError: ${code}`), { code });
+  }
+
+  it("reports a found game", async () => {
+    mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      id: "g1",
+      data: () => ({ player1Uid: "p1", player2Uid: "p2", status: "active" }),
+    });
+    await expect(loadNotificationGame("g1")).resolves.toMatchObject({ status: "found", game: { id: "g1" } });
+  });
+
+  it("reports a missing game as unavailable", async () => {
+    mockGetDoc.mockResolvedValueOnce({ exists: () => false });
+    await expect(loadNotificationGame("gone")).resolves.toEqual({ status: "unavailable" });
+  });
+
+  it("reports a denied read as unavailable, not a failure to retry", async () => {
+    mockGetDoc.mockRejectedValueOnce(firestoreError("permission-denied"));
+    await expect(loadNotificationGame("g1")).resolves.toEqual({ status: "unavailable" });
+  });
+
+  it.each(["unavailable", "deadline-exceeded"])("reports a %s read as failed", async (code) => {
+    mockGetDoc.mockRejectedValueOnce(firestoreError(code));
+    await expect(loadNotificationGame("g1")).resolves.toEqual({ status: "failed" });
+  });
+
+  it.each([
+    ["a string", "socket closed"],
+    ["null", null],
+  ])("reports %s rejection while online as unavailable", async (_label, err) => {
+    mockGetDoc.mockRejectedValueOnce(err);
+    await expect(loadNotificationGame("g1")).resolves.toEqual({ status: "unavailable" });
+  });
+
+  it("reports any error while the browser is offline as failed", async () => {
+    Object.defineProperty(Navigator.prototype, "onLine", { configurable: true, get: () => false });
+    mockGetDoc.mockRejectedValueOnce("socket closed");
+    await expect(loadNotificationGame("g1")).resolves.toEqual({ status: "failed" });
+  });
+
+  it("keeps the bell's null contract for an offline read", async () => {
+    mockGetDoc.mockRejectedValueOnce(firestoreError("unavailable"));
     await expect(getNotificationGame("g1")).resolves.toBeNull();
   });
 });

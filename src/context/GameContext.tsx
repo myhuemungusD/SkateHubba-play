@@ -20,6 +20,7 @@ import type { TurnLengthHours } from "../services/turnDuration";
 import { newGameShell, parseFirebaseError } from "../utils/helpers";
 import { analytics } from "../services/analytics";
 import { logger } from "../services/logger";
+import { GAME_ACCESS_DENIED_TOAST } from "../lib/gameToasts";
 
 export interface StartChallengeOptions {
   spotId?: string | null;
@@ -212,11 +213,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // with an explanation instead of a frozen game screen.
       setActiveGame(null);
       goToScreen("lobby");
-      notify({
-        type: "error",
-        title: "You can't open that game",
-        message: "You don't have access to it. Back to the lobby.",
-      });
+      notify(GAME_ACCESS_DENIED_TOAST);
     };
     const unsub = subscribeToGame(
       activeGame.id,

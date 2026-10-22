@@ -268,22 +268,60 @@ export async function deleteNotification(notificationId: string): Promise<void> 
 }
 
 /**
- * Fetch the game a notification points at, for bell click-through.
+ * The outcome of a one-off game read, for callers that must tell "this game
+ * isn't yours / is gone" apart from "we couldn't reach Firestore".
  *
- * Single-doc read (no subscription) — the bell needs the game exactly once, at
- * click time, to hand it to the navigation layer. Returns `null` when the game
- * was deleted or the reader is not a participant (the rules deny the read),
- * so the caller can show "this game is gone" instead of hanging on a spinner.
+ * - `found`: the game doc.
+ * - `unavailable`: the doc doesn't exist, or the rules refused the read (not
+ *   a player or judge). Retrying won't change that.
+ * - `failed`: the read never got an answer (offline, or the backend was
+ *   unreachable / timed out). The same read may well succeed later.
  */
-export async function getNotificationGame(gameId: string): Promise<GameDoc | null> {
+export type NotificationGameResult =
+  { status: "found"; game: GameDoc } | { status: "unavailable" } | { status: "failed" };
+
+/**
+ * Firestore codes for a read that never reached a verdict. An offline getDoc
+ * with nothing cached rejects with `unavailable` ("the client is offline").
+ */
+const TRANSIENT_READ_CODES = new Set(["unavailable", "deadline-exceeded"]);
+
+function isTransientReadError(err: unknown): boolean {
+  if (navigator.onLine === false) return true;
+  const code = typeof err === "object" && err !== null ? (err as { code?: unknown }).code : undefined;
+  return typeof code === "string" && TRANSIENT_READ_CODES.has(code);
+}
+
+/**
+ * Read the game a notification points at, reporting why it couldn't be read.
+ *
+ * Single-doc read (no subscription). Never rejects. Used by the push deep
+ * link (useGameDeepLink), which keeps an offline tap's link for a retry
+ * instead of telling the user they don't have access.
+ */
+export async function loadNotificationGame(gameId: string): Promise<NotificationGameResult> {
   try {
     const snap = await getDoc(doc(requireDb(), "games", gameId));
-    if (!snap.exists()) return null;
-    return toGameDoc(snap);
+    if (!snap.exists()) return { status: "unavailable" };
+    return { status: "found", game: toGameDoc(snap) };
   } catch (err) {
-    logger.warn("notification_game_fetch_failed", { gameId, error: parseFirebaseError(err) });
-    return null;
+    const transient = isTransientReadError(err);
+    logger.warn("notification_game_fetch_failed", { gameId, transient, error: parseFirebaseError(err) });
+    return transient ? { status: "failed" } : { status: "unavailable" };
   }
+}
+
+/**
+ * Fetch the game a notification points at, for bell click-through.
+ *
+ * The bell needs the game exactly once, at click time, to hand it to the
+ * navigation layer. Returns `null` when the game was deleted, the reader is
+ * not a participant (the rules deny the read), or the read failed, so the
+ * caller can show "this game is gone" instead of hanging on a spinner.
+ */
+export async function getNotificationGame(gameId: string): Promise<GameDoc | null> {
+  const result = await loadNotificationGame(gameId);
+  return result.status === "found" ? result.game : null;
 }
 
 /** Firestore hard-caps a writeBatch at 500 operations. */
