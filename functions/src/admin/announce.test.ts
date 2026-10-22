@@ -73,7 +73,11 @@ describe("fanOutAnnouncement", () => {
     expect(updates.at(-1)).toMatchObject({ pushStatus: "sent", pushCount: 1 });
   });
   it("targets testers or pros", async () => {
-    const base = { "announcements/a": {}, "pushTargets/t": { tokens: ["x"] }, "pushTargets/p": { tokens: ["y"] } };
+    const base = {
+      "announcements/a": {},
+      "pushTargets/t": { tokens: ["x"], platforms: { x: "web" } },
+      "pushTargets/p": { tokens: ["y"] },
+    };
     const testers = fakeDb({ ...base, "config/featureTesters": { uids: ["t", 7] } });
     expect(await fanOutAnnouncement(testers.db, "a", ann("testers"))).toEqual({ queued: 1 });
     expect(testers.sets[0]).toMatchObject({ recipientUid: "t" });
@@ -81,6 +85,26 @@ describe("fanOutAnnouncement", () => {
     const pros = fakeDb({ ...base, "users/p": { isVerifiedPro: true }, "users/q": {} });
     expect(await fanOutAnnouncement(pros.db, "a", ann("pros"))).toEqual({ queued: 1 });
     expect(pros.sets[0]).toMatchObject({ recipientUid: "p" });
+  });
+  it("never pushes a tester announcement to an iPhone or an untagged token", async () => {
+    const { db, sets } = fakeDb({
+      "announcements/a": {},
+      "config/featureTesters": { uids: ["mixed", "iphone"] },
+      "pushTargets/mixed": { tokens: ["ios1", "and1", "old1"], platforms: { ios1: "ios", and1: "android" } },
+      "pushTargets/iphone": { tokens: ["ios2"], platforms: { ios2: "ios" } },
+    });
+    expect(await fanOutAnnouncement(db, "a", ann("testers"))).toEqual({ queued: 1 });
+    expect(sets).toHaveLength(1);
+    expect(sets[0]).toMatchObject({ recipientUid: "mixed", tokens: ["and1"] });
+  });
+  it("still pushes pro announcements to iPhones", async () => {
+    const { db, sets } = fakeDb({
+      "announcements/a": {},
+      "users/p": { isVerifiedPro: true },
+      "pushTargets/p": { tokens: ["ios1"], platforms: { ios1: "ios" } },
+    });
+    expect(await fanOutAnnouncement(db, "a", ann("pros"))).toEqual({ queued: 1 });
+    expect(sets[0]).toMatchObject({ tokens: ["ios1"] });
   });
   it("commits in batches of 400", async () => {
     const docs: Docs = { "announcements/a": {} };
