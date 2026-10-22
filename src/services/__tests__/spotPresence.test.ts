@@ -3,7 +3,15 @@ import * as firebase from "../../firebase";
 
 const kit = await vi.hoisted(() => import("./presence.test-helpers"));
 const fns = vi.hoisted(() => kit.makeFunctionsMock());
-const fs = vi.hoisted(() => ({ Timestamp: kit.FakeTimestamp, onSnapshot: vi.fn() }));
+const fs = vi.hoisted(() => ({
+  Timestamp: kit.FakeTimestamp,
+  onSnapshot: vi.fn(),
+  getDoc: vi.fn(async (_ref: unknown): Promise<{ exists: () => boolean; data: () => Record<string, unknown> }> => ({
+    exists: () => false,
+    data: () => ({}),
+  })),
+}));
+const online = vi.hoisted(() => ({ getHideOnline: vi.fn(() => false) }));
 
 vi.mock("../../firebase");
 vi.mock("firebase/functions", () => fns);
@@ -11,9 +19,12 @@ vi.mock("firebase/firestore", () => ({
   collection: vi.fn((_db: unknown, ...path: string[]) => ({ path: path.join("/") })),
   query: vi.fn((ref: { path: string }, ...filters: unknown[]) => ({ path: ref.path, filters })),
   where: vi.fn((field: string, op: string, value: unknown) => ({ field, op, value })),
+  doc: vi.fn((_db: unknown, ...path: string[]) => ({ path: path.join("/") })),
+  getDoc: fs.getDoc,
   onSnapshot: fs.onSnapshot,
   Timestamp: fs.Timestamp,
 }));
+vi.mock("../onlineStatus", () => online);
 const logFn = vi.hoisted(() => () => vi.fn());
 vi.mock("../logger", () => ({ logger: { info: logFn(), warn: logFn(), debug: logFn(), error: logFn() } }));
 
@@ -112,7 +123,7 @@ describe("sendPresence / leaveSpot", () => {
 });
 
 describe("subscribeSpotSkaters", () => {
-  it("lists live skaters and drops lapsed ones", () => {
+  it("lists live skaters and drops lapsed ones", async () => {
     vi.useFakeTimers();
     let t = NOW;
     let next: (snap: unknown) => void = () => {};
@@ -130,6 +141,7 @@ describe("subscribeSpotSkaters", () => {
         { id: "c", data: () => ({ username: "late", expiresAt: fs.Timestamp.fromMillis(NOW + 120_000) }) },
       ],
     });
+    await vi.waitFor(() => expect(seen).toHaveBeenCalled());
     expect(seen).toHaveBeenLastCalledWith([
       { uid: "a", username: "mike" },
       { uid: "c", username: "late" },
@@ -140,6 +152,56 @@ describe("subscribeSpotSkaters", () => {
     stop();
     expect(unsub).toHaveBeenCalled();
   });
+  it("leaves out skaters whose online status is hidden, and fails closed on a lookup error (M6)", async () => {
+    let next: (snap: unknown) => void = () => {};
+    fs.onSnapshot.mockImplementation((_q, onNext) => {
+      next = onNext;
+      return vi.fn();
+    });
+    fs.getDoc.mockImplementation(async (ref: unknown) => {
+      const path = (ref as { path: string }).path;
+      if (path === "onlineStatus/err") throw new Error("offline");
+      return { exists: () => path !== "onlineStatus/none", data: () => ({ hidden: path === "onlineStatus/h" }) };
+    });
+    const seen = vi.fn();
+    svc.subscribeSpotSkaters("s1", seen, () => NOW);
+    const live = (id: string) => ({
+      id,
+      data: () => ({ username: id, expiresAt: fs.Timestamp.fromMillis(NOW + 60_000) }),
+    });
+    next({ docs: [live("v"), live("h"), live("err"), live("none")] });
+    await vi.waitFor(() => expect(seen).toHaveBeenCalled());
+    expect(seen).toHaveBeenLastCalledWith([
+      { uid: "v", username: "v" },
+      { uid: "none", username: "none" },
+    ]);
+  });
+
+  it("ignores a slower lookup for an older snapshot", async () => {
+    let next: (snap: unknown) => void = () => {};
+    fs.onSnapshot.mockImplementation((_q, onNext) => {
+      next = onNext;
+      return vi.fn();
+    });
+    let release: () => void = () => {};
+    fs.getDoc.mockImplementationOnce(
+      () => new Promise((r) => (release = () => r({ exists: () => false, data: () => ({}) }))),
+    );
+    const seen = vi.fn();
+    svc.subscribeSpotSkaters("s1", seen, () => NOW);
+    const live = (id: string) => ({
+      id,
+      data: () => ({ username: id, expiresAt: fs.Timestamp.fromMillis(NOW + 60_000) }),
+    });
+    next({ docs: [live("old")] });
+    next({ docs: [live("new")] });
+    await vi.waitFor(() => expect(seen).toHaveBeenCalledWith([{ uid: "new", username: "new" }]));
+    release();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(seen).toHaveBeenLastCalledWith([{ uid: "new", username: "new" }]);
+    expect(seen).not.toHaveBeenCalledWith([{ uid: "old", username: "old" }]);
+  });
+
   it("reports errors as an empty list", () => {
     fs.onSnapshot.mockImplementation((_q, _n, onErr) => {
       onErr({ code: "permission-denied" });
@@ -281,5 +343,55 @@ describe("startSpotPresence", () => {
     g2.fail(1);
     expect(status).toHaveBeenLastCalledWith("denied");
     expect(g2.geo.clearWatch).toHaveBeenCalled();
+  });
+});
+
+describe("hide-online hides spot presence (M6)", () => {
+  it("never watches the location while hidden", () => {
+    const { geo } = fakeGeo();
+    const status = vi.fn();
+    const send = vi.fn();
+    svc.startSpotPresence(SPOT, status, { geo, send, hidden: () => true })();
+    expect(status).toHaveBeenCalledWith("hidden");
+    expect(geo.watchPosition).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("uses the saved hide-online setting by default", () => {
+    online.getHideOnline.mockReturnValueOnce(true);
+    const { geo } = fakeGeo();
+    const status = vi.fn();
+    svc.startSpotPresence(SPOT, status, { geo, send: vi.fn() });
+    expect(status).toHaveBeenCalledWith("hidden");
+    expect(geo.watchPosition).not.toHaveBeenCalled();
+  });
+
+  it("stops sending heartbeats once hidden mid-session, and resumes when unhidden", async () => {
+    const { geo, at } = fakeGeo();
+    let hidden = false;
+    const status = vi.fn();
+    const send = vi.fn(async () => ({ code: "here" as const, expiresAt: NOW + 1 }));
+    svc.startSpotPresence(SPOT, status, { geo, send, now: () => NOW, hidden: () => hidden });
+    at(SPOT.latitude);
+    await flush();
+    expect(send).toHaveBeenCalledTimes(1);
+    hidden = true;
+    at(SPOT.latitude);
+    await flush();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(status).toHaveBeenLastCalledWith("hidden");
+    hidden = false;
+    at(SPOT.latitude);
+    await flush();
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it("hideFromSpot leaves today's spot, and does nothing without one", async () => {
+    await svc.hideFromSpot(NOW);
+    expect(fns.callable).not.toHaveBeenCalled();
+    svc.rememberActiveSpot(SPOT, NOW);
+    fns.callable.mockResolvedValueOnce({ data: { code: "away", expiresAt: null } });
+    await svc.hideFromSpot(NOW);
+    expect(fns.callable).toHaveBeenCalledWith({ spotId: "s1", leave: true });
   });
 });

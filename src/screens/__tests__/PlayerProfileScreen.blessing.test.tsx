@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { PlayerProfileScreen } from "../PlayerProfileScreen";
+import { fetchLineage } from "../../services/proBlessing";
 import { viewerProfile, opponentProfile, buildBaseProps, fetchedState } from "./playerProfile.test-helpers";
 
 /** "Bless as pro" shows only for a verified-pro viewer on a non-pro, flag on. */
@@ -58,5 +59,20 @@ describe("PlayerProfileScreen — Bless as pro", () => {
     vi.stubEnv("VITE_FEATURE_PRO_BLESSING", "");
     openOpponent();
     expect(screen.queryByTestId("bless-pro-button")).not.toBeInTheDocument();
+  });
+
+  it("drops the put-on-by line on a pro's profile with the flag off", () => {
+    vi.stubEnv("VITE_FEATURE_PRO_BLESSING", "");
+    vi.mocked(fetchLineage).mockClear();
+    openOpponent({ ...opponentProfile, isVerifiedPro: true });
+    expect(fetchLineage).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("blessed-by")).not.toBeInTheDocument();
+  });
+
+  it("loads the put-on-by line on a pro's profile with the flag on", () => {
+    vi.stubEnv("VITE_FEATURE_PRO_BLESSING", "true");
+    vi.mocked(fetchLineage).mockClear();
+    openOpponent({ ...opponentProfile, isVerifiedPro: true });
+    expect(fetchLineage).toHaveBeenCalledWith("u2");
   });
 });

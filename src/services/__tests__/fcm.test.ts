@@ -48,8 +48,6 @@ import {
   _resetSwRegistration,
   _resetActiveFcmToken,
   _resetMessagingSupport,
-  cappedTokenList,
-  MAX_PUSH_TOKENS,
 } from "../fcm";
 
 // jsdom doesn't provide Notification — stub it globally for these tests
@@ -451,25 +449,13 @@ describe("platform tag prune on register", () => {
   });
 });
 
-describe("10-token cap on register", () => {
+// Cap rules are unit-tested in pushTokenStore.test.ts; this checks the web path is wired to them.
+describe("10-token cap on register (web wiring)", () => {
   const full = Array.from({ length: 10 }, (_, i) => `old-${i}`);
 
   function seed(docs: Record<string, Record<string, unknown> | undefined>) {
     mockGetDoc.mockImplementation(async (ref: unknown) => ({ data: () => docs[ref as string] }));
   }
-
-  it("cappedTokenList leaves room-to-spare and already-present cases to arrayUnion", () => {
-    expect(cappedTokenList(undefined, "t")).toBeNull();
-    expect(cappedTokenList(["a", "b"], "t")).toBeNull();
-    expect(cappedTokenList(full, "old-3")).toBeNull();
-    expect(cappedTokenList(full.slice(0, 9), "t")).toBeNull();
-  });
-
-  it("cappedTokenList keeps the newest 9 plus the new token, ignoring junk entries", () => {
-    expect(cappedTokenList(full, "new")).toEqual([...full.slice(1), "new"]);
-    expect(cappedTokenList([...full, "old-10", 42], "new")).toEqual([...full.slice(2), "old-10", "new"]);
-    expect(MAX_PUSH_TOKENS).toBe(10);
-  });
 
   it("trims both docs to the newest 9 plus this device instead of being denied", async () => {
     mockRequestPermission.mockResolvedValue("granted");
@@ -495,22 +481,6 @@ describe("10-token cap on register", () => {
       { merge: true },
     );
     expect(kept).toHaveLength(10);
-  });
-
-  it("re-registering a token already in a full list stays an arrayUnion", async () => {
-    mockRequestPermission.mockResolvedValue("granted");
-    mockGetToken.mockResolvedValue("old-4");
-    seed({ "users/u1/private/profile": { fcmTokens: full }, "pushTargets/u1": { tokens: full } });
-
-    await requestPushPermission("u1");
-
-    expect(mockSetDoc).toHaveBeenNthCalledWith(
-      1,
-      "users/u1/private/profile",
-      { fcmTokens: { _op: "arrayUnion", value: "old-4" } },
-      { merge: true },
-    );
-    expect(mockSetDoc.mock.calls[1][1]).toMatchObject({ tokens: { _op: "arrayUnion", value: "old-4" } });
   });
 });
 

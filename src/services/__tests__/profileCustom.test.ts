@@ -29,7 +29,9 @@ import {
   DEFAULT_PROFILE_CUSTOM,
   LIMITS,
   LINK_HOSTS,
+  LINK_PATTERN,
   SECTION_IDS,
+  escapeRegExp,
   fetchPinnableClips,
   fetchPinnedClips,
   getProfileCustom,
@@ -69,6 +71,18 @@ describe("link allowlist", () => {
     const rules = readFileSync("firestore.rules", "utf8");
     for (const host of LINK_HOSTS) expect(rules).toContain(host.replace(/\./g, "\\\\."));
     for (const t of MUSIC_TRACKS) expect(rules).toContain(`'${t.id}'`);
+  });
+});
+
+describe("escapeRegExp (CodeQL js/incomplete-sanitization #10)", () => {
+  it("escapes backslashes and every other metacharacter", () => {
+    expect(escapeRegExp("a\\b")).toBe("a\\\\b");
+    const nasty = "^$.*+?()[]{}|\\";
+    expect(new RegExp(`^${escapeRegExp(nasty)}$`).test(nasty)).toBe(true);
+  });
+  it("leaves the link pattern for the real host list unchanged", () => {
+    const legacy = `^https://([a-z0-9-]+\\.)?(${LINK_HOSTS.map((h) => h.replace(/\./g, "\\.")).join("|")})(/[^\\s]*)?$`;
+    expect(LINK_PATTERN).toBe(legacy);
   });
 });
 

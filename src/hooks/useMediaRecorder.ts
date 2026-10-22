@@ -6,6 +6,7 @@ import { logger } from "../services/logger";
 import { parseFirebaseError } from "../utils/helpers";
 import {
   AUDIO_CONSTRAINTS,
+  logPreviewPlayError,
   recorderMimeCandidates,
   selectIosCamera,
   tuneVideoTrack,
@@ -444,7 +445,11 @@ export function useMediaRecorder(
       /* v8 ignore start -- DOM ref assignment; videoRef always null in JSDOM tests */
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        void videoRef.current.play();
+        // play() rejects with AbortError when the stream is swapped or the
+        // element unmounts mid-load (lens flip, fast close). That is expected;
+        // anything else (e.g. NotAllowedError in iOS Low Power Mode) is logged
+        // instead of escaping as an unhandled rejection.
+        videoRef.current.play().catch(logPreviewPlayError);
       }
       /* v8 ignore stop */
       setState("preview");

@@ -9,7 +9,10 @@ export function readAngle(blob: Blob, id: string, label: string): Promise<{ angl
     v.muted = true;
     v.onloadedmetadata = () => {
       const durationSec = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
-      if (durationSec === 0) return reject(new Error("no duration"));
+      if (durationSec === 0) {
+        URL.revokeObjectURL(url);
+        return reject(new Error("no duration"));
+      }
       resolve({
         url,
         // Capture fps isn't exposed by HTMLVideoElement; assume 60 when the

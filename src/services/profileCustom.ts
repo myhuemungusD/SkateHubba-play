@@ -100,9 +100,10 @@ export const LINK_HOSTS = [
   "skatehubba.com",
 ] as const;
 
-const esc = (s: string): string => s.replace(/\./g, "\\.");
+/** Escape every RegExp metacharacter (backslash included) so a host is matched literally. */
+export const escapeRegExp = (s: string): string => s.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
 /** Same pattern string as firestore.rules (RE2 full match). */
-export const LINK_PATTERN = `^https://([a-z0-9-]+\\.)?(${LINK_HOSTS.map(esc).join("|")})(/[^\\s]*)?$`;
+export const LINK_PATTERN = `^https://([a-z0-9-]+\\.)?(${LINK_HOSTS.map(escapeRegExp).join("|")})(/[^\\s]*)?$`;
 const LINK_RE = new RegExp(LINK_PATTERN);
 const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
 
