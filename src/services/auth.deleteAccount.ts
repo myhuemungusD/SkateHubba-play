@@ -13,12 +13,35 @@ const ACCOUNT_DELETE_PATH = "/api/account/delete";
  * Error carrying a `code`, so `getErrorCode` can branch on it exactly as it
  * does for a real Firebase Auth error.
  */
-class CodedError extends Error {
+export class CodedError extends Error {
   readonly code: string;
   constructor(code: string, message: string, cause?: unknown) {
     super(message, cause === undefined ? undefined : { cause });
     this.code = code;
   }
+}
+
+const misconfigured = () =>
+  new CodedError(
+    "account-delete/misconfigured",
+    "Account deletion is unavailable in this build. Please contact support.",
+  );
+
+/**
+ * URL of the erasure endpoint, or null when it can't be reached from this build.
+ *
+ * On the web a relative URL is correct and same-origin, so CORS never engages.
+ * On native it is not: the Capacitor webview origin is `capacitor://localhost`
+ * (iOS) / `https://localhost` (Android), so a relative path resolves to the
+ * webview itself and there is no API there. `window.location.origin` is the
+ * same dead end. The deployed origin must be supplied at build time, and if
+ * it wasn't, callers fail up front rather than fire a request that cannot
+ * succeed — this is the App-Store-required delete flow.
+ */
+export function accountDeleteUrl(): string | null {
+  const base = import.meta.env.VITE_APP_URL || "";
+  if (!base && Capacitor.isNativePlatform()) return null;
+  return `${base}${ACCOUNT_DELETE_PATH}`;
 }
 
 /**
@@ -77,26 +100,15 @@ export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean
 
   const idToken = await user.getIdToken();
 
-  // On the web a relative URL is correct and same-origin, so CORS never engages.
-  // On native it is not: the Capacitor webview origin is `capacitor://localhost`
-  // (iOS) / `https://localhost` (Android), so a relative path resolves to the
-  // webview itself and there is no API there. `window.location.origin` is the
-  // same dead end. The deployed origin must be supplied at build time, and if
-  // it wasn't, failing here is far better than firing a request that cannot
-  // succeed — this is the App-Store-required delete flow.
-  const configuredBase = import.meta.env.VITE_APP_URL || "";
-  if (!configuredBase && Capacitor.isNativePlatform()) {
+  const url = accountDeleteUrl();
+  if (!url) {
     logger.error("delete_account_missing_app_url", { uid });
-    throw new CodedError(
-      "account-delete/misconfigured",
-      "Account deletion is unavailable in this build. Please contact support.",
-    );
+    throw misconfigured();
   }
-  const base = configuredBase;
 
   let res: Response;
   try {
-    res = await fetch(`${base}${ACCOUNT_DELETE_PATH}`, {
+    res = await fetch(url, {
       method: "POST",
       headers: { Authorization: `Bearer ${idToken}` },
     });

@@ -64,6 +64,10 @@ export interface AuthContextValue {
   loading: boolean;
   user: ReturnType<typeof useAuth>["user"];
   activeProfile: UserProfile | null;
+  /** The signed-in user has a profile. Checks the uid, because a sign-out that
+   *  skips handleSignOut (another tab, a revoked session) leaves the old
+   *  activeProfile in place for the next user. */
+  hasProfile: boolean;
   setActiveProfile: (p: UserProfile | null) => void;
   refreshProfile: () => Promise<void>;
   reloadAuthUser: () => Promise<boolean>;
@@ -130,6 +134,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setPrevProfile(profile);
     if (profile) setActiveProfile(profile);
   }
+  // Writes and analytics that must wait for a profile key off this boolean, so
+  // they run once when it appears instead of on every profile edit.
+  const hasProfile = activeProfile !== null && activeProfile.uid === user?.uid;
   const [googleLoading, setGoogleLoading] = useState(false);
   const [appleLoading, setAppleLoading] = useState(false);
   const [googleError, setGoogleError] = useState("");
@@ -332,14 +339,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // identifier, and the privacy policy promises that analytics and error
       // identifiers are hashed, so it must not reach either vendor.
       setSentryUser({ id: surrogateId });
-      if (analyticsConsented) {
+      // No analytics identity before a profile exists: an under-13 blocked in
+      // ProfileSetup must never be identified (COPPA).
+      if (analyticsConsented && hasProfile) {
         posthogIdentify(surrogateId);
       }
     } else {
       posthogReset();
       setSentryUser(null);
     }
-  }, [user, analyticsConsented]);
+  }, [user, hasProfile, analyticsConsented]);
 
   // Refresh the native push token after sign-in. Gated on isPushSupported()
   // so web users never hit the Capacitor plugin (which throws "unimplemented"
@@ -349,14 +358,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // below (refreshWebPushTokenIfGranted). Best-effort — errors inside
   // registerPushTokenIfGranted are already swallowed and logged; this effect
   // must never block the login flow.
+  // Both push effects wait for a profile: before one exists, no token may be
+  // written (an under-13 blocked in ProfileSetup must leave nothing behind).
   useEffect(() => {
-    if (!user) return;
+    if (!user || !hasProfile) return;
     if (!isPushSupported()) return;
     const uid = user.uid;
     void registerPushTokenIfGranted(uid).catch((err: unknown) => {
       logger.warn("push_register_unhandled", { uid, message: parseFirebaseError(err) });
     });
-  }, [user]);
+  }, [user, hasProfile]);
 
   // Web push token refresh-on-login. Native registration is handled by the
   // Capacitor plugin branch above; this effect is web-only and runs when the
@@ -366,14 +377,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // never re-register unless they manually revisit the push settings flow.
   // Best-effort only: failure to refresh the token must not block auth.
   useEffect(() => {
-    if (!user) return;
+    if (!user || !hasProfile) return;
     if (isPushSupported()) return; // native handled by registerPushToken
     if (globalThis.Notification?.permission !== "granted") return;
     const uid = user.uid;
     void refreshWebPushTokenIfGranted(uid).catch((err: unknown) => {
       logger.warn("web_push_register_unhandled", { uid, message: parseFirebaseError(err) });
     });
-  }, [user]);
+  }, [user, hasProfile]);
 
   // Invalidate pendingDeleteUid when a different auth user arrives (someone
   // else signs in on the same tab) — the banner must not prompt them to
@@ -562,6 +573,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     user,
     activeProfile,
+    hasProfile,
     setActiveProfile,
     refreshProfile,
     reloadAuthUser,

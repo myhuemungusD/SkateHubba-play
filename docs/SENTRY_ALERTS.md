@@ -80,6 +80,16 @@ Fires once per page view of `/map` when `VITE_MAPBOX_STYLE_URL` is set to a valu
 - **Action interval:** Once per issue (the event fires on every /map page view while the misconfig is live)
 - **Remediation:** Open the Sentry event, copy `extra.styleUrl`, and check Vercel → Project Settings → Environment Variables. Either correct the value (must start with `mapbox://styles/` or be a valid `https://` URL) and redeploy, or unset the var to use the default. If self-hosting on a non-Mapbox domain, also extend the `connect-src` directive in `vercel.json` to whitelist that origin.
 
+#### Orphaned under-13 profile (`account_delete_underage_raced_cascade_failed`)
+
+Fires when the COPPA erasure (`POST /api/account/delete?reason=underage`, `api/account/_underage.ts`) deleted the Auth user, then found a profile written in the race window and failed to erase it. The client can't retry, because its token no longer verifies, so the profile stays until someone erases it. Rare: the client shows the blocked card and no profile form. The event carries only `uidHash`.
+
+- **When:** A new issue is created
+- **Filter:** `event.environment:production AND message:"account_delete_underage_raced_cascade_failed"`
+- **Then:** Send notification to **Slack** `#skatehubba-alerts`
+- **Action interval:** Every occurrence (each one is an orphaned profile)
+- **Remediation:** With the Admin SDK on the named database (`getFirestore(app, "skatehubba")`), find `users` docs whose Auth user no longer exists (`auth.getUser(uid)` rejects with `auth/user-not-found`), and pick the one where `hashUid(uid)` (`src/utils/pii.ts`) equals the event's `uidHash`. Erase it with `deleteUserDataAsAdmin` from `api/account/_deleteUserData.ts`, the same cascade the endpoint runs; it is idempotent.
+
 ### 3. Slack Integration
 
 1. Sentry → **Settings** → **Integrations** → **Slack**
