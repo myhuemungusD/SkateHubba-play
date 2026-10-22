@@ -6,33 +6,45 @@
 /** Store screenshot sizes (portrait pixels) and the CSS viewport that yields them. */
 export const SIZES = [
   { id: "ios-6.9", store: "App Store", label: 'iPhone 6.9"', width: 440, height: 956, scale: 3, mobile: true }, // 1320×2868
+  { id: "ios-6.3", store: "App Store", label: 'iPhone 6.3"', width: 402, height: 874, scale: 3, mobile: true }, // 1206×2622
   { id: "ios-6.5", store: "App Store", label: 'iPhone 6.5"', width: 428, height: 926, scale: 3, mobile: true }, // 1284×2778
   { id: "ios-5.5", store: "App Store", label: 'iPhone 5.5"', width: 414, height: 736, scale: 3, mobile: true }, // 1242×2208
-  { id: "ipad-13", store: "App Store", label: 'iPad 13"', width: 1032, height: 1376, scale: 2, mobile: true }, // 2064×2752 (TARGETED_DEVICE_FAMILY 1,2)
   { id: "play-phone", store: "Google Play", label: "Phone", width: 360, height: 640, scale: 3, mobile: true }, // 1080×1920
   { id: "play-7in", store: "Google Play", label: '7" tablet', width: 600, height: 960, scale: 2, mobile: true }, // 1200×1920
   { id: "play-10in", store: "Google Play", label: '10" tablet', width: 800, height: 1280, scale: 2, mobile: true }, // 1600×2560
 ];
 
 /**
- * Key screens, in store order. Each one must show real content (no empty
- * states) and only features the iPhone launch build has: no Roll Dice, no
- * Skate Runner. `open` names how screenshots.mjs reaches a screen that has no
- * URL of its own (the game screen opens from its lobby card). `click` taps a
- * text before the shot (Home expands its "waiting on them" games), and
- * `scrollTo` scrolls an element to the top, past the header.
+ * Key screens, in store order. Each one backs a promise in the iOS listing
+ * (one-take game, your record, head-to-head, spot passport, turns on a clock)
+ * and shows only what the iPhone launch build ships. `open` names how
+ * screenshots.mjs reaches a screen that has no URL of its own (the game screen
+ * opens from its lobby card). `click` taps a text before the shot (Home expands
+ * its "waiting on them" games), and `scrollTo` scrolls an element to the top,
+ * past the header. `optional` shots are skipped with --skip-optional.
  */
 export const SCREENS = [
   { id: "01-game", path: "/lobby", open: "game" },
-  { id: "02-feed", path: "/feed", seek: 4 },
-  { id: "03-map", path: "/map" },
-  { id: "04-profile", path: "/me" },
-  { id: "05-closet", path: "/me", scrollTo: '[data-testid="closet-showcase"]' },
-  { id: "06-lobby", path: "/lobby", click: "waiting on them", scrollTo: '[data-testid="whos-skating-button"]' },
+  { id: "02-record", path: "/me", scrollTo: '[data-testid="brag-row"]' },
+  { id: "03-vs-you", path: "/player/review-demo-opp-1", scrollTo: '[data-testid="vs-you-row"]' },
+  { id: "04-passport", path: "/me", scrollTo: '[data-testid="spot-passport"]' },
+  { id: "05-lobby", path: "/lobby", click: "waiting on them", scrollTo: "#turn-stack-heading" },
+  { id: "06-clock", path: "/challenge?to=kickflip_kai", optional: true },
 ];
 
-/** Routes that must never appear in a store screenshot set. */
-export const FORBIDDEN_PATHS = ["/dice", "/play/runner"];
+/**
+ * Routes that must never appear in a store screenshot set: screens the iPhone
+ * build hides (Roll Dice, Skate Runner) and screens the listing doesn't promise
+ * (map, feed, Closet, trading).
+ */
+export const FORBIDDEN_PATHS = ["/dice", "/play/runner", "/map", "/feed", "/closet", "/trading"];
+
+/** Text that means a shot caught an error, an empty state or an unpromised feature. */
+export const FORBIDDEN_TEXT =
+  /temporarily unavailable|No video recorded|Something went wrong|Roll Dice|Skate Runner|\bbless/i;
+
+/** Anything open on top of the screen: dialogs, sheets and toasts. */
+export const OVERLAY_SELECTOR = '[role="dialog"], [role="alertdialog"], [aria-modal="true"], [data-testid="toast"]';
 
 export const pixelSize = (s) => ({ w: s.width * s.scale, h: s.height * s.scale });
 export const shotPath = (dir, size, screen) => `${dir}/${size.id}/${screen.id}.png`;

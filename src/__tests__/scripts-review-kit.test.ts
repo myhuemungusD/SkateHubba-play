@@ -13,9 +13,10 @@ describe("plan", () => {
   it("covers every required store size at the exact pixel size", () => {
     const px = Object.fromEntries(plan.SIZES.map((s: { id: string }) => [s.id, plan.pixelSize(s)]));
     expect(px["ios-6.9"]).toEqual({ w: 1320, h: 2868 });
+    expect(px["ios-6.3"]).toEqual({ w: 1206, h: 2622 });
     expect(px["ios-6.5"]).toEqual({ w: 1284, h: 2778 });
     expect(px["ios-5.5"]).toEqual({ w: 1242, h: 2208 });
-    expect(px["ipad-13"]).toEqual({ w: 2064, h: 2752 });
+    expect(px["ipad-13"]).toBeUndefined(); // iPhone-only app: no iPad set
     expect(px["play-phone"]).toEqual({ w: 1080, h: 1920 });
     expect(plan.shotPath("/o", plan.SIZES[0], plan.SCREENS[0])).toBe("/o/ios-6.9/01-game.png");
   });
@@ -180,5 +181,60 @@ describe("screenshots args", () => {
   it("requires credentials", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await shots.main([], {})).toBe(1);
+  });
+});
+
+describe("App Store shot list (screenshots-plan.md)", () => {
+  it("captures only the listing's promises, in store order", () => {
+    expect(plan.SCREENS.map((s: { id: string }) => s.id)).toEqual([
+      "01-game",
+      "02-record",
+      "03-vs-you",
+      "04-passport",
+      "05-lobby",
+      "06-clock",
+    ]);
+    const byId = Object.fromEntries(plan.SCREENS.map((s: { id: string }) => [s.id, s]));
+    expect(byId["03-vs-you"].path).toBe(`/player/${plan.DEMO_OPPONENTS[0].uid}`);
+    expect(byId["06-clock"]).toMatchObject({
+      path: `/challenge?to=${plan.DEMO_OPPONENTS[0].username}`,
+      optional: true,
+    });
+    expect(byId["05-lobby"].scrollTo).not.toMatch(/whos-skating/);
+    expect(shots.parseArgs(["--skip-optional"], {}).screens.map((s: { id: string }) => s.id)).not.toContain("06-clock");
+    expect(shots.parseArgs([], {}).screens).toHaveLength(6);
+    expect(shots.parseArgs(["--only", "ios-6.9,ios-6.3"], {}).sizes.map((s: { id: string }) => s.id)).toEqual([
+      "ios-6.9",
+      "ios-6.3",
+    ]);
+  });
+
+  it("blocks the map, feed, Closet and trading", () => {
+    for (const p of ["/map", "/feed", "/closet", "/closet/studio", "/trading", "/dice"]) {
+      expect(shots.isForbiddenUrl(`http://l${p}`)).toBe(true);
+    }
+    expect(shots.isForbiddenUrl("http://l/challenge?to=kai")).toBe(false);
+    expect(shots.isForbiddenUrl("http://l/feedback")).toBe(false);
+  });
+
+  it("fails a shot on error text, unpromised features or an open overlay", () => {
+    const ok = { id: "02-record", url: "http://l/me", text: "RECORD Lifetime Wins 14", overlays: 0 };
+    expect(shots.shotProblem(ok)).toBeNull();
+    expect(shots.shotProblem({ ...ok, text: "Map temporarily unavailable" })).toMatch(/temporarily unavailable/);
+    expect(shots.shotProblem({ ...ok, text: "No video recorded" })).toMatch(/No video recorded/);
+    expect(shots.shotProblem({ ...ok, text: "ROLL DICE" })).toMatch(/ROLL DICE/);
+    expect(shots.shotProblem({ ...ok, text: "Bless as pro" })).toMatch(/Bless/);
+    expect(shots.shotProblem({ ...ok, overlays: 1 })).toMatch(/overlay/);
+    expect(shots.shotProblem({ ...ok, url: "http://l/feed" })).toMatch(/must not show/);
+    expect(plan.OVERLAY_SELECTOR).toContain('[role="dialog"]');
+    expect(plan.OVERLAY_SELECTOR).toContain('[data-testid="toast"]');
+  });
+
+  it("has no iPad size in the App Store set", () => {
+    const appStore = plan.SIZES.filter((s: { store: string }) => s.store === "App Store").map(
+      (s: { id: string }) => s.id,
+    );
+    expect(appStore).toContain("ios-6.3");
+    expect(appStore.filter((id: string) => id.startsWith("ipad"))).toEqual([]);
   });
 });
