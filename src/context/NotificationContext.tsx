@@ -17,7 +17,7 @@ import {
   markNotificationRead,
   type NotificationEvent,
 } from "../services/notifications";
-import { TOAST_DURATION } from "../constants/ui";
+import { ACTION_TOAST_DURATION, TOAST_DURATION } from "../constants/ui";
 
 /** Chime → haptic mapping. `general` falls back to the lightweight toast pulse. */
 const chimeHapticMap: Record<ChimeType, HapticType> = {
@@ -53,6 +53,19 @@ export interface AppNotification {
   sourceType?: string;
   /** In-app path opened from the bell, such as a clip appeal. */
   appealPath?: string;
+  /** Toast-only button (never stored in the bell). See NotifyOpts.action. */
+  action?: ToastAction;
+}
+
+/**
+ * A button on the toast, such as Retry. A toast with an action is a prompt,
+ * not news: it skips the bell, stays up longer, and calls `onExpire` if it
+ * leaves without the button being tapped.
+ */
+export interface ToastAction {
+  label: string;
+  onAction: () => void;
+  onExpire?: () => void;
 }
 
 export interface NotifyOpts {
@@ -64,6 +77,7 @@ export interface NotifyOpts {
   firestoreId?: string;
   sourceType?: string;
   appealPath?: string;
+  action?: ToastAction;
 }
 
 interface NotificationContextValue {
@@ -170,11 +184,14 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
       firestoreId: opts.firestoreId,
       sourceType: opts.sourceType,
       ...(opts.appealPath ? { appealPath: opts.appealPath } : {}),
+      ...(opts.action ? { action: opts.action } : {}),
     };
 
-    // Add to persistent notifications
-    setNotifications((prev) => [n, ...prev].slice(0, MAX_STORED));
-    setNotifyKey((k) => k + 1);
+    // Add to persistent notifications. Action toasts are prompts, not news.
+    if (!opts.action) {
+      setNotifications((prev) => [n, ...prev].slice(0, MAX_STORED));
+      setNotifyKey((k) => k + 1);
+    }
 
     // Add to toast queue (max 3 visible)
     setToasts((prev) => [n, ...prev].slice(0, 3));
@@ -189,10 +206,14 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
     }
 
     // Auto-dismiss toast
-    const timer = setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== n.id));
-      toastTimers.current.delete(n.id);
-    }, TOAST_DURATION);
+    const timer = setTimeout(
+      () => {
+        setToasts((prev) => prev.filter((t) => t.id !== n.id));
+        toastTimers.current.delete(n.id);
+        opts.action?.onExpire?.();
+      },
+      opts.action ? ACTION_TOAST_DURATION : TOAST_DURATION,
+    );
     toastTimers.current.set(n.id, timer);
   }, []);
 

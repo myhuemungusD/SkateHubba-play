@@ -46,6 +46,17 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === "true"),
 
+  // Web-only App Check for the closet callables, used while the sitewide
+  // switch above is off. "lazy" (the default) starts App Check only when a
+  // closet action is about to call the server, so no other page loads
+  // reCAPTCHA. "off" never starts it on web, and every closet call is then
+  // rejected by the server. Ignored when VITE_APPCHECK_ENABLED is "true" and
+  // in the native apps. See docs/APPCHECK_ROLLOUT.md.
+  VITE_APPCHECK_WEB_MODE: z
+    .string()
+    .optional()
+    .transform((v): "lazy" | "off" => (v === "off" ? "off" : "lazy")),
+
   // Extras switch for the Map, Clips feed and Verified Pro surfaces.
   // DEFAULTS TO OFF — only the literal string "true" re-enables them. Read at
   // call sites via isExtrasEnabled() in src/lib/featureFlags.ts.
