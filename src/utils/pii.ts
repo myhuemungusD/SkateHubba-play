@@ -15,6 +15,10 @@ const EMAIL_KEY_RE = /^email$/i;
 // case-sensitive so we don't hash innocuous keys whose last three letters
 // happen to be "uid" — uuid, squid, druid, fluid, liquid.
 const UID_KEY_RE = /^uid$|Uid$/;
+// Usernames are public, direct identifiers. Matches `username` and camelCase
+// `*Username` (playerUsername, reportedUsername, ...). The privacy policy says
+// identifiers sent to vendors are hashed, so they get the same treatment.
+const USERNAME_KEY_RE = /^username$|Username$/;
 
 // Non-cryptographic 32-bit FNV-1a. Breadcrumbs need stable correlation
 // (same uid → same surrogate within one Sentry trace), not secrecy, so a
@@ -70,6 +74,8 @@ export function redactPII(data: Record<string, unknown> | undefined): Record<str
       out[key] = EMAIL_PLACEHOLDER;
     } else if (typeof value === "string" && UID_KEY_RE.test(key)) {
       out[key] = hashUid(value);
+    } else if (typeof value === "string" && USERNAME_KEY_RE.test(key)) {
+      out[key] = value ? `name_${fnv1a(value)}` : value;
     } else {
       out[key] = value;
     }
