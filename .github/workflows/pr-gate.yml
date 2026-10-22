@@ -78,9 +78,11 @@ jobs:
           #   • Admin insights — adminAnalytics + announcementOnCreate (Jason's
           #     2026-10-17 build-out of every placeholder). Admin claim only.
           #   • Game video retention — gameVideoRetention (Jason's 2026-10-22
-          #     policy, GAPS P3-2; approved by Jason in writing on PR #857,
-          #     date recorded in GAPS P3-2). Deletes games/ videos nothing
-          #     pins; off by default.
+          #     policy, GAPS P3-2). Sign-off: approved by Jason in writing on
+          #     PR #857 (a comment or review from Jason naming
+          #     functions/src/retention/), recorded with its date in
+          #     docs/GAPS.md P3-2; merging by the maintainer is not sign-off.
+          #     Deletes games/ videos nothing pins; off by default.
           # Any other changed file under functions/src/ hard-fails.
           VIOLATIONS=""
           while IFS= read -r file; do
