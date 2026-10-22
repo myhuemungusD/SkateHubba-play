@@ -129,13 +129,15 @@ describe("games service", () => {
       const id = await createGame("p1", "alice", "p2", "bob");
       // Deterministic id from mockDoc — `doc(gamesRef()).id` → "auto-id"
       expect(id).toBe("auto-id");
-      // Two batches: game + cooldown anchor, then the challenge notification
-      // + its companion notification_limits doc (H2 hardening). No setDoc or
-      // addDoc is involved.
+      // Three batches: game + cooldown anchor; the challenge notification +
+      // its companion notification_limits doc (H2 hardening); and the push
+      // dispatch + its push_dispatch_limits doc. The dispatch no longer reads
+      // the recipient's token mirror (M1), so it always queues and the courier
+      // drops it if the recipient has no devices. No setDoc or addDoc.
       expect(mockSetDoc).not.toHaveBeenCalled();
       expect(mockAddDoc).not.toHaveBeenCalled();
-      expect(mockBatchCommit).toHaveBeenCalledTimes(2);
-      expect(mockBatchSet).toHaveBeenCalledTimes(4);
+      expect(mockBatchCommit).toHaveBeenCalledTimes(3);
+      expect(mockBatchSet).toHaveBeenCalledTimes(6);
 
       const docData = gameSetDocCall();
       expect(docData.player1Uid).toBe("p1");
@@ -503,7 +505,8 @@ describe("games service", () => {
         try {
           const id = await createGame("p1", "alice", "p2", "bob");
           expect(id).toBe("auto-id");
-          expect(mockBatchCommit).toHaveBeenCalledTimes(2);
+          // game batch + notification batch + push dispatch batch (M1: no token read)
+          expect(mockBatchCommit).toHaveBeenCalledTimes(3);
           expect(mockAddBreadcrumb).toHaveBeenCalledWith(
             expect.objectContaining({
               category: "auth",
