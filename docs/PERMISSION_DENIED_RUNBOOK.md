@@ -23,6 +23,14 @@ and Storage. A token failure is therefore logged, not fatal. If users are
 suddenly getting `permission-denied` across the board, check first whether
 someone flipped enforcement on (§1).
 
+**Re-confirmed 2026-10-22:** the live skatehubba.com bundle inlines
+`VITE_APPCHECK_ENABLED=true` and a reCAPTCHA v3 site key, and runs
+`initializeAppCheck()` with `ReCaptchaV3Provider`, so web App Check is on in
+production. Store builds set `VITE_APPCHECK_ENABLED: "true"` as a literal
+(#829, in #849). Enforcement mode (monitor vs enforced, per API) is a Firebase
+Console setting and is not visible from the repo: read it in Console → App
+Check → APIs rather than trusting the 2026-10-08 note.
+
 **Code default:** App Check is still **opt-in**. `src/firebase.ts` only calls
 `initializeAppCheck()` when `VITE_APPCHECK_ENABLED=true` is set at build time.
 Builds without it (local dev, Preview unless set there) skip App Check entirely.
