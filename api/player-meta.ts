@@ -149,7 +149,7 @@ async function loadCard(uid: string): Promise<CardContent | null> {
     // Only a record worth showing goes in the description; a brand-new account
     // reads better as an invitation than as "0W - 0L".
     const record = wins + losses > 0 ? `${wins}W – ${losses}L` : "New to SkateHubba";
-    const pro = isPro ? " · Verified Pro" : "";
+    const pro = isPro ? " · Pro" : "";
 
     return {
       title: `@${username} on SkateHubba`,
