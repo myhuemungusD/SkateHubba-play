@@ -23,17 +23,34 @@ const BAD = /\.(message|stack)\b|\bString\(\s*(err|error|e|reason)\s*\)|\$\{\s*(
 /**
  * A raw caught error handed to a log or serializer: Node prints the full message
  * and stack for `console.error(err)`, and `JSON.stringify` keeps the enumerable
- * fields firebase-admin and gRPC errors carry (`errorInfo`, `details`).
+ * fields firebase-admin and gRPC errors carry (`errorInfo`, `details`). Matched
+ * over the whole comment-stripped file, because api/ logs are Prettier's
+ * multi-line `console.warn(\n JSON.stringify({\n … }),\n)` blocks.
  */
 const N = "(?:err|error|e|reason|caught|cause)";
+const ARGS = String.raw`(?:[^()]|\([^()]*\))*?`; // console args, one level of nested parens, may span lines
 const RAW = new RegExp(
-  String.raw`\bconsole\.\w+\((?:[^()]*,\s*)?${N}\s*[,)]` + // console.x(err) / console.x("…", err)
+  String.raw`\bconsole\.\w+\(${ARGS},\s*${N}\s*[,)]|\bconsole\.\w+\(\s*${N}\s*[,)]` + // console.x(…, err)
+    String.raw`|\(\s*console\.\w+\s*\)` + // .catch(console.error)
     String.raw`|\bJSON\.stringify\(\s*${N}\s*[,)]` + // JSON.stringify(err)
     String.raw`|[{,]\s*\w+\s*:\s*${N}\s*[,}]|\{\s*${N}\s*[,}]` + // { e: err } / { err }
+    String.raw`|\.\.\.\s*${N}\b(?!\s*\()|\[\s*${N}\s*[,\]]` + // { ...err } / [err]
+    String.raw`|\b${N}\s*\+\s*["'\x60]|["'\x60]\s*\+\s*${N}\b` + // err + ""
+    String.raw`|\bObject\.assign\([^)]*,\s*${N}\s*\)` + // Object.assign({}, err)
     String.raw`|\{\s*message\b[^}]*\}\s*=\s*${N}\b`, // const { message } = err
+  "g",
 );
 
-const leaks = (line: string) => BAD.test(line) || RAW.test(line);
+/** 1-based line numbers of every leak in this source, comments ignored. */
+function leakLines(source: string, { bad = true } = {}): number[] {
+  const lines = codeLines(source);
+  const found = new Set(bad ? lines.flatMap((line, i) => (BAD.test(line) ? [i + 1] : [])) : []);
+  const code = lines.join("\n");
+  for (const m of code.matchAll(RAW)) found.add(code.slice(0, m.index).split("\n").length);
+  return [...found].sort((a, b) => a - b);
+}
+
+const leaks = (snippet: string) => leakLines(snippet).length > 0;
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -55,14 +72,12 @@ describe("api/ error logging", () => {
   it("never puts a caught error's message or stack into a log line or body", () => {
     const files = sourceFiles(apiDir);
     expect(files.length).toBeGreaterThan(10);
-    const offenders = files
-      .filter((file) => !ALLOW.has(relative(apiDir, file)))
-      .flatMap((file) =>
-        codeLines(readFileSync(file, "utf8"))
-          .map((line, i) => ({ line, at: `${relative(apiDir, file)}:${i + 1}` }))
-          .filter(({ line }) => leaks(line))
-          .map(({ at }) => at),
-      );
+    // The ALLOW files read a message on purpose (BAD), but even they may never
+    // hand a raw error to a log (RAW).
+    const offenders = files.flatMap((file) => {
+      const rel = relative(apiDir, file);
+      return leakLines(readFileSync(file, "utf8"), { bad: !ALLOW.has(rel) }).map((line) => `${rel}:${line}`);
+    });
     expect(offenders).toEqual([]);
   });
 
@@ -78,8 +93,17 @@ describe("api/ error logging", () => {
     "JSON.stringify(err)",
     "JSON.stringify({ e: err })",
     "const { message } = err;",
+    'console.error(\n  "x",\n  err,\n);',
+    "JSON.stringify({\n  event,\n  error: err,\n})",
+    'console.error("x", safeErrorCode(err), err);',
+    "p.catch(console.error);",
+    "console.error({ ...err });",
+    'console.error("x", [err]);',
+    'const text = err + "";',
+    "Object.assign({}, err)",
+    'console.error(new Error("w"), err);',
   ])("catches %j", (snippet) => {
-    expect(codeLines(snippet).some(leaks)).toBe(true);
+    expect(leaks(snippet)).toBe(true);
   });
 
   it.each([
@@ -87,12 +111,18 @@ describe("api/ error logging", () => {
     'console.error(JSON.stringify({ event: "x", code: safeErrorCode(err) }));',
     "...describeInitFailure(err),",
     "throw raced ? err.inner : err;",
+    'captureServerError(\n  "x",\n  err,\n  { gameId },\n);',
+    'console.warn(\n  JSON.stringify({\n    event: "x",\n    code: safeErrorCode(err),\n  }),\n);',
   ])("allows %j", (snippet) => {
-    expect(codeLines(snippet).some(leaks)).toBe(false);
+    expect(leaks(snippet)).toBe(false);
   });
 
   it("ignores comments and URLs", () => {
     const source = '/* err.message */\n// String(err)\nconst url = "https://example.test/x"; // e.stack\n';
-    expect(codeLines(source).some(leaks)).toBe(false);
+    expect(leaks(source)).toBe(false);
+  });
+
+  it("reports the line a multi-line leak starts on", () => {
+    expect(leakLines('const a = 1;\nconsole.error(\n  "x",\n  err,\n);\n')).toEqual([2]);
   });
 });

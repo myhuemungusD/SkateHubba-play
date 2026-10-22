@@ -20,11 +20,14 @@ export function safeErrorName(err: unknown): string {
  *   `service/` prefix: `auth/id-token-expired`, `permission-denied`
  * - Node style: `E` plus uppercase letters and underscores: `ENOTFOUND`,
  *   `EAI_AGAIN`, `ERR_REQUIRE_ESM`
+ * - Uppercase with at least one underscore, digits allowed: `ERR_HTTP2_GOAWAY_SESSION`,
+ *   `CERT_HAS_EXPIRED`, `UND_ERR_SOCKET`
  * - gRPC numeric (Firestore Admin): `5` becomes `grpc-5`
  *
- * No form accepts digits, and each is single-case: a Firebase uid is 28 random
- * mixed-case letters and digits, so it can't pass as a code even if some SDK
- * put one there.
+ * A Firebase uid is 28 random mixed-case letters and digits with no "_", so it
+ * can't pass as a code even if some SDK put one there: the lowercase and E
+ * forms take no digits and one case only, and the digit-bearing form needs an
+ * underscore.
  */
 export function safeErrorCode(err: unknown): string {
   const code = err !== null && typeof err === "object" ? (err as { code?: unknown }).code : undefined;
@@ -32,7 +35,7 @@ export function safeErrorCode(err: unknown): string {
   if (
     typeof code === "string" &&
     code.length <= 64 &&
-    /^(?:[a-z]+(?:-[a-z]+)*(?:\/[a-z]+(?:-[a-z]+)*)?|E[A-Z_]{1,39})$/.test(code)
+    /^(?:[a-z]+(?:-[a-z]+)*(?:\/[a-z]+(?:-[a-z]+)*)?|E[A-Z_]{1,39}|[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)$/.test(code)
   ) {
     return code;
   }

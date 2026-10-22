@@ -44,6 +44,9 @@ describe("safeErrorCode", () => {
     ["a Node errno code", { code: "ENOTFOUND" }, "ENOTFOUND"],
     ["a Node errno code with an underscore", { code: "EAI_AGAIN" }, "EAI_AGAIN"],
     ["a Node ERR_ code", { code: "ERR_REQUIRE_ESM" }, "ERR_REQUIRE_ESM"],
+    ["a Node ERR_ code with digits", { code: "ERR_HTTP2_STREAM_ERROR" }, "ERR_HTTP2_STREAM_ERROR"],
+    ["a TLS code", { code: "CERT_HAS_EXPIRED" }, "CERT_HAS_EXPIRED"],
+    ["an undici code", { code: "UND_ERR_SOCKET" }, "UND_ERR_SOCKET"],
     [
       "the longest Firebase Auth code",
       { code: "auth/account-exists-with-different-credential" },
@@ -65,6 +68,8 @@ describe("safeErrorCode", () => {
     ["an all-lowercase uid", { code: "ab3def6hij9klm2nop5qrs8tuv1w" }],
     ["an all-uppercase uid starting with E", { code: "EB3DEF6HIJ9KLM2NOP5QRS8TUV1W" }],
     ["a code with digits", { code: "auth/error-42" }],
+    ["an uppercase uid with digits but no underscore", { code: "AB3DEF6HIJ9KLM2NOP5QRS8TUV1W" }],
+    ["an underscore code with a lowercase letter", { code: "ERR_Http2" }],
     ["an over-long code", { code: `auth/${"a".repeat(60)}` }],
     ["a mixed-case word", { code: "Auth/Expired" }],
     ["a non-string, non-number code", { code: true }],
