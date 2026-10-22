@@ -166,16 +166,28 @@ team box.
 - Dry run by default. `mode=apply` needs `confirm=rescreen` and the `main`
   branch.
 - **Moderation must be ON in production, or apply refuses.** The workflow's
-  "Resolve moderation switch" step reads `MODERATION_ENABLED` exactly the way
-  `firebase-functions-deploy.yml` does: the required `MODERATION_ENABLED=`
-  line in the `FUNCTIONS_DOTENV` secret (whitespace stripped,
-  case-insensitive). There is no repository-variable fallback, because the
-  deploy has none for this key (it fails without the line; only the Closet,
-  map check-in and spot presence switches fall back to variables). Anything
-  but `true`, including a missing line, stops apply with exit 2 before anything is installed or
-  read; a dry run still runs. Only that one key is extracted, and only
-  `true`/`false` is printed. The derived value is passed to the script, which
-  refuses `--apply` again unless it is exactly `true`. Nothing hard-codes it.
+  "Resolve moderation switch" step resolves `MODERATION_ENABLED` the same way
+  `firebase-functions-deploy.yml` "Write function parameters" does:
+  1. If the `MODERATION_ENABLED` repository variable is set, it wins. The
+     deploy passes it as `OVR_MODERATION_ENABLED` and replaces the secret's
+     line with it, so the rescreen reads it under the same name. It must be
+     exactly `true` or `false` (whitespace stripped, case-sensitive).
+     Anything else refuses apply, as it fails the deploy.
+  2. Otherwise the first `MODERATION_ENABLED=` line of the `FUNCTIONS_DOTENV`
+     secret is used, whitespace stripped. Only exactly `true` counts as ON,
+     which matches the deploy log's `switch MODERATION: ON` and the deployed,
+     case-sensitive `defineBoolean`.
+
+  An empty secret, a missing value, an invalid value, or `false` stops apply
+  with exit 2 before anything is installed or read; a dry run still runs.
+  Only `true`/`false` or a placeholder is printed, with where it came from.
+  The derived value is passed to the script, which refuses `--apply` again
+  unless it is exactly `true`. Nothing hard-codes it. A test runs this step
+  against the deploy's own step for every combination of variable and secret
+  line, so the two cannot drift apart unnoticed. (Production has the variable
+  set to `true`; the first apply on 2026-10-22 refused because the guard read
+  only the secret.)
+
 - Each clip is re-read just before screening, and the handler's transaction
   re-checks `pending` at write time, so a decision by the live trigger or an
   admin is never overwritten. Re-running is safe.

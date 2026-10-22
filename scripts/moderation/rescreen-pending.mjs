@@ -52,8 +52,8 @@
  * from the environment, else from the functions parameter file
  * (scripts/lib/functions-env.mjs). That is the same switch and the same
  * strict parse as the deployed param, which defaults to off. The workflow
- * derives it from the required MODERATION_ENABLED= line of FUNCTIONS_DOTENV,
- * exactly as the deploy does (no vars fallback), and never hard-codes it.
+ * resolves it the way the deploy does (the MODERATION_ENABLED repository
+ * variable when set, else the FUNCTIONS_DOTENV line) and never hard-codes it.
  *
  * Idempotent: a clip is re-read right before screening and skipped unless it
  * is still a pending user upload, and the handler's transaction re-checks
