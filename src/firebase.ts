@@ -203,16 +203,13 @@ async function installAppCheck(): Promise<void> {
     (self as unknown as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
   }
   if (Capacitor.isNativePlatform()) {
-    // Native WebViews cannot run ReCaptchaV3Provider. The Capacitor plugin
-    // uses DeviceCheck (iOS) / Play Integrity (Android). Awaited so the
-    // provider is installed before the first Firestore/Storage/Functions call.
+    // Native WebViews cannot run ReCaptchaV3Provider: the plugin mints the
+    // token and installNativeAppCheck bridges it into the web SDK. Awaited so
+    // the token is attached before the first Firestore/Storage/Functions call.
     const useDebug = useEmulators || import.meta.env.DEV;
     try {
-      const { FirebaseAppCheck } = await import("@capacitor-firebase/app-check");
-      await FirebaseAppCheck.initialize({
-        debug: useDebug,
-        siteKey: env.VITE_RECAPTCHA_SITE_KEY,
-      });
+      const { installNativeAppCheck } = await import("./lib/nativeAppCheck");
+      await installNativeAppCheck(app, useDebug);
       appCheckInitialized = true;
       addBreadcrumb({
         category: "lifecycle",

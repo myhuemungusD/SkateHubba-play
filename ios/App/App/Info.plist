@@ -29,9 +29,9 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>SkateHubba uses the microphone only while you are recording a trick, so the clip has sound.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>SkateHubba opens your photo library only when you choose something from it: a profile photo or banner, an image for a Closet Studio design, or a skate video to upload or edit in the clip editor.</string>
+	<string>SkateHubba opens your photo library only when you choose something from it: a profile photo or banner, or a skate video to upload or edit in the clip editor.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>SkateHubba can save a profile photo you choose to keep, and save full-quality clips you export from the clip editor to your camera roll.</string>
+	<string>SkateHubba saves full-quality clips you export from the clip editor to your camera roll.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>SkateHubba uses your location only while you are using the app, to show skate spots near you and to confirm you are at a spot when you check in. Your exact location is never shown to other skaters.</string>
 	<key>CFBundleURLTypes</key>

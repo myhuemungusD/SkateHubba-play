@@ -70,16 +70,19 @@ export VITE_FEATURE_POST_MAKES_ENABLED=true
 export VITE_FEATURE_PROFILE_BANNER=true
 export VITE_FEATURE_PROFILE_CUSTOM=true
 export VITE_FEATURE_SPOT_CHATS_ENABLED=true
-export VITE_FEATURE_CLOSET_ENABLED=true
-export VITE_FEATURE_CLOSET_DROPS_ENABLED=true
+# Closet and Closet Studio off until App Check is verified on TestFlight (see ios-release.yml).
+export VITE_FEATURE_CLOSET_ENABLED=false
+export VITE_FEATURE_CLOSET_DROPS_ENABLED=false
 export VITE_FEATURE_CLOSET_TRADING_ENABLED=false
-export VITE_FEATURE_CLOSET_STUDIO=true
+export VITE_FEATURE_CLOSET_STUDIO=false
 export VITE_FEATURE_SHOE_360=true
 export VITE_FEATURE_HUBBA_ICONS=true
 export VITE_FEATURE_RUNNER_ENABLED=false
 export VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED=false
 export VITE_FEATURE_SMS_2FA_ENABLED=false
 export VITE_FEATURE_WTT_ENABLED="${VITE_FEATURE_WTT_ENABLED:-false}"
+# App Check always on (App Attest is free), like ios-release.yml.
+export VITE_APPCHECK_ENABLED=true
 export REQUIRE_SW_CONFIG=1
 npm run build
 
