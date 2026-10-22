@@ -38,7 +38,6 @@
  *     nothing.
  */
 
-import { timingSafeEqual } from "node:crypto";
 import { cert, getApps, initializeApp, type App, type ServiceAccount } from "firebase-admin/app";
 import {
   getFirestore,
@@ -50,6 +49,7 @@ import {
   type QueryDocumentSnapshot,
   type Transaction,
 } from "firebase-admin/firestore";
+import { matchesCronSecret } from "./_cronAuth.js";
 import { describeInitFailure, parseServiceAccountJson } from "./_serviceAccount.js";
 // Relative imports in this file's traced graph need explicit .js extensions:
 // Vercel compiles each file separately (no bundling) and the ESM loader does
@@ -123,21 +123,13 @@ function getAdminFirestore(): Firestore {
 }
 
 /**
- * Constant-time bearer check against CRON_SECRET. Fail-closed: returns false
- * when CRON_SECRET is unset, the header is missing, or it is empty. Identical to
- * the sweep referee — the length-guard leaks only the secret's length, and the
- * byte compare is timing-safe.
+ * Constant-time bearer check against CRON_SECRET, fail-closed. The comparison
+ * lives in ./_cronAuth.ts (shared by every cron); this only picks the header
+ * value off the Node request.
  */
 function isAuthorized(req: CronRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
   const header = req.headers["authorization"] ?? req.headers["Authorization"];
-  const value = Array.isArray(header) ? header[0] : header;
-  if (!value) return false;
-  const expected = Buffer.from(`Bearer ${secret}`);
-  const actual = Buffer.from(value);
-  if (actual.length !== expected.length) return false;
-  return timingSafeEqual(actual, expected);
+  return matchesCronSecret(Array.isArray(header) ? header[0] : header);
 }
 
 function isDryRun(req: CronRequest): boolean {
