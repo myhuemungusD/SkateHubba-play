@@ -6,11 +6,7 @@ This is a console checklist. Nothing in this document changes Firebase, Vercel, 
 
 ## What happened on 10 October 2026
 
-Three audit accounts were created about two hours before this was written:
-
-- `jayham710+skatehubba.qa1.2e1130@gmail.com`
-- `jayham710+skatehubba.qa2.2e1130@gmail.com`
-- `jayham710+skatehubba.qa3.2e1130@gmail.com`
+Three audit accounts (`qa_tester_1` to `qa_tester_3`) were created about two hours before this was written.
 
 The app told each one a verification email had been sent. Nothing arrived in that Gmail inbox, including spam.
 
@@ -44,11 +40,13 @@ If the domain verification is ever removed (for example after DNS records change
 
 These are QA accounts on prod. Exclude them from metrics, and don't treat them as real players when you look at reports or the directory.
 
-| Handle                         | Email                                                                     |
-| ------------------------------ | ------------------------------------------------------------------------- |
-| `qa_tester_1` to `qa_tester_3` | see [AUDIT_2026-10-10.md](audits/AUDIT_2026-10-10.md#test-accounts)       |
-| `hesher_rips`, `hesher_grinds` | `skatehubba.ai+hesher.a@gmail.com`, `skatehubba.ai+hesher.b@gmail.com`    |
-| `mailtest1022`                 | `skatehubba.ai+mailtest1022@gmail.com` (email delivery check, 2026-10-21) |
+| Handle                         | Purpose                          |
+| ------------------------------ | -------------------------------- |
+| `qa_tester_1` to `qa_tester_3` | 2026-10-10 audit                 |
+| `hesher_rips`, `hesher_grinds` | QA play-testing                  |
+| `mailtest1022`                 | email delivery check, 2026-10-21 |
+
+This repo is public, so it lists handles only. The accounts' emails and credentials are in the private team QA notes, never in the repo.
 
 App Check did not block these three signups. A 403 from `exchangeRecaptchaV3Token` is the headless/datacenter case documented in [APPCHECK_ROLLOUT.md](APPCHECK_ROLLOUT.md); Auth still created the accounts. If Identity Toolkit App Check were **Enforced**, `sendEmailVerification` would throw and the app would have shown a failure, not "accepted". It showed acceptance, so the send was not rejected.
 
