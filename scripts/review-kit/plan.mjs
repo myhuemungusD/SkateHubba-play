@@ -41,9 +41,9 @@ export const SCREENS = [
 export const FORBIDDEN_PATHS = ["/dice", "/play/runner", "/map", "/feed", "/closet", "/trading"];
 
 /** Text that means a shot caught an error, an empty state or an unpromised feature. */
-// "put (you|someone) on" is the post-#812 wording for a pro blessing.
+// "put (you|someone) on" / "put on by" are the post-#812 wording for a pro blessing.
 export const FORBIDDEN_TEXT =
-  /temporarily unavailable|No video recorded|Something went wrong|Roll Dice|Skate Runner|\bbless|put (you|someone) on/i;
+  /temporarily unavailable|No video recorded|Something went wrong|Roll Dice|Skate Runner|\bbless|put (you|someone) on|put on by/i;
 
 /** Anything open on top of the screen: dialogs, sheets and toasts. */
 export const OVERLAY_SELECTOR = '[role="dialog"], [role="alertdialog"], [aria-modal="true"], [data-testid="toast"]';

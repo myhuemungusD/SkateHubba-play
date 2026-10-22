@@ -224,10 +224,12 @@ describe("App Store shot list (screenshots-plan.md)", () => {
     expect(shots.shotProblem({ ...ok, text: "No video recorded" })).toMatch(/No video recorded/);
     expect(shots.shotProblem({ ...ok, text: "ROLL DICE" })).toMatch(/ROLL DICE/);
     expect(shots.shotProblem({ ...ok, text: "Bless as pro" })).toMatch(/Bless/);
-    // Post-#812 blessing copy ("put on by @x"), in both forms.
+    // Post-#812 blessing copy ("put on by @x"), in all three forms.
     expect(shots.shotProblem({ ...ok, text: "Put someone on as pro" })).toMatch(/Put someone on/);
     expect(shots.shotProblem({ ...ok, text: "@kai put you on" })).toMatch(/put you on/);
-    expect(shots.shotProblem({ ...ok, text: "put on by @kai" })).toBeNull();
+    expect(shots.shotProblem({ ...ok, text: "put on by @kai" })).toMatch(/put on by/);
+    // Profile-line form, as it would render in a shot.
+    expect(shots.shotProblem({ ...ok, text: "Pro · Put on by @kai" })).toMatch(/Put on by/);
     expect(shots.shotProblem({ ...ok, overlays: 1 })).toMatch(/overlay/);
     expect(shots.shotProblem({ ...ok, url: "http://l/feed" })).toMatch(/must not show/);
     expect(plan.OVERLAY_SELECTOR).toContain('[role="dialog"]');
