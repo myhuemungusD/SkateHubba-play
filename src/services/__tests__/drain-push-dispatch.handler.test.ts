@@ -305,6 +305,10 @@ describe("drain", () => {
       tokens: ["tok-a"],
       notification: { title: "Your Turn!", body: "vs @bob" },
       data: { gameId: "g1", type: "your_turn", click_action: "/?game=g1" },
+      webpush: {
+        fcmOptions: { link: "https://skatehubba.com/?game=g1" },
+        notification: { icon: "/icon-192.png", badge: "/icon-192.png", tag: "game_g1", renotify: true },
+      },
     });
     expect(rec.deletes).toEqual(["d1"]);
     expect(out.body).toMatchObject({ scanned: 1, sent: 1, failedTokens: 0 });
@@ -626,7 +630,13 @@ describe("dice pushes and the iOS build", () => {
     );
     const { res, out } = makeRes();
     await handler(makeReq({ authorization: AUTH }), res);
-    expect(sendEachForMulticast).toHaveBeenCalledWith(expect.objectContaining({ tokens: ["web-1"] }));
+    expect(sendEachForMulticast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tokens: ["web-1"],
+        // A dice tap opens the dice table, the same route the service worker uses.
+        webpush: expect.objectContaining({ fcmOptions: { link: "https://skatehubba.com/dice/dg1" } }),
+      }),
+    );
     expect(out.body).toMatchObject({ sent: 1, filtered: 0 });
     expect(rec.deletes).toEqual(["d1"]);
   });

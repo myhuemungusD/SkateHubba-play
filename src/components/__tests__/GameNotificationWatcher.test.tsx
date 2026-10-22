@@ -572,6 +572,40 @@ describe("service worker deep-link bridge", () => {
     ).toBeUndefined();
   });
 
+  it("dispatches OPEN_GAME_EVENT for a Firebase SDK notification-clicked message", () => {
+    const { listeners } = stubServiceWorker();
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    render(<GameNotificationWatcher />);
+    listeners["message"][0](
+      new MessageEvent("message", {
+        data: {
+          messageType: "notification-clicked",
+          isFirebaseMessaging: true,
+          notification: { title: "Your Turn!" },
+          data: { gameId: "g-dice", kind: "dice", type: "dice_your_turn" },
+        },
+      }),
+    );
+    const ev = dispatchSpy.mock.calls.find((c) => c[0] instanceof CustomEvent && c[0].type === OPEN_GAME_EVENT);
+    expect((ev![0] as CustomEvent).detail).toEqual({ gameId: "g-dice", kind: "dice" });
+  });
+
+  it("ignores SDK messages that are not a click, not from Firebase, or carry no game", () => {
+    const { listeners } = stubServiceWorker();
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    render(<GameNotificationWatcher />);
+    const send = (data: unknown) => listeners["message"][0](new MessageEvent("message", { data }));
+    send({ messageType: "push-received", isFirebaseMessaging: true, data: { gameId: "g1" } });
+    send({ messageType: "notification-clicked", data: { gameId: "g1" } });
+    send({ messageType: "notification-clicked", isFirebaseMessaging: true });
+    send({ messageType: "notification-clicked", isFirebaseMessaging: true, data: { gameId: "" } });
+    send(null);
+    send("OPEN_GAME");
+    expect(
+      dispatchSpy.mock.calls.find((c) => c[0] instanceof CustomEvent && c[0].type === OPEN_GAME_EVENT),
+    ).toBeUndefined();
+  });
+
   it("ignores messages whose source is not the controlling SW", () => {
     const controller = { id: "trusted-sw" };
     const { listeners } = stubServiceWorker(controller);
