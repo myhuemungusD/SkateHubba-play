@@ -23,7 +23,7 @@
  *
  * Run via:  npm run test:rules
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { assertSucceeds, assertFails, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
 import {
   doc,
@@ -199,13 +199,16 @@ async function resolveWithStatement(): Promise<void> {
 // 1. users/{uid} — Verified-Pro granting
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("users/{uid} — admin Verified-Pro grant", () => {
-  it("admin CAN grant verified pro (isVerifiedPro + verifiedBy + verifiedAt)", async () => {
-    await assertSucceeds(updateDoc(userDoc("admin"), proGrant(ADMIN_UID)));
+describe("users/{uid} — no client Verified-Pro grant, not even for admins", () => {
+  // Security audit 2026-10-21: seeding moved to the `proSeed` callable
+  // (reason + evidence + append-only /proAudit row). The old admin
+  // client-write branch let any admin token mint pros with no record.
+  it("admin CANNOT grant verified pro by writing the user doc directly", async () => {
+    await assertFails(updateDoc(userDoc("admin"), proGrant(ADMIN_UID)));
   });
 
-  it("admin CAN revoke verified pro (isVerifiedPro is bool, not just true)", async () => {
-    await assertSucceeds(updateDoc(userDoc("admin"), proGrant(ADMIN_UID, { isVerifiedPro: false })));
+  it("admin CANNOT revoke verified pro by writing the user doc directly", async () => {
+    await assertFails(updateDoc(userDoc("admin"), proGrant(ADMIN_UID, { isVerifiedPro: false })));
   });
 
   it("plain signed-in user CANNOT grant verified pro to another user", async () => {
@@ -266,6 +269,43 @@ describe("users/{uid} — admin CANNOT self-grant verified pro", () => {
 
   it("admin CANNOT self-grant by attributing it to another admin", async () => {
     await assertFails(updateDoc(ownUserDoc(), proGrant(OTHER_ADMIN_UID)));
+  });
+});
+
+describe("proAudit/{id} — append-only seed log", () => {
+  const audit = (caller: CallerName) => as(caller, "proAudit", "a1");
+  const row = {
+    action: "seed",
+    actorUid: ADMIN_UID,
+    targetUid: TARGET_UID,
+    targetUsername: "target",
+    reason: "Pro for Baker since 2019.",
+    evidenceCompany: "Baker",
+    evidenceUrl: "https://bakerskateboards.com/team",
+    source: "callable",
+    createdAt: serverTimestamp(),
+  };
+
+  beforeEach(async () => {
+    await getEnv().withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "proAudit", "a1"), row);
+    });
+  });
+
+  it("admin CAN read the log", async () => {
+    await assertSucceeds(getDoc(audit("admin")));
+  });
+
+  it("a non-admin CANNOT read the log", async () => {
+    await assertFails(getDoc(audit("plain")));
+    await assertFails(getDoc(audit("target")));
+  });
+
+  it("nobody CAN create, edit or delete a row from a client, admins included", async () => {
+    await assertFails(setDoc(as("admin", "proAudit", "a2"), row));
+    await assertFails(setDoc(as("plain", "proAudit", "a2"), row));
+    await assertFails(updateDoc(audit("admin"), { reason: "rewritten history" }));
+    await assertFails(deleteDoc(audit("admin")));
   });
 });
 

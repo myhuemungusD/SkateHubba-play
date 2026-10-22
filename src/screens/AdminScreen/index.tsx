@@ -54,7 +54,7 @@ export function AdminScreen({ adminUid, onBack }: Props) {
 
       <div className="mx-auto max-w-lg px-5 pt-6">
         <AdminTabs tab={tab} onChange={setTab} showVerifyPro={verifyProEnabled} />
-        {verifyProEnabled && tab === "verify" && <VerifyProPanel adminUid={adminUid} />}
+        {verifyProEnabled && tab === "verify" && <VerifyProPanel />}
         {tab === "awards" && <AwardsPanel />}
         {tab === "reports" && <ReportsPanel adminUid={adminUid} />}
         {tab === "clips" && <ClipReviewPanel />}

@@ -45,8 +45,6 @@ vi.mock("firebase/firestore", () => ({
 vi.mock("../../firebase");
 
 import {
-  grantVerifiedPro,
-  revokeVerifiedPro,
   awardAchievement,
   revokeAchievement,
   awardLockerItem,
@@ -64,33 +62,6 @@ const TARGET = "skater-uid";
  *  fails on the first attempt instead of sleeping through the backoff. */
 function denied(): Error {
   return Object.assign(new Error("Missing or insufficient permissions"), { code: "permission-denied" });
-}
-
-/** The Transaction stub the service body actually received. */
-interface ObservedTx {
-  get: ReturnType<typeof vi.fn>;
-  update: ReturnType<typeof vi.fn>;
-}
-
-/**
- * Wire `runTransaction` for one call with a stub profile snapshot. Returns an
- * accessor for the Transaction the service saw so a test can assert the exact
- * payload it staged.
- */
-function txWithProfile(exists: boolean): () => ObservedTx {
-  let captured: ObservedTx | undefined;
-  h.mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: (tx: ObservedTx) => Promise<void>) => {
-    const tx: ObservedTx = {
-      get: vi.fn().mockResolvedValue({ exists: () => exists }),
-      update: vi.fn(),
-    };
-    captured = tx;
-    await cb(tx);
-  });
-  return () => {
-    if (!captured) throw new Error("transaction was never invoked");
-    return captured;
-  };
 }
 
 /** Duck-typed Timestamp stand-in — the parser detects `.toDate()` structurally. */
@@ -158,78 +129,6 @@ beforeEach(() => {
     };
     h.lastBatch = batch;
     return batch;
-  });
-});
-
-describe("grantVerifiedPro / revokeVerifiedPro", () => {
-  it("writes exactly { isVerifiedPro, verifiedBy, verifiedAt } on users/{uid}", async () => {
-    const observed = txWithProfile(true);
-
-    await grantVerifiedPro(ADMIN, TARGET);
-
-    expect(h.mockDoc).toHaveBeenCalledWith(expect.anything(), "users", TARGET);
-    const tx = observed();
-    // Payload exactness: the users update rule pins the affected key set, so an
-    // extra or renamed field here is a runtime permission-denied, not a type error.
-    expect(tx.update).toHaveBeenCalledWith(expect.objectContaining({ __path: `users/${TARGET}` }), {
-      isVerifiedPro: true,
-      verifiedBy: ADMIN,
-      verifiedAt: "SERVER_TS",
-    });
-    expect(tx.update).toHaveBeenCalledTimes(1);
-  });
-
-  it("mutates through runTransaction, never a bare update", async () => {
-    txWithProfile(true);
-    await grantVerifiedPro(ADMIN, TARGET);
-    expect(h.mockRunTransaction).toHaveBeenCalledTimes(1);
-    expect(h.mockUpdateDoc).not.toHaveBeenCalled();
-  });
-
-  it("reads the profile before staging the write", async () => {
-    const observed = txWithProfile(true);
-    await grantVerifiedPro(ADMIN, TARGET);
-    expect(observed().get).toHaveBeenCalledWith(expect.objectContaining({ __path: `users/${TARGET}` }));
-  });
-
-  it("revoke clears the flag and re-stamps the audit fields with the revoking admin", async () => {
-    const observed = txWithProfile(true);
-
-    await revokeVerifiedPro("other-admin", TARGET);
-
-    // A revocation is itself an audited admin act — verifiedBy/verifiedAt must
-    // point at whoever took the status away, not stay on the original granter.
-    expect(observed().update).toHaveBeenCalledWith(expect.anything(), {
-      isVerifiedPro: false,
-      verifiedBy: "other-admin",
-      verifiedAt: "SERVER_TS",
-    });
-  });
-
-  it("refuses to write when the target profile no longer exists", async () => {
-    const observed = txWithProfile(false);
-    await expect(grantVerifiedPro(ADMIN, TARGET)).rejects.toThrow(/no longer exists/);
-    expect(observed().update).not.toHaveBeenCalled();
-  });
-
-  it("rethrows a rules rejection so the console can surface it", async () => {
-    h.mockRunTransaction.mockRejectedValueOnce(denied());
-    await expect(grantVerifiedPro(ADMIN, TARGET)).rejects.toThrow(/insufficient permissions/);
-  });
-
-  it.each([
-    { label: "an empty admin uid", admin: "", target: TARGET },
-    { label: "an empty target uid", admin: ADMIN, target: "" },
-    { label: "a path-separated target uid", admin: ADMIN, target: "users/someone" },
-    { label: "a non-string target uid", admin: ADMIN, target: undefined as unknown as string },
-  ])("short-circuits $label without opening a transaction", async ({ admin, target }) => {
-    await expect(grantVerifiedPro(admin, target)).rejects.toThrow(/Invalid/);
-    expect(h.mockRunTransaction).not.toHaveBeenCalled();
-  });
-
-  it("short-circuits an invalid uid on revoke too", async () => {
-    await expect(revokeVerifiedPro(ADMIN, "a/b")).rejects.toThrow(/Invalid target uid/);
-    expect(h.mockRunTransaction).not.toHaveBeenCalled();
   });
 });
 

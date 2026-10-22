@@ -9,7 +9,7 @@
 
 Benchmarked against invite-only systems: Dribbble invites (a limited invite budget keeps the bar high), early Clubhouse (an inviter is shown on your profile forever), Lobsters (public invite tree, so a bad invite reflects on the inviter) and skate culture's "turned pro" moment, where a team or an established pro vouches for you.
 
-- **Server-enforced.** The `proBlessing` callable is the only non-admin writer of `isVerifiedPro`, `verifiedBy` and `verifiedAt`. Firestore rules deny every client write to those fields (except the admin seeding branch) and to `/proBlessings`.
+- **Server-enforced.** The `proBlessing` callable is the only non-admin writer of `isVerifiedPro`, `verifiedBy` and `verifiedAt`. Firestore rules deny every client write to those fields, admins included, and to `/proBlessings`. Admin seeding is the `proSeed` callable (reason + evidence, append-only `proAudit` row).
 - **Caller must be a verified, unbanned pro with a verified email.** No self-blessing. The target can't already be pro, banned, or have blocked the blesser.
 - **Account age.** The target's account must be at least `PRO_BLESSING_MIN_ACCOUNT_DAYS` days old (default 30). This stops a pro from minting fresh accounts.
 - **Rate limit.** `PRO_BLESSING_LIMIT` blessings per pro per `PRO_BLESSING_WINDOW_DAYS` days (defaults: 2 per 30). Declined offers still count, so a pro can't spam offers.
