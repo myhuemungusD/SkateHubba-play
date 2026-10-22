@@ -41,6 +41,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "check:test-dup": "node scripts/check-test-duplication.mjs",
     "check:file-length": "node scripts/check-file-length.mjs --strict",
+    "check:api-load": "node scripts/check-api-module-load.mjs",
     "verify": "tsc -b && npm run lint && npm run test:coverage && npm run build && npm run check:test-dup",
     "testers:sync": "node scripts/testers-sync.mjs",
     "check:testers": "node scripts/testers-sync.mjs --check",
@@ -113,6 +114,9 @@
     },
     "@tensorflow/tfjs": {
       "argparse": "^2.0.1"
+    },
+    "jwks-rsa": {
+      "jose": "^5.10.0"
     }
   },
   "devDependencies": {
@@ -133,7 +137,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
-    "@vitest/coverage-v8": "^4.1.0",
+    "@vitest/coverage-v8": "^4.1.12",
     "eslint": "^9.39.4",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react-hooks": "^7.1.1",
@@ -146,6 +150,6 @@
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.71.2",
     "vite": "^8.3.4",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.12"
   }
 }

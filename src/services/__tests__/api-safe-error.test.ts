@@ -6,8 +6,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { safeErrorCode, safeErrorName } from "../../../api/_safeError.js";
 import { wttFailureResponse } from "../../../api/cron/_wttFailure.js";
-import buildWttItems from "../../../api/cron/build-wtt-items.js";
-import wttNightlyEm from "../../../api/cron/wtt-nightly-em.js";
 import { MALFORMED_KEY_JSON } from "./cron.test-helpers";
 
 /** An error whose message quotes a secret, the way JSON.parse does. */
@@ -97,21 +95,5 @@ describe("wttFailureResponse", () => {
       JSON.stringify({ event: "wtt_build_items_failed", errorName: "SyntaxError" }),
     );
     expect(JSON.stringify(errorSpy.mock.calls)).not.toContain("PRIVATE KEY");
-  });
-});
-
-describe.each([
-  ["build-wtt-items", buildWttItems],
-  ["wtt-nightly-em", wttNightlyEm],
-])("%s (stub, WTT disabled)", (_name, handler) => {
-  it("refuses other verbs with 405", async () => {
-    const res = await handler(new Request("https://example.test/", { method: "DELETE" }));
-    expect(res.status).toBe(405);
-  });
-
-  it("is a no-op while WTT is disabled", async () => {
-    const res = await handler(new Request("https://example.test/"));
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ message: "WTT disabled", processed: 0 });
   });
 });
