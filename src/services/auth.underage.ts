@@ -22,18 +22,19 @@ import { markAgeGateBlocked, markCoppaBlocked } from "../utils/coppaNotice";
  *     auth/requires-recent-login.
  *  2. The server endpoint's underage mode (`?reason=underage`), which skips the
  *     recency check only because no profile exists yet (api/account/_underage.ts).
- *  3. Sign out regardless. On native that also clears the platform Google/Apple
- *     session, which `deleteUser` does not touch. If both deletes failed (say,
- *     offline) the sign-in survives with no profile; the error report carries
- *     only the hashed uid, which an admin sweep can match against Auth users
- *     that have no users doc.
+ *  3. Sign out once the account is gone. On native that also clears the
+ *     platform Google/Apple session, which `deleteUser` does not touch. If both
+ *     deletes failed (say, offline) it stays signed in on purpose and returns
+ *     "pending": ProfileSetup sees the sticky block on the next open and calls
+ *     this again, so the deletion completes instead of being stranded with no
+ *     token to retry with.
  *
  * It first sets the sticky 24-hour block and the landing notice
  * (utils/coppaNotice), because the sign-out unmounts the screen that showed the
  * blocked card. The notice says "pending" until a delete succeeds. Never
  * rejects: the caller fires and forgets. Logs never carry the raw uid.
  */
-export type UnderageBlockOutcome = "deleted" | "signed_out" | "failed" | "no_user";
+export type UnderageBlockOutcome = "deleted" | "pending" | "no_user";
 
 export async function blockUnderageSignIn(): Promise<UnderageBlockOutcome> {
   markAgeGateBlocked();
@@ -41,15 +42,15 @@ export async function blockUnderageSignIn(): Promise<UnderageBlockOutcome> {
   const user = requireAuth().currentUser;
   if (!user) return "no_user";
   const uidHash = hashUid(user.uid);
-  const deleted = await deleteBlockedUser(user, uidHash);
-  if (deleted) markCoppaBlocked("deleted");
+  if (!(await deleteBlockedUser(user, uidHash))) return "pending";
+  markCoppaBlocked("deleted");
   try {
     await signOut();
   } catch (err) {
+    // The account is already gone, so a failed sign-out only leaves a dead session.
     logger.warn("underage_sign_out_failed", { uidHash, code: getErrorCode(err) });
-    if (!deleted) return "failed";
   }
-  return deleted ? "deleted" : "signed_out";
+  return "deleted";
 }
 
 async function deleteBlockedUser(user: User, uidHash: string): Promise<boolean> {

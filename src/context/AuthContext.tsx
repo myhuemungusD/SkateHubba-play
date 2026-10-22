@@ -64,6 +64,10 @@ export interface AuthContextValue {
   loading: boolean;
   user: ReturnType<typeof useAuth>["user"];
   activeProfile: UserProfile | null;
+  /** The signed-in user has a profile. Checks the uid, because a sign-out that
+   *  skips handleSignOut (another tab, a revoked session) leaves the old
+   *  activeProfile in place for the next user. */
+  hasProfile: boolean;
   setActiveProfile: (p: UserProfile | null) => void;
   refreshProfile: () => Promise<void>;
   reloadAuthUser: () => Promise<boolean>;
@@ -132,7 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
   // Writes and analytics that must wait for a profile key off this boolean, so
   // they run once when it appears instead of on every profile edit.
-  const hasProfile = activeProfile !== null;
+  const hasProfile = activeProfile !== null && activeProfile.uid === user?.uid;
   const [googleLoading, setGoogleLoading] = useState(false);
   const [appleLoading, setAppleLoading] = useState(false);
   const [googleError, setGoogleError] = useState("");
@@ -567,6 +571,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     user,
     activeProfile,
+    hasProfile,
     setActiveProfile,
     refreshProfile,
     reloadAuthUser,

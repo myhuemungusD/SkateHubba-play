@@ -8,9 +8,9 @@
  * window, so the client falls back to `POST /api/account/delete?reason=underage`.
  *
  * Skipping the endpoint's recent-login check is safe only because nothing of
- * value can be lost: this path runs only when `users/{uid}` does not exist.
- * A caller with a real profile always goes through the normal erasure path,
- * recency check included, so a leaked token still can't erase an account.
+ * value can be lost: this path erases only a sign-in with no `users/{uid}`
+ * doc. With a profile it deletes nothing and answers `has_profile`, so a real
+ * account is only ever erased through the normal path and its confirmation UI.
  *
  * Before a profile exists the app can at most have written the docs below
  * (presence and push tokens; the client gates those on a profile now, so this
@@ -25,15 +25,45 @@ export const preProfileDocs = (uid: string): string[] => [
   `pushTargets/${uid}`,
 ];
 
-/** True when the caller has a SkateHubba profile, so the underage path must not run. */
-export async function hasProfile(db: Firestore, uid: string): Promise<boolean> {
-  return (await db.doc(`users/${uid}`).get()).exists;
-}
+/**
+ * - `has_profile`: the caller has a profile; nothing was touched.
+ * - `erased`: the pre-profile docs and the Auth user are gone.
+ * - `raced`: as `erased`, but a profile appeared after the Auth user was
+ *   deleted, so `eraseProfile` ran the full cascade for it.
+ */
+export type UnderageOutcome = "has_profile" | "erased" | "raced";
 
-/** Delete the pre-profile docs, then the Auth user. Throws on any failure; both steps are idempotent. */
-export async function eraseUnderageSignIn(db: Firestore, auth: Auth, uid: string): Promise<void> {
-  const batch = db.batch();
-  for (const path of preProfileDocs(uid)) batch.delete(db.doc(path));
-  await batch.commit();
+/**
+ * Race-safe erasure. Throws on any failure; every step is idempotent, so a
+ * retry resumes.
+ *
+ * 1. Revoke refresh tokens, so the client can't mint new ID tokens.
+ * 2. Check for a profile and delete the pre-profile docs in one transaction.
+ *    The Admin SDK locks what it reads, so a concurrent `createProfile`
+ *    commits strictly before (seen here) or after (caught in step 4).
+ * 3. Delete the Auth user.
+ * 4. Re-check. An ID token minted before step 1 stays valid for up to an hour
+ *    and Firestore doesn't check revocation, so a profile written in that
+ *    window would be orphaned PII with no Auth user. Erase it.
+ */
+export async function eraseUnderageSignIn(
+  db: Firestore,
+  auth: Auth,
+  uid: string,
+  eraseProfile: () => Promise<unknown>,
+): Promise<UnderageOutcome> {
+  const userRef = db.doc(`users/${uid}`);
+  // Checked before revoking: revocation would sign a real account out everywhere.
+  if ((await userRef.get()).exists) return "has_profile";
+  await auth.revokeRefreshTokens(uid);
+  const found = await db.runTransaction(async (tx) => {
+    if ((await tx.get(userRef)).exists) return true;
+    for (const path of preProfileDocs(uid)) tx.delete(db.doc(path));
+    return false;
+  });
+  if (found) return "has_profile";
   await auth.deleteUser(uid);
+  if (!(await userRef.get()).exists) return "erased";
+  await eraseProfile();
+  return "raced";
 }

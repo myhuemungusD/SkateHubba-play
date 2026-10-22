@@ -263,6 +263,38 @@ describe("identity sync", () => {
       renderIdentity({ user: true, consent: false });
       expect(refreshWebPushTokenIfGranted).toHaveBeenCalledWith("u1");
     });
+
+    // A sign-out that skips handleSignOut (another tab, a revoked session)
+    // leaves the old activeProfile behind; the next user must not inherit it.
+    it("does not treat the previous user's profile as the next user's", () => {
+      vi.mocked(isPushSupported).mockReturnValue(true);
+      mockConsent.mockReturnValue(true);
+      const ctx: { current: ReturnType<typeof useAuthContext> | null } = { current: null };
+      function Harness() {
+        ctx.current = useAuthContext();
+        return null;
+      }
+      const tree = () => (
+        <AuthProvider>
+          <Harness />
+        </AuthProvider>
+      );
+      mockUseAuth.mockReturnValue({
+        loading: false,
+        user: { uid: "u1" },
+        profile: { uid: "u1", username: "sk8r" },
+        refreshProfile: vi.fn(),
+      });
+      const { rerender } = render(tree());
+      expect(ctx.current?.hasProfile).toBe(true);
+      vi.clearAllMocks();
+      vi.mocked(isPushSupported).mockReturnValue(true);
+      mockUseAuth.mockReturnValue({ loading: false, user: { uid: "u2" }, profile: null, refreshProfile: vi.fn() });
+      rerender(tree());
+      expect(ctx.current?.hasProfile).toBe(false);
+      expect(registerPushTokenIfGranted).not.toHaveBeenCalled();
+      expect(mockPosthogIdentify).not.toHaveBeenCalled();
+    });
   });
 
   it("resets PostHog and clears the Sentry user on sign-out", () => {

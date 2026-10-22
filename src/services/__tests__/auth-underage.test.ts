@@ -74,12 +74,12 @@ describe("blockUnderageSignIn", () => {
     expect(h.signOut).toHaveBeenCalledTimes(1);
   });
 
-  it("signs out, leaves the notice pending, and reports only the hashed uid when both deletes fail", async () => {
+  it("stays signed in, so the next open can retry, and reports only the hashed uid when both deletes fail", async () => {
     h.deleteUser.mockRejectedValue(recentLogin);
     h.fetch.mockResolvedValue(json(500, { code: "erasure_failed" }));
-    expect(await blockUnderageSignIn()).toBe("signed_out");
+    expect(await blockUnderageSignIn()).toBe("pending");
     expect(h.markNotice.mock.calls).toEqual([["pending"]]);
-    expect(h.signOut).toHaveBeenCalledTimes(1);
+    expect(h.signOut).not.toHaveBeenCalled();
     expect(h.capture).toHaveBeenCalledWith(expect.any(Error), {
       extra: {
         context: "blockUnderageSignIn",
@@ -94,23 +94,30 @@ describe("blockUnderageSignIn", () => {
   it("uses the HTTP status when the server sends no code", async () => {
     h.deleteUser.mockRejectedValue(recentLogin);
     h.fetch.mockResolvedValue({ ok: false, status: 502, json: async () => Promise.reject(new Error("html")) });
-    expect(await blockUnderageSignIn()).toBe("signed_out");
+    expect(await blockUnderageSignIn()).toBe("pending");
     expect(h.capture.mock.calls[0][1].extra.serverCode).toBe("account-delete/502");
   });
 
   it("does not call the server from a native build with no API origin", async () => {
     h.deleteUser.mockRejectedValue(recentLogin);
     h.url.mockReturnValue(null);
-    expect(await blockUnderageSignIn()).toBe("signed_out");
+    expect(await blockUnderageSignIn()).toBe("pending");
     expect(h.fetch).not.toHaveBeenCalled();
     expect(h.capture.mock.calls[0][1].extra.serverCode).toBe("account-delete/misconfigured");
   });
 
-  it("reports failed, without rejecting, when both deletes and the sign-out fail", async () => {
+  it("answers pending, without rejecting, when the device is offline", async () => {
     h.deleteUser.mockRejectedValue(new Error("offline"));
     h.fetch.mockRejectedValue(new TypeError("offline"));
-    h.signOut.mockRejectedValue(new Error("offline"));
-    expect(await blockUnderageSignIn()).toBe("failed");
+    expect(await blockUnderageSignIn()).toBe("pending");
+    expect(h.signOut).not.toHaveBeenCalled();
+  });
+
+  it("treats the server's has_profile answer as not deleted", async () => {
+    h.deleteUser.mockRejectedValue(recentLogin);
+    h.fetch.mockResolvedValue(json(409, { code: "has_profile" }));
+    expect(await blockUnderageSignIn()).toBe("pending");
+    expect(h.capture.mock.calls[0][1].extra.serverCode).toBe("account-delete/has_profile");
   });
 
   it("still sets the sticky block with no one signed in", async () => {

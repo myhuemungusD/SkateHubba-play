@@ -16,6 +16,7 @@ import { hashUid } from "../utils/pii";
 import { useUsernameAvailability } from "../hooks/useUsernameAvailability";
 import { isMinorDob } from "../utils/age";
 import { useCoppaBlockedNotice } from "../utils/coppaNotice";
+import { useStickyAgeBlock } from "../hooks/useStickyAgeBlock";
 import { checkInlineDob } from "./authScreenHelpers";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
@@ -71,7 +72,7 @@ export function ProfileSetup({
   const [day, setDay] = useState("");
   const [year, setYear] = useState("");
   const [parentConsent, setParentConsent] = useState(false);
-  const [ageBlocked, setAgeBlocked] = useState(false);
+  const [ageBlocked, setAgeBlocked] = useStickyAgeBlock(needsDobCollection, !checkingExisting && !fetchFailed);
   const [coppaOutcome] = useCoppaBlockedNotice();
   const isMinor = needsDobCollection && isMinorDob(month, day, year);
 

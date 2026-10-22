@@ -218,7 +218,7 @@ function AppScreens() {
       <DeleteAccountRetryBanner />
       <GameNotificationWatcher />
       {/* No presence writes before a profile exists (COPPA: a blocked sign-up must leave nothing behind). */}
-      {queueUid && auth.activeProfile && <PresenceRunner uid={queueUid} />}
+      {queueUid && auth.hasProfile && <PresenceRunner uid={queueUid} />}
       <AppEmailVerifyBanner />
       <AppRoutes />
       <ToastContainer />
