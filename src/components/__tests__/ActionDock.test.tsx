@@ -13,4 +13,13 @@ describe("ActionDock", () => {
     expect(dock).toHaveClass("action-dock");
     expect(screen.getByRole("button", { name: "Landed" })).toBeInTheDocument();
   });
+
+  it("drops the fixed position when a screen pins it inside its own group", () => {
+    render(
+      <ActionDock testId="dock" inline>
+        <button type="button">Roll</button>
+      </ActionDock>,
+    );
+    expect(screen.getByTestId("dock")).toHaveClass("action-dock", "action-dock-inline");
+  });
 });

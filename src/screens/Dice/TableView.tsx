@@ -164,7 +164,7 @@ export function TableView({ game, uid }: { game: DiceGameDoc; uid: string }) {
   const caption = roll ? `${roll.uid === uid ? "You" : `@${name}`}: ${handName(roll.label)}` : null;
 
   return (
-    <div className="mx-auto min-h-dvh max-w-[430px] bg-background px-4 pb-[calc(12rem+env(safe-area-inset-bottom))] pt-[max(env(safe-area-inset-top),1.25rem)]">
+    <div className="mx-auto flex min-h-dvh max-w-[430px] flex-col bg-background px-4 pt-[max(env(safe-area-inset-top),1.25rem)]">
       <ScreenHeader
         title={`vs @${name}`}
         fallback="/dice"
@@ -201,39 +201,6 @@ export function TableView({ game, uid }: { game: DiceGameDoc; uid: string }) {
 
       <Scoreboard you={you} them={opp} target={game.target} />
 
-      <div className="mt-4">
-        <DiceSpot
-          dice={busy === "roll" ? null : choosing ? game.ten.rolled : (roll?.dice ?? null)}
-          rollKey={rollKey ?? "none"}
-          count={busy === "roll" && plan ? plan.nextCount : diceCount(game)}
-          size={game.mode === "ten" ? "md" : "lg"}
-          rolling={busy === "roll"}
-          landing={landing}
-          quick={quick || reduced}
-          onSkip={skip}
-          selection={
-            choosing ? { selected: new Set(keep), live: plan?.live ?? new Set(), onToggle: toggle } : undefined
-          }
-          kept={game.mode === "ten" && mine ? game.ten.kept : undefined}
-          point={game.mode === "craps" ? game.point : undefined}
-        >
-          {caption && !landing && busy !== "roll" ? (
-            <p
-              className="dice-fade text-center font-display text-lg tracking-wider text-white"
-              data-testid="dice-caption"
-            >
-              {caption}
-              {roll?.callout ? <span className="ml-2 text-brand-orange">· {roll.callout}</span> : null}
-            </p>
-          ) : null}
-        </DiceSpot>
-      </div>
-
-      {mine ? (
-        <p className="mt-3 font-body text-sm text-bright" data-testid="dice-need">
-          {needLine(game, uid)}
-        </p>
-      ) : null}
       {game.status === "pending" ? (
         <p className="mt-3 font-body text-sm text-bright">
           {copy.tagline}{" "}
@@ -244,11 +211,6 @@ export function TableView({ game, uid }: { game: DiceGameDoc; uid: string }) {
           >
             How {copy.name} works
           </button>
-        </p>
-      ) : null}
-      {error ? (
-        <p role="alert" className="mt-3 font-body text-sm text-brand-red">
-          {error}
         </p>
       ) : null}
       <p className="sr-only" aria-live="polite">
@@ -272,17 +234,66 @@ export function TableView({ game, uid }: { game: DiceGameDoc; uid: string }) {
         </button>
       ) : null}
 
-      <TableDock
-        game={game}
-        uid={uid}
-        name={name}
-        now={now}
-        online={online}
-        busy={busy}
-        landing={landing || !synced}
-        plan={plan}
-        onAction={act}
-      />
+      {/* The dice and the move that throws them share the thumb zone: the tray
+          sits right on the dock and the whole group sticks to the bottom of the
+          screen, so the Roll button never covers the dice and the round log
+          scrolls behind them. Capped at 75% of the screen so the scoreboard
+          stays reachable on short or landscape screens; the tray scrolls on
+          its own there. */}
+      <div className="sticky bottom-0 z-30 -mx-4 mt-auto flex max-h-[75dvh] flex-col pt-6" data-testid="dice-tray">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-t from-background to-transparent"
+        />
+        <div className="min-h-0 overflow-y-auto overscroll-contain bg-background px-4 pb-4">
+          <DiceSpot
+            dice={busy === "roll" ? null : choosing ? game.ten.rolled : (roll?.dice ?? null)}
+            rollKey={rollKey ?? "none"}
+            count={busy === "roll" && plan ? plan.nextCount : diceCount(game)}
+            size={game.mode === "ten" ? "md" : "lg"}
+            rolling={busy === "roll"}
+            landing={landing}
+            quick={quick || reduced}
+            onSkip={skip}
+            selection={
+              choosing ? { selected: new Set(keep), live: plan?.live ?? new Set(), onToggle: toggle } : undefined
+            }
+            kept={game.mode === "ten" && mine ? game.ten.kept : undefined}
+            point={game.mode === "craps" ? game.point : undefined}
+          >
+            {caption && !landing && busy !== "roll" ? (
+              <p
+                className="dice-fade text-center font-display text-lg tracking-wider text-white"
+                data-testid="dice-caption"
+              >
+                {caption}
+                {roll?.callout ? <span className="ml-2 text-brand-orange">· {roll.callout}</span> : null}
+              </p>
+            ) : null}
+          </DiceSpot>
+          {mine ? (
+            <p className="mt-3 font-body text-sm text-bright" data-testid="dice-need">
+              {needLine(game, uid)}
+            </p>
+          ) : null}
+          {error ? (
+            <p role="alert" className="mt-3 font-body text-sm text-brand-red">
+              {error}
+            </p>
+          ) : null}
+        </div>
+        <TableDock
+          game={game}
+          uid={uid}
+          name={name}
+          now={now}
+          online={online}
+          busy={busy}
+          landing={landing || !synced}
+          plan={plan}
+          onAction={act}
+        />
+      </div>
 
       {sheet === "info" ? (
         <DiceInfoSheet

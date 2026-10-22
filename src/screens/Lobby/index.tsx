@@ -71,11 +71,6 @@ export function Lobby({
       <div className="px-5 pt-7 max-w-[430px] mx-auto">
         {isSpotPresenceEnabled() ? <WhosSkatingButton uid={profile.uid} /> : null}
         {isRunnerEnabled() ? <RunnerCard /> : null}
-        {isDiceEnabled() ? (
-          <Suspense fallback={null}>
-            <RollDiceCard />
-          </Suspense>
-        ) : null}
         {/* The redesign leads with the turn stack, so the screen name is
             screen-reader-only: it restores the h1 every other screen has and
             anchors the heading outline without bringing back the "Your Games"
@@ -97,6 +92,14 @@ export function Lobby({
         {c.myTurn.length === 0 && c.theirTurn.length === 0 && (
           <EmptyLobbyState emailVerified={emailVerified} onChallenge={onChallenge} returning={games.length > 0} />
         )}
+
+        {/* S.K.A.T.E. is the core game, so its games come first and Roll Dice
+            sits below them, nearer the thumb. */}
+        {isDiceEnabled() ? (
+          <Suspense fallback={null}>
+            <RollDiceCard />
+          </Suspense>
+        ) : null}
       </div>
     </div>
   );
