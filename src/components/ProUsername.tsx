@@ -16,7 +16,7 @@ export function ProUsername({ username, isVerifiedPro: rawIsVerifiedPro, classNa
     <span className={`${className} ${isVerifiedPro ? "pro-username" : ""}`}>
       @{username}
       {isVerifiedPro && (
-        <span className="pro-username ml-1 text-[0.65em]" title="Verified Pro">
+        <span className="pro-username ml-1 text-[0.65em]" title="Pro">
           ✦
         </span>
       )}

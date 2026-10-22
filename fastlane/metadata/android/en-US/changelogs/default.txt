@@ -1,1 +1,1 @@
-First release: real-time games of S.K.A.T.E. with in-app video, spot map, stats, and push notifications when it's your turn.
+First release: a game of S.K.A.T.E. over video. One-take turns filmed in the app, 24-hour to 7-day turn clocks, an optional referee or community vote on disputed makes, your record with head-to-head, and the spot passport.

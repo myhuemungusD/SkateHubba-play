@@ -59,14 +59,14 @@ describe("ProToolsScreen", () => {
     expect(onBack).toHaveBeenCalled();
   });
 
-  it("leads with Bless a pro, the headline pro power, when the blessing flag is on", () => {
+  it("leads with Put someone on when the blessing flag is on", () => {
     vi.stubEnv("VITE_FEATURE_PRO_BLESSING", "true");
     render(<ProToolsScreen reviewMode={false} onBack={() => {}} />);
     const hero = screen.getByTestId("blessing-hero");
-    expect(hero).toHaveTextContent("Bless a pro");
-    expect(hero).toHaveTextContent(/never earns or wins|Nobody earns or wins pro/);
+    expect(hero).toHaveTextContent("Put someone on");
+    expect(hero).toHaveTextContent("Only for skaters who are pro for real");
     const headings = screen.getAllByRole("heading").map((h) => h.textContent);
-    expect(headings.indexOf("Bless a pro")).toBe(1);
+    expect(headings.indexOf("Put someone on")).toBe(1);
   });
 
   it("shows no blessing card or blessing copy at all with the blessing flag off", () => {
@@ -74,7 +74,7 @@ describe("ProToolsScreen", () => {
     for (const reviewMode of [false, true]) {
       const { unmount } = render(<ProToolsScreen uid="p" reviewMode={reviewMode} onBack={() => {}} />);
       expect(screen.queryByTestId("blessing-hero")).toBeNull();
-      expect(screen.queryByRole("heading", { name: "Bless a pro" })).toBeNull();
+      expect(screen.queryByRole("heading", { name: "Put someone on" })).toBeNull();
       expect(screen.getByTestId("pro-tools-screen").textContent ?? "").not.toMatch(/bless/i);
       unmount();
     }

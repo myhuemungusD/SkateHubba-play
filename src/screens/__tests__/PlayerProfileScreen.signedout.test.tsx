@@ -53,7 +53,7 @@ describe("PlayerProfileScreen — signed-out visitor", () => {
     expect(screen.getByText("@sk8rboi")).toBeInTheDocument();
     expect(screen.getByText("goofy")).toBeInTheDocument();
     // Verified Pro is frozen by default (VITE_FEATURE_EXTRAS_ENABLED unset).
-    expect(screen.queryByTitle("Verified Pro")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("Pro")).not.toBeInTheDocument();
     // 10-3 clears the rated-games floor, so the public record is real.
     expect(screen.getByLabelText("Lifetime wins: 10")).toBeInTheDocument();
     expect(screen.getByLabelText("Lifetime losses: 3")).toBeInTheDocument();
@@ -64,7 +64,7 @@ describe("PlayerProfileScreen — signed-out visitor", () => {
     vi.stubEnv("VITE_FEATURE_EXTRAS_ENABLED", "true");
     try {
       render(<PlayerProfileScreen {...visitorProps} />);
-      expect(screen.getByTitle("Verified Pro")).toBeInTheDocument();
+      expect(screen.getByTitle("Pro")).toBeInTheDocument();
     } finally {
       vi.unstubAllEnvs();
     }

@@ -52,12 +52,12 @@ describe("BlessProButton", () => {
     mockBless.mockResolvedValue("b1");
     render(<BlessProButton targetUid="t1" username="rookie" />);
     await userEvent.click(screen.getByTestId("bless-pro-button"));
-    expect(screen.getByRole("dialog")).toHaveTextContent("Turn @rookie pro?");
+    expect(screen.getByRole("dialog")).toHaveTextContent("Put @rookie on as PRO?");
     expect(screen.getByTestId("bless-confirm")).toBeDisabled();
     await userEvent.type(screen.getByTestId("bless-reason"), "Filmed with him for years.");
     await userEvent.click(screen.getByTestId("bless-confirm"));
     expect(mockBless).toHaveBeenCalledWith("t1", "Filmed with him for years.");
-    expect(await screen.findByTestId("bless-sent")).toHaveTextContent("@rookie turns pro the moment they accept");
+    expect(await screen.findByTestId("bless-sent")).toHaveTextContent("Sent. @rookie is on once they accept.");
   });
 
   it("shows the server's reason on failure and can close", async () => {
@@ -80,7 +80,7 @@ describe("BlessedByLine", () => {
       B({ id: "b0", blesserUid: "og", blesserUsername: "founder" }),
     ]);
     render(<BlessedByLine uid="me" onViewPlayer={onView} />);
-    expect(await screen.findByTestId("blessed-by")).toHaveTextContent("BLESSED BY @bryanherman");
+    expect(await screen.findByTestId("blessed-by")).toHaveTextContent("PUT ON BY @bryanherman");
     expect(screen.getByText(/Real deal ripper/)).toBeInTheDocument();
     expect(screen.getByTestId("blessing-lineage")).toHaveTextContent("@bryanherman ← @founder");
     await userEvent.click(screen.getByRole("button", { name: "@bryanherman" }));
@@ -106,8 +106,8 @@ describe("BlessingHero", () => {
   it("is the headline card and lists blessings when live", async () => {
     mockMine.mockResolvedValue([B({ status: "accepted" }), B({ id: "b2", targetUsername: "kid", status: "pending" })]);
     render(<BlessingHero uid="pro" live />);
-    expect(screen.getByRole("heading", { name: "Bless a pro" })).toBeInTheDocument();
-    expect(await screen.findByText("Turned pro")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Put someone on" })).toBeInTheDocument();
+    expect(await screen.findByText("Accepted")).toBeInTheDocument();
     expect(screen.getByText("Waiting on them")).toBeInTheDocument();
   });
 
@@ -129,12 +129,12 @@ describe("TurnedProGate", () => {
     mockAnswer.mockResolvedValue("accepted");
     render(<TurnedProGate uid="me" onTurnedPro={onTurnedPro} />);
     act(() => pendingCb?.([B()]));
-    expect(screen.getByTestId("blessing-offer")).toHaveTextContent("@bryanherman wants to turn you pro");
+    expect(screen.getByTestId("blessing-offer")).toHaveTextContent("@bryanherman put you on as PRO");
     await userEvent.click(screen.getByTestId("blessing-accept"));
     expect(mockAnswer).toHaveBeenCalledWith("b1", true);
-    expect(await screen.findByTestId("turned-pro-celebration")).toHaveTextContent("You turned pro.");
+    expect(await screen.findByTestId("turned-pro-celebration")).toHaveTextContent("You're on.");
     expect(onTurnedPro).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole("button", { name: "LET'S GO" }));
+    await userEvent.click(screen.getByRole("button", { name: "GOT IT" }));
     expect(onTurnedPro).toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
