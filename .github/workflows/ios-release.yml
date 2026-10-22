@@ -127,8 +127,8 @@ jobs:
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
           VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
           VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
-          # App Check is always on in store builds: DeviceCheck/App Attest is
-          # free (only the website's reCAPTCHA costs money, and that stays
+          # App Check is always on in store builds: App Attest (DeviceCheck
+          # fallback) is free (only the website's reCAPTCHA costs money, and that stays
           # controlled by Vercel env). Without it ensureAppCheck() is a no-op
           # and every enforceAppCheck callable (Closet, pro seed) rejects the
           # call. The iOS app must be registered in Firebase > App Check.
@@ -165,8 +165,10 @@ jobs:
           VITE_FEATURE_PROFILE_BANNER: "true"
           VITE_FEATURE_PROFILE_CUSTOM: "true"
           VITE_FEATURE_SPOT_CHATS_ENABLED: "true"
-          VITE_FEATURE_CLOSET_ENABLED: "true"
-          VITE_FEATURE_CLOSET_DROPS_ENABLED: "true"
+          # Closet stays off until App Check is verified on a TestFlight
+          # device (claim, buy, equip): its callables enforce App Check.
+          VITE_FEATURE_CLOSET_ENABLED: "false"
+          VITE_FEATURE_CLOSET_DROPS_ENABLED: "false"
           VITE_FEATURE_CLOSET_TRADING_ENABLED: "false"
           VITE_FEATURE_CLOSET_STUDIO: "true"
           VITE_FEATURE_SHOE_360: "true"
