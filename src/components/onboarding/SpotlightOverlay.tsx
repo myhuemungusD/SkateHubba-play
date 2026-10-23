@@ -67,14 +67,20 @@ function readRect(selector: string): Rect | null {
 /**
  * Where the bubble docks. A bottom bubble moves to the top when its ring
  * target sits in the lower half of the screen (and the reverse), so Hesher
- * never covers the very thing he is pointing at.
+ * never covers the very thing he is pointing at. A target in the bottom nav
+ * (the Challenge disc, a tab) keeps the bottom dock: that dock already sits
+ * above the nav, right next to the ring, while the top dock would float a
+ * screen away and land on the lobby header.
  */
+export const BOTTOM_NAV_ZONE_PX = 120;
+
 export function resolvePlacement(
   placement: "top" | "bottom",
   rect: Rect | null,
   viewportHeight: number,
 ): "top" | "bottom" {
   if (!rect || viewportHeight <= 0) return placement;
+  if (rect.top > viewportHeight - BOTTOM_NAV_ZONE_PX) return "bottom";
   const center = rect.top + rect.height / 2;
   if (placement === "bottom" && center > viewportHeight / 2) return "top";
   if (placement === "top" && center < viewportHeight / 2) return "bottom";
