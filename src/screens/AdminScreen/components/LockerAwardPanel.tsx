@@ -101,7 +101,7 @@ export function LockerAwardPanel({ uid, username }: { uid: string; username: str
 
   return (
     <section aria-label="Hubba Locker" className="mb-8">
-      <h2 className="mb-3 font-display text-[10px] tracking-[0.2em] text-brand-orange">HUBBA LOCKER</h2>
+      <h2 className="mb-3 font-display text-[11px] tracking-[0.2em] text-brand-orange">HUBBA LOCKER</h2>
 
       <AdminSelectField label="Type" value={form.type} onChange={setField("type")} options={TYPES} />
       <AdminTextField label="Name" value={form.name} onChange={setField("name")} placeholder="Ledge Killer Deck" />

@@ -40,6 +40,12 @@ vi.mock("../../services/users", () => ({
 const { mockBlockUnderage } = vi.hoisted(() => ({ mockBlockUnderage: vi.fn() }));
 vi.mock("../../services/auth.underage", () => ({ blockUnderageSignIn: () => mockBlockUnderage() }));
 
+/** Tick the required Terms checkbox (idempotent, so repeat submits keep it ticked). */
+async function acceptTerms() {
+  const box = screen.queryByTestId("terms-accept") as HTMLInputElement | null;
+  if (box && !box.checked) await userEvent.click(box);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   // An under-13 block is sticky for 24h on the device; don't let one test's block leak into the next.
@@ -74,6 +80,83 @@ describe("ProfileSetup", () => {
     await userEvent.type(screen.getByPlaceholderText("sk8legend"), username);
     await waitFor(() => expect(screen.getByText(new RegExp(`@${username} is available`))).toBeInTheDocument());
   }
+
+  /** Render with inline DOB collection and submit an under-13 birthday (Terms ticked). */
+  async function submitUnder13Inline() {
+    render(<ProfileSetup {...defaultProps} dob={null} />);
+    await typeAvailableUsername();
+    await userEvent.type(screen.getByLabelText("Birth month"), "01");
+    await userEvent.type(screen.getByLabelText("Birth day"), "01");
+    await userEvent.type(screen.getByLabelText("Birth year"), "2020");
+    await acceptTerms();
+    await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
+  }
+
+  // ─── Terms agreement (App Review 1.2) ──────────────────────
+
+  it("requires the Terms checkbox before creating the profile", async () => {
+    render(<ProfileSetup {...defaultProps} />);
+    await typeAvailableUsername();
+    const box = screen.getByTestId("terms-accept") as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    expect(box).toHaveAttribute("aria-required", "true");
+
+    await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
+    expect(screen.getByText("Agree to the Terms and Privacy Policy to continue")).toBeInTheDocument();
+    expect(mockCreateProfile).not.toHaveBeenCalled();
+
+    mockCreateProfile.mockResolvedValue({ uid: "u1", username: "newuser", stance: "Regular" });
+    await userEvent.click(box);
+    await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
+    await waitFor(() =>
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Regular", false, "2000-01-15", false, true),
+    );
+  });
+
+  it("names the Terms checkbox with its full label and flags it invalid after an unchecked submit", async () => {
+    render(<ProfileSetup {...defaultProps} />);
+    await typeAvailableUsername();
+    // No aria-label override: VoiceOver reads the zero-tolerance sentence too.
+    const box = screen.getByRole("checkbox", { name: /Zero tolerance for objectionable content or abusive users/ });
+    expect(box).not.toHaveAttribute("aria-label");
+    expect(box).not.toHaveAttribute("aria-invalid");
+    expect(box).not.toHaveAttribute("aria-describedby");
+
+    await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
+    expect(box).toHaveAttribute("aria-invalid", "true");
+    expect(box).toHaveAccessibleDescription("Agree to the Terms and Privacy Policy to continue");
+
+    await userEvent.click(box);
+    expect(box).not.toHaveAttribute("aria-invalid");
+    expect(box).not.toHaveAttribute("aria-describedby");
+    expect(screen.queryByText("Agree to the Terms and Privacy Policy to continue")).not.toBeInTheDocument();
+  });
+
+  it("links the Terms and Privacy Policy from the checkbox and routes them in-app", async () => {
+    const onNavLegal = vi.fn();
+    render(<ProfileSetup {...defaultProps} onNavLegal={onNavLegal} />);
+    await waitForForm();
+    const terms = screen.getByRole("link", { name: "Terms of Service" });
+    const privacy = screen.getByRole("link", { name: "Privacy Policy" });
+    expect(terms).toHaveAttribute("href", "/terms");
+    expect(privacy).toHaveAttribute("href", "/privacy");
+    expect(screen.getByText(/Zero tolerance for objectionable content or abusive users/)).toBeInTheDocument();
+    await userEvent.click(terms);
+    await userEvent.click(privacy);
+    expect(onNavLegal).toHaveBeenNthCalledWith(1, "terms");
+    expect(onNavLegal).toHaveBeenNthCalledWith(2, "privacy");
+  });
+
+  it("never shows the setup form (or the Terms checkbox) to an existing account", async () => {
+    // Accounts created before 1.2.0 have no termsAcceptedAt. They go straight
+    // through, with no re-gate.
+    const existing = { uid: "u1", username: "oldhead", stance: "Goofy" };
+    mockGetUserProfile.mockResolvedValue(existing);
+    const onDone = vi.fn();
+    render(<ProfileSetup {...defaultProps} onDone={onDone} />);
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith(existing));
+    expect(screen.queryByTestId("terms-accept")).not.toBeInTheDocument();
+  });
 
   // ─── Single-card form ──────────────────────────────────────
 
@@ -184,10 +267,12 @@ describe("ProfileSetup", () => {
       { timeout: 5000 },
     );
 
+    await acceptTerms();
+
     await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "testname", "Regular", false, "2000-01-15", false);
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "testname", "Regular", false, "2000-01-15", false, true);
       expect(onDone).toHaveBeenCalledWith(createdProfile);
     });
   });
@@ -232,10 +317,11 @@ describe("ProfileSetup", () => {
 
     render(<ProfileSetup {...defaultProps} onDone={onDone} />);
     await typeAvailableUsername();
+    await acceptTerms();
     await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Regular", false, "2000-01-15", false);
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Regular", false, "2000-01-15", false, true);
       expect(onDone).toHaveBeenCalledWith(createdProfile);
     });
   });
@@ -248,10 +334,11 @@ describe("ProfileSetup", () => {
     render(<ProfileSetup {...defaultProps} onDone={onDone} />);
     await typeAvailableUsername();
     await userEvent.click(screen.getByRole("radio", { name: /Goofy/ }));
+    await acceptTerms();
     await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Goofy", false, "2000-01-15", false);
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Goofy", false, "2000-01-15", false, true);
       expect(onDone).toHaveBeenCalledWith(createdProfile);
     });
   });
@@ -261,6 +348,7 @@ describe("ProfileSetup", () => {
 
     render(<ProfileSetup {...defaultProps} />);
     await typeAvailableUsername();
+    await acceptTerms();
     await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
 
     await waitFor(() => expect(screen.getByText("Write failed")).toBeInTheDocument());
@@ -271,6 +359,7 @@ describe("ProfileSetup", () => {
 
     render(<ProfileSetup {...defaultProps} />);
     await typeAvailableUsername();
+    await acceptTerms();
     await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
 
     await waitFor(() => expect(screen.getByText("Could not create profile")).toBeInTheDocument());
@@ -281,6 +370,7 @@ describe("ProfileSetup", () => {
 
     render(<ProfileSetup {...defaultProps} />);
     await typeAvailableUsername();
+    await acceptTerms();
     await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
 
     await waitFor(() => expect(screen.getByText("Creating...")).toBeInTheDocument());
@@ -377,6 +467,7 @@ describe("ProfileSetup", () => {
 
     render(<ProfileSetup {...defaultProps} />);
     await typeAvailableUsername();
+    await acceptTerms();
     await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
 
     await waitFor(() => expect(screen.getByText("Please enter your date of birth to continue.")).toBeInTheDocument());
@@ -393,12 +484,7 @@ describe("ProfileSetup", () => {
   });
 
   it("blocks users under 13 with the branded COPPA card when collecting DOB inline", async () => {
-    render(<ProfileSetup {...defaultProps} dob={null} />);
-    await typeAvailableUsername();
-    await userEvent.type(screen.getByLabelText("Birth month"), "01");
-    await userEvent.type(screen.getByLabelText("Birth day"), "01");
-    await userEvent.type(screen.getByLabelText("Birth year"), "2020");
-    await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
+    await submitUnder13Inline();
 
     // Branded "Sorry!" card mirrors the email-signup block UX.
     expect(screen.getByRole("heading", { name: "Sorry!" })).toBeInTheDocument();
@@ -409,12 +495,7 @@ describe("ProfileSetup", () => {
   });
 
   it("clears the failing DOB when the user taps Go Back on the blocked card", async () => {
-    render(<ProfileSetup {...defaultProps} dob={null} />);
-    await typeAvailableUsername();
-    await userEvent.type(screen.getByLabelText("Birth month"), "01");
-    await userEvent.type(screen.getByLabelText("Birth day"), "01");
-    await userEvent.type(screen.getByLabelText("Birth year"), "2020");
-    await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
+    await submitUnder13Inline();
 
     expect(screen.getByRole("heading", { name: "Sorry!" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Go Back" }));
@@ -428,16 +509,12 @@ describe("ProfileSetup", () => {
   });
 
   it("re-blocks and re-runs the sign-in removal after Go Back, whatever DOB comes next", async () => {
-    render(<ProfileSetup {...defaultProps} dob={null} />);
-    await typeAvailableUsername();
-    await userEvent.type(screen.getByLabelText("Birth month"), "01");
-    await userEvent.type(screen.getByLabelText("Birth day"), "01");
-    await userEvent.type(screen.getByLabelText("Birth year"), "2020");
-    await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
+    await submitUnder13Inline();
     await userEvent.click(screen.getByRole("button", { name: "Go Back" }));
     await userEvent.type(screen.getByLabelText("Birth month"), "01");
     await userEvent.type(screen.getByLabelText("Birth day"), "15");
     await userEvent.type(screen.getByLabelText("Birth year"), "2000");
+    await acceptTerms();
     await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
 
     expect(screen.getByRole("heading", { name: "Sorry!" })).toBeInTheDocument();
@@ -446,12 +523,7 @@ describe("ProfileSetup", () => {
   });
 
   it("states the deletion outcome on its blocked card", async () => {
-    render(<ProfileSetup {...defaultProps} dob={null} />);
-    await typeAvailableUsername();
-    await userEvent.type(screen.getByLabelText("Birth month"), "01");
-    await userEvent.type(screen.getByLabelText("Birth day"), "01");
-    await userEvent.type(screen.getByLabelText("Birth year"), "2020");
-    await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
+    await submitUnder13Inline();
     // blockUnderageSignIn is mocked, so no notice is stored: the card says pending, never "removed".
     expect(screen.getByText(/will be deleted/)).toBeInTheDocument();
     act(() => markCoppaBlocked("deleted"));
@@ -492,6 +564,7 @@ describe("ProfileSetup", () => {
     await userEvent.type(screen.getByLabelText("Birth month"), "01");
     await userEvent.type(screen.getByLabelText("Birth day"), "01");
     await userEvent.type(screen.getByLabelText("Birth year"), "2011");
+    await acceptTerms();
     await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
 
     expect(screen.getByText(/Parental or guardian consent is required/)).toBeInTheDocument();
@@ -504,6 +577,7 @@ describe("ProfileSetup", () => {
     await userEvent.type(screen.getByLabelText("Birth month"), "02");
     await userEvent.type(screen.getByLabelText("Birth day"), "30");
     await userEvent.type(screen.getByLabelText("Birth year"), "2000");
+    await acceptTerms();
     await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
 
     expect(screen.getByText("Please enter a valid date")).toBeInTheDocument();
@@ -520,10 +594,11 @@ describe("ProfileSetup", () => {
     await userEvent.type(screen.getByLabelText("Birth month"), "01");
     await userEvent.type(screen.getByLabelText("Birth day"), "15");
     await userEvent.type(screen.getByLabelText("Birth year"), "2000");
+    await acceptTerms();
     await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Regular", false, "2000-01-15", false);
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Regular", false, "2000-01-15", false, true);
       expect(onDone).toHaveBeenCalledWith(createdProfile);
     });
   });
@@ -540,10 +615,11 @@ describe("ProfileSetup", () => {
     await userEvent.type(screen.getByLabelText("Birth year"), "2011");
 
     await userEvent.click(screen.getByLabelText("Parental consent"));
+    await acceptTerms();
     await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "teenuser", "Regular", false, "2011-01-01", true);
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "teenuser", "Regular", false, "2011-01-01", true, true);
       expect(onDone).toHaveBeenCalledWith(createdProfile);
     });
   });

@@ -63,7 +63,7 @@ export function OpponentList({ opponents, currentUserUid, isOwnProfile, onViewPl
                 ) : opp.wins < opp.losses ? (
                   <SkullIcon size={16} className="text-brand-red" />
                 ) : (
-                  <span className="font-display text-[10px] tracking-wider text-subtle">EVEN</span>
+                  <span className="font-display text-[11px] tracking-wider text-subtle">EVEN</span>
                 )}
               </div>
             </Wrapper>

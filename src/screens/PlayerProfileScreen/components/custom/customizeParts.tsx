@@ -12,7 +12,7 @@ const SWATCHES = ["#FF6B00", "#FF2D55", "#AF52DE", "#0A84FF", "#30D158", "#FFD60
 
 export const input =
   "w-full min-h-[40px] rounded-lg border border-white/10 bg-black/40 px-3 font-body text-sm text-white placeholder:text-white/40";
-export const label = "block mb-1 font-display text-[10px] tracking-[0.18em] text-white/60";
+export const label = "block mb-1 font-display text-[11px] tracking-[0.18em] text-white/60";
 
 /** Shared props for each customize tab: the draft and a typed field setter. */
 export interface TabProps {

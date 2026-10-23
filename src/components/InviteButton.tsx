@@ -182,7 +182,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
                   className={`flex flex-col items-center gap-2 py-3 ${tileBase}`}
                 >
                   <span className="font-display text-sm text-white tracking-wide leading-none">{s.icon}</span>
-                  <span className="font-body text-[10px] text-subtle leading-none">{s.name}</span>
+                  <span className="font-body text-xs text-subtle leading-none">{s.name}</span>
                 </a>
               ))}
             </div>

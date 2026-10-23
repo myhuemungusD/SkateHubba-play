@@ -91,7 +91,7 @@ export function ProShowcase({
         aria-label={`${content.displayName} pro banner`}
         className="relative mb-4 overflow-hidden rounded-2xl border border-amber-300/20 bg-gradient-to-br from-amber-400/20 via-brand-orange/10 to-surface p-5"
       >
-        <span className="pro-username font-display text-[10px] tracking-[0.3em]">✦ PRO</span>
+        <span className="pro-username font-display text-[11px] tracking-[0.3em]">✦ PRO</span>
         <h2 className="mt-1 font-display text-2xl tracking-wide text-white">{content.displayName}</h2>
         <p className="font-body text-xs text-white/70">@{username}</p>
         {tagline && (

@@ -136,7 +136,7 @@ export function TrickPicker({ selection, onChange, disabled, trickCategory, cust
         {rows.length === 0 && <p className="px-3 py-4 font-body text-sm text-faint">No tricks match that.</p>}
         {rows.map((row) =>
           row.kind === "header" ? (
-            <p key={row.id} className="px-3 pt-3 pb-1 font-display text-[10px] tracking-[0.16em] text-brand-orange">
+            <p key={row.id} className="px-3 pt-3 pb-1 font-display text-[11px] tracking-[0.16em] text-brand-orange">
               {row.label}
             </p>
           ) : (
