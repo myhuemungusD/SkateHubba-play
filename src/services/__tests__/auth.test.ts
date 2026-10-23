@@ -38,7 +38,8 @@ vi.mock("firebase/auth", () => ({
 
 /* ── mock global fetch (deleteAccount talks to /api/account/delete) ── */
 const mockFetch = vi.fn();
-vi.stubGlobal("fetch", mockFetch);
+// Installed per test in beforeEach: vite.config.ts sets unstubGlobals, so a
+// module-level stub would be gone after the first test.
 
 vi.mock("../../lib/sentry", () => ({
   captureException: (...args: unknown[]) => mockCaptureException(...args),
@@ -66,6 +67,7 @@ import { hashUid } from "../../utils/pii";
 import { auth, ensureAppCheck } from "../../firebase";
 
 beforeEach(() => {
+  vi.stubGlobal("fetch", mockFetch);
   vi.clearAllMocks();
   (auth as unknown as { currentUser: unknown }).currentUser = null;
 });

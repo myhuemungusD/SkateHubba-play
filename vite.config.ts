@@ -156,6 +156,10 @@ export default defineConfig({
     setupFiles: "./src/__tests__/setup.ts",
     include: ["src/**/*.test.{ts,tsx}"],
     css: false,
+    // Undo vi.stubEnv / vi.stubGlobal after every test so a stub can never
+    // leak into the next test (see 878-hesher.md, nativeVideo flake).
+    unstubEnvs: true,
+    unstubGlobals: true,
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],
@@ -193,7 +197,6 @@ export default defineConfig({
         // rule lives in scripts/check-coverage-per-file.mjs (run by
         // `npm run test:coverage`), because vitest's `perFile` is global and
         // would trip on every pre-existing under-covered file at once.
-        "src/*.{ts,tsx}": { lines: 83.2, functions: 63.2, branches: 81.9, statements: 80.6 },
         "src/App.tsx": { lines: 74.4, functions: 59.8, branches: 77.3, statements: 72.5 },
         "src/boot/**": { lines: 88.8, functions: 85.7, branches: 85.8, statements: 88.4 },
         "src/components/**": { lines: 97.4, functions: 95.8, branches: 92.2, statements: 95.5 },

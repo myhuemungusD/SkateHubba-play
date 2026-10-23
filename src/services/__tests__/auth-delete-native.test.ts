@@ -71,12 +71,14 @@ vi.mock("../auth.appleRevoke", () => ({ revokeAppleTokensIfNeeded: mockAppleRevo
 
 vi.mock("../../firebase");
 
-vi.stubGlobal("fetch", mockFetch);
+// Installed per test in beforeEach: vite.config.ts sets unstubGlobals, so a
+// module-level stub would be gone after the first test.
 
 import { deleteAccount } from "../auth";
 import { auth } from "../../firebase";
 
 beforeEach(() => {
+  vi.stubGlobal("fetch", mockFetch);
   vi.clearAllMocks();
   mockIsNativePlatform.mockReturnValue(true);
   (auth as unknown as { currentUser: unknown }).currentUser = {
