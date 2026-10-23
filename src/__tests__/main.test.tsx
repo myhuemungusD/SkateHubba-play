@@ -7,7 +7,7 @@ const { mockIsNativePlatform } = vi.hoisted(() => ({
 }));
 
 vi.mock("@capacitor/core", () => ({
-  Capacitor: { isNativePlatform: mockIsNativePlatform },
+  Capacitor: { isNativePlatform: mockIsNativePlatform, getPlatform: () => (mockIsNativePlatform() ? "ios" : "web") },
 }));
 
 /* ── mock @capacitor/splash-screen — assertable hide() ────────────────── */

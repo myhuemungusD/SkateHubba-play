@@ -55,7 +55,7 @@ export function BadgesRow({ achievements }: Props) {
                 <span className="flex h-11 w-11 items-center justify-center rounded-full border border-brand-orange/40 bg-brand-orange/[0.12] text-brand-orange transition-colors hover:border-brand-orange/70 active:scale-95">
                   <Icon size={20} strokeWidth={1.8} aria-hidden="true" />
                 </span>
-                <span className="font-display text-[11px] tracking-wider text-bright text-center leading-tight">
+                <span className="font-display text-sm tracking-wider text-bright text-center leading-tight">
                   {label.toUpperCase()}
                 </span>
               </div>

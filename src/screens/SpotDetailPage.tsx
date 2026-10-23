@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
+import { BackChevron } from "../components/ScreenHeader";
 import { useParams } from "react-router";
-import { ChevronLeft, MapPin } from "lucide-react";
+import { MapPin } from "lucide-react";
 import type { Spot, SpotComment } from "../types/spot";
 import { getSpot, getSpotComments } from "../services/spots";
 import { useAuthContext } from "../context/AuthContext";
@@ -97,7 +98,7 @@ export function SpotDetailPage() {
         <button
           type="button"
           onClick={() => setScreen("map")}
-          className="px-4 py-2 bg-[#F97316] text-white rounded-lg text-sm"
+          className="px-4 py-2 bg-brand-orange text-black rounded-lg text-sm"
         >
           Back to Map
         </button>
@@ -108,15 +109,8 @@ export function SpotDetailPage() {
   return (
     <div className="min-h-dvh bg-background text-white">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-[#222] px-4 pt-safe pb-3 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={backToMap}
-          className="-ml-2 inline-flex min-h-11 min-w-11 items-center justify-center text-muted hover:text-white"
-          aria-label="Back to map"
-        >
-          <ChevronLeft size={24} />
-        </button>
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-line px-4 pt-safe pb-3 flex items-center gap-3">
+        <BackChevron onClick={backToMap} label="Back to map" />
         <h1 className="text-lg font-semibold truncate">{spot.name}</h1>
         {spot.isVerified && (
           <span className="px-2 py-0.5 text-xs bg-green-500/20 text-green-400 rounded-full">Verified</span>
@@ -159,7 +153,7 @@ export function SpotDetailPage() {
         </div>
 
         {/* Description */}
-        {spot.description && <p className="text-[#CCC] text-sm leading-relaxed">{spot.description}</p>}
+        {spot.description && <p className="text-soft text-sm leading-relaxed">{spot.description}</p>}
 
         {/* Obstacles */}
         {spot.obstacles.length > 0 && (
@@ -169,7 +163,7 @@ export function SpotDetailPage() {
               {spot.obstacles.map((o) => (
                 <span
                   key={o}
-                  className="px-3 py-1 text-xs rounded-full bg-surface-alt border border-[#333] text-[#CCC]"
+                  className="px-3 py-1 text-xs rounded-full bg-surface-alt border border-line-strong text-soft"
                 >
                   {o.replaceAll("_", " ")}
                 </span>
@@ -185,8 +179,8 @@ export function SpotDetailPage() {
           <button
             type="button"
             onClick={handleChallenge}
-            className="w-full py-3 rounded-xl bg-[#F97316] text-white font-semibold
-                     hover:bg-[#EA580C] transition-colors"
+            className="w-full py-3 rounded-xl bg-brand-orange text-black font-semibold
+                     hover:bg-brand-orange-hover transition-colors"
           >
             Challenge to S.K.A.T.E. here
           </button>

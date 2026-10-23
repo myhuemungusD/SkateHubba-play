@@ -60,7 +60,7 @@ export async function renderApp(opts?: { waitForLazy?: boolean }): Promise<Rende
 /**
  * Open a game from the lobby by the opponent name on its card.
  *
- * The lobby pins games awaiting the viewer in the "YOUR TURN" stack and hides
+ * The lobby pins games awaiting the viewer in the "Your turn" stack and hides
  * everything waiting on someone else behind a collapsed "N waiting on them"
  * disclosure, so expand that first when it's present. Callers that need the
  * disclosure itself asserted on should still query it directly.

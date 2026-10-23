@@ -42,7 +42,7 @@ export function formatStance(stance: string): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : "Not set";
 }
 
-const H3 = "mb-2 font-display text-[11px] tracking-[0.2em] text-brand-orange";
+const H3 = "mb-2 font-display text-sm tracking-[0.2em] text-brand-orange";
 const CARD = "mb-4 rounded-2xl border border-white/[0.06] bg-surface p-4 shadow-card";
 
 /**
@@ -92,7 +92,7 @@ export function ProShowcase({
         aria-label={`${content.displayName} pro banner`}
         className="relative mb-4 overflow-hidden rounded-2xl border border-amber-300/20 bg-gradient-to-br from-amber-400/20 via-brand-orange/10 to-surface p-5"
       >
-        <span className="pro-username font-display text-[11px] tracking-[0.3em]">✦ PRO</span>
+        <span className="pro-username font-display text-sm tracking-[0.3em]">✦ PRO</span>
         <h2 className="mt-1 font-display text-2xl tracking-wide text-white">{content.displayName}</h2>
         <p className="font-body text-xs text-white/70">@{username}</p>
         {tagline && (
@@ -130,7 +130,7 @@ export function ProShowcase({
           type="button"
           onClick={onOpenProTools}
           data-testid="open-pro-tools"
-          className="mb-4 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-amber-300/30 bg-surface font-display text-xs tracking-[0.15em] text-amber-100 shadow-card hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+          className="mb-4 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-amber-300/30 bg-surface font-display text-sm tracking-[0.15em] text-amber-100 shadow-card hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
         >
           <Wrench size={14} aria-hidden="true" />
           PRO TOOLS
@@ -199,7 +199,7 @@ export function ProShowcase({
           <ol className="space-y-1.5">
             {tricks.map((t, i) => (
               <li key={t} className="flex items-center gap-2 font-body text-sm">
-                <span className="font-display text-xs text-brand-orange tabular-nums">{i + 1}</span>
+                <span className="font-display text-sm text-brand-orange tabular-nums">{i + 1}</span>
                 {t}
               </li>
             ))}
@@ -212,7 +212,7 @@ export function ProShowcase({
           type="button"
           onClick={() => setEditing(true)}
           data-testid="edit-pro-profile"
-          className="mb-4 min-h-[44px] w-full rounded-xl border border-white/[0.08] bg-surface font-display text-xs tracking-wider text-white/80"
+          className="mb-4 min-h-[44px] w-full rounded-xl border border-white/[0.08] bg-surface font-display text-sm tracking-wider text-white/80"
         >
           EDIT PRO PROFILE
         </button>

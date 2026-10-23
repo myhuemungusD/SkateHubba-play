@@ -54,7 +54,7 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
                     Round {turn.turnNumber}: {turn.trickName}
                   </span>
                   <span
-                    className={`font-display text-xs tracking-wider px-2 py-0.5 rounded-full ${
+                    className={`font-display text-sm tracking-wider px-2 py-0.5 rounded-full ${
                       turn.landed
                         ? "bg-[rgba(0,230,118,0.15)] text-brand-green"
                         : "bg-[rgba(255,61,0,0.15)] text-brand-red"
@@ -68,7 +68,7 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {/* Setter's clip */}
                   <div>
-                    <p className="font-display text-xs tracking-wider text-brand-orange mb-1">
+                    <p className="font-display text-sm tracking-wider text-brand-orange mb-1">
                       @{turn.setterUsername}'s trick
                     </p>
                     <ClipVideo url={turn.setVideoUrl || ""} label={`${turn.trickName} set by ${turn.setterUsername}`} />
@@ -82,7 +82,7 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
 
                   {/* Matcher's clip */}
                   <div>
-                    <p className="font-display text-xs tracking-wider text-brand-green mb-1">
+                    <p className="font-display text-sm tracking-wider text-brand-green mb-1">
                       @{turn.matcherUsername}'s attempt
                     </p>
                     <ClipVideo
@@ -102,7 +102,7 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
                 </div>
 
                 {/* Referee ruling indicator */}
-                {turn.judgedBy && <p className="font-body text-[11px] text-amber-400/70 mt-2 text-center">Refereed</p>}
+                {turn.judgedBy && <p className="font-body text-label text-amber-400/70 mt-2 text-center">Refereed</p>}
 
                 {/* Letter outcome */}
                 {!turn.landed && turn.letterTo && (

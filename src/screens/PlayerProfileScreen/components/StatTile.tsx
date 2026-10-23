@@ -55,9 +55,7 @@ export function Row({ cols, testid, children }: { cols: string; testid: string; 
 
 /** Category label above a group of rows. Orange is the app's section accent. */
 export function CategoryLabel({ title }: { title: string }) {
-  return (
-    <p className="font-display text-[11px] tracking-[0.2em] text-brand-orange mb-2.5 mt-2 animate-fade-in">{title}</p>
-  );
+  return <p className="font-display text-sm tracking-[0.2em] text-brand-orange mb-2.5 mt-2 animate-fade-in">{title}</p>;
 }
 
 interface StatTileProps {
@@ -135,7 +133,7 @@ export function StatTile({ name, label, value, suffix, ariaLabel, onTap }: StatT
           </>
         )}
       </p>
-      <p className="font-body text-[11px] uppercase tracking-wider text-subtle mt-1.5">{label}</p>
+      <p className="font-body text-label uppercase tracking-wider text-subtle mt-1.5">{label}</p>
     </button>
   );
 }

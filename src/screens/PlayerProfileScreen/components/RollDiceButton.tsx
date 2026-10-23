@@ -8,7 +8,7 @@ export function RollDiceButton({ opponentUid, opponentUsername }: { opponentUid:
       <button
         type="button"
         onClick={() => navigate("/dice/new", { state: { opponent: { uid: opponentUid, username: opponentUsername } } })}
-        className="w-full min-h-[44px] rounded-xl border border-white/[0.06] bg-surface font-display text-xs tracking-wider text-white"
+        className="w-full min-h-[44px] rounded-xl border border-white/[0.06] bg-surface font-display text-sm tracking-wider text-white"
       >
         Roll Dice
       </button>

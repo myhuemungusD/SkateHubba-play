@@ -437,6 +437,19 @@ describe("SpotMap load timeout", () => {
       // right one rather than failing on the generic role lookup.
       expect(screen.getByText(/map is taking too long to load/i)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+
+      // Design audit #31: the timeout offers a no-map list of nearby spots,
+      // and back returns to the retry state.
+      act(() => {
+        screen.getByRole("button", { name: "Use list view" }).click();
+      });
+      expect(screen.getByRole("region", { name: "Spots near you" })).toBeInTheDocument();
+      expect(screen.getByText(/turn on location to see spots near you/i)).toBeInTheDocument();
+      act(() => {
+        screen.getByRole("button", { name: "Back to map" }).click();
+      });
+      expect(screen.queryByTestId("map-list-fallback")).toBeNull();
+      expect(screen.getByText(/map is taking too long to load/i)).toBeInTheDocument();
     } finally {
       globalThis.queueMicrotask = realQueueMicrotask;
     }
@@ -456,6 +469,16 @@ describe("SpotMap without a Mapbox token", () => {
     reportMapStyleConfig: vi.fn(),
   });
 
+  const renderWithoutToken = async () => {
+    vi.doMock("../../../lib/mapbox", () => mockLibMapboxWithoutToken());
+    const { SpotMap: SpotMapWithoutToken } = await import("../SpotMap");
+    render(
+      <MemoryRouter>
+        <SpotMapWithoutToken />
+      </MemoryRouter>,
+    );
+  };
+
   beforeEach(() => {
     vi.resetModules();
     mockLoggerWarn.mockClear();
@@ -464,13 +487,7 @@ describe("SpotMap without a Mapbox token", () => {
   });
 
   it("renders the polished unavailable state, reports to Sentry, and never constructs a map", async () => {
-    vi.doMock("../../../lib/mapbox", () => mockLibMapboxWithoutToken());
-    const { SpotMap: SpotMapWithoutToken } = await import("../SpotMap");
-    render(
-      <MemoryRouter>
-        <SpotMapWithoutToken />
-      </MemoryRouter>,
-    );
+    await renderWithoutToken();
     expect(screen.getByRole("alert")).toHaveTextContent(/temporarily unavailable/i);
     // Polished fallback: Retry button renders so users can recover from a
     // transient bundling/env-var miss without a full page reload.
@@ -497,6 +514,14 @@ describe("SpotMap without a Mapbox token", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: /retry/i }));
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers the nearby-spots list view when there is no map at all", async () => {
+    await renderWithoutToken();
+    await userEvent.click(screen.getByRole("button", { name: "Use list view" }));
+    expect(screen.getByRole("region", { name: "Spots near you" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Back to map" }));
+    expect(screen.getByText(/temporarily unavailable/i)).toBeInTheDocument();
   });
 });
 

@@ -17,10 +17,10 @@ export function TurnStack({ games, c, onOpenGame, onViewPlayer }: Props) {
   return (
     <section aria-labelledby="turn-stack-heading" className="mb-6">
       <div className="flex items-center gap-2 mb-3">
-        <h2 id="turn-stack-heading" className="font-display text-[11px] tracking-[0.2em] text-brand-orange">
-          YOUR TURN
+        <h2 id="turn-stack-heading" className="font-body text-caption font-semibold text-brand-orange">
+          Your turn
         </h2>
-        <span className="px-1.5 py-0.5 rounded bg-brand-orange/10 border border-brand-orange/25 font-display text-[11px] text-brand-orange leading-none tabular-nums">
+        <span className="px-1.5 py-0.5 rounded bg-brand-orange/10 border border-brand-orange/25 font-body text-label font-semibold text-brand-orange leading-none tabular-nums">
           {games.length}
         </span>
       </div>

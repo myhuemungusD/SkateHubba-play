@@ -28,7 +28,6 @@ export function ActiveGameList({ games, c, urgent, onOpenGame, onViewPlayer }: P
           myLetters={c.myLetters(g)}
           theirLetters={c.theirLetters(g)}
           turnLabel={c.turnLabel(g)}
-          cardButtonProps={c.cardButtonProps(() => onOpenGame(g))}
           onOpenGame={() => onOpenGame(g)}
           onViewPlayer={onViewPlayer}
         />

@@ -74,7 +74,7 @@ export function ClipComments({
                 type="button"
                 onClick={onReport}
                 aria-label="Report this clip"
-                className="inline-flex min-h-[44px] items-center rounded-xl border border-border px-2 font-display text-[11px] tracking-[0.15em] text-muted transition-colors hover:text-brand-red focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+                className="inline-flex min-h-[44px] items-center rounded-xl border border-border px-2 font-display text-sm tracking-[0.15em] text-muted transition-colors hover:text-brand-red focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
               >
                 REPORT
               </button>
@@ -83,7 +83,7 @@ export function ClipComments({
               type="button"
               onClick={onClose}
               aria-label="Close comments"
-              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-border font-display text-[11px] tracking-[0.15em] text-muted transition-colors hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-border font-display text-sm tracking-[0.15em] text-muted transition-colors hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
               CLOSE
             </button>

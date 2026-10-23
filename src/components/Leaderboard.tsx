@@ -80,14 +80,14 @@ export function Leaderboard({
     return (
       <div className="my-6">
         <div className="flex items-center gap-2 mb-3">
-          <h3 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">LEADERBOARD</h3>
+          <h3 className="font-display text-sm tracking-[0.2em] text-brand-orange">LEADERBOARD</h3>
         </div>
         <div className="flex flex-col items-center py-8 border border-dashed border-border rounded-2xl">
           <span className="text-2xl mb-2 opacity-40" aria-hidden="true">
             🏆
           </span>
           <p className="font-body text-xs text-faint">No ranked players yet</p>
-          <p className="font-body text-[11px] text-subtle mt-0.5">Complete a game to appear on the leaderboard</p>
+          <p className="font-body text-label text-subtle mt-0.5">Complete a game to appear on the leaderboard</p>
         </div>
       </div>
     );
@@ -98,8 +98,8 @@ export function Leaderboard({
   return (
     <div className="my-6">
       <div className="flex items-center gap-2 mb-3">
-        <h3 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">LEADERBOARD</h3>
-        <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[11px] text-brand-orange leading-none tabular-nums">
+        <h3 className="font-display text-sm tracking-[0.2em] text-brand-orange">LEADERBOARD</h3>
+        <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-sm text-brand-orange leading-none tabular-nums">
           {ranked.length}
         </span>
       </div>
@@ -124,7 +124,7 @@ export function Leaderboard({
               <div className="flex items-center gap-3 min-w-0">
                 {/* Rank */}
                 <span
-                  className={`font-display text-[15px] w-6 text-center shrink-0 leading-none tabular-nums ${
+                  className={`font-display text-[0.9375rem] w-6 text-center shrink-0 leading-none tabular-nums ${
                     rankColorClass ?? ""
                   }`}
                 >
@@ -144,7 +144,7 @@ export function Leaderboard({
                   }`}
                 >
                   <span
-                    className={`font-display text-[11px] leading-none ${isCurrentUser ? "text-brand-orange" : "text-brand-orange"}`}
+                    className={`font-display text-sm leading-none ${isCurrentUser ? "text-brand-orange" : "text-brand-orange"}`}
                   >
                     {p.username[0].toUpperCase()}
                   </span>
@@ -172,7 +172,7 @@ export function Leaderboard({
                       />
                     )}
                     {isCurrentUser && (
-                      <span className="px-1.5 py-0.5 rounded bg-brand-orange font-display text-xs text-black tracking-wider leading-none shrink-0">
+                      <span className="px-1.5 py-0.5 rounded bg-brand-orange font-display text-sm text-black tracking-wider leading-none shrink-0">
                         YOU
                       </span>
                     )}
@@ -189,7 +189,7 @@ export function Leaderboard({
                 <button
                   type="button"
                   onClick={() => onChallengeUser(p.username)}
-                  className="inline-flex min-h-11 items-center font-display text-sm text-brand-orange shrink-0 ml-1 px-2 hover:text-[#FF7A1A] transition-colors rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+                  className="inline-flex min-h-11 items-center font-display text-sm text-brand-orange shrink-0 ml-1 px-2 hover:text-brand-orange-hover transition-colors rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
                 >
                   Challenge &rarr;
                 </button>

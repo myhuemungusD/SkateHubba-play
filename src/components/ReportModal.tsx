@@ -1,3 +1,4 @@
+import { FIELD_LABEL } from "./ui/Field";
 import { useState, useId, useRef } from "react";
 import { Btn } from "./ui/Btn";
 import { ErrorBanner } from "./ui/ErrorBanner";
@@ -160,7 +161,7 @@ export function ReportModal({
         {quoted && (
           <blockquote
             data-testid="report-comment-quote"
-            className="mb-3 line-clamp-3 border-l-2 border-border pl-3 font-body text-sm text-[#CCC] break-words whitespace-pre-wrap"
+            className="mb-3 line-clamp-3 border-l-2 border-border pl-3 font-body text-sm text-soft break-words whitespace-pre-wrap"
           >
             {quoted.text}
           </blockquote>
@@ -171,7 +172,7 @@ export function ReportModal({
 
         {/* Reason select */}
         <div className="mb-4">
-          <label htmlFor={selectId} className="block font-display text-sm tracking-[0.12em] text-dim mb-2">
+          <label htmlFor={selectId} className={`block ${FIELD_LABEL} mb-2`}>
             REASON
           </label>
           <select
@@ -194,7 +195,7 @@ export function ReportModal({
 
         {/* Description */}
         <div className="mb-4">
-          <label htmlFor={descId} className="block font-display text-sm tracking-[0.12em] text-dim mb-2">
+          <label htmlFor={descId} className={`block ${FIELD_LABEL} mb-2`}>
             {detailsLabel}
           </label>
           <textarea

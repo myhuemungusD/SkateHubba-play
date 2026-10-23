@@ -1,4 +1,3 @@
-import { formatRecord } from "../../../constants/stats";
 import { RecordFigure } from "../../../components/RecordFigure";
 import { useState } from "react";
 import type { GameDoc } from "../../../services/games";
@@ -14,9 +13,10 @@ interface Props {
 }
 
 const BTN =
-  "font-display text-xs shrink-0 min-h-[44px] px-3 inline-flex items-center justify-center rounded-lg border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
-const BTN_ON = "text-brand-orange border-brand-orange/30 hover:bg-brand-orange/10 cursor-pointer";
-const BTN_OFF = "text-subtle border-border cursor-not-allowed opacity-60";
+  "font-display text-sm shrink-0 min-h-[44px] px-3 inline-flex items-center justify-center rounded-lg border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
+// Quiet trailing action: the row itself is the primary target (audit, Lobby).
+const BTN_ON = "text-brand-orange border-transparent hover:bg-brand-orange/10 cursor-pointer";
+const BTN_OFF = "text-subtle border-transparent cursor-not-allowed opacity-60";
 
 /**
  * Skaters you've played lately, newest first, with a one-tap rematch. A skater
@@ -44,8 +44,8 @@ export function RecentlyPlayed({ opponents, onRematch, onOpenGame, onViewPlayer 
 
   return (
     <section className="mb-6" aria-labelledby="recently-played-heading" data-testid="recently-played">
-      <h2 id="recently-played-heading" className="mb-3 font-display text-[11px] tracking-[0.2em] text-brand-orange">
-        RECENTLY PLAYED
+      <h2 id="recently-played-heading" className="mb-3 font-body text-caption font-semibold text-brand-orange">
+        Recently played
       </h2>
       {failed && (
         <p role="alert" className="mb-2 font-body text-xs text-brand-red">
@@ -54,11 +54,9 @@ export function RecentlyPlayed({ opponents, onRematch, onOpenGame, onViewPlayer 
       )}
       <ul className="space-y-2">
         {opponents.map((o) => {
-          const rec = formatRecord(o.wins, o.decided);
           const inProgressOnly = o.decided === 0 && !!o.activeGame;
           // Only declined/expired/no-winner games: no record worth showing ("0 / 0").
           const noRecord = o.decided === 0 && !o.activeGame;
-          const summary = inProgressOnly ? "first game in progress" : noRecord ? null : rec.label;
           const busy = pending === o.uid;
           return (
             <li
@@ -69,9 +67,11 @@ export function RecentlyPlayed({ opponents, onRematch, onOpenGame, onViewPlayer 
                 type="button"
                 onClick={() => onViewPlayer?.(o.uid)}
                 className="flex min-h-11 min-w-0 flex-1 items-center gap-3 text-left hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-                aria-label={summary ? `@${o.username}, ${summary}. View profile` : `@${o.username}. View profile`}
               >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/[0.06] bg-surface-alt font-display text-sm leading-none text-white/80">
+                <span
+                  aria-hidden="true"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/[0.06] bg-surface-alt font-display text-sm leading-none text-white/80"
+                >
                   {o.username[0].toUpperCase()}
                 </span>
                 <span className="min-w-0">
@@ -80,6 +80,7 @@ export function RecentlyPlayed({ opponents, onRematch, onOpenGame, onViewPlayer 
                     isVerifiedPro={o.isVerifiedPro}
                     className="block truncate font-display text-base leading-none text-white"
                   />
+                  {!noRecord && <span className="sr-only">{", "}</span>}
                   {inProgressOnly ? (
                     <span className="mt-1 block font-body text-xs text-muted">In progress</span>
                   ) : noRecord ? null : (
@@ -91,6 +92,7 @@ export function RecentlyPlayed({ opponents, onRematch, onOpenGame, onViewPlayer 
                       testId={`recent-record-${o.uid}`}
                     />
                   )}
+                  <span className="sr-only">. View profile</span>
                 </span>
               </button>
               {o.activeGame ? (

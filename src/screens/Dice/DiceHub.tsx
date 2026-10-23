@@ -18,9 +18,9 @@ const DONE_SHOWN = 8;
 function Tile({ label, value, sub }: { label: string; value: ReactNode; sub: string }) {
   return (
     <div className="rounded-2xl border border-white/[0.06] bg-surface bg-grip px-3 py-3">
-      <p className="font-display text-xs tracking-[0.18em] text-muted">{label}</p>
+      <p className="font-display text-sm tracking-[0.18em] text-muted">{label}</p>
       <p className="font-display text-3xl leading-tight tabular-nums text-white">{value}</p>
-      <p className="truncate font-body text-[11px] text-muted">{sub}</p>
+      <p className="truncate font-body text-label text-muted">{sub}</p>
     </div>
   );
 }
@@ -40,7 +40,7 @@ export function DiceHub() {
   const sections: HubSection[] = ["move", "wait", "done"];
 
   return (
-    <div className="mx-auto min-h-dvh max-w-[430px] bg-background px-4 pb-24 pt-[max(env(safe-area-inset-top),1.25rem)]">
+    <div className="mx-auto min-h-dvh max-w-[430px] bg-background px-4 pb-tabbar pt-[max(env(safe-area-inset-top),1.25rem)]">
       <ScreenHeader
         title="Roll Dice"
         fallback="/lobby"

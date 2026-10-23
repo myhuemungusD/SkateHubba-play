@@ -37,7 +37,7 @@ export function AnnouncementBanner({ uid, isPro }: { uid: string; isPro: boolean
     >
       <Megaphone size={16} className="mt-0.5 shrink-0 text-brand-orange" aria-hidden="true" />
       <div className="min-w-0 flex-1">
-        <p className="font-display text-xs tracking-wider text-white">{item.title}</p>
+        <p className="font-display text-sm tracking-wider text-white">{item.title}</p>
         <p className="font-body text-xs text-white/80">{item.body}</p>
       </div>
       <button

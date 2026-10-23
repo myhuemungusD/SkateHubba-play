@@ -64,7 +64,7 @@ export function ProfileCustomizeSheet({ uid, initial, onClose, onSaved }: Props)
           type="button"
           onClick={() => void save()}
           disabled={saving}
-          className="min-h-[44px] px-3 font-display text-xs tracking-wider disabled:opacity-50"
+          className="min-h-[44px] px-3 font-display text-sm tracking-wider disabled:opacity-50"
           style={{ color: draft.accent }}
         >
           {saving ? "SAVING" : "SAVE"}
@@ -85,7 +85,7 @@ export function ProfileCustomizeSheet({ uid, initial, onClose, onSaved }: Props)
             type="button"
             aria-selected={tab === t}
             onClick={() => setTab(t)}
-            className={`min-h-[36px] rounded-lg font-display text-[11px] tracking-wider ${tab === t ? "bg-white/15 text-white" : "text-white/60"}`}
+            className={`min-h-[36px] rounded-lg font-display text-sm tracking-wider ${tab === t ? "bg-white/15 text-white" : "text-white/60"}`}
           >
             {t.toUpperCase()}
           </button>

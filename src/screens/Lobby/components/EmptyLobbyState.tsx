@@ -39,7 +39,7 @@ export function EmptyLobbyState({ emailVerified, onChallenge, returning = false 
         <h2 className="font-display text-sm tracking-wide text-white">
           {returning ? "No games going" : "Ready to S.K.A.T.E.?"}
         </h2>
-        <p className="mt-0.5 font-body text-[11px] text-faint">
+        <p className="mt-0.5 font-body text-label text-faint">
           {emailVerified ? "Search a skater above or start one here." : "Verify your email to start a game"}
         </p>
       </div>
@@ -47,7 +47,7 @@ export function EmptyLobbyState({ emailVerified, onChallenge, returning = false 
         <button
           type="button"
           onClick={onChallenge}
-          className="min-h-[44px] shrink-0 rounded-lg px-2 font-display text-xs tracking-wider text-brand-orange hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          className="min-h-[44px] shrink-0 rounded-lg px-2 font-display text-sm tracking-wider text-brand-orange hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
         >
           {returning ? "Start a game →" : "Challenge your first opponent →"}
         </button>

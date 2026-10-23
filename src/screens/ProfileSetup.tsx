@@ -20,7 +20,7 @@ import { useStickyAgeBlock } from "../hooks/useStickyAgeBlock";
 import { TERMS_REQUIRED_ERROR, useTermsGate } from "../hooks/useTermsGate";
 import { checkInlineDob } from "./authScreenHelpers";
 import { Btn } from "../components/ui/Btn";
-import { Field } from "../components/ui/Field";
+import { Field, FIELD_LABEL } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { DobConsentFields } from "../components/DobConsentFields";
 import { TermsAcceptCheckbox } from "../components/legal/TermsAcceptCheckbox";
@@ -365,7 +365,7 @@ export function ProfileSetup({
             </div>
           )}
 
-          <label className="block font-display text-sm tracking-[0.12em] text-dim mb-2">Stance</label>
+          <label className={`block ${FIELD_LABEL} mb-2`}>Stance</label>
           <div className="flex gap-3 mb-6" role="radiogroup" aria-label="Skating stance">
             {STANCES.map(({ value, foot }) => {
               const selected = stance === value;

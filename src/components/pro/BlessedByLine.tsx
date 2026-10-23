@@ -48,12 +48,12 @@ export function BlessedByLine({ uid, onViewPlayer }: Props) {
       data-testid="blessed-by"
       className="mb-4 rounded-2xl border border-amber-300/25 bg-amber-300/[0.06] p-4"
     >
-      <p className="font-display text-xs tracking-wider text-white/80">
+      <p className="font-display text-sm tracking-wider text-white/80">
         ✦ PUT ON BY {name(first)} <span className="text-white/50">· {monthYear(first.createdAtMs)}</span>
       </p>
       {first.reason && <p className="mt-2 font-body text-sm italic text-white/80">&ldquo;{first.reason}&rdquo;</p>}
       {chain.length > 1 && (
-        <p className="mt-2 font-body text-[11px] text-white/50" data-testid="blessing-lineage">
+        <p className="mt-2 font-body text-label text-white/50" data-testid="blessing-lineage">
           Lineage: {chain.map((b) => `@${b.blesserUsername}`).join(" ← ")}
         </p>
       )}

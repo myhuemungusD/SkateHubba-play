@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { BackChevron } from "../components/ScreenHeader";
 import { useSearchParams } from "react-router";
 import { getUidByUsername, type UserProfile } from "../services/users";
 import { fetchSpotName } from "../services/spots";
@@ -202,18 +203,11 @@ export function ChallengeScreen({
   };
 
   return (
-    // pb-24 clears the bottom nav, which renders on this screen (Challenge is a tab).
-    <div className="min-h-dvh bg-background pb-24">
+    // pb-tabbar clears the bottom nav, which renders on this screen (Challenge is a tab).
+    <div className="min-h-dvh bg-background pb-tabbar">
       {/* Header */}
       <div className="px-5 pt-safe pb-4 border-b border-white/[0.04] glass flex justify-between items-center mb-6">
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label="Back to lobby"
-          className="touch-target -ml-2 inline-flex items-center gap-1.5 rounded-lg font-body text-sm text-muted hover:text-white transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-        >
-          ← Back
-        </button>
+        <BackChevron onClick={onBack} label="Back to lobby" />
         <img
           src="/logonew.webp"
           alt=""

@@ -1,3 +1,4 @@
+import { FIELD_LABEL } from "./ui/Field";
 import { useEffect, useId, useState } from "react";
 import {
   getMyBan,
@@ -118,7 +119,7 @@ function SafetyReportsBody({ uid, onReload }: { uid: string; onReload: () => voi
 
   if (failed) {
     return (
-      <p data-testid="safety-reports-error" role="alert" className="font-body text-sm text-brand-red">
+      <p data-testid="safety-reports-error" role="alert" className="font-body text-sm text-brand-red p-4">
         Couldn&apos;t load your reports.
       </p>
     );
@@ -126,7 +127,7 @@ function SafetyReportsBody({ uid, onReload }: { uid: string; onReload: () => voi
 
   if (!state) {
     return (
-      <p data-testid="safety-reports-loading" aria-busy="true" className="font-body text-sm text-muted">
+      <p data-testid="safety-reports-loading" aria-busy="true" className="font-body text-sm text-muted p-4">
         Loading your reports...
       </p>
     );
@@ -199,7 +200,7 @@ function SafetyReportsBody({ uid, onReload }: { uid: string; onReload: () => voi
 
       {draft && (
         <div className="p-4 rounded-2xl glass-card">
-          <label htmlFor={explanationId} className="block font-display text-sm tracking-[0.12em] text-dim mb-2">
+          <label htmlFor={explanationId} className={`block ${FIELD_LABEL} mb-2`}>
             WHY SHOULD THIS BE REVIEWED?
           </label>
           <textarea
@@ -256,7 +257,7 @@ function AppealControl({
     <button
       type="button"
       onClick={onAppeal}
-      className="mt-2 inline-flex min-h-[44px] items-center font-display text-[11px] tracking-[0.15em] text-brand-orange focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+      className="mt-2 inline-flex min-h-[44px] items-center font-display text-sm tracking-[0.15em] text-brand-orange focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
     >
       Appeal
     </button>

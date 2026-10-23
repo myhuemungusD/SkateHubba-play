@@ -43,7 +43,7 @@ export function LockerItemList({ items, loading, username, removingId, onRemove 
         >
           <div className="min-w-0">
             <p className="truncate font-display text-sm text-white">{item.name}</p>
-            <p className="truncate font-body text-[11px] text-subtle">
+            <p className="truncate font-body text-label text-subtle">
               {item.brand ? `${item.brand} · ` : ""}
               {item.rarity} · {relativeAge(item.acquiredAt)}
             </p>

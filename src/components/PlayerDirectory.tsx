@@ -46,7 +46,7 @@ export function PlayerDirectory({
     return (
       <div className="mb-6" role="status" aria-busy="true" aria-label="Loading skaters">
         <div className="flex items-center gap-2 mb-3">
-          <h3 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">SKATERS</h3>
+          <h3 className="font-display text-sm tracking-[0.2em] text-brand-orange">SKATERS</h3>
         </div>
         <div className="space-y-2 animate-pulse">
           {[0, 1, 2].map((i) => (
@@ -75,8 +75,8 @@ export function PlayerDirectory({
   return (
     <div className="mb-6">
       <div className="flex items-center gap-2 mb-3">
-        <h3 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">SKATERS</h3>
-        <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[11px] text-brand-orange leading-none tabular-nums">
+        <h3 className="font-display text-sm tracking-[0.2em] text-brand-orange">SKATERS</h3>
+        <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-sm text-brand-orange leading-none tabular-nums">
           {players.length}
         </span>
       </div>
@@ -112,7 +112,7 @@ export function PlayerDirectory({
               type="button"
               onClick={() => onChallengeUser(p.username)}
               disabled={!enabled}
-              className={`font-display text-xs shrink-0 min-h-[44px] px-3 inline-flex items-center justify-center rounded-lg border transition-colors tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${enabled ? "text-brand-orange border-brand-orange/30 hover:bg-brand-orange/10 cursor-pointer" : "text-subtle border-border cursor-not-allowed opacity-60"}`}
+              className={`font-display text-sm shrink-0 min-h-[44px] px-3 inline-flex items-center justify-center rounded-lg border transition-colors tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${enabled ? "text-brand-orange border-brand-orange/30 hover:bg-brand-orange/10 cursor-pointer" : "text-subtle border-border cursor-not-allowed opacity-60"}`}
               aria-label={
                 waiting ? `Challenge @${p.username}, available in ${waitSeconds}s` : `Challenge @${p.username}`
               }

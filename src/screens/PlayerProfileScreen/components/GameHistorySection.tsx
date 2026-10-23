@@ -32,7 +32,7 @@ export function GameHistorySection({
           <p className="font-body text-sm text-faint">
             {isOwnProfile ? "No games played yet" : "No games between you two yet"}
           </p>
-          <p className="font-body text-[11px] text-subtle mt-1">
+          <p className="font-body text-label text-subtle mt-1">
             {isOwnProfile
               ? "Challenge someone and finish a game to build your record"
               : `Challenge @${profileUsername} to start a rivalry`}

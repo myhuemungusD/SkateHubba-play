@@ -13,7 +13,7 @@ interface Props {
 }
 
 const SIZE_CLASSES = {
-  sm: { icon: 14, text: "text-xs", subtext: "text-[11px]" },
+  sm: { icon: 14, text: "text-xs", subtext: "text-label" },
   md: { icon: 18, text: "text-sm", subtext: "text-xs" },
   lg: { icon: 24, text: "text-lg", subtext: "text-sm" },
 };

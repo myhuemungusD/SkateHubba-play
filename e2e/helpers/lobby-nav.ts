@@ -67,7 +67,7 @@ export async function dismissBottomOverlays(page: Page): Promise<void> {
  * retry is bounded and every attempt re-runs the dismissal, so a control that
  * is genuinely unreachable still fails the test instead of being force-clicked.
  */
-async function clickPastOverlays(page: Page, target: Locator): Promise<void> {
+export async function clickPastOverlays(page: Page, target: Locator): Promise<void> {
   const attempts = 3;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     await dismissBottomOverlays(page);
@@ -137,12 +137,10 @@ export async function openClipsFeed(page: Page): Promise<void> {
  * The lobby card for an active game against `opponentHandle` ("vs @handle").
  *
  * Matched on the card's TEXT, not on `getByRole("button", { name })`. The card
- * nests a second button ("View @<handle>'s profile"), and a plain
- * `getByRole("button")` picks up both — a strict-mode violation that only
- * tripped once the opponent's profile data had arrived, so it failed
- * intermittently. Only the outer card's text contains the literal "vs @handle"
- * (the inner button's label is "Profile"), so this stays unambiguous whether
- * or not the inner button has rendered yet.
+ * sits next to a sibling avatar button ("View @<handle>'s profile") whose name
+ * also contains the handle. Only the card's own text contains the literal
+ * "vs @handle" (the avatar shows just an initial), so this stays unambiguous
+ * whether or not the avatar button has rendered yet.
  */
 function activeGameCard(page: Page, opponentHandle: string): Locator {
   return page.getByRole("button").filter({ hasText: `vs @${opponentHandle}` });
@@ -152,7 +150,7 @@ function activeGameCard(page: Page, opponentHandle: string): Locator {
  * Wait until an active game against `opponentHandle` is on screen, expanding
  * the "N waiting on them" disclosure if that is where it lives.
  *
- * Games awaiting the viewer sit in the "YOUR TURN" stack and render as soon
+ * Games awaiting the viewer sit in the "Your turn" stack and render as soon
  * as the snapshot arrives; games awaiting the opponent are not in the DOM at
  * all until the collapsed disclosure is expanded. Waiting for whichever of
  * the two appears first covers both without a fixed sleep.
@@ -188,9 +186,9 @@ export async function openActiveGameFromLobby(page: Page, opponentHandle: string
  * destination the old completed-game lobby card had.
  */
 export async function openFinishedGameFromLobby(page: Page, opponentHandle: string): Promise<void> {
-  // The roll-up's accessible name is "N finished. W wins out of G games. View
+  // The roll-up's accessible name is "N finished · W win(s) out of G games. View
   // record" (the visible "·" text is replaced by a spoken label).
-  await clickPastOverlays(page, page.getByRole("button", { name: /^\d+ finished\. / }));
+  await clickPastOverlays(page, page.getByRole("button", { name: /^\d+ finished · / }));
   await page.waitForURL("**/me**", { timeout: 10_000 });
 
   await clickPastOverlays(page, page.getByRole("button").filter({ hasText: `vs @${opponentHandle}` }));

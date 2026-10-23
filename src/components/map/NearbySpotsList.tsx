@@ -23,7 +23,7 @@ interface NearbySpotsListProps {
  */
 export function NearbySpotsList({ status, spots, hiddenByFilters = false, radiusKm, onSelect }: NearbySpotsListProps) {
   const panel =
-    "mt-2 pointer-events-auto bg-surface-alt/95 backdrop-blur border border-[#333] rounded-xl shadow-2xl overflow-hidden";
+    "mt-2 pointer-events-auto bg-surface-alt/95 backdrop-blur border border-line-strong rounded-xl shadow-2xl overflow-hidden";
 
   if (status === "idle") return null;
 
@@ -36,7 +36,7 @@ export function NearbySpotsList({ status, spots, hiddenByFilters = false, radius
           : "Couldn't load nearby spots. Try again.";
     return (
       <div
-        className={`${panel} px-3 py-3 text-sm text-[#CCC]`}
+        className={`${panel} px-3 py-3 text-sm text-soft`}
         role="status"
         aria-live="polite"
         data-testid="nearby-status"
@@ -49,7 +49,7 @@ export function NearbySpotsList({ status, spots, hiddenByFilters = false, radius
   if (spots.length === 0) {
     return (
       <div
-        className={`${panel} px-3 py-3 text-sm text-[#CCC]`}
+        className={`${panel} px-3 py-3 text-sm text-soft`}
         role="status"
         aria-live="polite"
         data-testid="nearby-status"
@@ -70,9 +70,9 @@ export function NearbySpotsList({ status, spots, hiddenByFilters = false, radius
             <button
               type="button"
               onClick={() => onSelect(spot)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-[#222] transition-colors"
+              className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-line transition-colors"
             >
-              <MapPin size={16} className="text-[#F97316] flex-shrink-0" aria-hidden="true" />
+              <MapPin size={16} className="text-brand-orange flex-shrink-0" aria-hidden="true" />
               <span className="flex-1 min-w-0">
                 <span className="flex items-center gap-1.5">
                   <span className="text-sm text-white truncate">{spot.name}</span>
@@ -89,7 +89,7 @@ export function NearbySpotsList({ status, spots, hiddenByFilters = false, radius
                   </span>
                 )}
               </span>
-              <span className="text-xs text-[#CCC] tabular-nums flex-shrink-0">{formatDistance(spot.distanceKm)}</span>
+              <span className="text-xs text-soft tabular-nums flex-shrink-0">{formatDistance(spot.distanceKm)}</span>
             </button>
           </li>
         ))}

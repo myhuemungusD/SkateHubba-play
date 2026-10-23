@@ -196,7 +196,7 @@ function DropCard({ drop, item, claim, entry, onClaim, onEnterDraw, actionLoadin
             </div>
             {soldOut && (
               <div className="px-3 py-1 bg-critical/20 border border-critical rounded-lg">
-                <span className="text-critical text-xs font-display tracking-wider">SOLD OUT</span>
+                <span className="text-critical text-sm font-display tracking-wider">SOLD OUT</span>
               </div>
             )}
           </div>

@@ -124,9 +124,9 @@ export function BlockedPlayersList({
 
   if (blockedUids.size === 0) {
     return (
-      <div className="flex flex-col items-center py-8 border border-dashed border-white/[0.06] rounded-2xl bg-surface/30 backdrop-blur-sm text-center">
+      <div className="flex flex-col items-center py-8 px-4 text-center">
         <p className="font-body text-xs text-faint">No blocked players</p>
-        <p className="font-body text-[11px] text-subtle mt-1 max-w-[18rem]">
+        <p className="font-body text-label text-subtle mt-1 max-w-[18rem]">
           Blocks hide a user&apos;s clips and prevent them from challenging you. Unblock them from here.
         </p>
       </div>
@@ -136,7 +136,7 @@ export function BlockedPlayersList({
   return (
     <div className="space-y-2">
       {unblockError && (
-        <p role="alert" className="font-body text-xs text-brand-red px-1">
+        <p role="alert" className="font-body text-xs text-brand-red p-4">
           {unblockError}
         </p>
       )}
@@ -154,7 +154,7 @@ export function BlockedPlayersList({
           <div key={uid} className="flex items-center justify-between p-4 rounded-2xl glass-card">
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-8 h-8 rounded-full bg-surface-alt border border-border flex items-center justify-center shrink-0">
-                <span className="font-display text-[11px] text-brand-orange leading-none">
+                <span className="font-display text-sm text-brand-orange leading-none">
                   {profile ? profile.username[0].toUpperCase() : resolved ? "?" : "•"}
                 </span>
               </div>
@@ -170,14 +170,14 @@ export function BlockedPlayersList({
                 ) : (
                   <span className="font-body text-sm text-subtle">Loading…</span>
                 )}
-                <span className="font-body text-[11px] text-faint block mt-1">Blocked</span>
+                <span className="font-body text-label text-faint block mt-1">Blocked</span>
               </div>
             </div>
             <button
               type="button"
               onClick={() => handleUnblock(uid)}
               disabled={isUnblocking}
-              className="min-h-[44px] inline-flex items-center justify-center font-display text-xs text-muted border border-border hover:text-white hover:border-border-hover hover:bg-white/[0.02] transition-all px-3 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:opacity-50"
+              className="min-h-[44px] inline-flex items-center justify-center font-display text-sm text-muted border border-border hover:text-white hover:border-border-hover hover:bg-white/[0.02] transition-all px-3 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:opacity-50"
             >
               {isUnblocking ? "..." : "Unblock"}
             </button>

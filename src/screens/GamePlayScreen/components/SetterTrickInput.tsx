@@ -24,10 +24,7 @@ export function SetterTrickInput({
   const constraintText = headline && (trickCategory === CUSTOM_CATEGORY_ID ? headline : `${headline} only`);
   return (
     <div className="text-center mb-5 rounded-2xl border bg-brand-orange/[0.06] backdrop-blur-sm border-brand-orange/30 shadow-[0_0_20px_rgba(255,107,0,0.06)]">
-      <label
-        htmlFor="trickNameInput"
-        className="font-display text-[11px] tracking-[0.2em] text-brand-orange block pt-3"
-      >
+      <label htmlFor="trickNameInput" className="font-display text-sm tracking-[0.2em] text-brand-orange block pt-3">
         TRICK NAME
       </label>
       {constraintText && <p className="font-body text-xs text-brand-orange/80 pt-1">{constraintText}</p>}

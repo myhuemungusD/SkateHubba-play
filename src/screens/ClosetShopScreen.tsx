@@ -158,7 +158,7 @@ function ShopItemCard({ item, onBuy, isPurchasing, canAfford }: ShopItemCardProp
           )
         )}
         <span
-          className={`inline-block mt-2 px-2 py-1 rounded text-xs font-display tracking-wider ${rarityTagColors[item.rarity] ?? rarityTagColors.common}`}
+          className={`inline-block mt-2 px-2 py-1 rounded text-sm font-display tracking-wider ${rarityTagColors[item.rarity] ?? rarityTagColors.common}`}
         >
           {item.rarity.toUpperCase()}
         </span>

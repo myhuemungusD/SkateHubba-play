@@ -89,7 +89,7 @@ export function ConsentBanner({
             <button
               type="button"
               onClick={accept}
-              className="touch-target inline-flex items-center justify-center px-4 py-1.5 rounded-xl bg-gradient-to-r from-brand-orange to-[#FF8533] font-display text-xs text-[#1a1a1a] tracking-wider hover:shadow-glow-sm active:scale-[0.97] transition-all duration-300 ring-1 ring-white/[0.08]"
+              className="touch-target inline-flex items-center justify-center px-4 py-1.5 rounded-xl bg-gradient-to-r from-brand-orange to-brand-orange-hover font-display text-sm text-on-brand tracking-wider hover:shadow-glow-sm active:scale-[0.97] transition-all duration-300 ring-1 ring-white/[0.08]"
             >
               OK
             </button>

@@ -26,7 +26,7 @@ export function CheckInButton({
       <button
         type="button"
         onClick={() => navigate("/auth")}
-        className="mt-4 w-full py-2.5 rounded-xl border border-[#F97316] text-[#F97316] font-semibold text-sm"
+        className="mt-4 w-full py-2.5 rounded-xl border border-brand-orange text-brand-orange font-semibold text-sm"
       >
         Sign in to check in
       </button>
@@ -54,14 +54,14 @@ export function CheckInButton({
         onClick={handleClick}
         disabled={busy}
         data-tutorial="spot-checkin"
-        className="w-full py-2.5 rounded-xl border border-[#F97316] text-[#F97316] font-semibold text-sm
+        className="w-full py-2.5 rounded-xl border border-brand-orange text-brand-orange font-semibold text-sm
                    flex items-center justify-center gap-1.5 disabled:opacity-60"
       >
         <MapPinCheck size={16} aria-hidden="true" />
         {busy ? "Checking in…" : "Check in"}
       </button>
       {message && (
-        <p role="status" className="mt-2 text-xs text-[#CCC] text-center">
+        <p role="status" className="mt-2 text-xs text-soft text-center">
           {message}
         </p>
       )}

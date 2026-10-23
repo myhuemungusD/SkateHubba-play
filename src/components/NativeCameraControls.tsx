@@ -93,7 +93,7 @@ export function NativeCameraControls({ active }: { active: boolean }) {
       {locked && (
         <span
           data-testid="ae-af-lock"
-          className="absolute top-4 left-4 rounded-md bg-amber-300 px-2 py-1 font-display text-[11px] tracking-[0.1em] text-black"
+          className="absolute top-4 left-4 rounded-md bg-amber-300 px-2 py-1 font-display text-sm tracking-[0.1em] text-black"
         >
           AE/AF LOCK
         </span>
@@ -113,7 +113,7 @@ export function NativeCameraControls({ active }: { active: boolean }) {
             aria-pressed={lens === l}
             aria-label={l === 0.5 ? "Ultra-wide lens 0.5x" : `${l}x lens`}
             onClick={() => pick(l)}
-            className={`h-11 min-w-11 rounded-full px-2 font-display text-xs ${lens === l ? "bg-white/90 text-black" : "text-white"}`}
+            className={`h-11 min-w-11 rounded-full px-2 font-display text-sm ${lens === l ? "bg-white/90 text-black" : "text-white"}`}
           >
             {l === 0.5 ? ".5" : l}×
           </button>

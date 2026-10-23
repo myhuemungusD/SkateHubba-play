@@ -8,7 +8,7 @@ export function TipsSettings() {
   const [replayed, setReplayed] = useState(false);
   if (!available) return null;
   return (
-    <div className="space-y-2 mt-2" data-tutorial="tips-settings">
+    <div className="space-y-2" data-tutorial="tips-settings">
       <PrefRow
         title="Show tips"
         description="Hesher pops up the first time you open a screen to show you around."

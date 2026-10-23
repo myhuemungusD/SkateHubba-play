@@ -144,11 +144,11 @@ export function ClosetCard({ item }: { item: LockerItem }) {
           <DesignerCredit credit={credit} compact />
         ) : (
           item.brand && (
-            <p className="font-body text-[11px] uppercase tracking-wider text-subtle mt-0.5 truncate">{item.brand}</p>
+            <p className="font-body text-label uppercase tracking-wider text-subtle mt-0.5 truncate">{item.brand}</p>
           )
         )}
         <span
-          className={`mt-1.5 inline-block rounded px-1.5 py-0.5 font-display text-[11px] tracking-wider leading-none ${rarity.tag}`}
+          className={`mt-1.5 inline-block rounded px-1.5 py-0.5 font-display text-sm tracking-wider leading-none ${rarity.tag}`}
         >
           {item.rarity.toUpperCase()}
         </span>

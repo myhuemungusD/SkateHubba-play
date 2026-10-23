@@ -101,7 +101,7 @@ export function LockerAwardPanel({ uid, username }: { uid: string; username: str
 
   return (
     <section aria-label="Hubba Locker" className="mb-8">
-      <h2 className="mb-3 font-display text-[11px] tracking-[0.2em] text-brand-orange">HUBBA LOCKER</h2>
+      <h2 className="mb-3 font-display text-sm tracking-[0.2em] text-brand-orange">HUBBA LOCKER</h2>
 
       <AdminSelectField label="Type" value={form.type} onChange={setField("type")} options={TYPES} />
       <AdminTextField label="Name" value={form.name} onChange={setField("name")} placeholder="Ledge Killer Deck" />
@@ -121,7 +121,7 @@ export function LockerAwardPanel({ uid, username }: { uid: string; username: str
         type="button"
         onClick={() => void award()}
         disabled={incomplete || awarding}
-        className="mb-6 inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-brand-orange/40 bg-brand-orange/[0.12] px-4 font-display text-[11px] tracking-[0.15em] text-brand-orange transition-colors active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-not-allowed disabled:opacity-40"
+        className="mb-6 inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-brand-orange/40 bg-brand-orange/[0.12] px-4 font-display text-sm tracking-[0.15em] text-brand-orange transition-colors active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-not-allowed disabled:opacity-40"
       >
         {awarding ? "..." : "AWARD ITEM"}
       </button>

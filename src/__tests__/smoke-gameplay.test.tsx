@@ -265,7 +265,7 @@ describe("Smoke: Gameplay", () => {
 
     await waitFor(() => {
       expect(games.refs.forfeitExpiredTurn).toHaveBeenCalledWith("game1", "u1");
-    });
+    }, GAME_SCREEN_LOAD);
   });
 
   it("game screen back button returns to lobby", async () => {
@@ -276,7 +276,7 @@ describe("Smoke: Gameplay", () => {
     await userEvent.click(screen.getByText("← Games"));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "YOUR TURN" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Your turn" })).toBeInTheDocument();
     });
   });
 
