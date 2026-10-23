@@ -11,6 +11,8 @@ export interface ClipCommentRowProps {
   onDelete: (comment: ClipComment) => void;
   /** Report this comment. Offered on everyone's comments but your own. */
   onReport?: (comment: ClipComment) => void;
+  /** Opens the author's profile, which is where Block lives. */
+  onViewAuthor?: (uid: string) => void;
 }
 
 /**
@@ -23,11 +25,23 @@ export const ClipCommentRow = memo(function ClipCommentRow({
   deleting,
   onDelete,
   onReport,
+  onViewAuthor,
 }: ClipCommentRowProps) {
   return (
     <li data-testid={`comment-${comment.id}`} className="rounded-xl border border-border bg-surface/60 px-3 py-2.5">
       <div className="flex items-baseline justify-between gap-2">
-        <ProUsername username={comment.username} className="font-body text-xs text-white/80" />
+        {onViewAuthor ? (
+          <button
+            type="button"
+            onClick={() => onViewAuthor(comment.userId)}
+            aria-label={`View @${comment.username}'s profile`}
+            className="text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          >
+            <ProUsername username={comment.username} className="font-body text-xs text-white/80" />
+          </button>
+        ) : (
+          <ProUsername username={comment.username} className="font-body text-xs text-white/80" />
+        )}
         <span className="shrink-0 font-body text-[11px] text-faint">{relativeClipTime(comment.createdAt)}</span>
       </div>
       {/* Untrusted user text. Rendered as a plain text node so React escapes

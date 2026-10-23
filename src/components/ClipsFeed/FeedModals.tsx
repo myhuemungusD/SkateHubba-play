@@ -22,6 +22,7 @@ interface FeedModalsProps {
   onCloseComments: () => void;
   onReportFromComments: (clip: ClipDoc) => void;
   onReportComment: (target: CommentReportTarget) => void;
+  onViewPlayer: (uid: string) => void;
   // Upload
   uploadOpen: boolean;
   onCloseUpload: () => void;
@@ -50,6 +51,7 @@ export function FeedModals({
   onCloseComments,
   onReportFromComments,
   onReportComment,
+  onViewPlayer,
   uploadOpen,
   onCloseUpload,
   onPosted,
@@ -74,6 +76,7 @@ export function FeedModals({
             onClose={onCloseComments}
             onReport={() => onReportFromComments(commentsTarget)}
             onReportComment={(comment) => onReportComment({ clip: commentsTarget, comment })}
+            onViewPlayer={onViewPlayer}
           />
         </Suspense>
       )}

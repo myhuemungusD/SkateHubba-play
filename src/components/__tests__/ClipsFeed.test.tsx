@@ -65,7 +65,9 @@ vi.mock("../ClipsFeed/ClipComments", () => ({
     onClose,
     onReport,
     onReportComment,
+    onViewPlayer,
   }: {
+    onViewPlayer?: (uid: string) => void;
     onClose: () => void;
     onReport?: () => void;
     onReportComment?: (c: { id: string; clipId: string; userId: string; username: string; text: string }) => void;
@@ -80,6 +82,7 @@ vi.mock("../ClipsFeed/ClipComments", () => ({
           __report_comment__
         </button>
       )}
+      {onViewPlayer && <button onClick={() => onViewPlayer("troll")}>__view_author__</button>}
     </div>
   ),
 }));
@@ -1219,6 +1222,17 @@ describe("ClipsFeed — user clips and comments", () => {
     expect(screen.queryByRole("dialog", { name: /comments-sheet/i })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "__close__" }));
     expect(screen.queryByRole("dialog", { name: /report-modal/i })).not.toBeInTheDocument();
+  });
+
+  it("opens a comment author's profile and closes the sheet", async () => {
+    const user = userEvent.setup();
+    const onViewPlayer = vi.fn();
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+    render(<ClipsFeed profile={profile} onViewPlayer={onViewPlayer} onChallengeUser={vi.fn()} />);
+    await user.click(await screen.findByRole("button", { name: /comments on @alice's clip/i }));
+    await user.click(await screen.findByRole("button", { name: "__view_author__" }));
+    expect(onViewPlayer).toHaveBeenCalledWith("troll");
+    expect(screen.queryByRole("dialog", { name: /comments-sheet/i })).not.toBeInTheDocument();
   });
 
   it("reports a single comment against its author and closes the sheet", async () => {

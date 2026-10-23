@@ -18,6 +18,8 @@ export interface ClipCommentsProps {
   /** Opens the report flow for one comment (App Review 1.2: every piece of
    *  user text is reportable). Omitted hides the per-comment control. */
   onReportComment?: (comment: ClipComment) => void;
+  /** Opens a comment author's profile (where Block lives). */
+  onViewPlayer?: (uid: string) => void;
   /** Uids the viewer has blocked. Their comments are filtered out of the
    *  thread, matching how the feed drops their clips. */
   blockedUids?: ReadonlySet<string>;
@@ -38,6 +40,7 @@ export function ClipComments({
   onClose,
   onReport,
   onReportComment,
+  onViewPlayer,
   blockedUids,
 }: ClipCommentsProps) {
   const c = useClipComments(clip.id, viewerUid, viewerUsername, blockedUids);
@@ -123,6 +126,7 @@ export function ClipComments({
                   deleting={c.deletingId === comment.id}
                   onDelete={(target) => void c.remove(target)}
                   onReport={onReportComment}
+                  onViewAuthor={onViewPlayer}
                 />
               ))}
             </ul>
