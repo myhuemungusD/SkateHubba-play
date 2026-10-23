@@ -191,6 +191,44 @@
     margin-inline: auto;
   }
 
+  /* TrickClip scrubber: a thin orange track inside a 44px hit area. */
+  .clip-scrubber {
+    appearance: none;
+    background: transparent;
+    accent-color: var(--color-brand-orange);
+    cursor: pointer;
+  }
+  .clip-scrubber::-webkit-slider-runnable-track {
+    height: 3px;
+    border-radius: 9999px;
+    background: rgb(255 255 255 / 0.35);
+  }
+  .clip-scrubber::-webkit-slider-thumb {
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    margin-top: -4.5px;
+    border-radius: 9999px;
+    background: var(--color-brand-orange);
+  }
+  .clip-scrubber::-moz-range-track {
+    height: 3px;
+    border-radius: 9999px;
+    background: rgb(255 255 255 / 0.35);
+  }
+  .clip-scrubber::-moz-range-progress {
+    height: 3px;
+    border-radius: 9999px;
+    background: var(--color-brand-orange);
+  }
+  .clip-scrubber::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border: 0;
+    border-radius: 9999px;
+    background: var(--color-brand-orange);
+  }
+
   /* Phone sheet for the bell. Portaled positioning is not used: the panel
      stays in the bell so a wide window can drop back to an anchored popover.
      The lobby header must not use backdrop-filter, or this fixed sheet is
