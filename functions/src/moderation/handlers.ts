@@ -179,8 +179,16 @@ export async function handleClipCreated(options: HandlerOptions, clipId: string,
   });
 }
 
+/** A report on one comment names the clip it sits under; it must never count against that clip. */
+function isCommentReport(data: Record<string, unknown> | null | undefined): boolean {
+  return typeof data?.commentId === "string" && data.commentId.length > 0;
+}
+
 export async function handleClipReport(options: HandlerOptions, raw: unknown, nowMs: number): Promise<void> {
   const report = asRecord(raw);
+  // Comment reports go to the admin queue only. Auto-hiding the clip would punish
+  // its owner for someone else's comment.
+  if (isCommentReport(report)) return;
   const clipId = typeof report?.clipId === "string" ? report.clipId : "";
   const reason = typeof report?.reason === "string" ? report.reason : "";
   const disputeId = typeof report?.disputeId === "string" ? report.disputeId : "";
@@ -200,13 +208,15 @@ export async function handleClipReport(options: HandlerOptions, raw: unknown, no
     loadReports: async () => {
       if (clipId.length === 0) return [];
       const snap = await options.db.collection("reports").where("clipId", "==", clipId).get();
-      return snap.docs.map((doc) => {
-        const data = doc.data();
-        return {
-          reporterUid: typeof data.reporterUid === "string" ? data.reporterUid : "",
-          reason: typeof data.reason === "string" ? data.reason : "",
-        };
-      });
+      return snap.docs
+        .map((doc) => doc.data())
+        .filter((data) => !isCommentReport(data))
+        .map((data) => {
+          return {
+            reporterUid: typeof data.reporterUid === "string" ? data.reporterUid : "",
+            reason: typeof data.reason === "string" ? data.reason : "",
+          };
+        });
     },
     loadCreatedAt: async (uid) => {
       const snap = await options.db.collection("users").doc(uid).get();
