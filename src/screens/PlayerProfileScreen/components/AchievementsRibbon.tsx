@@ -32,10 +32,10 @@ export function AchievementsRibbon({ achievements = [], clipsPosted = 0 }: Props
   return (
     <section aria-label="Achievements" data-testid="achievements-ribbon" className="mb-8 animate-fade-in">
       <div className="flex items-baseline justify-between mb-3">
-        <h2 className="font-display text-[10px] tracking-[0.2em] text-brand-orange">ACHIEVEMENTS</h2>
+        <h2 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">ACHIEVEMENTS</h2>
         <button
           type="button"
-          className="font-display text-[10px] tracking-wider text-muted hover:text-white min-h-[44px] px-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          className="font-display text-xs tracking-wider text-muted hover:text-white min-h-[44px] px-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           onClick={() => setSeeAll(true)}
         >
           See all
@@ -69,7 +69,7 @@ export function AchievementsRibbon({ achievements = [], clipsPosted = 0 }: Props
             </div>
             {achievementFamilies().map((group) => (
               <section key={group.family} className="mb-5" aria-label={group.family}>
-                <h3 className="font-display text-[10px] tracking-[0.2em] text-muted mb-2 uppercase">{group.family}</h3>
+                <h3 className="font-display text-[11px] tracking-[0.2em] text-muted mb-2 uppercase">{group.family}</h3>
                 <ul className="grid grid-cols-3 gap-2">
                   {group.tiers.map((def) => (
                     <li key={def.id}>
@@ -102,17 +102,17 @@ function Tile({ def, lit }: { def: AchievementDef; lit: boolean }) {
       aria-label={label}
       className={
         lit
-          ? "aspect-square rounded-2xl bg-brand-orange/[0.12] border border-brand-orange/40 flex flex-col items-center justify-center gap-1 px-1"
-          : "aspect-square rounded-2xl bg-surface/60 border border-border flex flex-col items-center justify-center gap-1 px-1 grayscale select-none"
+          ? "aspect-square rounded-2xl bg-brand-orange/[0.12] border border-brand-orange/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] flex flex-col items-center justify-center gap-1 px-1"
+          : "aspect-square rounded-2xl surface-raised flex flex-col items-center justify-center gap-1 px-1 select-none"
       }
     >
       {!lit && <LockSilhouette />}
       <span
-        className={`font-display text-[10px] tracking-wider text-center leading-tight ${lit ? "text-brand-orange" : "text-subtle"}`}
+        className={`font-display text-[11px] tracking-wider text-center leading-tight ${lit ? "text-brand-orange" : "text-subtle"}`}
       >
         {def.shortName}
       </span>
-      <span className="font-body text-[9px] text-muted">{TIER_LABEL[def.tier]}</span>
+      <span className="font-body text-[11px] text-muted">{TIER_LABEL[def.tier]}</span>
     </div>
   );
 }

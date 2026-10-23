@@ -1,3 +1,4 @@
+import { RecordFigure } from "./RecordFigure";
 import { useState, useEffect, useCallback } from "react";
 import { getLeaderboard, type UserProfile } from "../services/users";
 import { getBlockedUserIds } from "../services/blocking";
@@ -98,7 +99,7 @@ export function Leaderboard({
     <div className="my-6">
       <div className="flex items-center gap-2 mb-3">
         <h3 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">LEADERBOARD</h3>
-        <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[10px] text-brand-orange leading-none tabular-nums">
+        <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[11px] text-brand-orange leading-none tabular-nums">
           {ranked.length}
         </span>
       </div>
@@ -177,8 +178,7 @@ export function Leaderboard({
                     )}
                   </div>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="font-body text-xs text-brand-green">{wins}W</span>
-                    <span className="font-body text-xs text-brand-red">{losses}L</span>
+                    <RecordFigure wins={wins} games={total} className="font-body text-xs text-white/80" />
                     <span className="font-body text-xs text-bright">{winRate}%</span>
                   </div>
                 </div>

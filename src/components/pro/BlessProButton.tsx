@@ -15,7 +15,7 @@ interface Props {
 }
 
 /**
- * "Bless as pro" on another skater's profile. The parent mounts it only for a
+ * "Put on" (the blessing action) on another skater's profile. The parent mounts it only for a
  * verified-pro viewer looking at a non-pro, with the blessing flag on. The
  * server re-checks everything; this is just the ask.
  */
@@ -53,7 +53,7 @@ export function BlessProButton({ targetUid, username }: Props) {
         data-testid="bless-sent"
         className="mb-4 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-3 font-body text-sm text-amber-100"
       >
-        Blessing sent. @{username} turns pro the moment they accept.
+        Sent. @{username} is on once they accept.
       </p>
     );
   }
@@ -67,7 +67,7 @@ export function BlessProButton({ targetUid, username }: Props) {
         className="flex w-full min-h-[44px] items-center justify-center gap-2 rounded-xl border border-amber-300/40 bg-amber-300/10 font-display text-xs tracking-wider text-amber-100 hover:bg-amber-300/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
       >
         <Sparkles size={14} aria-hidden="true" />
-        BLESS AS PRO
+        PUT ON
       </button>
       {open && (
         <div
@@ -80,7 +80,7 @@ export function BlessProButton({ targetUid, username }: Props) {
           <div className="w-full max-w-md rounded-2xl border border-amber-300/30 bg-surface p-5 shadow-card">
             <div className="mb-3 flex items-start justify-between gap-3">
               <h2 id="bless-title" className="font-display text-lg tracking-wide text-white">
-                Turn @{username} pro?
+                Put @{username} on as PRO?
               </h2>
               <button
                 type="button"
@@ -92,11 +92,11 @@ export function BlessProButton({ targetUid, username }: Props) {
               </button>
             </div>
             <p className="mb-3 font-body text-sm text-white/70">
-              Pro is never earned or won on SkateHubba. It only comes from a pro vouching for you. Your name goes on
-              their profile for good, and you only get a couple of blessings a month.
+              Only for skaters who are pro for real: a board or shoe with a real company. Your name goes on their
+              profile for good, and you get a couple of these a month.
             </p>
             <label htmlFor="bless-reason" className="mb-1 block font-display text-[11px] tracking-wider text-white/60">
-              WHY THEY&apos;RE PRO (SHOWN ON THEIR PROFILE)
+              WHY (SHOWN ON THEIR PROFILE)
             </label>
             <textarea
               id="bless-reason"
@@ -123,7 +123,7 @@ export function BlessProButton({ targetUid, username }: Props) {
               onClick={() => void submit()}
               className="mt-3 w-full min-h-[44px] rounded-xl bg-amber-300 font-display text-sm tracking-wider text-black disabled:opacity-40"
             >
-              {busy ? "BLESSING…" : "BLESS AS PRO"}
+              {busy ? "SENDING…" : "PUT ON"}
             </button>
           </div>
         </div>

@@ -23,6 +23,15 @@ vi.mock("@sentry/react", () => sentry.module);
 vi.mock("../services/blocking", () => blocking.module);
 vi.mock("../services/onboarding", () => onboarding.module);
 
+/**
+ * GamePlayScreen is a lazy route. The first test to open it pays the cold
+ * import (plus coverage instrumentation), and the router keeps the lobby on
+ * screen until the chunk resolves. On a loaded CI runner that took ~1.9s,
+ * past waitFor's 1s default, so the first case failed with the lobby still
+ * showing. Same allowance smoke-deeplink uses for this label.
+ */
+const GAME_SCREEN_LOAD = { timeout: 10_000 };
+
 /** The download URL a successful take uploads to in these smoke tests. */
 const SET_VIDEO_URL = "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm";
 
@@ -107,7 +116,7 @@ async function setterRecordsATake(trickName: string) {
   // requires a bucket-pinned currentTrickVideoUrl). These smoke cases are
   // about what follows a successful take.
   (globalThis as unknown as Record<string, unknown>).MediaRecorder = DataProducingMR;
-  await waitFor(() => expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument(), GAME_SCREEN_LOAD);
   await userEvent.type(screen.getByLabelText("TRICK NAME"), trickName);
   await userEvent.click(await screen.findByRole("button", { name: /open camera/i }));
   await waitFor(() => screen.getByRole("button", { name: /record/i }));
@@ -143,7 +152,7 @@ async function openSetterGame(): Promise<GameDoc> {
 
   await waitFor(() => {
     expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument();
-  });
+  }, GAME_SCREEN_LOAD);
   return game;
 }
 

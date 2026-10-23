@@ -41,8 +41,16 @@
  */
 
 import type { Firestore } from "firebase-admin/firestore";
-import { deleteIfPresent, deletePrefix, deleteRefs, scanAll, type CascadeDeps } from "./_cascadeUtil.js";
+import {
+  deleteIfPresent,
+  deletePrefix,
+  deleteRefs,
+  scanAll,
+  userStoragePrefix,
+  type CascadeDeps,
+} from "./_cascadeUtil.js";
 import { emptyClosetCounts, eraseCloset, type ClosetErasureCounts } from "./_closetErasure.js";
+import { anonymizeJudgedGames, eraseActiveSkateGames } from "./_skateErasure.js";
 import { eraseDiceGames } from "./_diceErasure.js";
 import { emptyOwnedCounts, eraseOwnedContent, type OwnedContentCounts } from "./_ownedContent.js";
 
@@ -50,9 +58,6 @@ export type { CascadeDeps } from "./_cascadeUtil.js";
 
 /** Owner-only canonical doc under `users/{uid}/private` — mirrors users.ts. */
 const PRIVATE_PROFILE_DOC_ID = "profile";
-
-/** Avatar extensions written by `src/services/avatars.ts`. */
-const AVATAR_EXTENSIONS = ["webp", "jpeg", "png"] as const;
 
 /**
  * Every subcollection under users/{uid} besides the ones counted on their own
@@ -76,7 +81,15 @@ export const OTHER_USER_SUBCOLLECTIONS = [
 export interface DeletionSummary {
   games: number;
   gameVideoObjects: number;
+  /** Active S.K.A.T.E. games closed (forfeit to the opponent) and anonymized. */
+  skateGamesForfeited: number;
+  /** S.K.A.T.E. games kept for the opponent with this account replaced by the tombstone. */
+  skateGamesAnonymized: number;
+  /** Games this account judged, with the judge replaced by the tombstone. */
+  skateGamesJudgedAnonymized: number;
   clips: number;
+  /** Comments by anyone under this account's deleted clips (Firestore never deletes a subcollection with its parent). */
+  clipThreadComments: number;
   clipVotes: number;
   disputes: number;
   disputeVotes: number;
@@ -94,6 +107,11 @@ export interface DeletionSummary {
   /** Opponent and spot markers under users/{uid}/xpMarkers. */
   xpMarkers: number;
   blockedUsers: number;
+  /**
+   * Objects removed from the `users/{uid}/` Storage folder in Phase 5: the
+   * avatar plus any Resize Images thumbnails (`*_200x200.*`). Name kept for
+   * response compatibility.
+   */
   avatarObjects: number;
   usernameReleased: boolean;
   /** Active Roll Dice matches closed so the other player is not left waiting. */
@@ -122,7 +140,11 @@ function emptySummary(): DeletionSummary {
   return {
     games: 0,
     gameVideoObjects: 0,
+    skateGamesForfeited: 0,
+    skateGamesAnonymized: 0,
+    skateGamesJudgedAnonymized: 0,
     clips: 0,
+    clipThreadComments: 0,
     clipVotes: 0,
     disputes: 0,
     disputeVotes: 0,
@@ -207,8 +229,8 @@ async function deleteVotes(
  * format-valid username and does NOT require that a matching reservation is
  * actually held (`match /users/{uid}`, `allow create`). So an attacker can sign
  * up, write `users/{attacker}` claiming a victim's username without ever
- * reserving it, and then invoke deletion. The client cascade was safe from this
- * by accident: `usernames/{name}` delete requires
+ * reserving it, and then invoke deletion. The old client cascade was safe from
+ * this by accident: `usernames/{name}` delete requires
  * `resource.data.uid == request.auth.uid`, so the batch was simply rejected.
  * Admin credentials bypass that rule, which turns an accidental safeguard into
  * a username-hijack primitive.
@@ -255,9 +277,9 @@ async function releaseUsername(db: Firestore, uid: string, candidate: string): P
 /**
  * Erase all data belonging to `uid`.
  *
- * Phase order is deliberate and must not be rearranged casually. It is the same
- * order the client cascade used, for a different reason: rules no longer force
- * it, but it still means an interrupted run leaves the *identity* documents
+ * Phase order is deliberate and must not be rearranged casually. It is the
+ * same order the old client cascade used, for a different reason: rules no
+ * longer force it, but it still means an interrupted run leaves the *identity* documents
  * (`users/{uid}`, the username reservation) alive longest. Those are what a
  * retry needs in order to find the rest, so a crash mid-cascade stays
  * recoverable instead of stranding orphans nothing can locate.
@@ -268,6 +290,9 @@ async function releaseUsername(db: Firestore, uid: string, candidate: string): P
 export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Promise<DeletionSummary> {
   const { db } = deps;
   const summary = emptySummary();
+  // Resolved before any phase runs so a malformed uid fails before anything is
+  // deleted, rather than after Phase 4 has already removed the identity docs.
+  const userFolder = userStoragePrefix(uid);
 
   // ── Phase 0: identity lookup ──
   // Read the username before anything is destroyed; the reservation is
@@ -275,16 +300,20 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   const username = await readUsername(db, uid);
 
   // ── Phase 1+2: games and their video objects ──
-  // Active games are preserved so an opponent is not stranded mid-match. This
-  // matches the pre-existing product decision, not a limitation of admin access.
+  // Finished games are deleted with their videos. Active games are closed as
+  // a forfeit to the opponent and anonymized (see `_skateErasure.ts`), so the
+  // opponent is not stranded and no uid, username or video of this account
+  // stays behind in them.
   const gamesCol = db.collection("games");
   const [asP1, asP2] = await Promise.all([
     scanAll(gamesCol.where("player1Uid", "==", uid)),
     scanAll(gamesCol.where("player2Uid", "==", uid)),
   ]);
   const nonActiveGameIds = new Set<string>();
+  const activeGameIds = new Set<string>();
   for (const snap of [...asP1, ...asP2]) {
     if ((snap.data() as Record<string, unknown>).status !== "active") nonActiveGameIds.add(snap.id);
+    else activeGameIds.add(snap.id);
   }
 
   // Videos first: once the game doc is gone, nothing records which prefix to
@@ -296,6 +325,12 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
     db,
     [...nonActiveGameIds].map((id) => gamesCol.doc(id)),
   );
+  const skate = await eraseActiveSkateGames(deps, uid, [...activeGameIds], Date.now());
+  summary.skateGamesForfeited = skate.forfeited;
+  summary.skateGamesAnonymized = skate.anonymized;
+  summary.games += skate.deleted;
+  summary.gameVideoObjects += skate.videoObjects;
+  summary.skateGamesJudgedAnonymized = await anonymizeJudgedGames(db, uid);
 
   // ── Phase 2b: Roll Dice ──
   // Unlike S.K.A.T.E., an open dice match is closed rather than left active.
@@ -320,13 +355,22 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   summary.trainingRevocations = await deleteIfPresent(db, "trainingRevocations", uid);
 
   // ── Phase 3: authored community content ──
-  // Ownership fields mirror the client cascade exactly: clips are keyed by
-  // `playerUid`, disputes by `setterUid` (the setter is the only one who can
-  // create the doc), and both vote collections by `uid`.
+  // Ownership fields: clips are keyed by `playerUid`, disputes by `setterUid`
+  // (the setter is the only one who can create the doc), and both vote
+  // collections by `uid`.
   const [clips, disputes] = await Promise.all([
     scanAll(db.collection("clips").where("playerUid", "==", uid)),
     scanAll(db.collection("disputes").where("setterUid", "==", uid)),
   ]);
+  // A clip's comment thread lives in clips/{id}/comments, which a parent
+  // delete leaves behind as unreachable orphans, so it goes first.
+  for (const clip of clips) {
+    const thread = await scanAll(clip.ref.collection("comments"));
+    summary.clipThreadComments += await deleteRefs(
+      db,
+      thread.map((d) => d.ref),
+    );
+  }
   summary.clips = await deleteRefs(
     db,
     clips.map((d) => d.ref),
@@ -344,10 +388,9 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   summary.clipVotes = await deleteVotes(db, "clipVotes", "clips", "clipId", () => "upvoteCount", uid);
 
   // Dispute votes are the same shape, but the field depends on which way the
-  // vote went. Guards mirror `deleteUserDisputeVotes`: an unusable target id or
-  // verdict still gets the vote deleted (just untargetable for the tally), a
-  // parent that is already gone needs no decrement, and a non-positive count is
-  // never driven negative.
+  // vote went. Guards: an unusable target id or verdict still gets the vote
+  // deleted (just untargetable for the tally), a parent that is already gone
+  // needs no decrement, and a non-positive count is never driven negative.
   summary.disputeVotes = await deleteVotes(
     db,
     "disputeVotes",
@@ -379,9 +422,9 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   );
 
   // Queued push dispatches embed the recipient's FCM tokens, so an undrained
-  // queue would keep device identifiers alive past erasure. The client cascade
-  // never covered these — it couldn't, since /push_dispatch is write-only to
-  // clients — which is one of the gaps admin credentials close.
+  // queue would keep device identifiers alive past erasure. The old client
+  // cascade never covered these — it couldn't, since /push_dispatch is
+  // write-only to clients — which is one of the gaps admin credentials close.
   summary.pushDispatch = await deleteRefs(
     db,
     (await scanAll(db.collection("push_dispatch").where("recipientUid", "==", uid))).map((d) => d.ref),
@@ -435,10 +478,10 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   // guarantee the single-batch shape suggests.
   //
   // Locker mirrors achievements exactly: both are Admin-SDK-minted economy
-  // subcollections under users/{uid}, and both are swept by the client cascade
-  // in `src/services/users.ts`. A subcollection is NOT deleted by deleting its
-  // parent document in Firestore, so each one has to be enumerated by name —
-  // any future subcollection added under users/{uid} must be added here too.
+  // subcollections under users/{uid}. A subcollection is NOT deleted by
+  // deleting its parent document in Firestore, so each one has to be
+  // enumerated by name — any future subcollection added under users/{uid}
+  // must be added here too.
   const achievements = await scanAll(db.collection("users").doc(uid).collection("achievements"));
   const locker = await scanAll(db.collection("users").doc(uid).collection("locker"));
   const xpMarkers = await scanAll(db.collection("users").doc(uid).collection("xpMarkers"));
@@ -472,11 +515,14 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   summary.xpMarkers = xpMarkers.length;
   summary.blockedUsers = blocked.length;
 
-  // ── Phase 5: avatar binaries ──
-  // Three extensions because `avatars.ts` may have written any of them.
-  for (const ext of AVATAR_EXTENSIONS) {
-    summary.avatarObjects += await deletePrefix(deps, `users/${uid}/avatar.${ext}`);
-  }
+  // ── Phase 5: the account's Storage folder ──
+  // This phase is the single owner of everything under `users/{uid}/`: the
+  // avatar in any of the three extensions `avatars.ts` writes, the banner, and
+  // the Resize Images extension's `*_200x200.*` thumbnails of both (G8).
+  // Deleting by exact file name missed those thumbnails; deleting the folder
+  // cannot. `ownedMediaPrefixes` (Phase 3c) deliberately leaves this folder
+  // out, so every object here is deleted and counted once, in `avatarObjects`.
+  summary.avatarObjects += await deletePrefix(deps, userFolder);
 
   return summary;
 }

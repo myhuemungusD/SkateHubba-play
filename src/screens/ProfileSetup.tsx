@@ -14,12 +14,18 @@ import { logger, metrics } from "../services/logger";
 import { captureException } from "../lib/sentry";
 import { hashUid } from "../utils/pii";
 import { useUsernameAvailability } from "../hooks/useUsernameAvailability";
-import { isMinorDob, parseDob } from "../utils/age";
+import { isMinorDob } from "../utils/age";
+import { useCoppaBlockedNotice } from "../utils/coppaNotice";
+import { useStickyAgeBlock } from "../hooks/useStickyAgeBlock";
+import { TERMS_REQUIRED_ERROR, useTermsGate } from "../hooks/useTermsGate";
+import { checkInlineDob } from "./authScreenHelpers";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { DobConsentFields } from "../components/DobConsentFields";
+import { TermsAcceptCheckbox } from "../components/legal/TermsAcceptCheckbox";
 import { CoppaBlockedCard } from "../components/CoppaBlockedCard";
+import { blockUnderageSignIn } from "../services/auth.underage";
 import { SkateboardIcon } from "../components/icons";
 import { SANITIZE_RE, STANCES, sanitizeDisplayName, usernameNote } from "./profileSetupHelpers";
 
@@ -68,14 +74,14 @@ export function ProfileSetup({
   const [day, setDay] = useState("");
   const [year, setYear] = useState("");
   const [parentConsent, setParentConsent] = useState(false);
-  const [ageBlocked, setAgeBlocked] = useState(false);
+  // App Review 1.2: required Terms agreement, stored as private termsAcceptedAt.
+  const terms = useTermsGate(localError, setLocalError, "profile-setup-error");
+  const [ageBlocked, setAgeBlocked] = useStickyAgeBlock(needsDobCollection, !checkingExisting && !fetchFailed);
+  const [coppaOutcome] = useCoppaBlockedNotice();
   const isMinor = needsDobCollection && isMinorDob(month, day, year);
 
-  const updateDob = (field: "month" | "day" | "year", value: string) => {
-    if (field === "month") setMonth(value);
-    else if (field === "day") setDay(value);
-    else setYear(value);
-  };
+  const dobSetters = { month: setMonth, day: setDay, year: setYear };
+  const updateDob = (field: keyof typeof dobSetters, value: string) => dobSetters[field](value);
 
   const { available, error: availabilityError, clearError: clearAvailabilityError } = useUsernameAvailability(username);
   // Display whichever error is non-empty. Local validation/submit errors take
@@ -187,31 +193,30 @@ export function ProfileSetup({
       return;
     }
 
+    if (!terms.agreed) return setLocalError(TERMS_REQUIRED_ERROR);
+
     let effectiveDob = dob ?? undefined;
     let effectiveConsent = parentalConsent;
     if (needsDobCollection) {
-      const result = parseDob(month, day, year);
-      if (result.kind === "invalid") {
-        setLocalError(result.message);
+      const gate = checkInlineDob(month, day, year, parentConsent, "profile_setup");
+      if (gate.kind === "error") {
+        setLocalError(gate.message);
         return;
       }
-      if (result.kind === "blocked") {
-        logger.info("age_gate_blocked", { age: result.age });
+      if (gate.kind === "blocked") {
         setAgeBlocked(true);
+        // COPPA: remove the sign-in Google/Apple made (again, on a sticky
+        // re-block); the landing shows the card once it signs out.
+        void blockUnderageSignIn();
         return;
       }
-      if (result.needsParentalConsent && !parentConsent) {
-        setLocalError("Parental or guardian consent is required for users under 18");
-        return;
-      }
-      effectiveDob = result.dobString;
-      effectiveConsent = result.needsParentalConsent;
-      logger.info("age_gate_passed_inline", { age: result.age, parentalConsent: effectiveConsent });
+      effectiveDob = gate.dob;
+      effectiveConsent = gate.parentalConsent;
     }
 
     setLoading(true);
     try {
-      const profile = await createProfile(uid, normalized, stance, emailVerified, effectiveDob, effectiveConsent);
+      const profile = await createProfile(uid, normalized, stance, emailVerified, effectiveDob, effectiveConsent, true);
       metrics.signUp("google", uid);
       analytics.signUp("google");
       onDone(profile);
@@ -300,6 +305,7 @@ export function ProfileSetup({
   if (ageBlocked) {
     return (
       <CoppaBlockedCard
+        outcome={coppaOutcome ?? "pending"}
         onBack={() => {
           // Clear the failing DOB so the form doesn't re-block immediately on
           // next submit. Preserve username + stance so the user doesn't lose
@@ -380,7 +386,7 @@ export function ProfileSetup({
                     <SkateboardIcon size={22} className={selected ? "text-brand-orange" : "text-faint"} />
                   </div>
                   <div>{value}</div>
-                  <div className="font-body text-[10px] text-subtle mt-0.5 tracking-normal">{foot}</div>
+                  <div className="font-body text-xs text-subtle mt-0.5 tracking-normal">{foot}</div>
                 </button>
               );
             })}
@@ -393,7 +399,7 @@ export function ProfileSetup({
               year={year}
               onDobChange={updateDob}
               disabled={loading}
-              helpText="Used only for age verification (COPPA & CCPA) and is never shared."
+              helpText="We ask for your birthday to keep SkateHubba 13+. It's never shared."
               showConsent={isMinor}
               consent={parentConsent}
               onConsentChange={setParentConsent}
@@ -401,7 +407,9 @@ export function ProfileSetup({
             />
           )}
 
-          <ErrorBanner message={error} onDismiss={clearError} />
+          <TermsAcceptCheckbox {...terms.checkboxProps} disabled={loading} onNav={onNavLegal} />
+
+          <ErrorBanner messageId={terms.checkboxProps.errorId} message={error} onDismiss={clearError} />
 
           <Btn type="submit" disabled={!canSubmit}>
             {loading ? (

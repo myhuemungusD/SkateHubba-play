@@ -562,6 +562,31 @@ the workflow's query string.
 > completely intact. Symptom to look for: deletions failing for every user, not
 > partially-deleted accounts. There is no `?dryRun=1` here: the operation is
 > irreversible by design and must never be triggered casually.
+>
+> After the Firestore erasure succeeds, the endpoint asks PostHog to delete the
+> user's person and events (`api/account/_posthogErasure.ts`). It reads three
+> Vercel env vars (Production): `POSTHOG_PERSONAL_API_KEY` (a personal API key
+> with the `person:write` scope, not the public `VITE_POSTHOG_KEY`),
+> `POSTHOG_PROJECT_ID`, and optionally `POSTHOG_HOST` (defaults to
+> `https://us.posthog.com`; this is the app host, not the `us.i.posthog.com`
+> ingest host). If `VITE_POSTHOG_HOST` points at the EU cloud
+> (`https://eu.i.posthog.com`), set `POSTHOG_HOST=https://eu.posthog.com`, or
+> the deletion goes to the wrong region and returns 401. This step is
+> best-effort: if the key or project id is unset the log shows
+> `account_delete_posthog_skipped` (in Production it also sends a Sentry
+> warning, because every deletion would miss PostHog), and an HTTP error or a 5-second
+> timeout logs `account_delete_posthog_failed` and sends a Sentry warning. The
+> account is deleted either way. A healthy run logs
+> `account_delete_posthog_queued`.
+>
+> The endpoint's log lines never carry the raw uid (they may be forwarded to
+> Sentry, and an audit trail shouldn't hold the identifier it erased). Every
+> line carries `uidHash` instead: `hashUid(uid)` from `src/utils/pii.ts`, the
+> same value its Sentry events carry. Failure lines log the error's `code`
+> (`safeErrorCode`, `api/_safeError.ts`), never its message, which can quote the
+> uid or other users' doc paths. To trace one deletion, hash the uid the
+> same way and search the logs for `account_delete_attempt` and
+> `account_delete_success` with that `uidHash`.
 
 ### The two secrets
 

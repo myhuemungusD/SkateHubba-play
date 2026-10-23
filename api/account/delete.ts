@@ -44,9 +44,13 @@ import { getAuth } from "firebase-admin/auth";
 import { cert, getApps, initializeApp, type App, type ServiceAccount } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
-import { parseServiceAccountJson } from "../cron/_serviceAccount.js";
+import { describeInitFailure, parseServiceAccountJson } from "../cron/_serviceAccount.js";
 import { deleteUserDataAsAdmin, type DeletionSummary } from "./_deleteUserData.js";
+import { erasePosthogPerson } from "./_posthogErasure.js";
+import { eraseUnderageSignIn, RacedCascadeError, type UnderageOutcome } from "./_underage.js";
+import { hashIdentity, hashUid } from "../../src/utils/pii.js";
 import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
+import { safeErrorCode } from "../_safeError.js";
 
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
 const FIRESTORE_DB_NAME = "skatehubba";
@@ -64,6 +68,7 @@ const RECENT_AUTH_WINDOW_S = 5 * 60;
 interface ApiRequest {
   method?: string;
   headers: Record<string, string | string[] | undefined>;
+  query?: Record<string, string | string[] | undefined>;
 }
 interface ApiResponse {
   status: (code: number) => ApiResponse;
@@ -76,10 +81,19 @@ interface ApiResponse {
  * Origins allowed to call this endpoint cross-origin.
  *
  * On the web this is same-origin and CORS never engages. It engages on native:
- * the Capacitor webview serves the app from `capacitor://localhost` (iOS) or
- * `https://localhost` (Android), so a call to the deployed API is cross-origin
- * and the browser will preflight it. Without this the native delete-account
- * flow cannot work at all — which the App Store requires to exist.
+ * the Capacitor webview serves the app from `capacitor://localhost` on iOS and
+ * `https://localhost` on Android, so a call to the deployed API is
+ * cross-origin and the browser will preflight it. (`capacitor.config.ts` sets
+ * `iosScheme: "https"`, but WKWebView owns https, so Capacitor's
+ * CAPInstanceDescriptor.normalize() rejects it and falls back to `capacitor`.
+ * `https://localhost` is the live Android origin and would also cover iOS if
+ * Capacitor ever honoured the setting.) Without this the native
+ * delete-account flow cannot work at all — which the App Store requires to exist.
+ *
+ * Plain-http dev origins (`DEV_ORIGINS`) are allowed only outside production
+ * (`VERCEL_ENV !== "production"`: local `vercel dev`, preview deploys). In
+ * production a page on someone's own machine has no reason to drive this
+ * endpoint, and no shipped build serves from http.
  *
  * CORS is not the security boundary here; the ID token is. This allowlist only
  * decides who may *ask*, and every request still has to present a freshly
@@ -87,13 +101,18 @@ interface ApiResponse {
  * rather than `*` so a hostile page cannot silently drive the endpoint with a
  * token it somehow obtained.
  */
+const PRODUCTION_ORIGINS = [
+  "https://skatehubba.com",
+  "https://www.skatehubba.com",
+  "capacitor://localhost",
+  "https://localhost",
+];
+/** Local dev only: bare localhost, the Vite dev server and `vite preview`. */
+const DEV_ORIGINS = ["http://localhost", "http://localhost:5173", "http://localhost:4173"];
 const ALLOWED_ORIGINS = new Set(
   [
-    "https://skatehubba.com",
-    "https://www.skatehubba.com",
-    "capacitor://localhost",
-    "https://localhost",
-    "http://localhost",
+    ...PRODUCTION_ORIGINS,
+    ...(process.env.VERCEL_ENV === "production" ? [] : DEV_ORIGINS),
     process.env.ACCOUNT_DELETE_ALLOWED_ORIGIN,
   ].filter((o): o is string => typeof o === "string" && o.length > 0),
 );
@@ -121,7 +140,8 @@ type FailureCode =
   | "invalid_token"
   | "requires_recent_login"
   | "init_failed"
-  | "erasure_failed";
+  | "erasure_failed"
+  | "has_profile";
 
 let cachedApp: App | null = null;
 let cachedBucketName: string | null = null;
@@ -181,13 +201,86 @@ function readBearer(req: ApiRequest): string | null {
 }
 
 /**
- * Structured log line. Never includes the ID token, and never the username or
- * email — a deletion audit trail should not itself be a store of the personal
- * data that was just erased. The uid is retained because without it the log
- * cannot support an erasure request the way a regulator would expect.
+ * Structured log line. Never includes the ID token, the username, the email,
+ * or the raw uid — a deletion audit trail should not itself be a store of the
+ * personal data that was just erased, and these lines may be forwarded to
+ * Sentry. Lines carry `uidHash` (`hashUid(uid)`, `src/utils/pii.ts`), the same
+ * pseudonym Sentry and the client use; to trace one deletion, hash the uid the
+ * same way and search for it (docs/DEPLOYMENT.md).
  */
 function log(event: string, fields: Record<string, unknown>): void {
   console.warn(JSON.stringify({ event, ...fields }));
+}
+
+/**
+ * Runs the PostHog person deletion and logs its outcome. Never throws.
+ *
+ * A failure, or a skip in production (the env is missing there, so every
+ * deletion would silently miss PostHog), also sends a Sentry warning carrying
+ * the distinct_id: it's the same pseudonym PostHog and Sentry already hold,
+ * and the only handle left for the manual retry in docs/SENTRY_ALERTS.md once
+ * the account is gone. A skip outside production is expected and only logged.
+ */
+async function reportPosthogErasure(uid: string): Promise<void> {
+  const outcome = await erasePosthogPerson(uid);
+  const uidHash = hashUid(uid);
+  if (outcome.status === "queued") {
+    log("account_delete_posthog_queued", { uidHash, personsFound: outcome.personsFound });
+    return;
+  }
+  const event = outcome.status === "skipped" ? "account_delete_posthog_skipped" : "account_delete_posthog_failed";
+  const distinctId = hashIdentity(uid);
+  log(event, { uidHash, distinctId, reason: outcome.reason });
+  if (outcome.status === "skipped" && process.env.VERCEL_ENV !== "production") return;
+  captureServerError(
+    event,
+    new Error(`PostHog person deletion ${outcome.status}: ${outcome.reason}`),
+    { uidHash, distinctId },
+    { level: "warning" },
+  );
+}
+
+/** What the full erasure cascade needs, for this app. */
+function cascadeDeps(app: App) {
+  return { db: getFirestore(app, FIRESTORE_DB_NAME), storage: getStorage(app), bucketName: cachedBucketName ?? "" };
+}
+
+/**
+ * `?reason=underage`: the COPPA age gate blocked this sign-in before a profile
+ * existed (see `_underage.ts`). With a profile it deletes nothing and answers
+ * 409 `has_profile`; a real account is erased only through the normal path.
+ *
+ * Logs and Sentry get the same `uidHash` the client reports, never the uid:
+ * under COPPA a persistent identifier is personal information, and the user
+ * was told we keep nothing.
+ */
+async function handleUnderage(app: App, uid: string, res: ApiResponse): Promise<void> {
+  const uidHash = hashUid(uid);
+  let outcome: UnderageOutcome;
+  try {
+    outcome = await eraseUnderageSignIn(getFirestore(app, FIRESTORE_DB_NAME), getAuth(app), uid, () =>
+      deleteUserDataAsAdmin(cascadeDeps(app), uid),
+    );
+  } catch (err) {
+    // A raced cascade failure can't be retried (the Auth user is gone), so it
+    // gets its own error-level event: an operator must erase the orphaned
+    // profile (docs/SENTRY_ALERTS.md).
+    const raced = err instanceof RacedCascadeError;
+    const event = raced ? "account_delete_underage_raced_cascade_failed" : "account_delete_underage_failed";
+    if (raced) console.error(JSON.stringify({ event, uidHash }));
+    else log(event, { uidHash });
+    captureServerError(event, raced ? err.inner : err, { uidHash }, { redactMessage: true });
+    await flushServerErrors();
+    fail(res, 500, "erasure_failed", "Could not remove this sign-in. Please try again.");
+    return;
+  }
+  if (outcome === "has_profile") {
+    log("account_delete_underage_has_profile", { uidHash });
+    fail(res, 409, "has_profile", "This account has a profile. Delete it from Settings instead.");
+    return;
+  }
+  log(outcome === "raced" ? "account_delete_underage_raced" : "account_delete_underage_success", { uidHash });
+  res.status(200).json({ ok: true, authDeleted: true, mode: "underage" });
 }
 
 function fail(res: ApiResponse, status: number, code: FailureCode, message: string): void {
@@ -225,9 +318,10 @@ async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
   try {
     app = getAdminApp();
   } catch (err) {
-    log("account_delete_init_failed", { error: err instanceof Error ? err.message : String(err) });
-    // redactMessage: a parse failure on FIREBASE_SERVICE_ACCOUNT_JSON quotes
-    // part of the secret in its message.
+    // Never err.message: a parse failure on FIREBASE_SERVICE_ACCOUNT_JSON quotes
+    // part of the secret. The log gets the class and a fixed reason; Sentry
+    // gets a message-free error (redactMessage).
+    log("account_delete_init_failed", describeInitFailure(err));
     captureServerError("account_delete_init_failed", err, {}, { redactMessage: true });
     await flushServerErrors();
     fail(res, 500, "init_failed", "Server misconfiguration.");
@@ -246,20 +340,28 @@ async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
   } catch (err) {
     // Deliberately coarse: distinguishing expired from revoked from malformed
     // would tell an attacker which of those a captured token is.
-    log("account_delete_token_rejected", { error: err instanceof Error ? err.message : String(err) });
+    // The log gets the code (auth/id-token-expired …) or class, never the message.
+    log("account_delete_token_rejected", { code: safeErrorCode(err) });
     fail(res, 401, "invalid_token", "Invalid or expired credentials.");
     return;
   }
 
+  const reason = req.query?.reason;
+  if ((Array.isArray(reason) ? reason[0] : reason) === "underage") {
+    await handleUnderage(app, uid, res);
+    return;
+  }
+
+  const uidHash = hashUid(uid);
   const ageS = Math.floor(Date.now() / 1000) - authTimeS;
   if (!authTimeS || ageS > RECENT_AUTH_WINDOW_S) {
-    log("account_delete_stale_auth", { uid, ageS });
+    log("account_delete_stale_auth", { uidHash, ageS });
     fail(res, 401, "requires_recent_login", "Please sign in again to confirm account deletion.");
     return;
   }
 
   // ── Erasure, then Auth ──
-  log("account_delete_attempt", { uid });
+  log("account_delete_attempt", { uidHash });
 
   // Revoke first. The caller stays signed in for the whole cascade (seconds to
   // minutes), so without this the client can re-create what has just been
@@ -273,30 +375,30 @@ async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
   try {
     await getAuth(app).revokeRefreshTokens(uid);
   } catch (err) {
-    log("account_delete_revoke_failed", { uid, error: err instanceof Error ? err.message : String(err) });
-    captureServerError("account_delete_revoke_failed", err, { uid }, { level: "warning" });
+    log("account_delete_revoke_failed", { uidHash, code: safeErrorCode(err) });
+    // redactMessage: like the erasure and Auth errors below, it can quote the uid.
+    captureServerError("account_delete_revoke_failed", err, { uidHash }, { level: "warning", redactMessage: true });
   }
 
   let summary: DeletionSummary;
   try {
-    summary = await deleteUserDataAsAdmin(
-      {
-        db: getFirestore(app, FIRESTORE_DB_NAME),
-        storage: getStorage(app),
-        bucketName: cachedBucketName ?? "",
-      },
-      uid,
-    );
+    summary = await deleteUserDataAsAdmin(cascadeDeps(app), uid);
   } catch (err) {
     // The Auth user is intentionally left alive: the account keeps working and
     // the user can retry. Every phase is idempotent, so a retry resumes rather
     // than double-deleting.
-    log("account_delete_erasure_failed", { uid, error: err instanceof Error ? err.message : String(err) });
-    captureServerError("account_delete_erasure_failed", err, { uid });
+    log("account_delete_erasure_failed", { uidHash, code: safeErrorCode(err) });
+    captureServerError("account_delete_erasure_failed", err, { uidHash }, { redactMessage: true });
     await flushServerErrors();
     fail(res, 500, "erasure_failed", "Could not delete your data. Your account is unchanged — please try again.");
     return;
   }
+
+  // Analytics next, best-effort: PostHog trouble never fails or blocks a
+  // deletion. Logged with the hash only, like every line here; the
+  // account_delete_attempt line above and account_delete_success below are
+  // the erasure audit trail.
+  await reportPosthogErasure(uid);
 
   // Auth last. Reaching here means the data is already gone, so a failure now
   // leaves a sign-in-able account with no profile. The client treats that as
@@ -305,14 +407,14 @@ async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
   try {
     await getAuth(app).deleteUser(uid);
   } catch (err) {
-    log("account_delete_auth_failed", { uid, error: err instanceof Error ? err.message : String(err) });
-    captureServerError("account_delete_auth_failed", err, { uid });
+    log("account_delete_auth_failed", { uidHash, code: safeErrorCode(err) });
+    captureServerError("account_delete_auth_failed", err, { uidHash }, { redactMessage: true });
     await flushServerErrors();
     res.status(200).json({ ok: true, authDeleted: false, summary });
     return;
   }
 
-  log("account_delete_success", { uid, ...summary });
+  log("account_delete_success", { uidHash, ...summary });
   // Sends a queued revoke_failed warning, if any; immediate when nothing is queued.
   await flushServerErrors();
   res.status(200).json({ ok: true, authDeleted: true, summary });

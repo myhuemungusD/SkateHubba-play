@@ -6,33 +6,46 @@
 /** Store screenshot sizes (portrait pixels) and the CSS viewport that yields them. */
 export const SIZES = [
   { id: "ios-6.9", store: "App Store", label: 'iPhone 6.9"', width: 440, height: 956, scale: 3, mobile: true }, // 1320×2868
+  { id: "ios-6.3", store: "App Store", label: 'iPhone 6.3"', width: 402, height: 874, scale: 3, mobile: true }, // 1206×2622
   { id: "ios-6.5", store: "App Store", label: 'iPhone 6.5"', width: 428, height: 926, scale: 3, mobile: true }, // 1284×2778
   { id: "ios-5.5", store: "App Store", label: 'iPhone 5.5"', width: 414, height: 736, scale: 3, mobile: true }, // 1242×2208
-  { id: "ipad-13", store: "App Store", label: 'iPad 13"', width: 1032, height: 1376, scale: 2, mobile: true }, // 2064×2752 (TARGETED_DEVICE_FAMILY 1,2)
   { id: "play-phone", store: "Google Play", label: "Phone", width: 360, height: 640, scale: 3, mobile: true }, // 1080×1920
   { id: "play-7in", store: "Google Play", label: '7" tablet', width: 600, height: 960, scale: 2, mobile: true }, // 1200×1920
   { id: "play-10in", store: "Google Play", label: '10" tablet', width: 800, height: 1280, scale: 2, mobile: true }, // 1600×2560
 ];
 
 /**
- * Key screens, in store order. Each one must show real content (no empty
- * states) and only features the iPhone launch build has: no Roll Dice, no
- * Skate Runner. `open` names how screenshots.mjs reaches a screen that has no
- * URL of its own (the game screen opens from its lobby card). `click` taps a
- * text before the shot (Home expands its "waiting on them" games), and
- * `scrollTo` scrolls an element to the top, past the header.
+ * Key screens, in store order. Each one backs a promise in the iOS listing
+ * (one-take game, your record, head-to-head, spot passport, turns on a clock)
+ * and shows only what the iPhone launch build ships. `open` names how
+ * screenshots.mjs reaches a screen that has no URL of its own (the game screen
+ * opens from its lobby card). `click` taps a text before the shot (Home expands
+ * its "waiting on them" games), and `scrollTo` scrolls an element to the top,
+ * past the header. `optional` shots are skipped with --skip-optional.
  */
 export const SCREENS = [
   { id: "01-game", path: "/lobby", open: "game" },
-  { id: "02-feed", path: "/feed", seek: 4 },
-  { id: "03-map", path: "/map" },
-  { id: "04-profile", path: "/me" },
-  { id: "05-closet", path: "/me", scrollTo: '[data-testid="closet-showcase"]' },
-  { id: "06-lobby", path: "/lobby", click: "waiting on them", scrollTo: '[data-testid="whos-skating-button"]' },
+  { id: "02-record", path: "/me", scrollTo: '[data-testid="brag-row"]' },
+  { id: "03-vs-you", path: "/player/review-demo-opp-1", scrollTo: '[data-testid="vs-you-row"]' },
+  { id: "04-passport", path: "/me", scrollTo: '[data-testid="spot-passport"]' },
+  { id: "05-lobby", path: "/lobby", click: "waiting on them", scrollTo: "#turn-stack-heading" },
+  { id: "06-clock", path: "/challenge?to=kickflip_kai", optional: true },
 ];
 
-/** Routes that must never appear in a store screenshot set. */
-export const FORBIDDEN_PATHS = ["/dice", "/play/runner"];
+/**
+ * Routes that must never appear in a store screenshot set: screens the iPhone
+ * build hides (Roll Dice, Skate Runner) and screens the listing doesn't promise
+ * (map, feed, Closet, trading).
+ */
+export const FORBIDDEN_PATHS = ["/dice", "/play/runner", "/map", "/feed", "/closet", "/trading"];
+
+/** Text that means a shot caught an error, an empty state or an unpromised feature. */
+// "put (you|someone) on" / "put on by" are the post-#812 wording for a pro blessing.
+export const FORBIDDEN_TEXT =
+  /temporarily unavailable|No video recorded|Something went wrong|Roll Dice|Skate Runner|\bbless|put (you|someone) on|put on by/i;
+
+/** Anything open on top of the screen: dialogs, sheets and toasts. */
+export const OVERLAY_SELECTOR = '[role="dialog"], [role="alertdialog"], [aria-modal="true"], [data-testid="toast"]';
 
 export const pixelSize = (s) => ({ w: s.width * s.scale, h: s.height * s.scale });
 export const shotPath = (dir, size, screen) => `${dir}/${size.id}/${screen.id}.png`;
@@ -46,6 +59,26 @@ export const DEMO_OPPONENTS = [
   { uid: "review-demo-opp-5", username: "tre_flip_tess", stance: "Regular" },
   { uid: "review-demo-opp-6", username: "grind_gabe", stance: "Goofy" },
 ];
+
+/**
+ * Server-written stats for the opponent the screenshots open (kai), so his
+ * profile above VS YOU isn't all zeros. Oldest result first; his last game is
+ * the loss to the reviewer, so his current streak is 0.
+ */
+export const DEMO_OPPONENT_STATS = {
+  "review-demo-opp-1": {
+    wins: 22,
+    losses: 9,
+    gamesPlayed: 31,
+    currentWinStreak: 0,
+    bestWinStreak: 6,
+    tricksLanded: 96,
+    tricksFailed: 41,
+    lettersGiven: 137,
+    lettersTaken: 89,
+    recentResults: ["W", "W", "L", "W", "W", "W", "L", "W", "W", "L"],
+  },
+};
 
 /** Mike White Signature shoes the demo profile owns (credited in-app by DesignerCredit). */
 export const DEMO_LOCKER = [
@@ -70,10 +103,12 @@ export function reviewEnv(env) {
   const missing = [];
   if (!email) missing.push("REVIEW_EMAIL");
   if (password.length < 10) missing.push("REVIEW_PASSWORD (10+ characters)");
+  const username = env.REVIEW_USERNAME?.trim().toLowerCase() ?? "";
+  if (!username) missing.push("REVIEW_USERNAME");
   return {
     email,
     password,
-    username: (env.REVIEW_USERNAME || "appreview").toLowerCase(),
+    username,
     appUrl: (env.REVIEW_BASE_URL || "https://skatehubba.com").replace(/\/$/, ""),
     missing,
   };
@@ -105,6 +140,7 @@ export function buildSeedDocs({
   tutorialVersion = 2,
   tipsDisabled = false,
   videoUrl,
+  includeEmulatorOnly = true,
 }) {
   const day = 24 * 60 * 60 * 1000;
   const at = (offsetDays) => new Date(now.getTime() + offsetDays * day);
@@ -122,13 +158,17 @@ export function buildSeedDocs({
     wins: 14,
     losses: 6,
     gamesPlayed: 20,
-    currentWinStreak: 3,
+    currentWinStreak: 2,
     bestWinStreak: 5,
     tricksLanded: 61,
     tricksFailed: 23,
+    // 14 wins × 5 given + ~3 a loss; 6 losses × 5 taken + ~2 a win.
+    lettersGiven: 88,
+    lettersTaken: 58,
     xp: 2460,
     level: 11,
-    recentResults: ["W", "L", "W", "W", "W"],
+    // Oldest first. Ends L, L, W, W to match the four finished games below.
+    recentResults: ["W", "W", "L", "W", "W", "W", "L", "L", "W", "W"],
   });
   put(`usernames/${username}`, { uid });
   put(`users/${uid}/private/profile`, {
@@ -140,7 +180,13 @@ export function buildSeedDocs({
     ...(tipsDisabled ? { tipsDisabled: true } : {}),
   });
   for (const o of DEMO_OPPONENTS) {
-    put(`users/${o.uid}`, { uid: o.uid, username: o.username, stance: o.stance, createdAt: at(-60) });
+    put(`users/${o.uid}`, {
+      uid: o.uid,
+      username: o.username,
+      stance: o.stance,
+      createdAt: at(-60),
+      ...(DEMO_OPPONENT_STATS[o.uid] ?? {}),
+    });
     put(`usernames/${o.username}`, { uid: o.uid });
   }
 
@@ -208,6 +254,15 @@ export function buildSeedDocs({
     p1Letters: 2,
     turnNumber: 11,
     updatedAt: at(-4),
+  });
+  // Kai won the earlier game, so head-to-head reads 1–1 over two games.
+  base("review-demo-lost-kai", a, {
+    status: "complete",
+    winner: a.uid,
+    p1Letters: 5,
+    p2Letters: 3,
+    turnNumber: 15,
+    updatedAt: at(-8),
   });
   base("review-demo-lost", e, {
     status: "complete",
@@ -306,5 +361,21 @@ export function buildSeedDocs({
   spot("review-demo-spot-4", "Stevens Creek Gap", 37.3237, -122.0322, ["gap"]);
   spot("review-demo-spot-5", "Infinite Loop Curbs", 37.3318, -122.0312, ["curb", "ledge"]);
   spot("review-demo-spot-6", "Wolfe Rd Bank", 37.3301, -122.0146, ["bank"]);
-  return docs;
+  return includeEmulatorOnly ? docs : docs.filter(([path]) => !isEmulatorOnlyPath(path, uid));
+}
+
+/**
+ * Docs only the emulator seed writes. Feed clips, map spots and passport
+ * stamps would be seen by every real user, so production leaves them out.
+ * Closet items are left out too, because the Closet is off in the store
+ * build and the review notes say so. The emulator keeps all of them for
+ * screenshots.
+ */
+export function isEmulatorOnlyPath(path, uid) {
+  return (
+    path.startsWith("clips/") ||
+    path.startsWith("spots/") ||
+    path.startsWith(`users/${uid}/passport/`) ||
+    path.startsWith(`users/${uid}/locker/`)
+  );
 }

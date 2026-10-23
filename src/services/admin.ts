@@ -94,6 +94,18 @@ export interface AdminReport {
    * The queue offers a hide action only when this is set.
    */
   disputeId: string | null;
+  /**
+   * The comment this report is about (under `clipId` or `spotId`), or `null`
+   * for a clip, game or dispute report.
+   */
+  commentId: string | null;
+  /** Spot a reported spot comment sits on, or `null`. */
+  spotId: string | null;
+  /**
+   * The comment as it read when reported. UNTRUSTED user text: plain text
+   * only. Empty when this isn't a comment report.
+   */
+  commentText: string;
   /** "pending" | "resolved" | "dismissed" in practice; read as a string. */
   status: string;
   /** Filing time, or `null` when the field is missing or not a Timestamp. */
@@ -379,6 +391,9 @@ function toAdminReport(snap: ParsableDoc): AdminReport | null {
     description: toStringOrEmpty(data.description),
     clipId: toStringOrNull(data.clipId),
     disputeId: toStringOrNull(data.disputeId),
+    commentId: toStringOrNull(data.commentId),
+    spotId: toStringOrNull(data.spotId),
+    commentText: toStringOrEmpty(data.commentText),
     status: toStringOrEmpty(data.status),
     createdAt: toDateOrNull(data.createdAt),
     // The resolution audit pair. Written by `resolveReport`; absent on every
@@ -457,6 +472,32 @@ export async function hideDispute(disputeId: string): Promise<void> {
   } catch (err) {
     logger.warn("dispute_hide_failed", { disputeId, error: parseFirebaseError(err) });
     throw new Error("Couldn't hide that dispute.");
+  }
+}
+
+/** Where a reported comment lives: under a clip or under a spot. */
+export interface CommentParent {
+  kind: "clips" | "spots";
+  id: string;
+}
+
+/**
+ * Take down one reported comment. firestore.rules lets an admin delete any
+ * clip or spot comment; this is the moderation takedown for user text.
+ */
+export async function deleteReportedComment(parent: CommentParent, commentId: string): Promise<void> {
+  requireId(parent.id, "parent id");
+  requireId(commentId, "comment id");
+  try {
+    await deleteDoc(doc(requireDb(), parent.kind, parent.id, "comments", commentId));
+    recordAdminAction("delete_comment", commentId, `${parent.kind}/${parent.id}`);
+  } catch (err) {
+    logger.warn("comment_delete_failed", {
+      parent: `${parent.kind}/${parent.id}`,
+      commentId,
+      error: parseFirebaseError(err),
+    });
+    throw new Error("Couldn't delete that comment.");
   }
 }
 

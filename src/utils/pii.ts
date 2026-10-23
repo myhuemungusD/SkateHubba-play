@@ -15,6 +15,10 @@ const EMAIL_KEY_RE = /^email$/i;
 // case-sensitive so we don't hash innocuous keys whose last three letters
 // happen to be "uid" — uuid, squid, druid, fluid, liquid.
 const UID_KEY_RE = /^uid$|Uid$/;
+// Usernames are public, direct identifiers. Matches `username` and camelCase
+// `*Username` (playerUsername, reportedUsername, ...). The privacy policy says
+// identifiers sent to vendors are hashed, so they get the same treatment.
+const USERNAME_KEY_RE = /^username$|Username$/;
 
 // Non-cryptographic 32-bit FNV-1a. Breadcrumbs need stable correlation
 // (same uid → same surrogate within one Sentry trace), not secrecy, so a
@@ -62,6 +66,13 @@ export function hashIdentity(uid: string): string {
   return `uid_${fnv1a64(uid)}`;
 }
 
+// Surrogates the call site already made: hashing them again would break
+// correlation with it. Each is kept only under its own kind of key, and
+// neither can be a real value there: Firebase uids have no "_", and
+// usernames (USERNAME_RE, [a-z0-9_]) have no "-".
+const HASHED_UID_RE = /^uid_[0-9a-f]{8}(?:[0-9a-f]{8})?$/;
+const HASHED_USERNAME_RE = /^name-[0-9a-f]{8}$/;
+
 export function redactPII(data: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
   if (!data) return data;
   const out: Record<string, unknown> = {};
@@ -69,7 +80,9 @@ export function redactPII(data: Record<string, unknown> | undefined): Record<str
     if (typeof value === "string" && EMAIL_KEY_RE.test(key)) {
       out[key] = EMAIL_PLACEHOLDER;
     } else if (typeof value === "string" && UID_KEY_RE.test(key)) {
-      out[key] = hashUid(value);
+      out[key] = HASHED_UID_RE.test(value) ? value : hashUid(value);
+    } else if (typeof value === "string" && USERNAME_KEY_RE.test(key)) {
+      out[key] = !value || HASHED_USERNAME_RE.test(value) ? value : `name-${fnv1a(value)}`;
     } else {
       out[key] = value;
     }

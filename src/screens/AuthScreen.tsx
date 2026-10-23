@@ -11,6 +11,7 @@ import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { DobConsentFields } from "../components/DobConsentFields";
 import { AppleButton } from "../components/AppleButton";
 import { GoogleButton } from "../components/GoogleButton";
+import { TermsAgreementNotice } from "../components/legal/TermsAgreementNotice";
 import { CoppaBlockedCard } from "../components/CoppaBlockedCard";
 import { MfaVerifyCard } from "../components/MfaVerifyCard";
 import type { MfaChallenge } from "../services/mfa";
@@ -150,7 +151,7 @@ export function AuthScreen({
     let verifiedDob: string | undefined;
     let verifiedConsent = false;
     if (showDob) {
-      const gate = checkInlineDob(month, day, year, parentConsent);
+      const gate = checkInlineDob(month, day, year, parentConsent, "email_signup");
       if (gate.kind === "error") {
         setError(gate.message);
         return;
@@ -255,13 +256,14 @@ export function AuthScreen({
     return (
       <CoppaBlockedCard
         onBack={() => {
-          // Clear the failing DOB so the form doesn't re-block immediately on
-          // next submit (it held the values that triggered the block).
+          // Leave the form: the block is sticky for 24h (checkInlineDob), so
+          // staying here to type another date would only block again.
           setMonth("");
           setDay("");
           setYear("");
           setParentConsent(false);
           setAgeBlocked(false);
+          onBack?.();
         }}
       />
     );
@@ -288,7 +290,7 @@ export function AuthScreen({
         <p className="font-body text-sm text-muted mb-5 sm:mb-7">
           {isSignup
             ? showDob
-              ? "Join the crew. It's free. We collect your DOB to comply with COPPA & CCPA."
+              ? "Join the crew. It's free. We ask for your birthday to keep SkateHubba 13+."
               : "Join the crew. It's free."
             : "Sign in to continue your games."}
         </p>
@@ -296,6 +298,7 @@ export function AuthScreen({
         <div className="flex flex-col gap-3">
           {appleOn ? <AppleButton onClick={onApple} loading={appleLoading} disabled={googleLoading} /> : null}
           <GoogleButton onClick={onGoogle} loading={googleLoading} disabled={appleOn && appleLoading} />
+          <TermsAgreementNotice onNav={onNavLegal} />
         </div>
 
         <div className="flex items-center gap-3 my-5">

@@ -162,6 +162,18 @@ describe("pending challenge", () => {
 });
 
 describe("live match", () => {
+  it("keeps the dice on the dock, in the bottom thumb zone", () => {
+    show(diceGame({ lastRoll: diceRoll({ rollId: "r1" }) }));
+    const tray = screen.getByTestId("dice-tray");
+    expect(tray).toHaveClass("sticky", "bottom-0", "mt-auto");
+    const spot = within(tray).getByTestId("dice-spot");
+    const dock = within(tray).getByTestId("dice-actions");
+    expect(dock).toHaveClass("action-dock", "action-dock-inline");
+    expect(spot.compareDocumentPosition(dock) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(tray.lastElementChild).toBe(dock);
+    expect(within(tray).getByTestId("dice-need")).toBeInTheDocument();
+  });
+
   it("rolls, shows the server's roll before the snapshot, and announces it", async () => {
     show(diceGame({ lastRoll: diceRoll({ rollId: "r1" }) }));
     expect(screen.getByTestId("dice-need")).toHaveTextContent("Throw until");

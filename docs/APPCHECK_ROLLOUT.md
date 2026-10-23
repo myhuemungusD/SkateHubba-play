@@ -9,6 +9,14 @@ below, Phase 1 (token-only) is in effect and **Phase 2 (enforcement) has not
 started**. The final checklist was not maintained during the Phase 1 flip, so
 re-verify the Phase 0/1 items (allowlist, metrics) before starting Phase 2.
 
+**Re-confirmed 2026-10-22:** the live skatehubba.com bundle inlines
+`VITE_APPCHECK_ENABLED=true` and a reCAPTCHA v3 site key, and runs
+`initializeAppCheck()` with `ReCaptchaV3Provider`, so web App Check is on in
+production. Store builds set `VITE_APPCHECK_ENABLED: "true"` as a literal
+(#829). Enforcement mode (monitor vs enforced, per API) is a Firebase
+Console setting and is not visible from the repo: read it in Console → App
+Check → APIs rather than trusting the 2026-10-08 note.
+
 This document is the execution plan for getting to enforcement without
 repeating the Apr 22 lockout.
 
@@ -16,6 +24,79 @@ repeating the Apr 22 lockout.
 > (reCAPTCHA v3 scores them as bots). That is expected in monitor mode and is
 > not, by itself, an abort signal. Judge Phase 1 health by real-user verified
 > request rates in the Console metrics.
+
+## Closet-only web App Check (lazy mode, 21 October 2026)
+
+Sitewide web App Check is **off** (`VITE_APPCHECK_ENABLED` not `"true"`) to
+save the per-page-load reCAPTCHA cost. The ten closet callables
+(`claimDrop`, `enterDraw`, `buyShopItem`, `awardEarn`, `proposeTrade`,
+`respondTrade`, `confirmTrade`, `equipItem`, `iapVerify`, `closetAdmin`)
+still have `enforceAppCheck: true` (`functions/src/index.ts`), so without a
+token every web closet call fails with `unauthenticated`.
+
+`VITE_APPCHECK_WEB_MODE` (default `lazy`) fixes that for the closet only:
+
+- **Nothing at app start.** No `firebase/app-check` chunk, no
+  `recaptcha/api.js`, on the landing page, lobby, map, dice or any other
+  non-closet route. `src/__tests__/smoke-appcheck-lazy.test.tsx` guards it.
+- **First closet action** (`src/services/closet.callable.ts` →
+  `ensureClosetAppCheck()` in `src/services/closetAppCheck.ts`) loads the
+  reCAPTCHA v3 script with its own error and 15 s timeout path, then calls
+  `initializeAppCheck()` once with the same `ReCaptchaV3Provider` and
+  `VITE_RECAPTCHA_SITE_KEY` as the sitewide path, with
+  `isTokenAutoRefreshEnabled: false`.
+- **Every closet call** passes `limitedUseAppCheckTokens: true` to
+  `httpsCallable`, so the SDK calls `getLimitedUseToken()`: one reCAPTCHA
+  check and one exchange per action, and nothing refreshing in the background.
+- **Failure is never silent.** A blocked or slow script, an App Check SDK
+  error (`appCheck/*`, including the 24 h throttle after a 403) or the
+  server's App Check rejection shows the toast "Couldn't verify this device"
+  with a **Retry** button (`src/components/DeviceCheckRetryToast.tsx`). Retry
+  re-runs the same call (and reloads the script if it failed). Dismissing it
+  rejects the call with "Couldn't verify this device. Try again.", which the
+  closet screen shows as its error.
+
+The server needs no change: `enforceAppCheck: true` accepts limited-use
+tokens. **Follow-up (needs a functions deploy by Nccode, not in this PR):**
+add `consumeAppCheckToken: true` to `closetCallable` for replay protection on
+mints and spends. Do it only after the native bridge sends limited-use tokens
+too, or native calls that reuse a cached token will be rejected.
+
+Cost bound. After the first closet action in a tab, App Check is registered on
+the Firebase app, so Firestore and Auth also attach a (normal, 1 h) token when
+they next need one: at most about one extra exchange per hour per tab that
+used the closet. Pages and visitors that never touch the closet cost nothing.
+
+| `VITE_APPCHECK_ENABLED` | `VITE_APPCHECK_WEB_MODE` | Web behaviour                                                  |
+| ----------------------- | ------------------------ | -------------------------------------------------------------- |
+| `"true"`                | (ignored)                | Sitewide, unchanged: starts on first tap/key, auto-refresh on. |
+| unset / anything else   | unset or `lazy`          | Closet-only, limited-use tokens (this section).                |
+| unset / anything else   | `off`                    | Never on web. Closet calls are rejected by the server.         |
+
+Native (Capacitor) builds never take the lazy path; they use the sitewide
+switch and the native plugin (see [Native apps](#native-apps-ios--android)).
+
+### reCAPTCHA key domain allowlist for lazy mode
+
+Lazy mode uses the same v3 key, so the allowlist rules in
+[0.2](#02-domain-allowlist--this-is-the-apr-22-failure-mode) and
+[0.3](#03-vercel-preview-deployments--decide-explicitly) apply:
+
+- `skatehubba.com` and `www.skatehubba.com` must be on the key's domain list
+  (https://www.google.com/recaptcha/admin → the key → Settings → Domains).
+- **Vercel previews:** do not add `vercel.app` (it would let any Vercel site
+  use the key). Per-deployment `*.vercel.app` previews will load reCAPTCHA on
+  a closet action and then get the retry toast, because the key rejects the
+  host. To exercise closet calls on previews, give previews a stable domain
+  (e.g. `preview.skatehubba.com`) and add exactly that host.
+- The **Web app** must be registered under Firebase Console → App Check →
+  Apps with the **reCAPTCHA v3** provider and this site key, or every exchange
+  returns 403 and the browser is throttled for about a day.
+
+Headless browsers score as bots and get a 403 from the exchange (see the note
+above), so automated checks can confirm _when_ reCAPTCHA loads, not that a
+closet call succeeds. Confirm a real claim, buy or equip from a normal
+browser on skatehubba.com after the deploy.
 
 ## 10 October 2026 audit — what to check by hand
 
@@ -116,10 +197,11 @@ Console metrics make the rollout safe without it.)
 
 ## Env vars (exact names — from `src/lib/env.ts:30–46`)
 
-| Var                       | Value                 | Where                                                                     |
-| ------------------------- | --------------------- | ------------------------------------------------------------------------- |
-| `VITE_APPCHECK_ENABLED`   | `true`                | Vercel → Production scope. Anything other than the literal `true` is off. |
-| `VITE_RECAPTCHA_SITE_KEY` | reCAPTCHA v3 site key | Vercel → Production scope. Empty string is treated as unset.              |
+| Var                       | Value                    | Where                                                                                                                                       |
+| ------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_APPCHECK_ENABLED`   | `true`                   | Vercel → Production scope. Anything other than the literal `true` is off.                                                                   |
+| `VITE_RECAPTCHA_SITE_KEY` | reCAPTCHA v3 site key    | Vercel → Production scope. Empty string is treated as unset.                                                                                |
+| `VITE_APPCHECK_WEB_MODE`  | `lazy` (default) / `off` | Web only, used while `VITE_APPCHECK_ENABLED` is off. See [Closet-only web App Check](#closet-only-web-app-check-lazy-mode-21-october-2026). |
 
 Both are also read by `.github/workflows/android-aab.yml:77–78` from **GitHub
 Actions secrets of the same names** — a separate switch from Vercel. See
@@ -323,12 +405,13 @@ minutes, the Console toggle takes seconds.
 
 ## Kill switches
 
-| Switch                                          | Latency | Scope                    | Use when                                        |
-| ----------------------------------------------- | ------- | ------------------------ | ----------------------------------------------- |
-| Console → App Check → APIs → **Unenforced**     | seconds | server, all clients      | **Always first** during a lockout.              |
-| Vercel **Instant Rollback** to pre-flip deploy  | seconds | web clients on next load | Client is minting bad tokens / noisy Sentry.    |
-| `VITE_APPCHECK_ENABLED=false` + redeploy        | minutes | web clients              | Durable follow-up so the next deploy stays off. |
-| GitHub secret `VITE_APPCHECK_ENABLED` + new AAB | days    | native                   | Not a kill switch. See below.                   |
+| Switch                                         | Latency | Scope                    | Use when                                               |
+| ---------------------------------------------- | ------- | ------------------------ | ------------------------------------------------------ |
+| Console → App Check → APIs → **Unenforced**    | seconds | server, all clients      | **Always first** during a lockout.                     |
+| Vercel **Instant Rollback** to pre-flip deploy | seconds | web clients on next load | Client is minting bad tokens / noisy Sentry.           |
+| `VITE_APPCHECK_ENABLED=false` + redeploy       | minutes | web clients              | Durable follow-up so the next deploy stays off.        |
+| `VITE_APPCHECK_WEB_MODE=off` + redeploy        | minutes | web closet calls         | Stop closet-only reCAPTCHA on web (closet then fails). |
+| New AAB/IPA (flag is hardcoded `"true"`)       | days    | native                   | Not a kill switch. See below.                          |
 
 ---
 
@@ -339,9 +422,14 @@ minutes, the Console toggle takes seconds.
 
 Three things that will bite:
 
-1. **The flag is baked into the shipped binary.** `android-aab.yml:73–74` reads
-   `VITE_APPCHECK_ENABLED` / `VITE_RECAPTCHA_SITE_KEY` from **GitHub Actions
-   secrets**, at build time. A build already in the field cannot be flipped.
+1. **The flag is baked into the shipped binary.** Store builds
+   (`android-aab.yml`, `ios-release.yml`, Xcode Cloud `ci_post_clone.sh`) set
+   `VITE_APPCHECK_ENABLED` to the literal `"true"` (Play Integrity and
+   DeviceCheck are free; only web reCAPTCHA costs money, and that stays on the
+   Vercel switch). The Closet callables enforce App Check, so a store build
+   without it cannot use Closet. Guarded by
+   `src/__tests__/release-workflows-appcheck.test.ts`. A build already in the
+   field cannot be flipped.
 2. **Therefore Phase 2 enforcement locks out any installed native build that
    does not already mint tokens** — and the only remedy is Console rollback,
    because you cannot ship an app-store update in minutes.
@@ -351,11 +439,10 @@ Three things that will bite:
 
 **Decision required before Phase 2:**
 
-- If **no native build is in users' hands** — proceed web-only. Set the GitHub
-  secret `VITE_APPCHECK_ENABLED=true` before the _first_ store release so it
-  ships token-enabled from day one.
+- If **no native build is in users' hands** — proceed web-only. Store builds
+  already ship token-enabled from day one (hardcoded, see 1).
 - If **a native build is live** — do a full Phase 0/1 for native first: ship an
-  AAB/IPA built with the secret set, wait for adoption of that version (Play
+  AAB/IPA built with the flag on, wait for adoption of that version (Play
   Console → Statistics → by app version) to clear ~95 %, confirm
   `appcheck_native_initialized` appears in Sentry and `appcheck_native_init_failed`
   does not, and only then enforce. Users on older versions will be locked out

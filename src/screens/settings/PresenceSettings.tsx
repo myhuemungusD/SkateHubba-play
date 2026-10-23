@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { isSpotPresenceEnabled } from "../../lib/featureFlags";
 import { getHideOnline, setHideOnline } from "../../services/onlineStatus";
-import { getAutoRejoin, setAutoRejoin } from "../../services/spotPresence";
+import { getAutoRejoin, hideFromSpot, setAutoRejoin } from "../../services/spotPresence";
 import { PrefRow, SectionHeader } from "./SettingsPrimitives";
 
 /** Privacy switches for the online dot and the spot day pass. */
@@ -15,11 +15,12 @@ export function PresenceSettings({ uid }: { uid: string }) {
       <div className="space-y-2">
         <PrefRow
           title="Hide my online status"
-          description="Others won't see when you're online. Nobody ever sees your exact location, only the spot you're checked in at."
+          description="Others won't see when you're online or which spot you're at, and you can't take spot challenges while hidden. Nobody ever sees your exact location."
           checked={hidden}
           onChange={(v) => {
             setHidden(v);
             void setHideOnline(uid, v).catch(() => undefined);
+            if (v) void hideFromSpot().catch(() => undefined);
           }}
         />
         <PrefRow

@@ -35,6 +35,13 @@ const config: CapacitorConfig = {
   webDir: "dist",
   server: {
     androidScheme: "https",
+    // No effect on iOS: WKWebView already handles https, so Capacitor's
+    // CAPInstanceDescriptor.normalize() rejects it and falls back to the
+    // default scheme. Shipped iOS builds serve from capacitor://localhost and
+    // Android from https://localhost; both are in the API CORS allowlist
+    // (api/account/delete.ts PRODUCTION_ORIGINS). Value left as-is for 1.2.0:
+    // removing it is a no-op for the origin but should go through a device
+    // smoke rather than a store-readiness PR.
     iosScheme: "https",
     ...(devServerUrl ? { url: devServerUrl, cleartext: true } : {}),
   },
@@ -53,6 +60,24 @@ const config: CapacitorConfig = {
     // src/lib/toolbarOverlay.ts). It is 0 in this shell, so it does not stack
     // on contentInset. See docs/mobile-phone-layout.md.
     contentInset: "never",
+  },
+  experimental: {
+    ios: {
+      spm: {
+        // Package traits need Swift tools 6.1 in the generated CapApp-SPM.
+        swiftToolsVersion: "6.1",
+        // @capacitor-firebase/authentication links the Facebook SDK by
+        // default (its SPM traits default to Google + Facebook, whatever
+        // `providers` says below). The Facebook SDK's privacy manifest
+        // declares tracking (NSPrivacyTracking, ep1.facebook.com, Device ID
+        // and User ID used for tracking), which contradicts our App Store
+        // privacy labels and would need an ATT prompt. Google only: Google
+        // sign-in uses the Google trait; Apple sign-in needs no trait.
+        packageTraits: {
+          "@capacitor-firebase/authentication": ["Google"],
+        },
+      },
+    },
   },
   plugins: {
     FirebaseAuthentication: {

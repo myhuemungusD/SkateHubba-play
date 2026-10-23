@@ -1,36 +1,25 @@
-SkateHubba is S.K.A.T.E. on your phone — the classic trick-matching game, played turn by turn against real skaters wherever they are. No need to be at the same spot or online at the same time.
+SkateHubba is a game of S.K.A.T.E. played over video. You and another skater take turns from wherever you skate. You don't need to be at the same spot or online at the same time.
 
 HOW IT WORKS
-• Challenge another skater to a game of S.K.A.T.E.
+• Call out any skater by their handle.
 • Set a trick: film it in the app and send it.
-• Your opponent has to match it on camera — or they take a letter.
-• First to spell S.K.A.T.E. loses. Simple as that.
+• They film their attempt. If they miss, they take a letter.
+• Land their trick and the set is yours.
+• Spell S.K.A.T.E. and the game's over.
 
-FILM EVERYTHING
-Game turns are one take, filmed right in the app, so the clip is the proof. The pro camera gives you a cleaner look, and the clip editor lets you trim and polish clips you post to the feed.
+ONE TAKE
+Game turns are filmed in the app in one continuous take. You can't upload from your camera roll and you can't edit. The clip is the proof.
 
-PLAY ON YOUR CLOCK
-Pick 24 hours, 3 days or 7 days per turn when you start a game. Get a push notification when it's your move, tap it, and you're back in.
+ON YOUR CLOCK
+Pick 24 hours, 3 days or 7 days a turn when you start a game. You get a notification when it's your move.
 
-DISPUTES, SETTLED
-Think a match attempt was sketchy? Add an optional referee when you start a game, or let the community vote on a disputed landing.
+CALLING IT
+Think a make didn't count? Send it to a community vote, or add an optional referee when you start a game.
 
-HIT THE SPOTS
-Browse the spot map, add your own spots and check in when you're actually there. Every check-in stamps your spot passport, legendary spots earn rare badges, and you can see who's skating a spot right now. Each spot has its own group chat.
+YOUR RECORD
+Wins, losses, streaks, and letters given and taken live on your profile. Open the profile of anyone you've played to see your head-to-head and your games against them.
 
-LEVEL UP
-Earn XP for finished games and spot check-ins, and climb 50 levels. Wins, losses and letters follow your profile.
+SPOT PASSPORT
+Find spots on the map and check in when you're actually there. Every check-in stamps your spot passport. Keep it public or keep it to yourself.
 
-YOUR CLOSET
-Earn skate gear as you play, dress your avatar, design your own pieces in Closet Studio.
-
-MAKE YOUR PROFILE YOURS
-Colors, banner, layout, pinned clips, a closet showcase, bio and links.
-
-CLIPS FEED
-Landed tricks roll into one feed. Upvote the best ones, and report anything that crosses the line.
-
-VERIFIED PROS
-Verified pro skaters have their own profiles, showcase clips and challenges.
-
-Grab your board, pick a fight (the friendly kind), and spell it out.
+Go skate. Film it. Spell it out.

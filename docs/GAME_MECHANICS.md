@@ -14,7 +14,7 @@ This app brings that format to mobile, async. You set your trick whenever you wa
 
 - 3–20 characters, lowercase letters, numbers, and underscores only (`[a-z0-9_]+`)
 - Normalized to lowercase at the service boundary (input is case-insensitive)
-- Reserved for the life of the account — a username cannot be changed once chosen. The reservation in `usernames/{username}` is released only when the account itself is deleted (see the cascade in `src/services/users.ts` and `api/account/_deleteUserData.ts`)
+- Reserved for the life of the account — a username cannot be changed once chosen. The reservation in `usernames/{username}` is released only when the account itself is deleted (see the server cascade in `api/account/_deleteUserData.ts`)
 
 **Stance:** Regular (left foot forward) or Goofy (right foot forward). Stored for display only; has no effect on game logic.
 
@@ -164,7 +164,7 @@ Games frozen in `pendingReview` or `communityReview` are **never** forfeited for
 - Format: `video/webm` on web (via MediaRecorder API) or `video/mp4` on native (via Capacitor).
 - Storage path: `games/{gameId}/turn-{turnNumber}/{role}-{uploaderUid}.{ext}` where `role` is `"set"` (setter's trick) or `"match"` (matcher's attempt) and `{ext}` is `webm` (web) or `mp4` (native). **The uploader's UID is part of the filename** and `storage.rules` matches it by exact string equality, so no account can occupy another player's upload path. The object also carries `uploaderUid` metadata, and `update` is denied outright — an upload slot is write-once.
 - Size limits: 1 KB minimum (prevents empty uploads), 50 MB maximum per video.
-- Videos are not kept forever. Every upload is stamped with a `retainUntil` metadata hint 90 days out (`src/services/storage.ts`) and a Storage lifecycle rule purges objects past that window. Videos attached to non-active games are also deleted eagerly by the account-deletion cascade (`deleteGameVideos`).
+- Videos are not kept forever. Every upload is stamped with a `retainUntil` metadata hint 90 days out (`src/services/storage.ts`) and a Storage lifecycle rule purges objects past that window. Videos attached to non-active games are also deleted eagerly by the server account-deletion cascade (`api/account/_deleteUserData.ts`).
 
 ---
 

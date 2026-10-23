@@ -5,11 +5,9 @@ const {
   mockGetDoc,
   mockGetDocs,
   mockSetDoc,
-  mockDeleteDoc,
   mockUpdateDoc,
   mockIncrement,
   mockRunTransaction,
-  mockWriteBatch,
   mockDoc,
   mockCollection,
   mockQuery,
@@ -18,19 +16,13 @@ const {
   mockOrderBy,
   mockLimit,
 } = vi.hoisted(() => {
-  const batchInstance = { delete: vi.fn(), commit: vi.fn().mockResolvedValue(undefined) };
   return {
     mockGetDoc: vi.fn(),
     mockGetDocs: vi.fn(),
     mockSetDoc: vi.fn(),
-    // Default to a resolved promise so the Phase 3b pushTargets `.catch()` and
-    // the game-doc deletes have a thenable to chain. Individual tests still
-    // override with mockRejectedValueOnce to exercise failure paths.
-    mockDeleteDoc: vi.fn().mockResolvedValue(undefined),
     mockUpdateDoc: vi.fn().mockResolvedValue(undefined),
     mockIncrement: vi.fn((n: number) => ({ _op: "increment", operand: n })),
     mockRunTransaction: vi.fn(),
-    mockWriteBatch: vi.fn(() => batchInstance),
     mockDoc: vi.fn((_db: unknown, ...pathSegments: string[]) => pathSegments.join("/")),
     mockCollection: vi.fn((_db: unknown, name: string) => name),
     mockQuery: vi.fn((...args: unknown[]) => args),
@@ -44,7 +36,6 @@ const {
 vi.mock("firebase/firestore", () => ({
   collection: mockCollection,
   doc: mockDoc,
-  deleteDoc: mockDeleteDoc,
   getDoc: mockGetDoc,
   getDocs: mockGetDocs,
   updateDoc: mockUpdateDoc,
@@ -55,7 +46,6 @@ vi.mock("firebase/firestore", () => ({
   limit: mockLimit,
   setDoc: mockSetDoc,
   runTransaction: mockRunTransaction,
-  writeBatch: mockWriteBatch,
   serverTimestamp: () => mockServerTimestamp(),
 }));
 
@@ -80,57 +70,6 @@ vi.mock("../../firebase", () => ({
   requireStorage: () => ({}),
 }));
 
-/* ── mock the avatar service (deleteUserData delegates to deleteAvatar) ─ */
-const mockDeleteAvatar = vi.fn().mockResolvedValue({ removed: true });
-vi.mock("../avatars", () => ({
-  deleteAvatar: (...args: unknown[]) => mockDeleteAvatar(...args),
-}));
-
-const mockDeleteBannerObject = vi.fn().mockResolvedValue(true);
-vi.mock("../banners", () => ({
-  deleteBannerObject: (...args: unknown[]) => mockDeleteBannerObject(...args),
-}));
-
-const mockDeleteAllDesignObjects = vi.fn().mockResolvedValue(undefined);
-vi.mock("../closetStudio", () => ({
-  deleteAllDesignObjects: (...args: unknown[]) => mockDeleteAllDesignObjects(...args),
-}));
-
-const mockDeleteGameVideos = vi.fn().mockResolvedValue(0);
-vi.mock("../storage", () => ({
-  deleteGameVideos: (...args: unknown[]) => mockDeleteGameVideos(...args),
-}));
-
-const mockDeleteUserClips = vi.fn().mockResolvedValue(undefined);
-const mockDeleteUserClipVotes = vi.fn().mockResolvedValue(undefined);
-vi.mock("../clips", () => ({
-  deleteUserClips: (...args: unknown[]) => mockDeleteUserClips(...args),
-  deleteUserClipVotes: (...args: unknown[]) => mockDeleteUserClipVotes(...args),
-}));
-
-const mockDeleteUserDisputes = vi.fn().mockResolvedValue(undefined);
-const mockDeleteUserDisputeVotes = vi.fn().mockResolvedValue(undefined);
-vi.mock("../disputes", () => ({
-  deleteUserDisputes: (...args: unknown[]) => mockDeleteUserDisputes(...args),
-  deleteUserDisputeVotes: (...args: unknown[]) => mockDeleteUserDisputeVotes(...args),
-}));
-
-/* ── mock notifications + pushDispatch (deleteUserData Phase 3b scrub) ─ */
-const mockDeleteUserNotifications = vi.fn().mockResolvedValue(undefined);
-vi.mock("../notifications", () => ({
-  deleteUserNotifications: (...args: unknown[]) => mockDeleteUserNotifications(...args),
-}));
-vi.mock("../pushDispatch", () => ({
-  PUSH_TARGETS_COLLECTION: "pushTargets",
-}));
-
-const mockAccountDeleted = vi.fn();
-vi.mock("../analytics", () => ({
-  analytics: {
-    accountDeleted: (...args: unknown[]) => mockAccountDeleted(...args),
-  },
-}));
-
 const mockLoggerWarn = vi.fn();
 vi.mock("../logger", () => ({
   logger: {
@@ -144,7 +83,6 @@ import {
   isUsernameAvailable,
   createProfile,
   getUidByUsername,
-  deleteUserData,
   getLeaderboard,
   getPlayerDirectory,
   setProfileImageUrl,
@@ -154,7 +92,6 @@ import {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // Map Phase 1 adds passport, check-in and privateSpots sweeps after the older ones.
   mockGetDocs.mockResolvedValue({ docs: [] });
 });
 
@@ -354,7 +291,9 @@ describe("users service", () => {
     const VALID_DOB = "2000-01-15";
 
     it("rejects a blocked username", async () => {
-      await expect(createProfile("u1", "hitler_fan", "regular", false, VALID_DOB)).rejects.toThrow(/isn't allowed/);
+      await expect(createProfile("u1", "hitler_fan", "regular", false, VALID_DOB, undefined, true)).rejects.toThrow(
+        /isn't allowed/,
+      );
     });
 
     // Helper: run the create-profile transaction and capture the two
@@ -388,7 +327,7 @@ describe("users service", () => {
     it("runs a transaction that reserves the username and creates public + private docs", async () => {
       stubTransaction();
 
-      const result = await createProfile("u1", "SK8R", "regular", false, VALID_DOB);
+      const result = await createProfile("u1", "SK8R", "regular", false, VALID_DOB, undefined, true);
       expect(result).toMatchObject({
         uid: "u1",
         username: "sk8r",
@@ -407,7 +346,7 @@ describe("users service", () => {
     it("writes public doc without sensitive fields and private doc with dob only", async () => {
       const captured = stubTransaction();
 
-      await createProfile("u1", "sk8r", "regular", true, VALID_DOB);
+      await createProfile("u1", "sk8r", "regular", true, VALID_DOB, undefined, true);
 
       expect(captured.capturedPublic).toMatchObject({
         uid: "u1",
@@ -437,14 +376,14 @@ describe("users service", () => {
       // Firestore — the private-profile mirror was silent tech debt and has
       // been removed. The positional parameter is preserved for caller
       // compat until the UX PR drops the argument.
-      await createProfile("u1", "sk8r", "regular", true, VALID_DOB);
+      await createProfile("u1", "sk8r", "regular", true, VALID_DOB, undefined, true);
       expect(captured.capturedPrivate).not.toHaveProperty("emailVerified");
     });
 
     it("includes parentalConsent on the private doc when provided", async () => {
       const captured = stubTransaction();
 
-      const result = await createProfile("u1", "sk8r", "regular", true, "2005-06-15", true);
+      const result = await createProfile("u1", "sk8r", "regular", true, "2005-06-15", true, true);
       expect(result).toMatchObject({
         uid: "u1",
         username: "sk8r",
@@ -460,10 +399,29 @@ describe("users service", () => {
     it("omits parentalConsent (but keeps dob) on the private doc when not provided", async () => {
       const captured = stubTransaction();
 
-      await createProfile("u1", "sk8r", "regular", false, VALID_DOB);
+      await createProfile("u1", "sk8r", "regular", false, VALID_DOB, undefined, true);
       expect(captured.capturedPrivate).toHaveProperty("dob", VALID_DOB);
       expect(captured.capturedPrivate).not.toHaveProperty("parentalConsent");
       expect(captured.capturedPrivate).not.toHaveProperty("emailVerified");
+    });
+
+    it("stamps termsAcceptedAt with the server time on the private doc", async () => {
+      const captured = stubTransaction();
+
+      await createProfile("u1", "sk8r", "regular", false, VALID_DOB, undefined, true);
+      expect(captured.capturedPrivate).toHaveProperty("termsAcceptedAt");
+      // Never on the public doc.
+      expect(captured.capturedPublic).not.toHaveProperty("termsAcceptedAt");
+    });
+
+    it("throws TermsAcceptanceRequiredError and writes nothing when terms were not accepted", async () => {
+      await expect(createProfile("u1", "sk8r", "regular", false, VALID_DOB)).rejects.toMatchObject({
+        name: "TermsAcceptanceRequiredError",
+      });
+      await expect(createProfile("u1", "sk8r", "regular", false, VALID_DOB, undefined, false)).rejects.toMatchObject({
+        name: "TermsAcceptanceRequiredError",
+      });
+      expect(mockRunTransaction).not.toHaveBeenCalled();
     });
 
     it("throws AgeVerificationRequiredError when dob is missing (COPPA)", async () => {
@@ -482,17 +440,19 @@ describe("users service", () => {
     });
 
     it("throws when username is too short", async () => {
-      await expect(createProfile("u1", "ab", "regular", false, VALID_DOB)).rejects.toThrow("Username must be");
+      await expect(createProfile("u1", "ab", "regular", false, VALID_DOB, undefined, true)).rejects.toThrow(
+        "Username must be",
+      );
     });
 
     it("throws when username is too long", async () => {
-      await expect(createProfile("u1", "a".repeat(21), "regular", false, VALID_DOB)).rejects.toThrow(
+      await expect(createProfile("u1", "a".repeat(21), "regular", false, VALID_DOB, undefined, true)).rejects.toThrow(
         "Username must be",
       );
     });
 
     it("throws when username has invalid characters", async () => {
-      await expect(createProfile("u1", "sk8r!", "regular", false, VALID_DOB)).rejects.toThrow(
+      await expect(createProfile("u1", "sk8r!", "regular", false, VALID_DOB, undefined, true)).rejects.toThrow(
         "Username may only contain lowercase letters, numbers, and underscores",
       );
     });
@@ -506,342 +466,8 @@ describe("users service", () => {
         return fn(tx);
       });
 
-      await expect(createProfile("u1", "sk8r", "regular", false, VALID_DOB)).rejects.toThrow(
+      await expect(createProfile("u1", "sk8r", "regular", false, VALID_DOB, undefined, true)).rejects.toThrow(
         "Username is already taken",
-      );
-    });
-  });
-
-  describe("deleteUserData", () => {
-    /**
-     * deleteUserData calls getDocs five times per invocation:
-     *   1. games where player1Uid == uid
-     *   2. games where player2Uid == uid
-     *   3. users/{uid}/achievements subcollection
-     *   4. users/{uid}/locker subcollection
-     *   5. users/{uid}/xpMarkers subcollection
-     *   6. users/{uid}/closetDesigns subcollection
-     * Tests that don't care about the owned-item subcollections stub them out
-     * as empty. Order matters: Promise.all invokes them in argument order.
-     */
-    function stubEmptyOwnedItems(): void {
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // achievements
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // locker
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // xpMarkers
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // closetDesigns
-    }
-
-    /** Stub the two game queries and both owned-item subcollections as empty. */
-    function stubEmptyCascade(): void {
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // games p1
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // games p2
-      stubEmptyOwnedItems();
-    }
-
-    it("deletes videos and game docs then profile and username via batch", async () => {
-      const gameDoc1 = { id: "g1", data: () => ({ status: "complete" }) };
-      const gameDoc2 = { id: "g2", data: () => ({ status: "forfeit" }) };
-      mockGetDocs
-        .mockResolvedValueOnce({ docs: [gameDoc1] }) // player1Uid query
-        .mockResolvedValueOnce({ docs: [gameDoc2] }); // player2Uid query
-      stubEmptyOwnedItems();
-      mockDeleteDoc.mockResolvedValue(undefined);
-
-      await deleteUserData("u1", "sk8r");
-
-      // Videos deleted for each non-active game
-      expect(mockDeleteGameVideos).toHaveBeenCalledWith("g1");
-      expect(mockDeleteGameVideos).toHaveBeenCalledWith("g2");
-      // Game docs deleted individually (mockDoc joins path segments with "/")
-      expect(mockDeleteDoc).toHaveBeenCalledWith("games/g1");
-      expect(mockDeleteDoc).toHaveBeenCalledWith("games/g2");
-      // Phase 3b: the cross-readable FCM-token mirror is wiped before the
-      // identity batch so erasure leaves no orphaned device→uid map.
-      expect(mockDeleteDoc).toHaveBeenCalledWith("pushTargets/u1");
-      // 2 game docs + the pushTargets mirror = 3 standalone deleteDoc calls.
-      expect(mockDeleteDoc).toHaveBeenCalledTimes(3);
-      // Clips cascade invoked before the profile/username batch so the
-      // owner-delete rule still has a valid auth context to match playerUid.
-      expect(mockDeleteUserClips).toHaveBeenCalledWith("u1");
-      // Votes the user cast are scrubbed in the same phase (GDPR erasure) —
-      // also before the auth/profile teardown so the owner-delete rule matches.
-      expect(mockDeleteUserClipVotes).toHaveBeenCalledWith("u1");
-      // Community disputes get the same pair of scrubs in the same phase:
-      // the disputes this user raised and the verdicts they cast on others.
-      expect(mockDeleteUserDisputes).toHaveBeenCalledWith("u1");
-      expect(mockDeleteUserDisputeVotes).toHaveBeenCalledWith("u1");
-      // Profile + private profile doc + username deleted via batch.
-      // Eight deletes (profile, private, profileCustom, username, mapState, passportSettings, onlineStatus, skaterActivity). Since the public/private split, the private
-      // users/{uid}/private/profile doc holds the sensitive fields
-      // (dob, fcmTokens, parentalConsent) and must be scrubbed as
-      // part of the account-deletion cascade.
-      const batch = mockWriteBatch();
-      expect(batch.delete).toHaveBeenCalledTimes(8);
-      expect(batch.delete).toHaveBeenCalledWith("skaterActivity/u1");
-      expect(batch.delete).toHaveBeenCalledWith("onlineStatus/u1");
-      expect(batch.delete).toHaveBeenCalledWith("users/u1/profileCustom/main");
-      expect(batch.commit).toHaveBeenCalled();
-    });
-
-    it("skips active games during deletion", async () => {
-      const activeGame = { id: "g1", data: () => ({ status: "active" }) };
-      const completeGame = { id: "g2", data: () => ({ status: "complete" }) };
-      mockGetDocs.mockResolvedValueOnce({ docs: [activeGame, completeGame] }).mockResolvedValueOnce({ docs: [] });
-      stubEmptyOwnedItems();
-      mockDeleteDoc.mockResolvedValue(undefined);
-
-      await deleteUserData("u1", "sk8r");
-
-      // Only the complete game is deleted, not the active one. 1 game doc +
-      // the pushTargets mirror = 2 standalone deleteDoc calls.
-      expect(mockDeleteDoc).toHaveBeenCalledWith("games/g2");
-      expect(mockDeleteDoc).not.toHaveBeenCalledWith("games/g1");
-      expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
-      expect(mockDeleteGameVideos).toHaveBeenCalledWith("g2");
-      expect(mockDeleteGameVideos).not.toHaveBeenCalledWith("g1");
-    });
-
-    it("deduplicates game docs appearing in both queries", async () => {
-      const gameDoc = { id: "g1", data: () => ({ status: "complete" }) };
-      mockGetDocs.mockResolvedValueOnce({ docs: [gameDoc] }).mockResolvedValueOnce({ docs: [gameDoc] }); // same game in both
-      stubEmptyOwnedItems();
-      mockDeleteDoc.mockResolvedValue(undefined);
-
-      await deleteUserData("u1", "sk8r");
-
-      // Only one game deleteDoc despite the game appearing in both queries;
-      // plus the pushTargets mirror delete = 2 standalone deleteDoc calls.
-      expect(mockDeleteDoc).toHaveBeenCalledWith("games/g1");
-      expect(mockDeleteDoc).toHaveBeenCalledWith("pushTargets/u1");
-      expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
-      expect(mockDeleteGameVideos).toHaveBeenCalledTimes(1);
-    });
-
-    it("re-throws batch commit errors", async () => {
-      // Phase 1 succeeds (games + achievements + locker)
-      stubEmptyCascade();
-
-      // Phase 4 fails
-      const batch = mockWriteBatch();
-      batch.commit.mockRejectedValueOnce(new Error("Batch commit failed"));
-      await expect(deleteUserData("u1", "sk8r")).rejects.toThrow("Batch commit failed");
-    });
-
-    it("deletes the banner object and survives a banner delete failure", async () => {
-      stubEmptyCascade();
-      await deleteUserData("u1", "sk8r");
-      expect(mockDeleteBannerObject).toHaveBeenCalledWith("u1");
-
-      stubEmptyCascade();
-      mockDeleteBannerObject.mockRejectedValueOnce(new Error("storage down"));
-      await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
-      expect(mockLoggerWarn).toHaveBeenCalledWith(
-        "banner_delete_failed",
-        expect.objectContaining({ uid: "u1", error: "storage down" }),
-      );
-
-      stubEmptyCascade();
-      mockDeleteBannerObject.mockRejectedValueOnce("odd");
-      await deleteUserData("u1", "sk8r");
-      expect(mockLoggerWarn).toHaveBeenCalledWith("banner_delete_failed", expect.objectContaining({ error: "odd" }));
-    });
-
-    it("scrubs the pushTargets mirror and received notifications in Phase 3b", async () => {
-      stubEmptyCascade();
-
-      await deleteUserData("u1", "sk8r");
-
-      // FCM-token mirror (cross-readable device→uid map) wiped — GDPR erasure.
-      expect(mockDeleteDoc).toHaveBeenCalledWith("pushTargets/u1");
-      // Received notifications scrubbed by the cascade itself, not the
-      // NotificationContext React effect.
-      expect(mockDeleteUserNotifications).toHaveBeenCalledWith("u1");
-    });
-
-    it("logs and continues when the pushTargets mirror delete fails", async () => {
-      stubEmptyCascade();
-      // Only the pushTargets delete rejects (game deletes use the default
-      // resolved mock; there are no games here anyway).
-      mockDeleteDoc.mockRejectedValueOnce(new Error("mirror delete denied"));
-
-      await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
-
-      expect(mockLoggerWarn).toHaveBeenCalledWith(
-        "push_targets_delete_failed",
-        expect.objectContaining({ uid: "u1", error: "mirror delete denied" }),
-      );
-      // Cascade still completed the identity batch.
-      const batch = mockWriteBatch();
-      expect(batch.commit).toHaveBeenCalled();
-    });
-
-    it("stringifies non-Error pushTargets delete rejections before logging", async () => {
-      stubEmptyCascade();
-      mockDeleteDoc.mockRejectedValueOnce("mirror-string-error");
-
-      await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
-
-      expect(mockLoggerWarn).toHaveBeenCalledWith(
-        "push_targets_delete_failed",
-        expect.objectContaining({ error: "mirror-string-error" }),
-      );
-    });
-
-    it("logs and continues when deleteUserNotifications fails", async () => {
-      stubEmptyCascade();
-      mockDeleteUserNotifications.mockRejectedValueOnce(new Error("notif scrub denied"));
-
-      await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
-
-      expect(mockLoggerWarn).toHaveBeenCalledWith(
-        "user_notifications_delete_failed",
-        expect.objectContaining({ uid: "u1", error: "notif scrub denied" }),
-      );
-      const batch = mockWriteBatch();
-      expect(batch.commit).toHaveBeenCalled();
-    });
-
-    it("stringifies non-Error notification scrub rejections before logging", async () => {
-      stubEmptyCascade();
-      mockDeleteUserNotifications.mockRejectedValueOnce("notif-string-error");
-
-      await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
-
-      expect(mockLoggerWarn).toHaveBeenCalledWith(
-        "user_notifications_delete_failed",
-        expect.objectContaining({ error: "notif-string-error" }),
-      );
-    });
-
-    it("folds the achievements subcollection into the profile/username batch", async () => {
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }).mockResolvedValueOnce({ docs: [] });
-      const achievementRefs = [{ fullPath: "users/u1/achievements/a1" }, { fullPath: "users/u1/achievements/a2" }];
-      mockGetDocs.mockResolvedValueOnce({
-        docs: achievementRefs.map((ref) => ({ ref })),
-      });
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // locker
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // xpMarkers
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // closetDesigns
-      mockDeleteDoc.mockResolvedValue(undefined);
-
-      await deleteUserData("u1", "sk8r");
-
-      // 2 achievements + private profile + public profile + username = 5 deletes.
-      const batch = mockWriteBatch();
-      expect(batch.delete).toHaveBeenCalledTimes(10);
-      expect(batch.delete).toHaveBeenCalledWith(achievementRefs[0]);
-      expect(batch.delete).toHaveBeenCalledWith(achievementRefs[1]);
-      expect(batch.commit).toHaveBeenCalled();
-    });
-
-    /**
-     * Economy Phase A regression: `users/{uid}/locker` holds server-minted gear
-     * and, like achievements, is NOT removed by deleting the parent user doc —
-     * Firestore never cascades into subcollections. Before this sweep existed,
-     * deleting an account orphaned every locker item under a users/{uid} doc
-     * that no longer existed, leaving personal data behind after erasure.
-     */
-    it("folds the locker subcollection into the profile/username batch", async () => {
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }).mockResolvedValueOnce({ docs: [] });
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // achievements
-      const lockerRefs = [{ fullPath: "users/u1/locker/deck-1" }, { fullPath: "users/u1/locker/wheels-2" }];
-      mockGetDocs.mockResolvedValueOnce({ docs: lockerRefs.map((ref) => ({ ref })) });
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // xpMarkers
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // closetDesigns
-      mockDeleteDoc.mockResolvedValue(undefined);
-
-      await deleteUserData("u1", "sk8r");
-
-      expect(mockCollection).toHaveBeenCalledWith(expect.anything(), "users", "u1", "locker");
-      // 2 locker items + private profile + public profile + username = 5 deletes.
-      const batch = mockWriteBatch();
-      expect(batch.delete).toHaveBeenCalledTimes(10);
-      expect(batch.delete).toHaveBeenCalledWith(lockerRefs[0]);
-      expect(batch.delete).toHaveBeenCalledWith(lockerRefs[1]);
-      expect(batch.commit).toHaveBeenCalled();
-    });
-
-    it("wipes achievements and locker in the same single commit", async () => {
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }).mockResolvedValueOnce({ docs: [] });
-      const achievementRef = { fullPath: "users/u1/achievements/century" };
-      const lockerRef = { fullPath: "users/u1/locker/deck-1" };
-      mockGetDocs.mockResolvedValueOnce({ docs: [{ ref: achievementRef }] });
-      mockGetDocs.mockResolvedValueOnce({ docs: [{ ref: lockerRef }] });
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // xpMarkers
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // closetDesigns
-
-      await deleteUserData("u1", "sk8r");
-
-      const batch = mockWriteBatch();
-      // 1 achievement + 1 locker item + private + public + username = 5.
-      expect(batch.delete).toHaveBeenCalledTimes(10);
-      expect(batch.delete).toHaveBeenCalledWith(achievementRef);
-      expect(batch.delete).toHaveBeenCalledWith(lockerRef);
-      // One commit — a partial failure must not leave half the identity surface.
-      expect(batch.commit).toHaveBeenCalledTimes(1);
-    });
-
-    it("delegates avatar cleanup to deleteAvatar(uid)", async () => {
-      stubEmptyCascade();
-      mockDeleteAvatar.mockResolvedValueOnce({ removed: true });
-
-      await deleteUserData("u1", "sk8r");
-
-      expect(mockDeleteAvatar).toHaveBeenCalledWith("u1");
-    });
-
-    it("emits account_deleted telemetry with avatarRemoved=true when deleteAvatar removed at least one variant", async () => {
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }).mockResolvedValueOnce({ docs: [] });
-      const achievementRefs = [{ fullPath: "users/u1/achievements/a1" }];
-      mockGetDocs.mockResolvedValueOnce({ docs: achievementRefs.map((ref) => ({ ref })) });
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // locker
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // xpMarkers
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // closetDesigns
-      mockDeleteAvatar.mockResolvedValueOnce({ removed: true });
-
-      await deleteUserData("u1", "sk8r");
-
-      expect(mockAccountDeleted).toHaveBeenCalledWith("u1", 1, true);
-    });
-
-    it("reports avatarRemoved=false in telemetry when deleteAvatar found nothing to remove", async () => {
-      stubEmptyCascade();
-      mockDeleteAvatar.mockResolvedValueOnce({ removed: false });
-
-      await deleteUserData("u1", "sk8r");
-
-      expect(mockAccountDeleted).toHaveBeenCalledWith("u1", 0, false);
-    });
-
-    it("deletes Closet Studio pictures and logs when that fails", async () => {
-      stubEmptyCascade();
-      mockDeleteAllDesignObjects.mockRejectedValueOnce(new Error("boom"));
-      await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
-      expect(mockDeleteAllDesignObjects).toHaveBeenCalledWith("u1");
-      expect(mockLoggerWarn).toHaveBeenCalledWith("closet_designs_delete_failed", { uid: "u1", error: "boom" });
-      stubEmptyCascade();
-      mockDeleteAllDesignObjects.mockRejectedValueOnce("nope");
-      await deleteUserData("u1", "sk8r");
-      expect(mockLoggerWarn).toHaveBeenCalledWith("closet_designs_delete_failed", { uid: "u1", error: "nope" });
-    });
-
-    it("logs and continues when deleteAvatar itself throws", async () => {
-      stubEmptyCascade();
-      mockDeleteAvatar.mockRejectedValueOnce(new Error("storage boot failure"));
-
-      await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
-      expect(mockLoggerWarn).toHaveBeenCalledWith("avatar_delete_failed", expect.objectContaining({ uid: "u1" }));
-      expect(mockAccountDeleted).toHaveBeenCalledWith("u1", 0, false);
-    });
-
-    it("stringifies non-Error rejections from deleteAvatar before logging", async () => {
-      stubEmptyCascade();
-      mockDeleteAvatar.mockRejectedValueOnce("string-error");
-
-      await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
-      expect(mockLoggerWarn).toHaveBeenCalledWith(
-        "avatar_delete_failed",
-        expect.objectContaining({ error: "string-error" }),
       );
     });
   });
@@ -867,6 +493,20 @@ describe("users service", () => {
       mockGetDocs.mockResolvedValueOnce({ docs: [] });
       const result = await getPlayerDirectory();
       expect(result).toEqual([]);
+    });
+
+    it("skips test accounts but keeps docs with the flag absent or false", async () => {
+      const profiles = [
+        { uid: "u1", username: "real", stance: "regular" },
+        { uid: "u2", username: "qa_tester_1", stance: "goofy", isTestAccount: true },
+        { uid: "u3", username: "flag_off", stance: "goofy", isTestAccount: false },
+      ];
+      mockGetDocs.mockResolvedValueOnce({ docs: profiles.map((p) => ({ data: () => p })) });
+
+      const result = await getPlayerDirectory();
+      expect(result.map((p) => p.username)).toEqual(["real", "flag_off"]);
+      // No server-side filter: a where() on the flag would drop every doc without it.
+      expect(mockWhere).not.toHaveBeenCalledWith("isTestAccount", expect.anything(), expect.anything());
     });
   });
 
@@ -974,6 +614,18 @@ describe("users service", () => {
       const result = await getLeaderboard();
 
       expect(result.map((p) => p.username)).toEqual(["ripper", "grinder"]);
+    });
+
+    it("leaves test accounts off the leaderboard", async () => {
+      const profiles = [
+        { uid: "u1", username: "qa_tester_2", wins: 9, losses: 0, isTestAccount: true, stance: "regular" },
+        { uid: "u2", username: "real", wins: 5, losses: 0, stance: "goofy" },
+      ];
+      mockGetDocs.mockResolvedValueOnce({ docs: profiles.map((p) => ({ data: () => p })) });
+
+      const result = await getLeaderboard();
+
+      expect(result.map((p) => p.username)).toEqual(["real"]);
     });
 
     it("defaults missing wins/losses to 0 and sorts alphabetically as tiebreaker", async () => {

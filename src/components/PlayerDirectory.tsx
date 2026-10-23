@@ -76,7 +76,7 @@ export function PlayerDirectory({
     <div className="mb-6">
       <div className="flex items-center gap-2 mb-3">
         <h3 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">SKATERS</h3>
-        <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[10px] text-brand-orange leading-none tabular-nums">
+        <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[11px] text-brand-orange leading-none tabular-nums">
           {players.length}
         </span>
       </div>

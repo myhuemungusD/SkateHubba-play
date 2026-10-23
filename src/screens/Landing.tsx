@@ -3,6 +3,7 @@ import { AppleButton } from "../components/AppleButton";
 import { GoogleButton } from "../components/GoogleButton";
 import { InviteButton } from "../components/InviteButton";
 import { LandingDemoVideo } from "../components/LandingDemoVideo";
+import { TermsAgreementNotice } from "../components/legal/TermsAgreementNotice";
 import { SkateButton } from "../components/SkateButton";
 import { isAppleSignInEnabled } from "../lib/featureFlags";
 import { FEATURES, HOW_IT_WORKS } from "./landingContent";
@@ -135,7 +136,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
 
           {/* Subtitle */}
           <p className="landing-sub font-body text-fluid-lg text-dim max-w-md leading-relaxed mb-10">
-            The first async S.K.A.T.E. game. No edits. No excuses.
+            S.K.A.T.E. over video. One take. No edits.
           </p>
 
           {/* Auth Buttons — Google is the primary path; email options sit
@@ -169,6 +170,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
                 Create account
               </button>
             </div>
+            <TermsAgreementNotice onNav={onNav} />
           </div>
         </div>
 
@@ -275,10 +277,10 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
                 </div>
                 <div className="flex gap-2 w-full">
                   <div className="flex-1 h-8 rounded-lg bg-gradient-to-r from-brand-orange to-[#FF8533] flex items-center justify-center">
-                    <span className="font-display text-[10px] text-white tracking-wider">LANDED</span>
+                    <span className="font-display text-[11px] text-white tracking-wider">LANDED</span>
                   </div>
                   <div className="flex-1 h-8 rounded-lg bg-[#161616] border border-white/[0.06] flex items-center justify-center">
-                    <span className="font-display text-[10px] text-faint tracking-wider">MISSED</span>
+                    <span className="font-display text-[11px] text-faint tracking-wider">MISSED</span>
                   </div>
                 </div>
               </div>
@@ -303,7 +305,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
             <ul className="space-y-3 text-left">
               {[
                 "One continuous take per trick",
-                "24 hours to respond",
+                "24 hours to 7 days per turn",
                 "S-K-A-T-E elimination",
                 "Play from anywhere",
               ].map((item) => (

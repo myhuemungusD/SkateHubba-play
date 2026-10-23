@@ -10,11 +10,9 @@ import {
   mockGetDocs,
   mockOnSnapshot,
   mockGetDoc,
-  mockDeleteDoc,
   captureTxOnce,
   mockRunTransaction,
   FakeTimestamp,
-  type ObservedTx,
 } from "./firestoreDoc.test-helpers";
 
 import {
@@ -23,8 +21,6 @@ import {
   OwnDisputeError,
   canRaiseDispute,
   castDisputeVerdict,
-  deleteUserDisputeVotes,
-  deleteUserDisputes,
   fetchDisputeViewerState,
   fetchOpenDisputes,
   fetchResolvedDispute,
@@ -844,165 +840,5 @@ describe("fetchDisputeViewerState", () => {
     );
     expect(map.get("g1_3")).toEqual({ ownVerdict: null, canVote: true });
     expect(map.get("g2_1")).toEqual({ ownVerdict: null, canVote: false });
-  });
-});
-
-/* ── deleteUserDisputes (account-deletion cascade) ───────────── */
-
-describe("deleteUserDisputes", () => {
-  it("queries disputes the user raised and deletes each one", async () => {
-    mockGetDocs.mockResolvedValueOnce({ docs: [{ id: "g1_3" }, { id: "g7_4" }] });
-
-    await deleteUserDisputes("setter");
-
-    expect(mockWhere).toHaveBeenCalledWith("setterUid", "==", "setter");
-    expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
-    const deletedIds = mockDeleteDoc.mock.calls.map(([ref]) => (ref as { id: string }).id);
-    expect(deletedIds).toEqual(["g1_3", "g7_4"]);
-  });
-
-  it("is a no-op when the user raised none", async () => {
-    mockGetDocs.mockResolvedValueOnce({ docs: [] });
-    await deleteUserDisputes("stranger");
-    expect(mockDeleteDoc).not.toHaveBeenCalled();
-  });
-
-  it("swallows the query error so account deletion continues", async () => {
-    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-    mockGetDocs.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
-
-    await expect(deleteUserDisputes("setter")).resolves.toBeUndefined();
-    expect(warn).toHaveBeenCalledWith("disputes_delete_query_failed", expect.objectContaining({ uid: "setter" }));
-    expect(mockDeleteDoc).not.toHaveBeenCalled();
-  });
-
-  it("tolerates per-doc delete failures and logs the partial cascade", async () => {
-    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-    mockGetDocs.mockResolvedValueOnce({ docs: [{ id: "ok" }, { id: "fails" }] });
-    mockDeleteDoc.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("transient"));
-
-    await expect(deleteUserDisputes("setter")).resolves.toBeUndefined();
-    expect(warn).toHaveBeenCalledWith("disputes_delete_partial", { uid: "setter", total: 2, failed: 1 });
-  });
-});
-
-/* ── deleteUserDisputeVotes (account-deletion cascade) ───────── */
-
-describe("deleteUserDisputeVotes", () => {
-  function voteDocSnap(id: string, data: Record<string, unknown>) {
-    return { id, data: () => data };
-  }
-
-  /** Runs every queued transaction against a shared stub. */
-  function runTxWith(disputeReads: Array<{ exists: boolean; data?: Record<string, unknown> }>): ObservedTx[] {
-    const observed: ObservedTx[] = [];
-    let call = 0;
-    mockRunTransaction.mockImplementation(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
-      const read = disputeReads[call++];
-      const tx: ObservedTx = {
-        get: vi.fn().mockResolvedValue({ exists: () => read.exists, data: () => read.data }),
-        set: vi.fn(),
-        update: vi.fn(),
-        delete: vi.fn(),
-      };
-      observed.push(tx);
-      await cb(tx);
-    });
-    return observed;
-  }
-
-  it("deletes each vote and decrements the counter its verdict incremented", async () => {
-    mockGetDocs.mockResolvedValueOnce({
-      docs: [
-        voteDocSnap("viewer_g1_3", { disputeId: "g1_3", verdict: "land" }),
-        voteDocSnap("viewer_g2_1", { disputeId: "g2_1", verdict: "bail" }),
-      ],
-    });
-    const txs = runTxWith([
-      { exists: true, data: { landVotes: 5, bailVotes: 1 } },
-      { exists: true, data: { landVotes: 0, bailVotes: 3 } },
-    ]);
-
-    await deleteUserDisputeVotes("viewer");
-
-    expect(mockWhere).toHaveBeenCalledWith("uid", "==", "viewer");
-    expect(txs[0].delete).toHaveBeenCalledTimes(1);
-    expect(txs[0].update).toHaveBeenCalledWith(expect.objectContaining({ __path: "disputes/g1_3" }), {
-      landVotes: 4,
-    });
-    expect(txs[1].update).toHaveBeenCalledWith(expect.objectContaining({ __path: "disputes/g2_1" }), {
-      bailVotes: 2,
-    });
-  });
-
-  it("deletes the vote without a decrement when the dispute is already gone", async () => {
-    mockGetDocs.mockResolvedValueOnce({ docs: [voteDocSnap("viewer_g1_3", { disputeId: "g1_3", verdict: "land" })] });
-    const txs = runTxWith([{ exists: false }]);
-
-    await deleteUserDisputeVotes("viewer");
-
-    expect(txs[0].delete).toHaveBeenCalledTimes(1);
-    expect(txs[0].update).not.toHaveBeenCalled();
-  });
-
-  it("skips the decrement when the aggregate is already at (or below) its floor", async () => {
-    // Writing 0 would be an empty diff the rule rejects, and -1 breaks its
-    // `>= 0` floor — either rejection would fail the tx and orphan the vote.
-    mockGetDocs.mockResolvedValueOnce({ docs: [voteDocSnap("viewer_g1_3", { disputeId: "g1_3", verdict: "land" })] });
-    const txs = runTxWith([{ exists: true, data: { landVotes: 0 } }]);
-
-    await deleteUserDisputeVotes("viewer");
-
-    expect(txs[0].delete).toHaveBeenCalledTimes(1);
-    expect(txs[0].update).not.toHaveBeenCalled();
-  });
-
-  it("still deletes a vote whose disputeId or verdict is unusable (no target to adjust)", async () => {
-    mockGetDocs.mockResolvedValueOnce({
-      docs: [
-        voteDocSnap("viewer_a", { disputeId: "", verdict: "land" }),
-        voteDocSnap("viewer_b", { disputeId: "g1_3", verdict: "sideways" }),
-      ],
-    });
-    const txs = runTxWith([{ exists: true }, { exists: true }]);
-
-    await deleteUserDisputeVotes("viewer");
-
-    for (const tx of txs) {
-      expect(tx.delete).toHaveBeenCalledTimes(1);
-      expect(tx.get).not.toHaveBeenCalled();
-      expect(tx.update).not.toHaveBeenCalled();
-    }
-  });
-
-  it("is a no-op when the user cast no verdicts", async () => {
-    mockGetDocs.mockResolvedValueOnce({ docs: [] });
-    await deleteUserDisputeVotes("stranger");
-    expect(mockRunTransaction).not.toHaveBeenCalled();
-  });
-
-  it("swallows the query error so account deletion continues", async () => {
-    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-    mockGetDocs.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
-
-    await expect(deleteUserDisputeVotes("viewer")).resolves.toBeUndefined();
-    expect(warn).toHaveBeenCalledWith("dispute_votes_delete_query_failed", expect.objectContaining({ uid: "viewer" }));
-    expect(mockRunTransaction).not.toHaveBeenCalled();
-  });
-
-  it("tolerates per-vote transaction failures and logs the partial cascade", async () => {
-    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-    mockGetDocs.mockResolvedValueOnce({
-      docs: [
-        voteDocSnap("viewer_ok", { disputeId: "ok", verdict: "land" }),
-        voteDocSnap("viewer_fails", { disputeId: "fails", verdict: "land" }),
-      ],
-    });
-    mockRunTransaction
-      .mockResolvedValueOnce(undefined)
-      .mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
-
-    await expect(deleteUserDisputeVotes("viewer")).resolves.toBeUndefined();
-    expect(warn).toHaveBeenCalledWith("dispute_votes_delete_partial", { uid: "viewer", total: 2, failed: 1 });
   });
 });

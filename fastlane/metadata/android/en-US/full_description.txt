@@ -1,24 +1,25 @@
-SkateHubba is real-time multiplayer S.K.A.T.E. — the classic trick-matching game, played against real skaters wherever they are.
+SkateHubba is a game of S.K.A.T.E. played over video. You and another skater take turns from wherever you skate. You don't need to be at the same spot or online at the same time.
 
 <b>How it works</b>
-• Challenge another skater to a game of S.K.A.T.E.
+• Call out any skater by their handle.
 • Set a trick: film it in the app and send it.
-• Your opponent has to match it on camera — or they take a letter.
-• First to spell S.K.A.T.E. loses. Simple as that.
+• They film their attempt. If they miss, they take a letter.
+• Land their trick and the set is yours.
+• Spell S.K.A.T.E. and the game's over.
 
-<b>Film everything</b>
-Record your set and match attempts right in the app. Clips are the proof — no arguing about whether the trick was landed.
+<b>One take</b>
+Game turns are filmed in the app in one continuous take. You can't upload from your camera roll and you can't edit. The clip is the proof.
 
-<b>Disputes, settled</b>
-Think a match attempt was sketchy? Flag it and let a judge make the call.
+<b>On your clock</b>
+Pick 24 hours, 3 days or 7 days a turn when you start a game.
 
-<b>Find spots</b>
-Browse the spot map, check out where people are skating, and add your own spots.
+<b>Calling it</b>
+Think a make didn't count? Send it to a community vote, or add an optional referee when you start a game.
 
-<b>Track your record</b>
-Wins, losses, letters taken and given — your stats follow your profile.
+<b>Your record</b>
+Wins, losses, streaks, and letters given and taken live on your profile. Open the profile of anyone you've played to see your head-to-head and your games against them.
 
-<b>Stay in the game</b>
-Turn-based means no waiting around: get a push notification when it's your move, tap it, and you're back in the game.
+<b>Spot passport</b>
+Find spots on the map and check in when you're actually there. Every check-in stamps your spot passport. Keep it public or keep it to yourself.
 
-Grab your board, pick a fight (the friendly kind), and spell it out.
+Go skate. Film it. Spell it out.

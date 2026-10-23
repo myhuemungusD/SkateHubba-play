@@ -1,10 +1,14 @@
 /**
- * "Hesher" the chill skate buddy. Pure inline SVG so there are no asset
- * dependencies and the mascot scales with rem-based className sizing. Each
- * `state` prop maps to a Tailwind animation class.
+ * "Hesher" the chill skate buddy: the illustrated guide who hosts the
+ * onboarding tips. Rendered as a round portrait with the brand-orange ring.
  *
- * All decorative subnodes are aria-hidden — the outer <svg> carries the
- * single role="img" + aria-label so screen readers announce one element.
+ * Assets live in public/assets/hesher/ as WebP (primary) with a PNG fallback,
+ * at 48 / 96 / 144px for 1x / 2x / 3x of the 48px (w-12) bubble slot. All six
+ * files together are ~28 KB, so the portrait never holds up the tip.
+ *
+ * Each `state` prop maps to a Tailwind animation class. The outer element
+ * carries the size className and animation; the label lives on the <img>
+ * alt so screen readers announce a single element.
  */
 
 export type HesherState = "idle" | "talking" | "cheer";
@@ -12,9 +16,17 @@ export type HesherState = "idle" | "talking" | "cheer";
 interface HesherMascotProps {
   state?: HesherState;
   className?: string;
-  /** Render purely decoratively (no aria-label) when paired with adjacent live text. */
+  /** Render purely decoratively (no accessible name) when paired with adjacent live text. */
   decorative?: boolean;
 }
+
+export const HESHER_LABEL = "Hesher the skate buddy";
+
+// Versioned name: the service worker treats /assets/ as immutable
+// (cache-first), so new art must ship under a new filename.
+const BASE = "/assets/hesher/hesher-v1";
+const WEBP_SRCSET = `${BASE}-48.webp 1x, ${BASE}-96.webp 2x, ${BASE}-144.webp 3x`;
+const PNG_SRCSET = `${BASE}-48.png 1x, ${BASE}-96.png 2x, ${BASE}-144.png 3x`;
 
 function stateAnimationClass(state: HesherState): string {
   switch (state) {
@@ -29,77 +41,35 @@ function stateAnimationClass(state: HesherState): string {
 
 export function HesherMascot({ state = "idle", className, decorative = false }: HesherMascotProps) {
   const animation = stateAnimationClass(state);
-  const a11y = decorative
-    ? ({ "aria-hidden": true } as const)
-    : ({ role: "img", "aria-label": "Hesher the skate buddy" } as const);
 
   return (
-    <svg
-      viewBox="0 0 120 120"
-      xmlns="http://www.w3.org/2000/svg"
-      className={`${className ?? ""} ${animation}`.trim()}
+    <span
+      className={`relative inline-block rounded-full ${className ?? ""} ${animation}`.trim()}
       data-testid="hesher-mascot"
       data-state={state}
-      {...a11y}
+      aria-hidden={decorative ? true : undefined}
     >
       {/* glow ring used by cheer state */}
       {state === "cheer" && (
-        <circle
-          cx="60"
-          cy="58"
-          r="44"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          className="text-brand-orange motion-safe:animate-glow-pulse"
-          opacity="0.4"
+        <span
           aria-hidden="true"
+          data-testid="hesher-glow"
+          className="absolute -inset-1 rounded-full ring-2 ring-brand-orange opacity-40 motion-safe:animate-glow-pulse"
         />
       )}
-
-      {/* skateboard peeking behind the head */}
-      <g aria-hidden="true">
-        <rect x="14" y="92" width="92" height="6" rx="3" fill="#1a1a1a" />
-        <rect x="14" y="92" width="92" height="2" rx="1" fill="#ff6b00" opacity="0.7" />
-        <circle cx="26" cy="102" r="4" fill="#2a2a2a" />
-        <circle cx="94" cy="102" r="4" fill="#2a2a2a" />
-      </g>
-
-      {/* head */}
-      <g aria-hidden="true">
-        <circle cx="60" cy="58" r="34" fill="#ffd6a8" stroke="#ff6b00" strokeWidth="2" />
-
-        {/* snapback cap */}
-        <path d="M28 46 Q60 22 92 46 L92 52 L28 52 Z" fill="#ff6b00" />
-        <rect x="28" y="50" width="64" height="4" fill="#1a1a1a" />
-        <path d="M92 52 L106 56 L92 58 Z" fill="#1a1a1a" opacity="0.7" />
-
-        {/* eyes */}
-        <circle cx="50" cy="62" r="3" fill="#1a1a1a" />
-        <circle cx="70" cy="62" r="3" fill="#1a1a1a" />
-
-        {/* mouth — varies per state */}
-        {state === "talking" && (
-          <path d="M52 76 Q60 80 68 76" stroke="#1a1a1a" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-        )}
-        {state === "idle" && (
-          <path d="M52 76 Q60 78 68 76" stroke="#1a1a1a" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-        )}
-        {state === "cheer" && (
-          <path
-            d="M50 74 Q60 86 70 74"
-            stroke="#1a1a1a"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            fill="#ff3d00"
-            opacity="0.85"
-          />
-        )}
-
-        {/* cheek tint for warmth */}
-        <circle cx="44" cy="70" r="3" fill="#ff6b00" opacity="0.25" />
-        <circle cx="76" cy="70" r="3" fill="#ff6b00" opacity="0.25" />
-      </g>
-    </svg>
+      <picture>
+        <source type="image/webp" srcSet={WEBP_SRCSET} />
+        <img
+          src={`${BASE}-48.png`}
+          srcSet={PNG_SRCSET}
+          width={48}
+          height={48}
+          alt={decorative ? "" : HESHER_LABEL}
+          draggable={false}
+          decoding="async"
+          className="block w-full h-full rounded-full object-cover bg-[#1a1a1a] ring-2 ring-brand-orange select-none"
+        />
+      </picture>
+    </span>
   );
 }

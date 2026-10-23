@@ -46,14 +46,15 @@
  *     deletes nothing.
  */
 
-import { timingSafeEqual } from "node:crypto";
 import { cert, getApps, initializeApp, type App, type ServiceAccount } from "firebase-admin/app";
 import { getFirestore, FieldValue, type Firestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
-import { parseServiceAccountJson } from "./_serviceAccount.js";
+import { matchesCronSecret } from "./_cronAuth.js";
+import { describeInitFailure, parseServiceAccountJson } from "./_serviceAccount.js";
 import { diceEligibleTokens, isDicePush } from "./_pushPlatforms.js";
 import { webpushOptions } from "./_pushWebpush.js";
 import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
+import { safeErrorCode } from "../_safeError.js";
 
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
 const FIRESTORE_DB_NAME = "skatehubba";
@@ -152,25 +153,13 @@ function getAdminApp(): App {
 }
 
 /**
- * Constant-time bearer check against CRON_SECRET.
- *
- * Fail-closed: returns false when CRON_SECRET is unset, the header is missing,
- * or it is empty. The token comparison uses `crypto.timingSafeEqual` so a
- * network attacker cannot recover the secret byte-by-byte via response timing.
- * timingSafeEqual throws on unequal-length buffers, so we length-guard first —
- * the length check itself is not constant-time, but only leaks the secret's
- * length, not its bytes.
+ * Constant-time bearer check against CRON_SECRET, fail-closed. The comparison
+ * lives in ./_cronAuth.ts (shared by every cron); this only picks the header
+ * value off the Node request.
  */
 function isAuthorized(req: CronRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
   const header = req.headers["authorization"] ?? req.headers["Authorization"];
-  const value = Array.isArray(header) ? header[0] : header;
-  if (!value) return false;
-  const expected = Buffer.from(`Bearer ${secret}`);
-  const actual = Buffer.from(value);
-  if (actual.length !== expected.length) return false;
-  return timingSafeEqual(actual, expected);
+  return matchesCronSecret(Array.isArray(header) ? header[0] : header);
 }
 
 function isDryRun(req: CronRequest): boolean {
@@ -287,7 +276,7 @@ async function pruneDeadTokens(db: Firestore, recipientUid: string, dead: string
       JSON.stringify({
         event: "drain_prune_failed",
         recipientUid,
-        message: err instanceof Error ? err.message : String(err),
+        code: safeErrorCode(err),
       }),
     );
     captureServerError("drain_prune_failed", err, { recipientUid }, { level: "warning" });
@@ -330,9 +319,12 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
     db = getFirestore(app, FIRESTORE_DB_NAME);
   } catch (err) {
     // Misconfiguration (missing/malformed service account) — surface as 500.
+    // Never err.message, in the log or the body: a JSON.parse failure on
+    // FIREBASE_SERVICE_ACCOUNT_JSON quotes part of the secret.
+    console.warn(JSON.stringify({ event: "init_failed", ...describeInitFailure(err) }));
     captureServerError("drain_init_failed", err, {}, { redactMessage: true });
     await flushServerErrors();
-    res.status(500).json({ error: "init_failed", message: err instanceof Error ? err.message : String(err) });
+    res.status(500).json({ error: "init_failed", message: "Server misconfiguration." });
     return;
   }
 
@@ -405,7 +397,7 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
           JSON.stringify({
             event: "drain_dispatch_failed",
             dispatchId: docSnap.id,
-            message: err instanceof Error ? err.message : String(err),
+            code: safeErrorCode(err),
           }),
         );
         captureServerError("drain_dispatch_failed", err, { dispatchId: docSnap.id }, { level: "warning" });
@@ -417,7 +409,7 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
   } catch (err) {
     // Query-level failure (index missing, permission, etc). Never throw to the
     // platform — return what we have plus the error so the cron logs surface it.
-    console.warn(JSON.stringify({ event: "drain_failed", message: err instanceof Error ? err.message : String(err) }));
+    console.warn(JSON.stringify({ event: "drain_failed", code: safeErrorCode(err) }));
     captureServerError("drain_failed", err);
     await flushServerErrors();
     res.status(500).json({ ...summary, error: "drain_failed" });

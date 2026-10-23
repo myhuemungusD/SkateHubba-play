@@ -125,7 +125,11 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
   const trimmedTrickName = trickName.trim();
   const revealRecorderNow = isSetter && trimmedTrickName !== "";
   if (revealRecorderNow && !recorderRevealed) setRecorderRevealed(true);
-  const showRecorder = !isSetter || recorderRevealed || revealRecorderNow;
+  // With the picker, the setter's camera is live on entry so the shot can be
+  // framed first; Record waits for a trick instead (recordBlocked).
+  const trickPickerEnabled = isTrickPickerEnabled();
+  const showRecorder = !isSetter || trickPickerEnabled || recorderRevealed || revealRecorderNow;
+  const recordBlocked = isSetter && trickPickerEnabled && trimmedTrickName === "";
 
   const submittedRef = useRef(false);
   const uploadAbortRef = useRef<AbortController | null>(null);
@@ -295,7 +299,8 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
     profile,
     trickName,
     setTrickName,
-    trickPickerEnabled: isTrickPickerEnabled(),
+    trickPickerEnabled,
+    recordBlocked,
     trickSelection,
     setTrickSelection,
     trimmedTrickName,

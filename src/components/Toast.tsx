@@ -27,9 +27,24 @@ export function Toast({ notification, onDismiss }: { notification: AppNotificati
     }
   }, [dragX]);
 
+  const action = notification.action;
+  const actedRef = useRef(false);
+
+  // × or swipe. A prompt toast (Retry) tells its owner it was passed on.
   const dismiss = useCallback(() => {
+    if (action && !actedRef.current) {
+      actedRef.current = true;
+      action.onExpire?.();
+    }
     setExiting(true);
-  }, []);
+  }, [action]);
+
+  const runAction = useCallback(() => {
+    if (!action || actedRef.current) return;
+    actedRef.current = true;
+    action.onAction();
+    setExiting(true);
+  }, [action]);
 
   // Run onDismiss after exit animation completes
   useEffect(() => {
@@ -91,6 +106,16 @@ export function Toast({ notification, onDismiss }: { notification: AppNotificati
       <div className="min-w-0 flex-1">
         <p className="font-display text-sm tracking-wider text-white leading-tight">{notification.title}</p>
         <p className="font-body text-xs text-muted mt-0.5 leading-snug truncate">{notification.message}</p>
+        {action && (
+          <button
+            type="button"
+            onClick={runAction}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="touch-target mt-2 inline-flex items-center justify-center min-h-[44px] font-display text-[11px] tracking-wider text-brand-orange border border-brand-orange/40 rounded-xl px-3.5 py-1.5 hover:bg-brand-orange/[0.08] hover:border-brand-orange/60 active:scale-[0.97] transition-all duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          >
+            {action.label}
+          </button>
+        )}
       </div>
 
       {/* Dismiss button — 44×44 tap target per iOS HIG / Material guidelines.
@@ -108,7 +133,7 @@ export function Toast({ notification, onDismiss }: { notification: AppNotificati
       {/* Progress bar */}
       <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-border">
         <div
-          className={`h-full origin-left ${notificationAccentBg[notification.type]} [animation:progress-shrink_4000ms_linear_forwards]`}
+          className={`h-full origin-left ${notificationAccentBg[notification.type]} ${action ? "[animation:progress-shrink_8000ms_linear_forwards]" : "[animation:progress-shrink_4000ms_linear_forwards]"}`}
         />
       </div>
     </div>

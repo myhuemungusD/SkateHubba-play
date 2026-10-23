@@ -10,6 +10,8 @@
  * without a new check-in and without paying XP again.
  *
  * The presence doc never stores a location, only "at this spot until".
+ * A skater who hid their online status gets no presence doc at all (code
+ * "hidden"): hide-online also hides spot presence.
  */
 import type { DiceDb } from "../dice/store.js";
 import { activityPath, isVisible, writeHere, writeLeft } from "./activity.js";
@@ -35,7 +37,7 @@ export interface PresenceRequest {
 }
 
 export type PresenceCode =
-  "here" | "away" | "no_pass" | "throttled" | "low_accuracy" | "stale" | "suspect" | "not_found";
+  "here" | "away" | "hidden" | "no_pass" | "throttled" | "low_accuracy" | "stale" | "suspect" | "not_found";
 
 export interface PresenceResult {
   code: PresenceCode;
@@ -161,6 +163,16 @@ export async function performPresence(
     const user = userDoc.data ?? {};
     const expiresAt = nowMs + PRESENCE_TTL_MS;
     const username = typeof user.username === "string" ? user.username.slice(0, 40) : "";
+    const visible = isVisible(online);
+    if (!visible) {
+      // Hide-online also hides spot presence (security audit 2026-10-21, M6):
+      // no public here-doc for a hidden skater, and an existing one lapses now.
+      // The activity doc is still written with visible: false, which rules
+      // keep out of everyone else's feed.
+      if (cur.data) tx.set(here, { expiresAt: new Date(nowMs), updatedAt: new Date(nowMs) }, true);
+      writeHere(tx, { uid, username, spotId: req.spotId, spot, nowMs, hereUntilMs: expiresAt, visible });
+      return { code: "hidden", expiresAt: null };
+    }
     tx.set(here, {
       uid,
       spotId: req.spotId,
@@ -175,7 +187,7 @@ export async function performPresence(
       spot,
       nowMs,
       hereUntilMs: expiresAt,
-      visible: isVisible(online),
+      visible,
     });
     return { code: "here", expiresAt };
   });

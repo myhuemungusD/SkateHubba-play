@@ -70,6 +70,7 @@ describe("AdminConsolePanel", () => {
     fireEvent.click(await screen.findByRole("button", { name: "@mike" }));
     expect(await screen.findByTestId("user-summary")).toHaveTextContent("Verified pro, Banned");
     expect(screen.getByText("3 (1 open)")).toBeInTheDocument();
+    expect(screen.getByTestId("user-summary")).not.toHaveTextContent(/\dW/);
   });
 
   it("handles empty, missing and failing searches", async () => {

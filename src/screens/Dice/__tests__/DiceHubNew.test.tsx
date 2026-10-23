@@ -12,18 +12,27 @@ const env = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../context/AuthContext", () => ({ useAuthContext: () => ({ user: env.user }) }));
+const navigateToPlayer = vi.hoisted(() => vi.fn());
+vi.mock("../../../context/NavigationContext", () => ({ useNavigationContext: () => ({ navigateToPlayer }) }));
 vi.mock("../../../hooks/useDice", () => ({ useMyDiceGames: () => env.hub }));
 vi.mock("../../../components/OpponentPicker", () => ({
   OpponentPicker: ({
     onSelect,
+    onViewPlayer,
     waitSeconds,
   }: {
     onSelect: (username: string) => void;
+    onViewPlayer?: (uid: string) => void;
     waitSeconds?: number | null;
   }) => (
-    <button type="button" onClick={() => onSelect("fox")} disabled={Boolean(waitSeconds)}>
-      {waitSeconds ? `Pick fox in ${waitSeconds}s` : "Pick fox"}
-    </button>
+    <>
+      <button type="button" onClick={() => onSelect("fox")} disabled={Boolean(waitSeconds)}>
+        {waitSeconds ? `Pick fox in ${waitSeconds}s` : "Pick fox"}
+      </button>
+      <button type="button" onClick={() => onViewPlayer?.("fox-uid")}>
+        View @fox&apos;s profile
+      </button>
+    </>
   ),
 }));
 vi.mock("../../../services/users", () => ({ getUidByUsername: vi.fn() }));
@@ -86,7 +95,8 @@ describe("DiceHub", () => {
     env.hub.stats = stats({ rep: 1040, peakRep: 1060, wins: 3, losses: 1, gamesPlayed: 4, streak: 2, bestStreak: 3 });
     renderAt("/dice");
     expect(screen.getByTestId("dice-record")).toHaveTextContent("1,040");
-    expect(screen.getByTestId("dice-record")).toHaveTextContent("3–1");
+    expect(screen.getByTestId("dice-record")).toHaveTextContent("3 / 4");
+    expect(screen.getByText("3 wins out of 4 games")).toBeInTheDocument();
     expect(screen.getByTestId("dice-record")).toHaveTextContent("Best 3");
     expect(screen.getByTestId("dice-hub-empty")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "How the games work" }));
@@ -129,6 +139,14 @@ describe("DiceHub", () => {
 });
 
 describe("DiceNew", () => {
+  it("opens the player's profile from the picker without starting a match", async () => {
+    navigateToPlayer.mockReset();
+    renderAt("/dice/new");
+    await userEvent.click(screen.getByRole("button", { name: "View @fox's profile" }));
+    expect(navigateToPlayer).toHaveBeenCalledWith("fox-uid");
+    expect(createDiceGame).not.toHaveBeenCalled();
+  });
+
   it("sends a 10,000 race to 10,000 to the picked skater", async () => {
     vi.mocked(getUidByUsername).mockResolvedValue("u2");
     vi.mocked(createDiceGame).mockResolvedValue({ gameId: "g7" } as never);

@@ -72,11 +72,11 @@ function renderLobby(overrides: Partial<LobbyProps> = {}) {
 }
 
 /** Flagged lobby cards use <Link>, which needs a router the default wrapper does not provide. */
-function renderFlaggedLobby() {
+function renderFlaggedLobby(overrides: Partial<LobbyProps> = {}) {
   return render(
     <MemoryRouter>
       <NotificationProvider uid="u1">
-        <Lobby {...defaultProps} />
+        <Lobby {...defaultProps} {...overrides} />
       </NotificationProvider>
     </MemoryRouter>,
   );
@@ -299,7 +299,7 @@ describe("Lobby", () => {
 
   // ── Completed summary ──
 
-  it("summarises completed games as total and W–L", () => {
+  it("summarises completed games as total and wins / games", () => {
     const games = [
       makeGame({ id: "w", status: "complete", winner: "u1" }),
       makeGame({ id: "l", status: "complete", winner: "u2" }),
@@ -307,7 +307,8 @@ describe("Lobby", () => {
     ];
     renderLobby({ games });
 
-    expect(screen.getByRole("button", { name: "3 finished · 1–2" })).toBeInTheDocument();
+    const btn = screen.getByRole("button", { name: "3 finished. 1 win out of 3 games. View record" });
+    expect(btn).toHaveTextContent("3 finished · 1 / 3 won");
   });
 
   it("counts judge-only completed games toward the total but not W–L", () => {
@@ -317,7 +318,7 @@ describe("Lobby", () => {
     ];
     renderLobby({ profile: judgeProfile, games });
 
-    expect(screen.getByRole("button", { name: "2 finished · 1–0" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "2 finished. 1 win out of 1 game. View record" })).toBeInTheDocument();
   });
 
   it("hides the completed summary when nothing is finished", () => {
@@ -347,6 +348,10 @@ describe("Lobby", () => {
     renderLobby({ games: [makeGame({ status: "complete", winner: "u2" })], onChallenge });
     expect(screen.queryByText("Ready to S.K.A.T.E.?")).not.toBeInTheDocument();
     expect(screen.getByText("No games going")).toBeInTheDocument();
+    // Skateboard (side view) art — the old glyph read as a shopping cart.
+    const art = screen.getByTestId("empty-lobby-deck");
+    expect(art.querySelectorAll("circle")).toHaveLength(2);
+    expect(art.querySelector('path[d^="M2.5 9.5"]')).not.toBeNull();
     await userEvent.click(screen.getByRole("button", { name: /Start a game/i }));
     expect(onChallenge).toHaveBeenCalledTimes(1);
   });
@@ -613,6 +618,21 @@ describe("Lobby", () => {
       vi.stubEnv("VITE_FEATURE_DICE_ENABLED", "true");
       renderFlaggedLobby();
       expect(await screen.findByTestId("roll-dice-card")).toBeInTheDocument();
+    });
+
+    it("puts S.K.A.T.E. first and the Roll Dice card below the games", async () => {
+      vi.stubEnv("VITE_FEATURE_DICE_ENABLED", "true");
+      const { unmount } = renderFlaggedLobby({ games: [makeGame()] });
+      const card = await screen.findByTestId("roll-dice-card");
+      const game = cardByOpponent(/vs @rival/i);
+      expect(game.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      unmount();
+
+      renderFlaggedLobby();
+      const empty = screen.getByRole("heading", { name: "Ready to S.K.A.T.E.?" });
+      expect(empty.compareDocumentPosition(await screen.findByTestId("roll-dice-card"))).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
     });
 
     it("hides Profile button on active judge game card (judge is not a player)", async () => {

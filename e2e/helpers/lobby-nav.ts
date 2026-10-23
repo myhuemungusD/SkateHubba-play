@@ -188,7 +188,9 @@ export async function openActiveGameFromLobby(page: Page, opponentHandle: string
  * destination the old completed-game lobby card had.
  */
 export async function openFinishedGameFromLobby(page: Page, opponentHandle: string): Promise<void> {
-  await clickPastOverlays(page, page.getByRole("button", { name: /finished ·/ }));
+  // The roll-up's accessible name is "N finished. W wins out of G games. View
+  // record" (the visible "·" text is replaced by a spoken label).
+  await clickPastOverlays(page, page.getByRole("button", { name: /^\d+ finished\. / }));
   await page.waitForURL("**/me**", { timeout: 10_000 });
 
   await clickPastOverlays(page, page.getByRole("button").filter({ hasText: `vs @${opponentHandle}` }));

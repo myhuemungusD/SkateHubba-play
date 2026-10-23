@@ -24,6 +24,7 @@ vi.mock("../../services/haptics", () => ({
 
 vi.mock("../../constants/ui", () => ({
   TOAST_DURATION: 100,
+  ACTION_TOAST_DURATION: 300,
 }));
 
 const mockMarkNotificationRead = vi.fn().mockResolvedValue(undefined);
@@ -717,5 +718,53 @@ describe("hydrate", () => {
     });
 
     expect(result.current.notifications).toBe(before);
+  });
+});
+
+describe("action toasts", () => {
+  it("show as a toast only, never in the bell, and keep the action", () => {
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+    const action = { label: "Retry", onAction: vi.fn(), onExpire: vi.fn() };
+    act(() => {
+      result.current.notify({ type: "error", title: "Couldn't verify this device", message: "m", action });
+    });
+    expect(result.current.toasts).toHaveLength(1);
+    expect(result.current.toasts[0].action).toBe(action);
+    expect(result.current.notifications).toHaveLength(0);
+    expect(result.current.notifyKey).toBe(0);
+  });
+
+  it("stay up for ACTION_TOAST_DURATION, then call onExpire", () => {
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+    const onExpire = vi.fn();
+    act(() => {
+      result.current.notify({
+        type: "error",
+        title: "t",
+        message: "m",
+        action: { label: "Retry", onAction: vi.fn(), onExpire },
+      });
+    });
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(result.current.toasts).toHaveLength(1);
+    expect(onExpire).not.toHaveBeenCalled();
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(result.current.toasts).toHaveLength(0);
+    expect(onExpire).toHaveBeenCalledTimes(1);
+  });
+
+  it("expire quietly when no onExpire is given", () => {
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+    act(() => {
+      result.current.notify({ type: "info", title: "t", message: "m", action: { label: "Go", onAction: vi.fn() } });
+    });
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(result.current.toasts).toHaveLength(0);
   });
 });

@@ -78,6 +78,16 @@ describe("safeParseEnv", () => {
     expect(safeParseEnv({ ...validEnv, VITE_APPCHECK_ENABLED: "" })?.VITE_APPCHECK_ENABLED).toBe(false);
   });
 
+  it.each([
+    [undefined, "lazy"],
+    ["", "lazy"],
+    ["lazy", "lazy"],
+    ["off", "off"],
+    ["OFF", "lazy"],
+  ])("parses VITE_APPCHECK_WEB_MODE=%j as %s (closet-only App Check, default lazy)", (raw, expected) => {
+    expect(safeParseEnv({ ...validEnv, VITE_APPCHECK_WEB_MODE: raw })?.VITE_APPCHECK_WEB_MODE).toBe(expected);
+  });
+
   const flagCases: [string | undefined, boolean][] = [
     [undefined, false],
     ["", false],

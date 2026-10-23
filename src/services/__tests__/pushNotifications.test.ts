@@ -44,7 +44,7 @@ vi.mock("@capacitor/push-notifications", () => ({
 /* ── mock firebase/firestore ─────────────────── */
 
 import { firestoreNotifMocks } from "../../__tests__/harness/firestoreNotifMock";
-const { setDoc: mockSetDoc } = firestoreNotifMocks;
+const { setDoc: mockSetDoc, getDoc: mockGetDoc } = firestoreNotifMocks;
 
 vi.mock(
   "firebase/firestore",
@@ -79,13 +79,14 @@ import {
 async function flush(): Promise<void> {
   // Let queued microtasks (the persistToken write fired inside the
   // registration listener) resolve before assertions.
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
+  // A macrotask lets every chained await (getDoc reads, then setDoc writes) settle.
+  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Some cases give getDoc a per-path implementation; restore the empty-doc default.
+  mockGetDoc.mockImplementation(() => Promise.resolve({ data: () => undefined }));
   // clearAllMocks leaves queued `mockResolvedValueOnce` values in place, so a
   // test that stubs the pref read but never consumes it (assumeEnabled skips
   // the read entirely) would leak `false` into the next test. mockReset
@@ -561,5 +562,38 @@ describe("registerPushToken on iOS", () => {
     window.dispatchEvent(new CustomEvent("skatehubba:fcm-token", { detail: { token: "fcm-after-signout" } }));
     await flush();
     expect(mockSetDoc).not.toHaveBeenCalled();
+  });
+});
+
+describe("10-token cap on native register", () => {
+  const full = Array.from({ length: 10 }, (_, i) => `old-${i}`);
+
+  it("trims both docs to the newest 9 plus this device instead of being denied", async () => {
+    mockGetDoc.mockImplementation(async (ref: unknown) => ({
+      data: () =>
+        ({
+          "users/u1/private/profile": { fcmTokens: full },
+          "pushTargets/u1": { tokens: full, platforms: { "old-0": "ios", "old-5": "android" } },
+        })[ref as string],
+    }));
+    mockRequestPermissions.mockResolvedValue({ receive: "granted" });
+    await registerPushToken("u1");
+    capturedRegistrationHandler?.({ value: "new-phone" });
+    await flush();
+
+    const kept = [...full.slice(1), "new-phone"];
+    expect(kept).toHaveLength(10);
+    expect(mockSetDoc).toHaveBeenNthCalledWith(1, "users/u1/private/profile", { fcmTokens: kept }, { merge: true });
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      2,
+      "pushTargets/u1",
+      {
+        tokens: kept,
+        // The dropped token's tag goes with it; old-5 is still kept, so its tag stays.
+        platforms: { "new-phone": "android", "old-0": "DELETE_FIELD" },
+        updatedAt: "SERVER_TS",
+      },
+      { merge: true },
+    );
   });
 });

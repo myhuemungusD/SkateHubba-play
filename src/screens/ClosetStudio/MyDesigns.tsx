@@ -17,7 +17,7 @@ export function MyDesigns({ designs, onOpen, onDelete }: Props) {
             <img src={d.imageUrl} alt="" className="aspect-square w-full rounded-lg object-contain" />
             <p className="mt-1 truncate font-body text-[11px] text-white">{d.name}</p>
           </button>
-          {d.credit && <p className="font-body text-[9px] uppercase tracking-wider text-brand-orange">{d.credit}</p>}
+          {d.credit && <p className="font-body text-[11px] uppercase tracking-wider text-brand-orange">{d.credit}</p>}
           <div className="mt-1 flex items-center justify-between">
             {d.shared ? <Globe size={12} className="text-brand-green" aria-label="Shared" /> : <span />}
             <button type="button" aria-label={`Delete ${d.name}`} onClick={() => onDelete(d)}>

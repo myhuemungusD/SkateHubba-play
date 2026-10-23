@@ -43,7 +43,7 @@ npm ci --no-audit --no-fund
 
 # 3. Web build with the same production env and flags as ios-release.yml.
 # Public App Store flags (2026-10-20): every finished feature is on for
-# everyone. Still off: Skate Runner, What's That Trick, buying Hubba
+# everyone. Still off: pro blessing UI, Skate Runner, What's That Trick, buying Hubba
 # Bucks, SMS two-step, admin. Jason and Mike still get every flag
 # through the config/featureTesters override at runtime.
 export VITE_FEATURE_APPLE_SIGNIN_ENABLED=true
@@ -51,7 +51,8 @@ export VITE_FEATURE_EXTRAS_ENABLED=true
 export VITE_FEATURE_MAP_CHECKINS=true
 export VITE_FEATURE_SPOT_PRESENCE=true
 export VITE_FEATURE_TIPS=true
-export VITE_FEATURE_PRO_BLESSING=true
+# Pro blessing UI off on iPhone for launch (Jason, 2026-10-21); see docs/FEATURE_FLAGS.md.
+export VITE_FEATURE_PRO_BLESSING=false
 export VITE_FEATURE_PRO_PROFILES=true
 export VITE_FEATURE_PRO_SHOWCASE=true
 export VITE_FEATURE_PRO_CALLS=true
@@ -69,16 +70,21 @@ export VITE_FEATURE_POST_MAKES_ENABLED=true
 export VITE_FEATURE_PROFILE_BANNER=true
 export VITE_FEATURE_PROFILE_CUSTOM=true
 export VITE_FEATURE_SPOT_CHATS_ENABLED=true
-export VITE_FEATURE_CLOSET_ENABLED=true
-export VITE_FEATURE_CLOSET_DROPS_ENABLED=true
+# Closet and Closet Studio off until App Check is verified on TestFlight (see ios-release.yml).
+export VITE_FEATURE_CLOSET_ENABLED=false
+export VITE_FEATURE_CLOSET_DROPS_ENABLED=false
 export VITE_FEATURE_CLOSET_TRADING_ENABLED=false
-export VITE_FEATURE_CLOSET_STUDIO=true
+export VITE_FEATURE_CLOSET_STUDIO=false
 export VITE_FEATURE_SHOE_360=true
 export VITE_FEATURE_HUBBA_ICONS=true
 export VITE_FEATURE_RUNNER_ENABLED=false
 export VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED=false
 export VITE_FEATURE_SMS_2FA_ENABLED=false
+# "Find me a challenger" on Home stays off (button hidden) until matchmaking ships.
+export VITE_FEATURE_RANDOM_CHALLENGER=false
 export VITE_FEATURE_WTT_ENABLED="${VITE_FEATURE_WTT_ENABLED:-false}"
+# App Check always on (App Attest is free), like ios-release.yml.
+export VITE_APPCHECK_ENABLED=true
 export REQUIRE_SW_CONFIG=1
 npm run build
 
@@ -86,6 +92,9 @@ npm run build
 node .github/scripts/install-google-service-info.mjs
 
 npx cap sync ios
+# Fail unless the generated manifest pins the auth plugin to the Google trait
+# (otherwise SwiftPM links the Facebook SDK, which declares tracking).
+node scripts/check-ios-spm-traits.mjs
 
 # 5. Add the plist to Copy Bundle Resources (same helper fastlane uses).
 # The project uses Swift Package Manager (ios/App/CapApp-SPM), not

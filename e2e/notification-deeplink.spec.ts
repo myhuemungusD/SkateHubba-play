@@ -15,7 +15,8 @@
  */
 import { test, expect } from "@playwright/test";
 import { clearAll, createUser, createProfile, createGame, getSignedInUid } from "./helpers/emulator";
-import { signUpAndSetupProfile } from "./helpers/auth-flow";
+import { signInViaUI, signUpAndSetupProfile, waitForAuthForm } from "./helpers/auth-flow";
+import { CONSENT_ANSWERED_SCRIPT } from "./helpers/consent";
 import { expectOnLobby, revealActiveGameInLobby } from "./helpers/lobby-nav";
 
 const RECIPIENT = { email: "deeplink@test.com", password: "password123", username: "deepuser" };
@@ -67,10 +68,10 @@ test("dispatching skatehubba:open-game routes recipient into the referenced game
   });
 });
 
-test("deep-link event for an unknown game id is a no-op (no navigation)", async ({ page }) => {
+test("deep-link event for an unknown game id stays on the lobby", async ({ page }) => {
   // A stale push for a game the recipient is no longer party to must not
-  // throw or yank them off the lobby. Covers the `if (found) game.openGame`
-  // guard in App.tsx.
+  // throw or yank them off the lobby. useGameDeepLink reads the game, the
+  // rules refuse it, and the user stays on (or is sent back to) the lobby.
   await signUpAndSetupProfile(page, RECIPIENT.email, RECIPIENT.password, RECIPIENT.username);
 
   await expectOnLobby(page);
@@ -83,4 +84,60 @@ test("deep-link event for an unknown game id is a no-op (no navigation)", async 
   // Give any micro-task / state flush a beat to settle, then re-check the URL.
   await expectOnLobby(page);
   expect(page.url()).toBe(urlBefore);
+});
+
+/**
+ * The web push tap target itself: https://skatehubba.com/?game=<id> opened as
+ * a fresh page load (fcmOptions.link, click_action, or the service worker's
+ * openWindow when no tab is open). It used to land on /lobby.
+ */
+async function seedGameFor(recipientUid: string, gameId: string): Promise<void> {
+  const challenger = await createUser(CHALLENGER.email, CHALLENGER.password);
+  await createProfile(challenger.uid, CHALLENGER.username, CHALLENGER.email, true);
+  await createGame(gameId, challenger.uid, CHALLENGER.username, recipientUid, RECIPIENT.username, {
+    phase: "setting",
+    currentTurn: challenger.uid,
+    currentSetter: challenger.uid,
+  });
+}
+
+test("cold load of /?game=<id> opens that game and strips the param", async ({ page }) => {
+  const recipient = await createUser(RECIPIENT.email, RECIPIENT.password);
+  await createProfile(recipient.uid, RECIPIENT.username, RECIPIENT.email, true);
+  const gameId = "pushTapColdLoad";
+  await seedGameFor(recipient.uid, gameId);
+
+  // Signed in (session persisted), then the tap opens a brand-new page load.
+  await signInViaUI(page, RECIPIENT.email, RECIPIENT.password);
+  await page.goto(`/?game=${gameId}`);
+
+  await page.waitForURL((url) => url.pathname === "/game", { timeout: 15_000 });
+  await expect(page.getByText(new RegExp(`Waiting on @${CHALLENGER.username}`, "i"))).toBeVisible({
+    timeout: 10_000,
+  });
+  // Stripped: a refresh must not re-open it.
+  expect(new URL(page.url()).searchParams.has("game")).toBe(false);
+});
+
+test("a signed-out /?game=<id> tap survives sign-in and then opens the game", async ({ page }) => {
+  const recipient = await createUser(RECIPIENT.email, RECIPIENT.password);
+  await createProfile(recipient.uid, RECIPIENT.username, RECIPIENT.email, true);
+  const gameId = "pushTapSignedOut";
+  await seedGameFor(recipient.uid, gameId);
+
+  await page.addInitScript(CONSENT_ANSWERED_SCRIPT);
+  await page.goto(`/?game=${gameId}`);
+  // Parked and stripped before anything (the boot landing's buttons) can drop it.
+  await expect.poll(() => new URL(page.url()).searchParams.has("game")).toBe(false);
+
+  await page.getByRole("button", { name: "Account", exact: true }).click();
+  await waitForAuthForm(page);
+  await page.getByPlaceholder("you@email.com").fill(RECIPIENT.email);
+  await page.getByPlaceholder("••••••••").fill(RECIPIENT.password);
+  await page.getByRole("button", { name: "Sign In" }).click();
+
+  await page.waitForURL((url) => url.pathname === "/game", { timeout: 15_000 });
+  await expect(page.getByText(new RegExp(`Waiting on @${CHALLENGER.username}`, "i"))).toBeVisible({
+    timeout: 10_000,
+  });
 });

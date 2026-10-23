@@ -55,8 +55,9 @@ describe("Leaderboard", () => {
     render(<Leaderboard currentUserUid="u1" />);
 
     await waitFor(() => {
-      expect(screen.getByText("10W")).toBeInTheDocument();
-      expect(screen.getByText("2L")).toBeInTheDocument();
+      expect(screen.getByText("10 / 12")).toBeInTheDocument();
+      expect(screen.getByText("10 wins out of 12 games")).toBeInTheDocument();
+      expect(screen.queryByText("10W")).toBeNull();
       expect(screen.getByText("83%")).toBeInTheDocument();
     });
   });

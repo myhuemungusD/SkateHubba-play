@@ -158,6 +158,7 @@ _As originally filed:_ when a matcher claimed a land on the honor path, `games.m
 - **Art. 17 statement of reasons** — **CLOSED**. Resolving a report writes `moderationStatements/{reportId}` in the same batch; the subject can read it and cannot read the report. An account restriction uses `bans/{uid}`, which the subject can already get. A blank ban reason shows a short fallback in Settings.
 - **Art. 20 appeal** — **CLOSED**. `appeals/{statement|ban}_{id}` is one appeal per target. The button sits on each statement and on an account restriction. A ban does not block the appeal, and email verification is not required. Admin close-out moves `pending` to `upheld` or `rejected`.
 - ~~**Clip comments not reportable**~~ — **CLOSED** in #578: `ClipComments` takes an `onReport` prop wired to the clip's existing report flow.
+  Each comment is now also reportable on its own (`onReportComment`: the report carries `commentId` plus a text snapshot), and the admin queue can delete the reported comment.
 
 ### P1-6 · Unhandled rejection on Rematch → silent dead-end
 
@@ -196,11 +197,11 @@ _As originally filed:_ when a matcher claimed a land on the honor path, `games.m
 
 `GET /api/player-meta` is unauthenticated, always 200s, edge-cached per-uid (`player-meta.ts:196-221`), so enumerating random uids busts the cache every request → one Firestore read + one invocation each. `POST /api/account/delete` reaches `verifyIdToken` (`:238`) with no pre-throttle.
 
-### P2-3 · App Check is OFF in production; failure mode is unmonitorable
+### P2-3 · App Check enforcement is not on in production; failure mode is unmonitorable
 
-**Status (2026-10-08): PARTIAL** — App Check is now live in production in reCAPTCHA v3 **monitor mode**: the web client mints and sends tokens, but Console enforcement is still **off** for Firestore and Storage, so non-app traffic is not yet rejected. The `getToken` probe gap and the native forced-update gap below still stand. Next step is Phase 2 of `docs/APPCHECK_ROLLOUT.md`.
+**Status (2026-10-08): PARTIAL** — App Check is now live in production in reCAPTCHA v3 **monitor mode**: the web client mints and sends tokens, but Console enforcement is still **off** for Firestore and Storage, so non-app traffic is not yet rejected. The `getToken` probe gap and the native forced-update gap below still stand. Next step is Phase 2 of `docs/APPCHECK_ROLLOUT.md`. **Re-confirmed 2026-10-22** from the live skatehubba.com bundle: web App Check is on in production (`VITE_APPCHECK_ENABLED=true`, reCAPTCHA v3 site key, `ReCaptchaV3Provider`). Enforcement mode is tracked in Firebase Console → App Check → APIs.
 
-`src/firebase.ts:141` — App Check is opt-in and disabled; `docs/APPCHECK_ROLLOUT.md:301-321` checklist is 18/18 unchecked. Firestore/Storage are unprotected against non-app traffic; every rules rate-limit is the only stand-in. Worse, `isAppCheckInitialized()` can report `true` while zero tokens mint (`firebase.ts:206-210`, `APPCHECK_ROLLOUT.md:33-40`) — the Apr 22 lockout signature — because there's no `getToken` probe. Native flag is baked into shipped binaries with no forced-update path (`android-aab.yml:73-74`).
+`src/firebase.ts:187` — App Check is opt-in via `VITE_APPCHECK_ENABLED` (on for prod web and store builds); the `docs/APPCHECK_ROLLOUT.md:383-403` final checklist still shows all 19 rows unchecked, although the Phase 1 env steps are live. While Console enforcement is off, Firestore/Storage accept non-app traffic and the rules rate-limits are the only stand-in (current mode: Console → App Check → APIs). Worse, `isAppCheckInitialized()` can report `true` while zero tokens mint (`firebase.ts:233-238`, `APPCHECK_ROLLOUT.md:104-112`) — the Apr 22 lockout signature — because there's no `getToken` probe. Native flag is baked into shipped binaries with no forced-update path (`android-aab.yml:78`, `ios-release.yml:135`).
 
 ### P2-4 · Rules tests don't run on `main` pushes or on non-rules PRs
 
@@ -292,7 +293,7 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 
 ### P3-7 · Verified NOT problems (no action)
 
-- `lucide-react ^1.27.0` and `uuid ^14` **resolve cleanly** to `1.28.0` / `14.0.0` in both lockfile and `node_modules` — not bugs.
+- `lucide-react ^1.27.0` **resolves cleanly** to `1.28.0` in both lockfile and `node_modules`, not a bug. ~~`uuid ^14` resolves cleanly~~ **Wrong, it was a bug:** uuid 12+ is ESM-only and gaxios 6 (under `@google-cloud/storage`) `require()`s it, so the first Storage call in `/api/account/delete` failed with ERR_REQUIRE_ESM (500 `erasure_failed`). The override is now `uuid ^11.1.1` (patched for GHSA-w5hq-g745-h8pq, still ships CommonJS), and `npm run check:api-load` runs call-time probes that catch this class.
 - `firebase-admin` in `dependencies` (not dev) is **correct** — Vercel builds `api/` from root; verified it doesn't leak into the client bundle.
 - `games.create.ts:164` `setDoc` (not `runTransaction`) is **correct** — idempotent create at a deterministic id, not a state mutation.
 - The `/games` turn-order / letter / deadline / stats-lockdown invariants are airtight and well-tested. `DISPUTE_BINDING_DESIGN.md` is fully implemented (only its status header is stale).

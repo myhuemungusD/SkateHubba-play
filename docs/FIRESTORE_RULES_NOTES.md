@@ -1014,7 +1014,7 @@ account could cycle cast → delete → cast → … and add +1 to the same
 clip every lap. Forcing the paired -1 makes that cycle net zero:
 stuffing is blocked by arithmetic, not by forbidding the delete,
 which is what keeps the withdraw path (clips.votes.ts#removeClipVote)
-and the account-deletion cascade (clips.cascade.ts) working.
+and the orphan-vote cleanup in clips.votes.ts working.
 A FLIP is delete + set of the same voteId in one transaction, which
 Firestore coalesces into an UPDATE — it lands on the flip clause
 above, never here.
@@ -1048,12 +1048,11 @@ constraints, same proven pattern:
 Open disputes form the signed-in judging feed. Closed results are game
 history: readable by the two players named on the dispute, and by any
 voter who ruled on it (their vote doc is the proof — the "see how you
-ruled" contract fetchDisputeViewerState documents, and what lets
-deleteUserDisputeVotes pair its erasure delete with the -1 tally move
-on a closed dispute). The uid pins are trustworthy because the create
+ruled" contract fetchDisputeViewerState documents). Account erasure
+runs server-side with the Admin SDK, outside these rules. The uid pins are trustworthy because the create
 rule below binds setterUid/matcherUid to the backing game's real
 players, so no cross-doc get() is needed — which also keeps
-deleteUserDisputes' setterUid erasure QUERY provable (a get()-based arm
+a setterUid list QUERY provable (a get()-based arm
 cannot be evaluated for list requests and would deny the whole query).
 
 `resource == null` keeps reads of MISSING docs open to any signed-in
@@ -1107,12 +1106,11 @@ account cycles vote → delete vote doc → the !exists() guard resets →
 vote again, and every +1 sticks. Unbounded ballot stuffing. Pairing
 the delete with a mandatory -1 makes that cycle net ZERO — stuffing
 becomes arithmetically impossible rather than merely forbidden.
-(2) Erasure: the account-deletion cascade
-(services/disputes.cascade.ts → deleteUserDisputeVotes) must be able
-to reap a user's verdicts from OPEN disputes. Gating deletes on
-status would strand a deleted user's recorded verdict on every live
-dispute — a real GDPR/CCPA gap in a repo that maintains explicit
-cascade functions for exactly this.
+(2) Erasure: when this was written, the client account-deletion
+cascade reaped a user's verdicts from OPEN disputes through this
+owner-delete arm. Erasure is now server-side (api/account/
+_deleteUserData.ts, Admin SDK) and no client uses the arm for it; it
+stays for (1). Tightening it is tracked as a rules follow-up.
 
 Do NOT "restore" the asymmetry by dropping the -1 branch: that
 re-opens both holes. Integrity lives here; affordances live in the UI.
@@ -1135,18 +1133,10 @@ Admin-SDK-only: the server referee's `open → closed` close-out (not a
 client delete) ends a dispute, and the deterministic id already caps it
 at one dispute per turn.
 
-Erasure is unaffected on the VOTE side: the account-deletion cascade
-reaps a user's verdicts through the /disputeVotes owner-delete rule
-(services/disputes.cascade.ts → deleteUserDisputeVotes), which still
-carries its paired tally decrement and is NOT touched here.
-
-COORDINATION (firebase-engineer): services/disputes.cascade.ts →
-deleteUserDisputes (client deleteDoc of dispute docs raised by the
-departing user) now fails closed. It is best-effort / non-blocking
-(Promise.allSettled, warn-and-swallow) so account deletion still
-succeeds, but raised-dispute docs must instead be reaped server-side by
-the referee. Rework that function out of the client cascade when the
-referee lands (Phase 4).
+Erasure is unaffected: account deletion runs server-side
+(api/account/_deleteUserData.ts) with the Admin SDK, which deletes the
+departing user's raised disputes and their votes (with the paired tally
+decrement) outside these rules.
 ```
 
 <a id="r45"></a>

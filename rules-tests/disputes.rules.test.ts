@@ -164,7 +164,7 @@ function voteAndTally(
 
 /**
  * The erasure/retract shape: delete the vote doc and apply the paired tally
- * correction in ONE commit — what `deleteUserDisputeVotes` issues.
+ * correction in ONE commit.
  */
 function retractVote(ctx: RulesTestContext, voterUid: string, disputeUpdate: Record<string, unknown>): Promise<void> {
   return runTransaction(ctx.firestore(), async (tx) => {
@@ -239,9 +239,8 @@ describe("disputes — read", () => {
   });
 
   it("the setterUid erasure query stays provable even when the disputes are closed", async () => {
-    // deleteUserDisputes issues exactly this shape with NO status filter; a
-    // get()-based read arm cannot be evaluated for list requests and would
-    // deny the whole query, silently breaking right-to-erasure.
+    // A setter's own-disputes query has NO status filter; a get()-based read
+    // arm cannot be evaluated for list requests and would deny the whole query.
     await seedDispute({ status: "closed", verdict: "land" });
     const own = query(collection(as(P1_UID).firestore(), "disputes"), where("setterUid", "==", P1_UID));
     await assertSucceeds(getDocs(own));

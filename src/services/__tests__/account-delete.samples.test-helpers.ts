@@ -106,7 +106,7 @@ export const SAMPLES: Record<string, Seed> = {
   passportSettings: { passportSettings: { [UID]: { public: true } } },
   skaterActivity: { skaterActivity: { [UID]: { uid: UID, visible: true } } },
   onlineStatus: { onlineStatus: { [UID]: { hidden: false } } },
-  notifications: { notifications: { n1: { recipientUid: UID } } },
+  notifications: { notifications: { n1: { recipientUid: UID }, n2: { senderUid: UID, recipientUid: OTHER } } },
   notification_limits: { notification_limits: { l1: { senderUid: UID } } },
   pushTargets: { pushTargets: { [UID]: { tokens: ["t"] } } },
   push_dispatch: { push_dispatch: { p1: { recipientUid: UID } } },

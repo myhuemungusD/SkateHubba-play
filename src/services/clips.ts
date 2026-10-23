@@ -7,7 +7,6 @@
  *   - clips.upvotes.ts   — legacy upvote-only projection of clips.votes
  *   - clips.userWrites.ts — user-posted clip creation
  *   - clips.comments.ts  — clip comment CRUD + pagination
- *   - clips.cascade.ts   — account-deletion cascade
  */
 
 export type { ClipDoc, ClipsFeedSort, ClipsFeedCursor, LandedClipContext } from "./clips.mappers";
@@ -24,5 +23,3 @@ export {
   removeUpvote,
   upvoteClip,
 } from "./clips.upvotes";
-
-export { deleteClipComments, deleteUserClips, deleteUserClipVotes } from "./clips.cascade";

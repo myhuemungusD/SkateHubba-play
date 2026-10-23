@@ -20,14 +20,44 @@ import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
 import { captureException, setUser as setSentryUser } from "../lib/sentry";
 import { identify as posthogIdentify, resetIdentity as posthogReset } from "../lib/posthog";
-import { hashIdentity } from "../utils/pii";
+import { hashIdentity, hashUid } from "../utils/pii";
 import { useAnalyticsConsent } from "../hooks/useAnalyticsConsent";
 
 // sessionStorage key that survives the sign-out/sign-in round-trip required
-// after auth/requires-recent-login. We only need the uid — the Firestore wipe
-// already ran, so the retry path just needs to know WHICH auth uid still has
-// a live Firebase Auth record waiting to be deleted.
+// after auth/requires-recent-login. It is written BEFORE every attempt, so on
+// its own it only says "a deletion for this uid was started and has not
+// finished" — not that any data is gone.
 const PENDING_DELETE_KEY = "skate.pendingDeleteUid";
+// Set (to the same uid) only once the server has CONFIRMED the erasure and
+// just the final Auth delete is left. It is the one state in which the banner
+// may tell the user their data is deleted; after a failed request (a 500, a
+// network error, a stale sign-in) the data is still there and saying
+// otherwise would be false.
+const PENDING_DELETE_ERASED_KEY = "skate.pendingDeleteErased";
+
+function readErasedUid(): string | null {
+  try {
+    return sessionStorage.getItem(PENDING_DELETE_ERASED_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeErasedUid(uid: string): void {
+  try {
+    sessionStorage.setItem(PENDING_DELETE_ERASED_KEY, uid);
+  } catch {
+    /* best-effort, like the pending marker */
+  }
+}
+
+function clearErasedUid(): void {
+  try {
+    sessionStorage.removeItem(PENDING_DELETE_ERASED_KEY);
+  } catch {
+    /* best-effort, like the pending marker */
+  }
+}
 
 function readPendingDeleteUid(): string | null {
   try {
@@ -50,6 +80,7 @@ function writePendingDeleteUid(uid: string): void {
 function clearPendingDeleteUid(): void {
   try {
     sessionStorage.removeItem(PENDING_DELETE_KEY);
+    sessionStorage.removeItem(PENDING_DELETE_ERASED_KEY);
   } catch {
     /* see readPendingDeleteUid — best-effort only */
   }
@@ -64,6 +95,10 @@ export interface AuthContextValue {
   loading: boolean;
   user: ReturnType<typeof useAuth>["user"];
   activeProfile: UserProfile | null;
+  /** The signed-in user has a profile. Checks the uid, because a sign-out that
+   *  skips handleSignOut (another tab, a revoked session) leaves the old
+   *  activeProfile in place for the next user. */
+  hasProfile: boolean;
   setActiveProfile: (p: UserProfile | null) => void;
   refreshProfile: () => Promise<void>;
   reloadAuthUser: () => Promise<boolean>;
@@ -95,13 +130,17 @@ export interface AuthContextValue {
   handleDeleteAccount: () => Promise<void>;
   handleDownloadData: () => Promise<void>;
   /**
-   * Uid whose Firestore data has already been wiped but whose Firebase Auth
-   * record is still alive — set when the first deleteAccount() call bounced
-   * with auth/requires-recent-login. The banner component surfaces a
-   * one-shot "Finish deletion" affordance when this matches the current
-   * signed-in user; handleDeleteAccount consumes it on retry.
+   * Uid with an account deletion that was started and has not finished (the
+   * request failed, the sign-in was too old, or the app was killed mid-way).
+   * The banner surfaces a retry affordance when this matches the signed-in
+   * user; handleDeleteAccount consumes it on retry.
    */
   pendingDeleteUid: string | null;
+  /**
+   * True only when the server confirmed the data is erased and just the
+   * sign-in record is left. Anything else means the data may still exist.
+   */
+  pendingDeleteErased: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -130,6 +169,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setPrevProfile(profile);
     if (profile) setActiveProfile(profile);
   }
+  // Writes and analytics that must wait for a profile key off this boolean, so
+  // they run once when it appears instead of on every profile edit.
+  const hasProfile = activeProfile !== null && activeProfile.uid === user?.uid;
   const [googleLoading, setGoogleLoading] = useState(false);
   const [appleLoading, setAppleLoading] = useState(false);
   const [googleError, setGoogleError] = useState("");
@@ -140,6 +182,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Mirror of PENDING_DELETE_KEY in React state so the banner component can
   // re-render on capture / clear without polling storage.
   const [pendingDeleteUid, setPendingDeleteUid] = useState<string | null>(() => readPendingDeleteUid());
+  const [erasedUid, setErasedUid] = useState<string | null>(() => readErasedUid());
+  const pendingDeleteErased = pendingDeleteUid !== null && erasedUid === pendingDeleteUid;
 
   // Remember whether this browser has a session so the next visit to `/` can
   // safely paint the landing before the full app loads (boot/landingBoot.ts).
@@ -320,7 +364,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // silently merge cohorts). Sentry uses the same surrogate for scoped issues.
   useEffect(() => {
     if (user) {
-      const username = activeProfile?.username;
       // Hash the uid before it reaches PostHog / Sentry. hashIdentity is a
       // stable, deterministic surrogate, so the distinct_id stays consistent
       // per user (analytics continuity, sign-out reset still works) while the
@@ -329,15 +372,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Sentry is crash/error reporting under legitimate interest (PrivacyPolicy
       // §Error data — no consent gate; PII is stripped in main.tsx beforeSend),
       // so setUser stays unconditional. PostHog is analytics: gate on consent.
-      setSentryUser({ id: surrogateId, ...(username ? { username } : {}) });
-      if (analyticsConsented) {
-        posthogIdentify(surrogateId, username ? { username } : undefined);
+      // Only the hashed surrogate is sent. The username is a public, direct
+      // identifier, and the privacy policy promises that analytics and error
+      // identifiers are hashed, so it must not reach either vendor.
+      setSentryUser({ id: surrogateId });
+      // No analytics identity before a profile exists: an under-13 blocked in
+      // ProfileSetup must never be identified (COPPA).
+      if (analyticsConsented && hasProfile) {
+        posthogIdentify(surrogateId);
       }
     } else {
       posthogReset();
       setSentryUser(null);
     }
-  }, [user, activeProfile?.username, analyticsConsented]);
+  }, [user, hasProfile, analyticsConsented]);
 
   // Refresh the native push token after sign-in. Gated on isPushSupported()
   // so web users never hit the Capacitor plugin (which throws "unimplemented"
@@ -347,14 +395,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // below (refreshWebPushTokenIfGranted). Best-effort — errors inside
   // registerPushTokenIfGranted are already swallowed and logged; this effect
   // must never block the login flow.
+  // Both push effects wait for a profile: before one exists, no token may be
+  // written (an under-13 blocked in ProfileSetup must leave nothing behind).
   useEffect(() => {
-    if (!user) return;
+    if (!user || !hasProfile) return;
     if (!isPushSupported()) return;
     const uid = user.uid;
     void registerPushTokenIfGranted(uid).catch((err: unknown) => {
       logger.warn("push_register_unhandled", { uid, message: parseFirebaseError(err) });
     });
-  }, [user]);
+  }, [user, hasProfile]);
 
   // Web push token refresh-on-login. Native registration is handled by the
   // Capacitor plugin branch above; this effect is web-only and runs when the
@@ -364,14 +414,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // never re-register unless they manually revisit the push settings flow.
   // Best-effort only: failure to refresh the token must not block auth.
   useEffect(() => {
-    if (!user) return;
+    if (!user || !hasProfile) return;
     if (isPushSupported()) return; // native handled by registerPushToken
     if (globalThis.Notification?.permission !== "granted") return;
     const uid = user.uid;
     void refreshWebPushTokenIfGranted(uid).catch((err: unknown) => {
       logger.warn("web_push_register_unhandled", { uid, message: parseFirebaseError(err) });
     });
-  }, [user]);
+  }, [user, hasProfile]);
 
   // Invalidate pendingDeleteUid when a different auth user arrives (someone
   // else signs in on the same tab) — the banner must not prompt them to
@@ -437,9 +487,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       logger.info("delete_account_pending_retry_without_profile", { uid: pending });
-      await deleteAccount(pending);
-      clearPendingDeleteUid();
-      setPendingDeleteUid(null);
+      const retry = await deleteAccount(pending);
+      if (retry.authDeleted) {
+        clearPendingDeleteUid();
+        setPendingDeleteUid(null);
+        setErasedUid(null);
+      } else {
+        writeErasedUid(pending);
+        setErasedUid(pending);
+      }
       return;
     }
     // Snapshot identity once: the flow spans multiple async boundaries and
@@ -453,13 +509,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // deletion" affordance surfaces after the user re-authenticates.
     writePendingDeleteUid(uid);
     setPendingDeleteUid(uid);
+    // A live profile proves the data is not erased, whatever an earlier attempt
+    // recorded (the user may have recreated a profile instead of tapping
+    // Finish). Drop the marker, in storage too, so nothing can claim
+    // "your data is deleted" next to this profile.
+    clearErasedUid();
+    setErasedUid(null);
     logger.info("delete_account_pending_retry_captured", { uid });
     // Unregister native push BEFORE Auth deletion — the owner-only rule on
     // users/{uid}/private/profile denies the arrayRemove write once the
-    // auth token is revoked, and deleteUserData's Phase 4 batch torches
-    // the whole private doc anyway. Fire-and-forget: errors here must
-    // never block deletion, and we don't want an extra await boundary
-    // altering the observable ordering of the deleteAccount call.
+    // auth token is revoked, and the server cascade deletes the whole private
+    // doc anyway. Fire-and-forget: errors here must never block deletion, and
+    // we don't want an extra await boundary altering the observable ordering
+    // of the deleteAccount call.
     void unregisterPushToken(uid).catch((err: unknown) => {
       logger.warn("delete_account_push_scrub_failed", { uid, message: parseFirebaseError(err) });
     });
@@ -476,11 +538,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       const code = getErrorCode(err);
       logger.error("delete_account_auth_failed", { uid, code });
+      // Identify by the hashed id the Sentry user is keyed on; the raw uid and
+      // the username are personal data and never go to a third party.
       captureException(err, {
         extra: {
           context: "deleteAccount failed — erasure did not run, account left intact",
-          uid,
-          username,
+          uidHash: hashUid(uid),
           code,
         },
       });
@@ -491,10 +554,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw err;
       }
       if (code === "auth/requires-recent-login") {
-        throw new Error(
-          "For security, please sign out and sign back in, then tap Finish deletion to finish removing your account.",
-          { cause: err },
-        );
+        throw new Error("For security, sign out and sign back in, then delete your account again.", { cause: err });
       }
       // Other failure modes (network, quota, etc.) — bubble the raw error
       // back. pending flag stays set so a retry still shows the banner.
@@ -504,13 +564,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     metrics.accountDeleted(uid);
     // The data is gone either way. Only clear the pending marker once the Auth
     // record is gone too — if it survived, keeping the marker is what leaves
-    // the "Finish deletion" affordance reachable so the orphaned Auth record
+    // the banner's Finish affordance reachable so the orphaned Auth record
     // can still be cleaned up by the user rather than only by an operator.
     if (result.authDeleted) {
       clearPendingDeleteUid();
       setPendingDeleteUid(null);
+      setErasedUid(null);
       logger.info("delete_account_pending_retry_cleared", { uid, reason: "first_attempt_success" });
     } else {
+      writeErasedUid(uid);
+      setErasedUid(uid);
       logger.warn("delete_account_pending_retry_held", { uid, reason: "auth_record_survived" });
     }
     setActiveProfile(null);
@@ -550,7 +613,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     } catch (err) {
       captureException(err, {
-        extra: { context: "download_data_failed", uid: activeProfile.uid },
+        extra: { context: "download_data_failed", uidHash: hashUid(activeProfile.uid) },
       });
       throw err; // Lobby still surfaces the message to the user
     }
@@ -560,6 +623,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     user,
     activeProfile,
+    hasProfile,
     setActiveProfile,
     refreshProfile,
     reloadAuthUser,
@@ -576,6 +640,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     handleDeleteAccount,
     handleDownloadData,
     pendingDeleteUid,
+    pendingDeleteErased,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
