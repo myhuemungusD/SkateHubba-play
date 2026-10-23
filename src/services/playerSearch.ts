@@ -1,7 +1,7 @@
 import { collection, documentId, getDocs, limit, query, where } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
-import { getUserProfile, type UserProfile } from "./users";
+import { getUserProfile, isPubliclyListed, type UserProfile } from "./users";
 
 /** Most handles one prefix lookup returns. */
 export const PREFIX_SEARCH_LIMIT = 8;
@@ -17,7 +17,8 @@ const PREFIX_RE = /^[a-z0-9_]{1,20}$/;
  *
  * The prefix is lowercased and trimmed. Anything that can't be a handle
  * returns [] without a read. Reservations whose profile is gone (stale
- * handles) are skipped, and `excludeUids` drops the caller and blocked users.
+ * handles) and test accounts (isPubliclyListed, same as the directory) are
+ * skipped, and `excludeUids` drops the caller and blocked users.
  */
 export async function searchPlayersByPrefix(
   rawPrefix: string,
@@ -43,5 +44,5 @@ export async function searchPlayersByPrefix(
   }
 
   const profiles = await Promise.all(uids.slice(0, max).map((uid) => getUserProfile(uid)));
-  return profiles.filter((p): p is UserProfile => p !== null);
+  return profiles.filter((p): p is UserProfile => p !== null && isPubliclyListed(p));
 }

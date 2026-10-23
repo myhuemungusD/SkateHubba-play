@@ -155,12 +155,13 @@ export interface UserProfile {
 }
 
 /**
- * Public lists (directory, opponent pickers, leaderboard) skip test accounts.
+ * Public lists (directory, opponent pickers, leaderboard, handle search) skip
+ * test accounts.
  * Filtered here rather than in the query: `where("isTestAccount", "!=", true)`
  * would drop every doc that lacks the field, which is every real player, and
  * would need a composite index with each list's orderBy.
  */
-function isPubliclyListed(p: UserProfile): boolean {
+export function isPubliclyListed(p: UserProfile): boolean {
   return p.isTestAccount !== true;
 }
 
