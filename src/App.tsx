@@ -34,6 +34,7 @@ import {
   isAdminInsightsEnabled,
   isProBlessingEnabled,
   isRunnerEnabled,
+  isClosetEnabled,
   isClosetStudioEnabled,
   isMapCheckinsEnabled,
   isTipsEnabled,
@@ -96,6 +97,9 @@ const SpotDetailPage = lazy(() => import("./screens/SpotDetailPage").then((m) =>
 const Settings = lazy(() => import("./screens/Settings").then((m) => ({ default: m.Settings })));
 const MyStatsScreen = lazy(() => import("./screens/MyStatsScreen").then((m) => ({ default: m.MyStatsScreen })));
 const AdminScreen = lazy(() => import("./screens/AdminScreen").then((m) => ({ default: m.AdminScreen })));
+const PlayerClosetScreen = lazy(() =>
+  import("./screens/PlayerClosetScreen").then((m) => ({ default: m.PlayerClosetScreen })),
+);
 const ClosetStudioScreen = lazy(() =>
   import("./screens/ClosetStudio/ClosetStudioScreen").then((m) => ({ default: m.ClosetStudioScreen })),
 );
@@ -324,6 +328,7 @@ function PlayerProfileRoute({
   onSignUp,
   onEditProfile,
   onViewMyStats,
+  onOpenCloset,
 }: {
   currentUserProfile: import("./services/users").UserProfile | null;
   ownGames: import("./services/games").GameDoc[];
@@ -337,6 +342,8 @@ function PlayerProfileRoute({
   onSignUp: () => void;
   onEditProfile: () => void;
   onViewMyStats: () => void;
+  /** Opens a skater's full Closet screen. Unset while the Closet flag is off. */
+  onOpenCloset?: (uid: string) => void;
 }) {
   const { uid } = useParams<{ uid: string }>();
   if (!uid) return <Navigate to={currentUserProfile ? "/lobby" : "/"} replace />;
@@ -360,7 +367,20 @@ function PlayerProfileRoute({
       onSignUp={onSignUp}
       onEditProfile={isOwn ? onEditProfile : undefined}
       onViewMyStats={isOwn ? onViewMyStats : undefined}
+      onOpenCloset={onOpenCloset ? () => onOpenCloset(uid) : undefined}
     />
+  );
+}
+
+/** `/player/:uid/closet`: the full Closet grid, Back returns to that profile. */
+function ClosetRoute({ ownUid }: { ownUid: string }) {
+  const { uid } = useParams<{ uid: string }>();
+  /* v8 ignore next -- the route pattern always supplies :uid */
+  if (!uid) return <Navigate to="/lobby" replace />;
+  return (
+    <Suspense fallback={<Spinner />}>
+      <PlayerClosetScreen key={uid} uid={uid} backFallback={uid === ownUid ? "/me" : `/player/${uid}`} />
+    </Suspense>
   );
 }
 
@@ -424,6 +444,9 @@ function AppRoutes() {
   // The profile "ADD A SPOT" CTA deep-links into the Map; omit it while the
   // Map is frozen so PlayerProfileScreen renders no spot entry point at all.
   const onAddSpot = extrasEnabled ? nav.navigateToMapWithAddSpot : undefined;
+  // The full Closet screen exists only while the Closet flag is on; without
+  // it the profile row shows no "See all".
+  const openCloset = isClosetEnabled() ? (uid: string) => void navigate(`/player/${uid}/closet`) : undefined;
   const directChallenge = useCallback(
     async (username: string) => {
       if (!auth.user?.emailVerified) {
@@ -572,6 +595,12 @@ function AppRoutes() {
                     onViewPlayer={nav.navigateToPlayer}
                     onOpenDice={(id) => navigate(`/dice/${id}`)}
                     onOpenAppeal={(path) => navigate(path)}
+                    onChallengeUser={(username) => {
+                      setChallengeTarget(username.toLowerCase().trim());
+                      nav.setScreen("challenge");
+                    }}
+                    onRematch={(uid, username) => game.startChallenge(uid, username)}
+                    blockedUids={blockedUids}
                   />
                 ) : (
                   <Navigate to="/" replace />
@@ -704,6 +733,7 @@ function AppRoutes() {
                     onEditProfile={() => navigate("/settings")}
                     onViewMyStats={() => navigate("/my-stats")}
                     onOpenProTools={() => navigate("/pro")}
+                    onOpenCloset={openCloset?.bind(null, auth.activeProfile.uid)}
                   />
                 ) : (
                   <Navigate to="/" replace />
@@ -763,9 +793,20 @@ function AppRoutes() {
                   }}
                   onEditProfile={() => navigate("/settings")}
                   onViewMyStats={() => navigate("/my-stats")}
+                  onOpenCloset={openCloset}
                 />
               }
             />
+            {/* Full Closet grid, moved off the profile. Signed-in and
+                flag-gated like the profile Closet section (isClosetEnabled). */}
+            {isClosetEnabled() && (
+              <Route
+                path="/player/:uid/closet"
+                element={
+                  auth.activeProfile ? <ClosetRoute ownUid={auth.activeProfile.uid} /> : <Navigate to="/" replace />
+                }
+              />
+            )}
 
             <Route
               path="/privacy"

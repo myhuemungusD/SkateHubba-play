@@ -80,6 +80,7 @@ interface ImportMetaEnv {
   readonly VITE_FEATURE_SPOT_PRESENCE?: string;
   readonly VITE_FEATURE_TIPS?: string;
   readonly VITE_FEATURE_TURN_LENGTH?: string;
+  readonly VITE_FEATURE_RANDOM_CHALLENGER?: string;
   /** Sign in with Apple switch: "true" shows the button. Unset (default)
    *  hides it. Read via isAppleSignInEnabled(). */
   readonly VITE_FEATURE_APPLE_SIGNIN_ENABLED?: string;

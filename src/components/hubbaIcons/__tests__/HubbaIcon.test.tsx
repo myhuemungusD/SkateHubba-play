@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { HubbaIcon } from "../HubbaIcon";
-import { GLYPHS, glyphToSvg, type GlyphName } from "../glyphs";
+import { GLYPHS, elToSvg, glyphToSvg, type GlyphEl, type GlyphName } from "../glyphs";
 
 const NAMES = Object.keys(GLYPHS) as GlyphName[];
 
@@ -42,6 +42,18 @@ describe("HubbaIcon", () => {
   it("serialises standalone SVG for previews", () => {
     expect(glyphToSvg("challenge", false, "x")).toContain('stroke-width="1.75"');
     expect(glyphToSvg("settings", true, "y", 20, "#FF6B00")).toContain('mask="url(#y)"');
-    expect(glyphToSvg("challenge", true, "z")).toContain("rotate(45 12 12)");
+    expect(glyphToSvg("challenge", true, "z")).toContain('mask="url(#z)"');
+    // No shipped glyph uses a rotated rect any more, but the serialiser keeps
+    // supporting it for the preview script.
+    expect(elToSvg({ t: "rect", x: 9, y: 3.5, w: 6, h: 17, rx: 3, rot: 45 })).toContain("rotate(45 12 12)");
+    expect(elToSvg({ t: "rect", x: 2, y: 2, w: 4, h: 4, rx: 1 })).not.toContain("transform");
+  });
+
+  it("draws Challenge as a five-point crown, not a deck", () => {
+    const outline: GlyphEl[] = GLYPHS.challenge.outline;
+    expect(outline.filter((e) => e.t === "circle")).toHaveLength(5);
+    expect(outline.some((e) => e.t === "rect")).toBe(false);
+    const { container } = render(<HubbaIcon name="challenge" active />);
+    expect(container.querySelectorAll("circle")).toHaveLength(5);
   });
 });

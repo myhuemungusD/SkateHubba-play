@@ -1,8 +1,8 @@
-import { lazy, Suspense } from "react";
 import type { GameDoc } from "../../services/games";
 import type { UserProfile } from "../../services/users";
 import { ErrorBanner } from "../../components/ui/ErrorBanner";
 import { VideoRecorder } from "../../components/VideoRecorder";
+import { CollapsibleTrickPicker } from "../../components/CollapsibleTrickPicker";
 import { TurnHistoryViewer } from "../../components/TurnHistoryViewer";
 import { WaitingScreen } from "../../components/WaitingScreen";
 import { ReportModal } from "../../components/ReportModal";
@@ -21,8 +21,6 @@ import { MatcherDecisionPanel } from "./components/MatcherDecisionPanel";
 import { PendingReviewPanel } from "./components/PendingReviewPanel";
 import { ReviewStatusPanel } from "./components/ReviewStatusPanel";
 import { TurnLengthChip } from "../../components/TurnLengthChip";
-
-const TrickPicker = lazy(() => import("../../components/TrickPicker").then((m) => ({ default: m.TrickPicker })));
 
 export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profile: UserProfile; onBack: () => void }) {
   const c = useGamePlayController(game, profile);
@@ -77,15 +75,13 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         />
 
         {!c.isJudge && c.isSetter && c.trickPickerEnabled && (
-          <Suspense fallback={<div className="h-14" />}>
-            <TrickPicker
-              selection={c.trickSelection}
-              onChange={c.setTrickSelection}
-              disabled={c.videoRecorded}
-              trickCategory={game.trickCategory}
-              customRules={game.customRules}
-            />
-          </Suspense>
+          <CollapsibleTrickPicker
+            selection={c.trickSelection}
+            onChange={c.setTrickSelection}
+            disabled={c.videoRecorded}
+            trickCategory={game.trickCategory}
+            customRules={game.customRules}
+          />
         )}
         {!c.isJudge && c.isSetter && !c.trickPickerEnabled && (
           <SetterTrickInput
@@ -127,6 +123,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             label={c.isSetter ? "Land Your Trick" : `Match the ${game.currentTrickName || "Trick"}`}
             doneLabel="Recorded"
             pinControls
+            recordBlockedLabel={c.recordBlocked ? "Pick a trick to record" : undefined}
           />
         )}
 

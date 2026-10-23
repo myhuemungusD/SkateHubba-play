@@ -139,6 +139,11 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === "true"),
+  // "Find me a challenger" on Home. DEFAULTS TO OFF (button hidden).
+  VITE_FEATURE_RANDOM_CHALLENGER: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
 
   // Sign in with Apple button. DEFAULTS TO OFF until the Firebase Apple
   // provider is enabled. Read via isAppleSignInEnabled() in featureFlags.ts.

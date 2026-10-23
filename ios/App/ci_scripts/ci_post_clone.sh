@@ -80,6 +80,8 @@ export VITE_FEATURE_HUBBA_ICONS=true
 export VITE_FEATURE_RUNNER_ENABLED=false
 export VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED=false
 export VITE_FEATURE_SMS_2FA_ENABLED=false
+# "Find me a challenger" on Home stays off (button hidden) until matchmaking ships.
+export VITE_FEATURE_RANDOM_CHALLENGER=false
 export VITE_FEATURE_WTT_ENABLED="${VITE_FEATURE_WTT_ENABLED:-false}"
 # App Check always on (App Attest is free), like ios-release.yml.
 export VITE_APPCHECK_ENABLED=true

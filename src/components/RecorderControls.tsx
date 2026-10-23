@@ -12,27 +12,33 @@ const AUTO_STOP_WARNING_SECONDS = 5;
 export function RecorderControls({
   state,
   cameraError,
-  isNative,
   label,
   doneLabel,
   seconds,
   secondsLeft,
   maxDurationSeconds,
+  countdown = null,
+  recordBlockedLabel,
   onOpen,
   onStart,
+  onCancelCountdown,
   onStop,
   onRetry,
 }: {
   state: string;
   cameraError: string | null;
-  isNative: boolean;
   label: string;
   doneLabel?: string;
   seconds: number;
   secondsLeft: number;
   maxDurationSeconds: number;
+  /** Seconds left on a running self-timer; Record becomes Cancel meanwhile. */
+  countdown?: number | null;
+  /** Preview stays live but Record is disabled with this copy (e.g. no trick picked yet). */
+  recordBlockedLabel?: string;
   onOpen: () => void;
   onStart: () => void;
+  onCancelCountdown?: () => void;
   onStop: () => void;
   onRetry: () => void;
 }) {
@@ -45,12 +51,17 @@ export function RecorderControls({
       )}
       {state === "idle" && !cameraError && (
         <Btn onClick={onOpen} variant="secondary">
-          <CameraIcon size={16} className="inline -mt-0.5" /> {isNative ? "Record Video" : "Open Camera"}
+          <CameraIcon size={16} className="inline -mt-0.5" /> Open Camera
         </Btn>
       )}
-      {state === "preview" && (
-        <Btn onClick={onStart} variant="danger" className="text-2xl py-5">
-          <RecordIcon size={16} className="inline -mt-0.5" /> Record — {label}
+      {state === "preview" && countdown !== null && (
+        <Btn onClick={onCancelCountdown} variant="secondary" className="text-2xl py-5">
+          Cancel — recording in {countdown}
+        </Btn>
+      )}
+      {state === "preview" && countdown === null && (
+        <Btn onClick={onStart} variant="danger" className="text-2xl py-5" disabled={recordBlockedLabel !== undefined}>
+          <RecordIcon size={16} className="inline -mt-0.5" /> {recordBlockedLabel ?? `Record — ${label}`}
         </Btn>
       )}
       {state === "recording" && (
