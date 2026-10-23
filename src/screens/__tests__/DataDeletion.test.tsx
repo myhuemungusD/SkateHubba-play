@@ -23,7 +23,9 @@ describe("DataDeletion", () => {
     const text = (document.body.textContent ?? "").replace(/\s+/g, " ");
     expect(text).toContain("a single JSON file that you can save or share");
     expect(text).toContain("In a browser it downloads to your device");
-    expect(text).toContain("in the iPhone or Android app the share sheet opens");
+    expect(text).toContain("in the app, the share sheet opens");
+    // Guideline 2.3.10: this page ships in the iOS app, so no other platform is named.
+    expect(text).not.toMatch(/android/i);
   });
 
   it("shows the same after-deletion facts as the Privacy Policy", () => {

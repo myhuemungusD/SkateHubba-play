@@ -31,8 +31,8 @@ export function DataDeletion({ onBack }: { onBack: () => void }) {
             <strong className="text-white">Account</strong>, tap{" "}
             <strong className="text-white">&quot;Download my data&quot;</strong>. We package your profile, game history,
             landed clips, reports you filed, and the list of users you blocked into a single JSON file that you can save
-            or share. In a browser it downloads to your device; in the iPhone or Android app the share sheet opens so
-            you can save it to Files or send it.
+            or share. In a browser it downloads to your device; in the app, the share sheet opens so you can save it to
+            Files or send it.
           </p>
         </Section>
 
