@@ -88,6 +88,11 @@ vi.mock("../../services/pushNotifications", () => ({
   registerPushTokenIfGranted: vi.fn().mockResolvedValue(undefined),
   unregisterPushToken: vi.fn().mockResolvedValue(undefined),
 }));
+const mockSaveTextFile = vi.hoisted(() => vi.fn());
+vi.mock("../../services/nativeBridge", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../services/nativeBridge")>()),
+  saveTextFile: (...args: unknown[]) => mockSaveTextFile(...args),
+}));
 vi.mock("../../services/userData", () => ({
   exportUserData: vi.fn(),
   serializeUserData: vi.fn(() => "{}"),
@@ -957,6 +962,86 @@ describe("handleDeleteAccount", () => {
       });
 
       expect(sessionStorage.getItem(STORAGE_KEY)).toBe("u1");
+    });
+  });
+});
+
+describe("handleDownloadData", () => {
+  const profile = { uid: "u1", username: "sk8r" };
+  const bundle = { games: [{}], clips: [], reports: [] };
+
+  async function runDownload(): Promise<{ result: unknown; error: unknown }> {
+    const ctxRef: { current: ReturnType<typeof useAuthContext> | null } = { current: null };
+    function Harness() {
+      const ctx = useAuthContext();
+      ctxRef.current = ctx;
+      const seeded = useRef(false);
+      useEffect(() => {
+        if (!seeded.current) {
+          seeded.current = true;
+          ctx.setActiveProfile(profile as unknown as UserProfile);
+        }
+      }, [ctx]);
+      return null;
+    }
+    render(
+      <AuthProvider>
+        <Harness />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(ctxRef.current?.activeProfile).toBeTruthy());
+    const out: { result: unknown; error: unknown } = { result: undefined, error: undefined };
+    await act(async () => {
+      try {
+        out.result = await ctxRef.current?.handleDownloadData();
+      } catch (err) {
+        out.error = err;
+      }
+    });
+    return out;
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    const { exportUserData } = await import("../../services/userData");
+    vi.mocked(exportUserData).mockResolvedValue(bundle as never);
+  });
+
+  it("saves the JSON export through saveTextFile and returns how it ended", async () => {
+    mockSaveTextFile.mockResolvedValueOnce("shared");
+    const { result, error } = await runDownload();
+
+    expect(error).toBeUndefined();
+    expect(result).toBe("shared");
+    expect(mockSaveTextFile).toHaveBeenCalledWith({
+      filename: "export.json",
+      text: "{}",
+      mimeType: "application/json",
+      title: "Your SkateHubba data",
+    });
+    expect(mockLoggerInfo).toHaveBeenCalledWith(
+      "download_data_done",
+      expect.objectContaining({ uid: "u1", games: 1, result: "shared" }),
+    );
+  });
+
+  it("passes a cancelled share through without reporting an error", async () => {
+    mockSaveTextFile.mockResolvedValueOnce("cancelled");
+    const { result } = await runDownload();
+
+    expect(result).toBe("cancelled");
+    expect(mockCaptureException).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed save to Sentry and rethrows it for the UI", async () => {
+    const failure = new Error("Couldn't open the share sheet. Try again.");
+    mockSaveTextFile.mockRejectedValueOnce(failure);
+    const { error } = await runDownload();
+
+    expect(error).toBe(failure);
+    expect(mockCaptureException).toHaveBeenCalledWith(failure, {
+      extra: { context: "download_data_failed", uidHash: hashUid("u1") },
     });
   });
 });

@@ -64,6 +64,7 @@
     "@capacitor/camera": "^8.2.5",
     "@capacitor/clipboard": "^8.0.1",
     "@capacitor/core": "^8.5.3",
+    "@capacitor/filesystem": "^8.1.5",
     "@capacitor/haptics": "^8.0.2",
     "@capacitor/ios": "^8.5.3",
     "@capacitor/keyboard": "^8.0.6",
