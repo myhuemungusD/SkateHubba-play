@@ -28,6 +28,7 @@ import { isClipModerationEnabled } from "../lib/featureFlags";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { clipsRef } from "./clips.mappers";
+import { containsObjectionableText, OBJECTIONABLE_TEXT_MESSAGE } from "../utils/objectionable";
 
 /** Field caps mirrored from the clips create rule — fail fast, not authorize. */
 const MAX_TRICK_NAME_LEN = 80;
@@ -165,6 +166,7 @@ export async function createUserClip(params: CreateUserClipParams): Promise<stri
   if (trimmedTrick.length > MAX_TRICK_NAME_LEN) {
     throw new Error(`Trick names are limited to ${MAX_TRICK_NAME_LEN} characters.`);
   }
+  if (containsObjectionableText(trimmedTrick)) throw new Error(OBJECTIONABLE_TEXT_MESSAGE);
   const moderationOn = isClipModerationEnabled();
   if (
     typeof videoUrl !== "string" ||

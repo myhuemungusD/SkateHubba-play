@@ -111,7 +111,10 @@ export function SpotFilterBar({
   }, [expanded, searchFocused]);
 
   return (
-    <div ref={panelRef} className="absolute top-3 left-3 right-3 z-30 pointer-events-none">
+    <div
+      ref={panelRef}
+      className="absolute top-[calc(env(safe-area-inset-top)+0.75rem)] left-3 right-3 z-30 pointer-events-none"
+    >
       {/* Search + filter toggle row */}
       <div className="flex items-center gap-2 pointer-events-auto">
         <label className="flex-1 flex items-center gap-2 bg-surface-alt/95 backdrop-blur border border-[#333] rounded-xl px-3 h-10">

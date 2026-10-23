@@ -57,7 +57,10 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry, autoOpenAddSp
 
   const { spots, setSpots, fetchSpots } = useSpotsInBounds();
   const mapPhase1 = isMapCheckinsEnabled();
-  const { user } = useAuthContext();
+  const { user, activeProfile } = useAuthContext();
+  // App renders the BottomNav whenever there's an active profile. The map's
+  // bottom chrome must then clear it; signed-out it only clears the inset.
+  const aboveNav = Boolean(activeProfile);
   const [privateSpots, setPrivateSpots] = useState<Spot[]>([]);
   const [filters, setFilters] = useState<SpotFilters>(DEFAULT_SPOT_FILTERS);
   const [selectedSpot, setSelectedSpot] = useState<Spot | null>(null);
@@ -251,7 +254,11 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry, autoOpenAddSp
   }
 
   return (
-    <div className="relative w-full h-dvh">
+    // spot-map / spot-map--above-nav (index.css) lift Mapbox's bottom
+    // corners (zoom, logo, attribution) above the BottomNav and home
+    // indicator. The recenter button and FAB stack above the zoom control
+    // from the same --map-bottom-clearance.
+    <div className={`spot-map relative w-full h-dvh${aboveNav ? " spot-map--above-nav" : ""}`}>
       <div ref={mapContainer} className="w-full h-full" />
 
       {/* Map loading overlay. If the load event doesn't fire within 15s we
@@ -298,7 +305,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry, autoOpenAddSp
         onClick={handleRecenter}
         aria-label={isTrackingUser ? "Following your location" : "Recenter to my location"}
         aria-pressed={isTrackingUser}
-        className={`absolute bottom-36 right-2.5 z-20 w-10 h-10 rounded-lg
+        className={`absolute bottom-[calc(var(--map-bottom-clearance)+10.5rem)] right-2.5 z-20 w-10 h-10 rounded-lg
                     flex items-center justify-center transition-colors ${
                       isTrackingUser
                         ? "bg-[#F97316] border border-[#F97316] text-white"
@@ -313,7 +320,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry, autoOpenAddSp
         <button
           type="button"
           onClick={() => setIsAddingSpot(true)}
-          className="absolute bottom-24 right-2.5 z-20 w-12 h-12 bg-[#F97316] rounded-full
+          className="absolute bottom-[calc(var(--map-bottom-clearance)+6.75rem)] right-2.5 z-20 w-12 h-12 bg-[#F97316] rounded-full
                    flex items-center justify-center text-white shadow-lg
                    hover:bg-[#EA580C] transition-colors"
           aria-label="Add a spot"

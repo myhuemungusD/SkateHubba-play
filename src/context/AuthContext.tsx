@@ -14,6 +14,7 @@ import { removeCurrentFcmToken, refreshWebPushTokenIfGranted } from "../services
 import { isPushSupported, registerPushTokenIfGranted, unregisterPushToken } from "../services/pushNotifications";
 import type { UserProfile } from "../services/users";
 import { exportUserData, serializeUserData, userDataFilename } from "../services/userData";
+import { saveTextFile, type SaveFileResult } from "../services/nativeBridge";
 import { getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { isBenignAuthCode, getAuthErrorMessage } from "../utils/authCodes";
 import { analytics } from "../services/analytics";
@@ -128,7 +129,8 @@ export interface AuthContextValue {
   clearMfaChallenge: () => void;
   handleSignOut: () => Promise<void>;
   handleDeleteAccount: () => Promise<void>;
-  handleDownloadData: () => Promise<void>;
+  /** Resolves how the export ended; rejects with a user-facing message. */
+  handleDownloadData: () => Promise<SaveFileResult | void>;
   /**
    * Uid with an account deletion that was started and has not finished (the
    * request failed, the sign-in was too old, or the app was killed mid-way).
@@ -581,8 +583,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   /**
    * GDPR Article 20 / CCPA data-portability export. Collects the user's data
-   * from Firestore, packs it into a JSON bundle, and triggers a browser
-   * download. Runs entirely client-side so there's no server dependency and
+   * from Firestore, packs it into a JSON bundle, and saves it: a browser
+   * download on web, the native share sheet (Save to Files / AirDrop) in the
+   * iOS and Android shells, where `<a download>` does nothing. Runs entirely
+   * client-side so there's no server dependency and
    * the same auth context that gates normal reads gates the export.
    */
   const handleDownloadData = useCallback(async () => {
@@ -592,25 +596,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logger.info("download_data_start", { uid: activeProfile.uid });
     try {
       const bundle = await exportUserData(activeProfile.uid, activeProfile.username);
-      const blob = new Blob([serializeUserData(bundle)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = userDataFilename(bundle);
-      anchor.rel = "noopener";
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      // Defer revocation so Safari/WebKit doesn't cancel the download mid-
-      // flight — modern Chrome/Firefox queue the save before click() returns,
-      // but older WebKit historically races the blob fetch.
-      setTimeout(() => URL.revokeObjectURL(url), 0);
+      const result = await saveTextFile({
+        filename: userDataFilename(bundle),
+        text: serializeUserData(bundle),
+        mimeType: "application/json",
+        title: "Your SkateHubba data",
+      });
       logger.info("download_data_done", {
         uid: activeProfile.uid,
         games: bundle.games.length,
         clips: bundle.clips.length,
         reports: bundle.reports.length,
+        result,
       });
+      return result;
     } catch (err) {
       captureException(err, {
         extra: { context: "download_data_failed", uidHash: hashUid(activeProfile.uid) },

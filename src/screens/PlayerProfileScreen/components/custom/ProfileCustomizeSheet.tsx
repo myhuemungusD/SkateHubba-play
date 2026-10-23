@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useFocusTrap } from "../../../../hooks/useFocusTrap";
 import { X } from "lucide-react";
 import { gradientCss, saveProfileCustom, type ProfileCustom } from "../../../../services/profileCustom";
+import { OBJECTIONABLE_TEXT_MESSAGE } from "../../../../utils/objectionable";
 import { CustomizeAboutTab } from "./CustomizeAboutTab";
 import { CustomizeLayoutTab } from "./CustomizeLayoutTab";
 import { CustomizeLookTab } from "./CustomizeLookTab";
@@ -39,8 +40,10 @@ export function ProfileCustomizeSheet({ uid, initial, onClose, onSaved }: Props)
     try {
       onSaved(await saveProfileCustom(uid, draft));
       onClose();
-    } catch {
-      setError("Couldn't save. Try again.");
+    } catch (err) {
+      setError(
+        err instanceof Error && err.message === OBJECTIONABLE_TEXT_MESSAGE ? err.message : "Couldn't save. Try again.",
+      );
     } finally {
       setSaving(false);
     }

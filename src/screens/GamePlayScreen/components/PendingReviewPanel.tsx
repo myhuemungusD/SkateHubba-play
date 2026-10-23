@@ -3,7 +3,7 @@ import { Btn } from "../../../components/ui/Btn";
 import { Timer } from "../../../components/Timer";
 import type { GameDoc } from "../../../services/games";
 import { isFirebaseStorageUrl } from "../../../utils/helpers";
-import { CLIP_POSTER } from "../../../lib/clipPoster";
+import { FirstFrameVideo } from "../../../components/FirstFrameVideo";
 
 interface Props {
   game: GameDoc;
@@ -63,12 +63,10 @@ export function PendingReviewPanel({
           <p className="font-display text-sm tracking-wider text-brand-green mb-2">
             @{matcherUsername.toUpperCase()}&apos;S ATTEMPT
           </p>
-          <video
+          <FirstFrameVideo
             src={attemptUrl}
             controls
             playsInline
-            poster={CLIP_POSTER}
-            preload="metadata"
             aria-label={`${matcherUsername}'s match attempt video`}
             className="trick-frame rounded-2xl bg-black object-contain border border-border"
           />

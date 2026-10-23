@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TurnHistoryViewer } from "../TurnHistoryViewer";
 import type { TurnRecord } from "../../services/games";
+import { Capacitor } from "@capacitor/core";
 
 vi.mock("../../utils/helpers", () => ({
   isFirebaseStorageUrl: (url: string) => url.startsWith("https://firebasestorage.googleapis.com/"),
@@ -143,6 +144,14 @@ describe("TurnHistoryViewer", () => {
     expect(saveButtons.length).toBe(2); // one for set, one for match
   });
 
+  it("hides download buttons in the iOS app but keeps share", () => {
+    const spy = vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(true);
+    render(<TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showDownload showShare />);
+    expect(screen.queryByText("Save clip")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Share clip")).toHaveLength(2);
+    spy.mockRestore();
+  });
+
   it("shows share buttons when showShare is true", () => {
     render(<TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showShare />);
     const shareButtons = screen.getAllByText("Share clip");
@@ -210,8 +219,31 @@ describe("TurnHistoryViewer", () => {
 
     await clickShareAndWait();
     expect(share).toHaveBeenCalledWith(expect.objectContaining({ files: [expect.any(File)] }));
+    // An untyped blob is shared as mp4, not the old hardcoded webm.
+    const [file] = (share.mock.calls[0][0] as { files: File[] }).files;
+    expect(file.name).toMatch(/\.mp4$/);
+    expect(file.type).toBe("video/mp4");
 
     unstubLevel2Share();
+  });
+
+  it("saves an mp4 turn clip with a .mp4 name", async () => {
+    const mockBlob = new Blob(["video"], { type: "video/mp4" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true, blob: () => Promise.resolve(mockBlob) } as Response);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const names: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      names.push(this.download);
+    });
+
+    render(<TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showDownload />);
+    await userEvent.click(screen.getAllByText("Save clip")[0]);
+
+    await waitFor(() => expect(screen.getByText("Saved!")).toBeInTheDocument());
+    expect(names).toEqual(["skatehubba-round1-set.mp4"]);
+
+    vi.restoreAllMocks();
   });
 
   it("share button falls back to text when the clip download fails", async () => {

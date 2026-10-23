@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hashUid, hashIdentity, redactPII } from "../pii";
+import { hashUid, hashIdentity, redactPII, stripUrlQuery } from "../pii";
 
 describe("hashUid", () => {
   it("produces a stable uid_ + 8 hex char surrogate", () => {
@@ -130,5 +130,30 @@ describe("redactPII", () => {
   it("does not match keys that merely contain 'email' (only exact match)", () => {
     const out = redactPII({ emailVerified: true }) as Record<string, unknown>;
     expect(out.emailVerified).toBe(true);
+  });
+});
+
+describe("URL query stripping (#886 review N2)", () => {
+  it("drops the download token from Firebase Storage URLs", () => {
+    const url = "https://firebasestorage.googleapis.com/v0/b/x/o/games%2Fg1%2Fset.webm?alt=media&token=abc-123";
+    expect(redactPII({ context: "ClipShareButtons.save", videoUrl: url })).toEqual({
+      context: "ClipShareButtons.save",
+      videoUrl: "https://firebasestorage.googleapis.com/v0/b/x/o/games%2Fg1%2Fset.webm",
+    });
+  });
+
+  it("drops fragments too, and leaves non-URL strings and other types alone", () => {
+    expect(
+      redactPII({
+        url: "http://cdn/clip.mp4#t=0.1",
+        note: "see ?token=keep in text",
+        n: 3,
+        styleUrl: "mapbox://styles/x?y=1",
+      }),
+    ).toEqual({ url: "http://cdn/clip.mp4", note: "see ?token=keep in text", n: 3, styleUrl: "mapbox://styles/x?y=1" });
+  });
+
+  it("leaves a URL without a query unchanged", () => {
+    expect(stripUrlQuery("https://skatehubba.com/support")).toBe("https://skatehubba.com/support");
   });
 });

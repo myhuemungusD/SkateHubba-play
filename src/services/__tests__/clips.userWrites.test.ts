@@ -223,6 +223,7 @@ describe("createUserClip", () => {
     // a function` inside the transaction.
     await expect(createUserClip(params({ trickName: 7 }))).rejects.toThrow(/Name the trick/);
     await expect(createUserClip(params({ trickName: null }))).rejects.toThrow(/Name the trick/);
+    await expect(createUserClip(params({ trickName: "kys flip" }))).rejects.toThrow(/language we don't allow/);
   });
 
   it("rejects a video url that is missing, over-long, or off the caller's own prefix", async () => {

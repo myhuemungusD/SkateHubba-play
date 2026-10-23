@@ -46,6 +46,41 @@ describe("AccountActions", () => {
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
 
+    it("confirms only after the native share sheet finishes", async () => {
+      const pending = deferred<"shared">();
+      render(<AccountActions onDownloadData={() => pending.promise} />);
+
+      await userEvent.click(downloadBtn());
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      pending.resolve("shared");
+
+      expect(await screen.findByRole("status")).toHaveTextContent(/your data file is ready/i);
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it.each(["cancelled", "downloaded"] as const)("shows no confirmation when the save ends %s", async (result) => {
+      const onDownloadData = vi.fn().mockResolvedValue(result);
+      render(<AccountActions onDownloadData={onDownloadData} />);
+
+      await userEvent.click(downloadBtn());
+
+      await waitFor(() => expect(downloadBtn()).not.toBeDisabled());
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("clears an old confirmation when a retry fails", async () => {
+      const onDownloadData = vi.fn().mockResolvedValueOnce("shared").mockRejectedValueOnce(new Error("share failed"));
+      render(<AccountActions onDownloadData={onDownloadData} />);
+
+      await userEvent.click(downloadBtn());
+      await screen.findByRole("status");
+      await userEvent.click(downloadBtn());
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("share failed");
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+
     it("surfaces the export error message", async () => {
       const onDownloadData = vi.fn().mockRejectedValueOnce(new Error("network down"));
       render(<AccountActions onDownloadData={onDownloadData} />);

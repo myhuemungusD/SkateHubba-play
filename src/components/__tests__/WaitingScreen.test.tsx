@@ -88,6 +88,15 @@ describe("WaitingScreen", () => {
     expect(screen.getByText("They're setting a trick for you to match.")).toBeInTheDocument();
   });
 
+  it("shows the player's own clip frame, not the landing promo poster (TestFlight build 4 bug)", () => {
+    const url = "https://firebasestorage.googleapis.com/v0/b/x/o/set.mp4?alt=media&token=t";
+    render(<WaitingScreen game={makeGame({ currentTrickVideoUrl: url })} profile={profile} onBack={onBack} />);
+    const video = screen.getByLabelText("Video of Kickflip you set");
+    expect(video).toHaveAttribute("src", `${url}#t=0.1`);
+    expect(video).toHaveAttribute("preload", "metadata");
+    expect(video.getAttribute("poster")).toBeNull();
+  });
+
   it("shows trick video in matching phase", () => {
     render(<WaitingScreen game={makeGame()} profile={profile} onBack={onBack} />);
     expect(screen.getByText("Your Trick: Kickflip")).toBeInTheDocument();

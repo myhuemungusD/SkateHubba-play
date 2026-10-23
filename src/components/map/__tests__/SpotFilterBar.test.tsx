@@ -184,6 +184,11 @@ describe("countActiveFilters", () => {
 });
 
 describe("SpotFilterBar", () => {
+  it("clears the iOS status bar (top safe-area inset) on the full-bleed map", () => {
+    const { container } = render(<ControlledHost onChangeSpy={vi.fn()} />);
+    expect((container.firstElementChild as HTMLElement).className).toContain("env(safe-area-inset-top)");
+  });
+
   it("types into the search field and reports via onChange", async () => {
     const spy = vi.fn();
     render(<ControlledHost onChangeSpy={spy} />);

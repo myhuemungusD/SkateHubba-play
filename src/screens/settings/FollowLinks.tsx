@@ -4,7 +4,7 @@ const CARD =
   "block p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
 
 const LINKS = [
-  { href: SOCIAL_LINKS.store, title: "Shop the Store", sub: "Decks, tees, and more at skatehubba.store." },
+  { href: SOCIAL_LINKS.store, title: "Shop the Store", sub: "Shop SkateHubba gear at skatehubba.store." },
   { href: SOCIAL_LINKS.tiktok, title: "TikTok", sub: "@skatehubba_app" },
   { href: SOCIAL_LINKS.instagram, title: "Instagram", sub: "@skatehubba_app" },
   { href: SOCIAL_LINKS.facebook, title: "Facebook", sub: "SkateHubba on Facebook" },

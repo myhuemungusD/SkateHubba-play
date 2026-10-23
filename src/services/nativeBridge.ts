@@ -10,9 +10,12 @@
  *  - `navigator.onLine` in WKWebView is effectively pinned to `true` — it does
  *    not observe the OS reachability state, so offline UI never appears on iOS.
  *
+ * It also saves files: WKWebView has no download handler, so a blob
+ * `<a download>` silently does nothing inside the iOS shell.
+ *
  * Following the services-layer rule from CLAUDE.md, this is the ONLY file
- * allowed to import @capacitor/share, @capacitor/clipboard and
- * @capacitor/network. The imports are dynamic and guarded by
+ * allowed to import @capacitor/share, @capacitor/clipboard,
+ * @capacitor/network and @capacitor/filesystem. The imports are dynamic and guarded by
  * `Capacitor.isNativePlatform()` so the plugins stay out of the web bundle.
  *
  * Every export is safe to call on web: it falls back to the browser API that
@@ -145,6 +148,101 @@ async function loadNativeShare(): Promise<
     logger.warn("native_share_unavailable", { error: parseFirebaseError(err) });
     return null;
   }
+}
+
+/* ── File export ───────────────────────────── */
+
+/**
+ * How a file save ended. `"shared"`: the native share sheet finished (the user
+ * picked Save to Files, AirDrop, Mail…). `"downloaded"`: the browser download
+ * was started. `"cancelled"`: the user closed the share sheet; nothing saved.
+ */
+export type SaveFileResult = "shared" | "downloaded" | "cancelled";
+
+export interface SaveTextFileOptions {
+  /** File name, e.g. `skatehubba-data-kickflip-2026-10-23.json`. */
+  filename: string;
+  /** UTF-8 file contents. */
+  text: string;
+  /** MIME type for the web download. */
+  mimeType: string;
+  /** Share-sheet title (also the email subject when shared to Mail). */
+  title?: string;
+}
+
+/** Message the UI shows when the native write or share sheet fails. */
+export const SAVE_FILE_FAILED_MESSAGE = "Couldn't open the share sheet. Try again.";
+
+/** True when the native share plugin rejected because the user closed the sheet. */
+function isShareCancel(err: unknown): boolean {
+  return err instanceof Error && /cancel/i.test(err.message);
+}
+
+/**
+ * Save a text file the user can keep.
+ *
+ * Native: writes the file to the app's Cache directory with
+ * @capacitor/filesystem and opens the OS share sheet on it with
+ * @capacitor/share, so the user can Save to Files or AirDrop it. Resolves
+ * `"shared"` only after the sheet completes, `"cancelled"` when the user
+ * closes it. A failed write or share rejects with
+ * {@link SAVE_FILE_FAILED_MESSAGE}. The cached copy is deleted afterwards.
+ *
+ * Web: the blob `<a download>` path, unchanged. Resolves `"downloaded"`.
+ */
+export async function saveTextFile(options: SaveTextFileOptions): Promise<SaveFileResult> {
+  const { filename, text, mimeType, title } = options;
+  if (!Capacitor.isNativePlatform()) {
+    downloadInBrowser(filename, text, mimeType);
+    return "downloaded";
+  }
+
+  let fs: typeof import("@capacitor/filesystem");
+  let uri: string;
+  try {
+    fs = await import("@capacitor/filesystem");
+    ({ uri } = await fs.Filesystem.writeFile({
+      path: filename,
+      data: text,
+      directory: fs.Directory.Cache,
+      encoding: fs.Encoding.UTF8,
+    }));
+  } catch (err) {
+    logger.warn("save_file_write_failed", { error: parseFirebaseError(err) });
+    throw new Error(SAVE_FILE_FAILED_MESSAGE, { cause: err });
+  }
+
+  try {
+    const { Share } = await import("@capacitor/share");
+    await Share.share({ ...(title ? { title } : {}), files: [uri] });
+    return "shared";
+  } catch (err) {
+    if (isShareCancel(err)) return "cancelled";
+    logger.warn("save_file_share_failed", { error: parseFirebaseError(err) });
+    throw new Error(SAVE_FILE_FAILED_MESSAGE, { cause: err });
+  } finally {
+    // The share sheet has finished with the file either way; don't leave
+    // a copy of the user's data in Caches.
+    fs.Filesystem.deleteFile({ path: filename, directory: fs.Directory.Cache }).catch((err: unknown) => {
+      logger.warn("save_file_cleanup_failed", { error: parseFirebaseError(err) });
+    });
+  }
+}
+
+function downloadInBrowser(filename: string, text: string, mimeType: string): void {
+  const blob = new Blob([text], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = "noopener";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  // Defer revocation so Safari/WebKit doesn't cancel the download mid-
+  // flight — modern Chrome/Firefox queue the save before click() returns,
+  // but older WebKit historically races the blob fetch.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 /* ── Network status ────────────────────────── */

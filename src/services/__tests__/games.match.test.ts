@@ -51,6 +51,19 @@ describe("games service", () => {
       await expect(setTrick("g1", "   ", null)).rejects.toThrow("Trick name cannot be empty");
     });
 
+    it("refuses objectionable typed and custom Other trick names before any write", async () => {
+      await expect(setTrick("g1", "just kys", null)).rejects.toThrow("language we don't allow");
+      await expect(
+        setTrick("g1", "ignored", null, {
+          trickId: "other",
+          stance: "regular",
+          obstacle: null,
+          trickNameCustom: "kys flip",
+        }),
+      ).rejects.toThrow("language we don't allow");
+      expect(mockTxUpdate).not.toHaveBeenCalled();
+    });
+
     it("stores catalog fields and builds the display name from the picker", async () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
 

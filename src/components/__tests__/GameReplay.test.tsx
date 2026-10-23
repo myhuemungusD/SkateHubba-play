@@ -126,4 +126,27 @@ describe("GameReplay", () => {
     const dots = container!.querySelectorAll(".rounded-full");
     expect(dots.length).toBe(2);
   });
+
+  it("loads each clip from its first frame with no WebM poster", async () => {
+    render(<GameReplay turns={[makeTurn(1)]} />);
+    await userEvent.click(screen.getByText(/Watch Full Replay/));
+    const video = screen.getByLabelText(/Round 1: @alice sets Trick 1/);
+    expect(video).toHaveAttribute("src", "https://firebasestorage.googleapis.com/set1.webm#t=0.1");
+    expect(video).toHaveAttribute("preload", "metadata");
+    expect(video).not.toHaveAttribute("poster");
+  });
+
+  it("shows the placeholder for an unplayable clip and lets Skip move on", async () => {
+    render(<GameReplay turns={[makeTurn(1)]} />);
+    await userEvent.click(screen.getByText(/Watch Full Replay/));
+    const video = screen.getByLabelText(/Round 1: @alice sets Trick 1/);
+    Object.defineProperty(video, "error", { configurable: true, value: { code: 4, message: "unsupported" } });
+    fireEvent.error(video);
+
+    expect(screen.getByRole("img", { name: /Round 1: @alice sets Trick 1 \(can't play\)/ })).toBeInTheDocument();
+    expect(screen.getByText(/can't be played right now/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText(/Skip/));
+    expect(screen.getByLabelText(/Round 1: @bob misses Trick 1/).tagName).toBe("VIDEO");
+  });
 });
