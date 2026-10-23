@@ -17,6 +17,7 @@ import { useUsernameAvailability } from "../hooks/useUsernameAvailability";
 import { isMinorDob } from "../utils/age";
 import { useCoppaBlockedNotice } from "../utils/coppaNotice";
 import { useStickyAgeBlock } from "../hooks/useStickyAgeBlock";
+import { TERMS_REQUIRED_ERROR, useTermsGate } from "../hooks/useTermsGate";
 import { checkInlineDob } from "./authScreenHelpers";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
@@ -74,7 +75,7 @@ export function ProfileSetup({
   const [year, setYear] = useState("");
   const [parentConsent, setParentConsent] = useState(false);
   // App Review 1.2: required Terms agreement, stored as private termsAcceptedAt.
-  const [agreed, setAgreed] = useState(false);
+  const terms = useTermsGate(localError, setLocalError, "profile-setup-error");
   const [ageBlocked, setAgeBlocked] = useStickyAgeBlock(needsDobCollection, !checkingExisting && !fetchFailed);
   const [coppaOutcome] = useCoppaBlockedNotice();
   const isMinor = needsDobCollection && isMinorDob(month, day, year);
@@ -192,7 +193,7 @@ export function ProfileSetup({
       return;
     }
 
-    if (!agreed) return setLocalError("Agree to the Terms and Privacy Policy to continue");
+    if (!terms.agreed) return setLocalError(TERMS_REQUIRED_ERROR);
 
     let effectiveDob = dob ?? undefined;
     let effectiveConsent = parentalConsent;
@@ -406,9 +407,9 @@ export function ProfileSetup({
             />
           )}
 
-          <TermsAcceptCheckbox checked={agreed} onChange={setAgreed} disabled={loading} onNav={onNavLegal} />
+          <TermsAcceptCheckbox {...terms.checkboxProps} disabled={loading} onNav={onNavLegal} />
 
-          <ErrorBanner message={error} onDismiss={clearError} />
+          <ErrorBanner messageId={terms.checkboxProps.errorId} message={error} onDismiss={clearError} />
 
           <Btn type="submit" disabled={!canSubmit}>
             {loading ? (
