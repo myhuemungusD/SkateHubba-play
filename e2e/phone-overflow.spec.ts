@@ -13,6 +13,8 @@
  * limit — its /feed run scores the landing page, not the clips feed.
  */
 import { test, expect, type Page } from "@playwright/test";
+import { clearAll, createProfile, createUser } from "./helpers/emulator";
+import { signInViaUI } from "./helpers/auth-flow";
 
 const PHONES = [
   { name: "iphone se", width: 375, height: 667, dpr: 2 },
@@ -92,3 +94,43 @@ for (const phone of PHONES) {
     });
   });
 }
+
+test.describe("bottom nav at 320 with the largest text", () => {
+  test.beforeEach(async () => {
+    await clearAll();
+  });
+
+  test("every tab stays at least 44x44 and the bar does not scroll sideways", async ({ page }) => {
+    test.setTimeout(90_000);
+    const me = await createUser("nav-fit@test.com", "password123");
+    await createProfile(me.uid, "navfitskater", me.email, true, false);
+    await page.setViewportSize({ width: 320, height: 640 });
+    await signInViaUI(page, "nav-fit@test.com", "password123");
+
+    // iOS Dynamic Type at its largest maps to a 24px root (1.5x), the same
+    // value lib/dynamicType.ts writes on device.
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = "24px";
+    });
+    const nav = page.getByRole("navigation", { name: /primary navigation/i });
+    const links = nav.getByRole("link");
+    const count = await links.count();
+    expect(count).toBeGreaterThanOrEqual(3);
+    for (let i = 0; i < count; i++) {
+      const box = await links.nth(i).boundingBox();
+      const name = await links.nth(i).getAttribute("aria-label");
+      expect(box, `${name} has no box`).not.toBeNull();
+      expect(box!.width, `${name} width`).toBeGreaterThanOrEqual(44);
+      expect(box!.height, `${name} height`).toBeGreaterThanOrEqual(44);
+    }
+    // The bar itself must not spill past the phone. (Lobby content at 1.5x is
+    // covered by the letter-row checks; this test is about the tab targets.)
+    const bar = await nav.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return { left: r.left, right: r.right, scrollWidth: el.scrollWidth, clientWidth: el.clientWidth };
+    });
+    expect(bar.left).toBeGreaterThanOrEqual(-1);
+    expect(bar.right).toBeLessThanOrEqual(321);
+    expect(bar.scrollWidth).toBeLessThanOrEqual(bar.clientWidth);
+  });
+});

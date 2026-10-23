@@ -49,7 +49,7 @@
   /* Hairlines and chips (replaces arbitrary #222 / #333). */
   --color-line: #222;
   --color-line-strong: #333;
-  /* Text/icons sitting on brand orange (7.4:1+). */
+  /* Text/icons sitting on brand orange: #1a1a1a on #ff6b00 is 6.1:1 (AA). */
   --color-on-brand: #1a1a1a;
   /* Gradient midpoint between brand-orange and brand-orange-hover. */
   --color-brand-orange-mid: #ff7a1a;
@@ -675,11 +675,12 @@
   padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
 }
 /* Scroll padding for any screen that sits under the floating BottomNav.
-   --tabbar-h is the bar's own height (py-2 row of 44pt items plus its
-   bottom gap); the safe-area term matches the nav's own pb-safe, and the
+   --tabbar-h is the bar's own height: 76px at a 16px root (py-2 plus the
+   icon, gap and 14px label rows), and it scales with Dynamic Type because
+   it is in rem. The safe-area term matches the nav's own pb-safe, and the
    extra 1rem keeps the last row from touching the bar. */
 :root {
-  --tabbar-h: 4.5rem;
+  --tabbar-h: 4.75rem;
 }
 .pb-tabbar {
   padding-bottom: calc(var(--tabbar-h) + max(env(safe-area-inset-bottom), 0.75rem) + 1rem);

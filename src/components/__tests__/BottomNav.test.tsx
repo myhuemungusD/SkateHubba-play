@@ -169,6 +169,30 @@ describe("BottomNav", () => {
     expect(screen.getByRole("link", { name: "Home (12 unread)" })).toHaveTextContent("9+");
   });
 
+  it("sizes the badge in em so the pill grows with Dynamic Type", () => {
+    mockScreen = "map";
+    mockUnreadCount = 3;
+    renderNav("/map");
+    const badge = screen
+      .getByRole("link", { name: "Home (3 unread)" })
+      .querySelector('span[aria-hidden="true"].absolute');
+    expect(badge).toHaveClass("min-w-[1.3em]", "h-[1.3em]", "px-[0.3em]");
+    expect(badge?.className).not.toMatch(/\[17px\]/);
+  });
+
+  it("keeps every tab at least 44x44 even when labels outgrow a 320px bar", () => {
+    renderNav("/lobby");
+    for (const label of ["Home", "Clips", "Challenge", "Map", "Me"]) {
+      const link = screen.getByRole("link", { name: label });
+      // A px min-width on the <li> overrides flex's min-width:auto, so a long
+      // label cannot squeeze a neighbour; the label truncates instead. The
+      // floor is px so it stays 44pt under Dynamic Type rather than growing.
+      expect(link.closest("li")).toHaveClass("min-w-[44px]", "flex-1");
+      expect(link).toHaveClass("min-w-[44px]", "min-h-[44px]");
+      expect(link.querySelector(".truncate")).toHaveTextContent(label);
+    }
+  });
+
   it("renders no badge when there is nothing unread", () => {
     mockScreen = "map";
     renderNav("/map");
