@@ -44,6 +44,7 @@ export function passwordPolicyMessage(
   policy: SignupPasswordPolicy = MIRRORED_PASSWORD_POLICY,
 ): string | null {
   const issue = passwordPolicyIssue(password, policy);
+  // Exhaustive over the union: the declared return type makes tsc reject a missing case.
   switch (issue) {
     case "short":
       return `Password must be at least ${policy.minLength} characters`;
@@ -59,10 +60,6 @@ export function passwordPolicyMessage(
       return "Password must contain a symbol";
     case null:
       return null;
-    default: {
-      const _exhaustive: never = issue;
-      return _exhaustive;
-    }
   }
 }
 
@@ -89,6 +86,7 @@ export function passwordMeterLabel(
   | "Fair"
   | "Strong" {
   const issue = passwordPolicyIssue(password, policy);
+  // Exhaustive over the union: the declared return type makes tsc reject a missing case.
   switch (issue) {
     case "short":
       return "Too short";
@@ -104,9 +102,5 @@ export function passwordMeterLabel(
       return "Needs a symbol";
     case null:
       return passwordStrength(password, policy) === 3 ? "Strong" : "Fair";
-    default: {
-      const _exhaustive: never = issue;
-      return _exhaustive;
-    }
   }
 }

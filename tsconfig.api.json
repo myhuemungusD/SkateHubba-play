@@ -29,7 +29,6 @@
     "src/services/trainingLabels.materialize.ts",
     "src/constants/tricks.ts",
     "src/constants/trickCategories.ts",
-    "src/constants/wtt.config.ts",
     "src/constants/xp.ts",
     "src/utils/pii.ts"
   ]

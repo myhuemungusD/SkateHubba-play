@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { withRetry } from "../retry";
+import { isRetryable, withRetry } from "../retry";
 
 describe("withRetry", () => {
   it("returns the result on first success", async () => {
@@ -98,5 +98,15 @@ describe("withRetry", () => {
     expect(result).toBe("ok");
     expect(fn).toHaveBeenCalledTimes(3);
     vi.useRealTimers();
+  });
+});
+
+describe("isRetryable", () => {
+  it("never retries a user-initiated abort", () => {
+    // Built as a named Error: jsdom's DOMException does not extend Error
+    // (browsers' does), so it would not exercise the browser path here.
+    const aborted = new Error("aborted");
+    aborted.name = "AbortError";
+    expect(isRetryable(aborted)).toBe(false);
   });
 });

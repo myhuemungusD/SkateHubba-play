@@ -103,6 +103,17 @@ describe("isPinnedBannerUrl", () => {
     expect(isPinnedBannerUrl("u2", GOOD_URL)).toBe(false);
     expect(isPinnedBannerUrl("u1", "https://evil.example/banner.webp")).toBe(false);
   });
+
+  it("fails closed when the build has no storage bucket configured", () => {
+    vi.stubEnv("VITE_FIREBASE_STORAGE_BUCKET", undefined);
+    try {
+      expect(isPinnedBannerUrl("u1", GOOD_URL)).toBe(false);
+      // An empty bucket must not turn into a wildcard either.
+      expect(isPinnedBannerUrl("u1", GOOD_URL.replace(/\/b\/[^/]+\//, "/b/x/"))).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });
 
 describe("uploadBanner", () => {

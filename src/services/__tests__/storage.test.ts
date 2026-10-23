@@ -471,6 +471,27 @@ describe("storage service", () => {
       expect(url).toBe("https://cdn.example.com/video.webm");
       expect(callCount).toBe(2);
     });
+
+    it("does not start another attempt when the caller aborts during the retry backoff", async () => {
+      const controller = new AbortController();
+      let callCount = 0;
+      mockUploadBytesResumable.mockImplementation(() => ({
+        snapshot: { ref: "mock-ref" },
+        cancel: vi.fn(),
+        on: vi.fn((_event: string, _progress: unknown, onError: (err: Error) => void) => {
+          callCount++;
+          onError(new Error("Network error"));
+          // The abort lands after this attempt has failed, while the loop
+          // is sleeping before the next try (backoff is >= 250 ms).
+          setTimeout(() => controller.abort(), 0);
+        }),
+      }));
+
+      await expect(uploadVideo("game1", 1, "set", validBlob(), undefined, 3, controller.signal)).rejects.toMatchObject({
+        name: "AbortError",
+      });
+      expect(callCount).toBe(1);
+    });
   });
 });
 

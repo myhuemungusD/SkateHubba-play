@@ -7,7 +7,6 @@ function hostLabel(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
   } catch {
-    /* v8 ignore next */
     return url;
   }
 }

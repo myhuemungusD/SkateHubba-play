@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-17T17:52:18.514Z",
+  "generatedAt": "2026-10-23T19:07:31.473Z",
   "note": "Files under the per-file UI coverage floor when the gate was introduced. Each entry is the minimum coverage that file may have; the list only shrinks. Do not add files by hand — fix their coverage instead. Prune graduated entries with `node scripts/check-coverage-per-file.mjs --update-baseline`.",
   "floors": {
     "src/components/**": {
@@ -34,12 +34,6 @@
       "branches": 69.56,
       "statements": 56
     },
-    "src/components/FisheyeRenderer.tsx": {
-      "lines": 53.33,
-      "functions": 70,
-      "branches": 33.33,
-      "statements": 50
-    },
     "src/components/GameReplay.tsx": {
       "lines": 97.36,
       "functions": 77.77,
@@ -59,10 +53,10 @@
       "statements": 100
     },
     "src/components/map/AddSpotSheet.tsx": {
-      "lines": 76.47,
-      "functions": 52.94,
-      "branches": 81.81,
-      "statements": 73.33
+      "lines": 83.78,
+      "functions": 56.25,
+      "branches": 84.31,
+      "statements": 80.24
     },
     "src/components/map/BustRisk.tsx": {
       "lines": 83.33,
@@ -83,10 +77,10 @@
       "statements": 92.85
     },
     "src/components/map/SpotMap.tsx": {
-      "lines": 77.33,
-      "functions": 52,
-      "branches": 82.97,
-      "statements": 73.17
+      "lines": 80.23,
+      "functions": 57.14,
+      "branches": 86.66,
+      "statements": 76.59
     },
     "src/components/map/SpotMapOverlays.tsx": {
       "lines": 88.88,
@@ -107,22 +101,22 @@
       "statements": 80
     },
     "src/components/map/useUserGeolocation.ts": {
-      "lines": 78.68,
-      "functions": 75,
-      "branches": 69.23,
-      "statements": 78.12
+      "lines": 80.59,
+      "functions": 83.33,
+      "branches": 70.96,
+      "statements": 80
     },
     "src/components/waiting/ClipShareButtons.tsx": {
       "lines": 100,
-      "functions": 75,
+      "functions": 76.92,
       "branches": 100,
-      "statements": 94.64
+      "statements": 94.73
     },
     "src/screens/GameOverScreen.tsx": {
-      "lines": 88.57,
+      "lines": 91.42,
       "functions": 75,
       "branches": 85.54,
-      "statements": 86.48
+      "statements": 89.18
     },
     "src/screens/GamePlayScreen/components/JudgeStatusBadge.tsx": {
       "lines": 66.66,
@@ -141,12 +135,6 @@
       "functions": 100,
       "branches": 63.63,
       "statements": 100
-    },
-    "src/screens/SpotDetailPage.tsx": {
-      "lines": 96.55,
-      "functions": 93.33,
-      "branches": 72.91,
-      "statements": 89.23
     }
   }
 }

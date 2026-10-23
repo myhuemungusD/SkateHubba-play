@@ -210,6 +210,9 @@ jobs:
             exit 1
           fi
 
+      - name: Guard against coverage ignores without a reason
+        run: npm run check:coverage-ignores
+
       - name: Lint
         run: npm run lint
 

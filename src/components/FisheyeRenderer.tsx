@@ -54,13 +54,11 @@ function compileShader(gl: WebGLRenderingContext, type: number, src: string): We
   if (!shader) return null;
   gl.shaderSource(shader, src);
   gl.compileShader(shader);
-  /* v8 ignore start */
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
     logger.warn("shader_compile_error", { info: gl.getShaderInfoLog(shader) ?? "" });
     gl.deleteShader(shader);
     return null;
   }
-  /* v8 ignore stop */
   return shader;
 }
 
@@ -75,13 +73,11 @@ function createProgram(gl: WebGLRenderingContext): WebGLProgram | null {
   gl.attachShader(program, fs);
   gl.linkProgram(program);
 
-  /* v8 ignore start */
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
     logger.warn("program_link_error", { info: gl.getProgramInfoLog(program) ?? "" });
     gl.deleteProgram(program);
     return null;
   }
-  /* v8 ignore stop */
 
   return program;
 }

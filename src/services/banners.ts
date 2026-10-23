@@ -80,7 +80,7 @@ function bannerPath(uid: string): string {
 
 /** URL must be this project's bucket + this uid's banner object (mirrors firestore.rules). */
 export function isPinnedBannerUrl(uid: string, url: string): boolean {
-  /* v8 ignore next */
+  // No bucket configured -> "" so the pattern can match no real URL (fail closed).
   const bucket = (import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string | undefined) ?? "";
   const esc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(

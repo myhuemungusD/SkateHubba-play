@@ -38,6 +38,7 @@ function isKnownVerificationCode(code: string): code is KnownVerificationCode {
 }
 
 function messageForKnownCode(code: KnownVerificationCode): string {
+  // Exhaustive over the union: the declared return type makes tsc reject a missing case.
   switch (code) {
     case "auth/too-many-requests":
     case "auth/quota-exceeded":
@@ -52,10 +53,6 @@ function messageForKnownCode(code: KnownVerificationCode): string {
       return "Firebase blocked the verification email before it was sent (App Check). Use Resend. If this keeps happening, check Identity Toolkit App Check enforcement.";
     case "auth/no-current-user":
       return "You are not signed in, so no verification email was sent.";
-    default: {
-      const unreachable: never = code;
-      return unreachable;
-    }
   }
 }
 

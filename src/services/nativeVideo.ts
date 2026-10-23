@@ -97,10 +97,6 @@ async function destroyQuietly(): Promise<void> {
   try {
     await VideoRecorder.destroy();
   } catch (destroyErr) {
-    // Non-Error teardown rejections are effectively unreachable — the
-    // plugin rejects with real Error objects. The `String(…)` fallback
-    // is a defensive safety net and not worth chasing in tests.
-    /* v8 ignore next */
     const message = destroyErr instanceof Error ? destroyErr.message : String(destroyErr);
     addBreadcrumb({
       category: "lifecycle",

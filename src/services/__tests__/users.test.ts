@@ -690,6 +690,12 @@ describe("users service", () => {
       await expect(setProfileImageUrl("u1", "not-a-url")).rejects.toBeInstanceOf(InvalidAvatarUrlError);
     });
 
+    it("fails closed when the build has no storage bucket configured", async () => {
+      vi.stubEnv("VITE_FIREBASE_STORAGE_BUCKET", undefined);
+      await expect(setProfileImageUrl("u1", validUrl("u1"))).rejects.toBeInstanceOf(InvalidAvatarUrlError);
+      expect(mockRunTransaction).not.toHaveBeenCalled();
+    });
+
     it("rejects extensions outside the allowlist", async () => {
       await expect(setProfileImageUrl("u1", validUrl("u1", "gif"))).rejects.toBeInstanceOf(InvalidAvatarUrlError);
     });

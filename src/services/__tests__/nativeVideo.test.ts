@@ -782,4 +782,12 @@ describe("native live preview", () => {
       expect.objectContaining({ message: "video_recorder_destroy_failed", data: { error: "teardown" } }),
     );
   });
+
+  it("stringifies a non-Error teardown rejection in the breadcrumb", async () => {
+    mockDestroy.mockRejectedValueOnce("plugin gone");
+    await expect(closeNativePreview()).resolves.toBeUndefined();
+    expect(mockAddBreadcrumb).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "video_recorder_destroy_failed", data: { error: "plugin gone" } }),
+    );
+  });
 });

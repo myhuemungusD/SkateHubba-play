@@ -260,6 +260,23 @@ describe("writeNotification", () => {
 
       expect(mockBatchCommit).toHaveBeenCalledTimes(2);
     });
+
+    it("still allows a game once its window lapsed and another game's write pruned it", async () => {
+      const first = yourTurnParams();
+      await writeNotification(first);
+
+      // Past the window, a different game's write sweeps the expired entry.
+      vi.advanceTimersByTime(5_001);
+      await writeNotification({ ...first, gameId: "game-other" });
+
+      // The first game is not suppressed after the sweep...
+      await writeNotification(first);
+      expect(mockBatchCommit).toHaveBeenCalledTimes(3);
+
+      // ...and its cooldown re-arms from the new write.
+      await writeNotification(first);
+      expect(mockBatchCommit).toHaveBeenCalledTimes(3);
+    });
   });
 
   it("awaits the push dispatch when the caller opts in (navigation-safe path)", async () => {

@@ -60,6 +60,21 @@ describe("verificationContinueHost", () => {
     expect(verificationContinueHost()).toBe("skatehubba.com");
   });
 
+  it("falls back to the page origin when VITE_APP_URL is unset", () => {
+    vi.stubEnv("VITE_APP_URL", "");
+    expect(verificationContinueHost()).toBe(window.location.host);
+  });
+
+  it("returns empty with no VITE_APP_URL and no window (non-browser runtime)", () => {
+    vi.stubEnv("VITE_APP_URL", "");
+    vi.stubGlobal("window", undefined);
+    try {
+      expect(verificationContinueHost()).toBe("");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("returns empty for a non-URL", () => {
     vi.stubEnv("VITE_APP_URL", "not a url");
     expect(verificationContinueHost()).toBe("");
