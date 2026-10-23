@@ -27,15 +27,20 @@ export interface Glyph {
 
 export const STROKE = 1.75;
 
-const deck: GlyphEl = { t: "rect", x: 9, y: 3.5, w: 6, h: 17, rx: 3, rot: 45 };
-// Axles run across the deck; wheels poke out either side (top-down view).
-const AXLES = "M4.85 12.65 11.35 19.15M12.65 4.85l6.5 6.5";
-const WHEELS: [number, number][] = [
-  [4.6, 12.4],
-  [11.6, 19.4],
-  [12.4, 4.6],
-  [19.4, 11.6],
+// Crown: a plain five-point coronet drawn for SkateHubba (no brand mark is
+// traced). Five prongs rise from a flat body, the centre one tallest, and
+// each ends in a round tip so the silhouette stays legible at 22–24px. A
+// separate base band sits underneath.
+const CROWN_BODY = "M5.25 17 4 10l2.25 2.75L8 8.25 10.25 12.5 12 7l1.75 5.5L16 8.25l1.75 4.5L20 10l-1.25 7z";
+const CROWN_TIPS: [number, number][] = [
+  [4, 8.25],
+  [8, 6.5],
+  [12, 5],
+  [16, 6.5],
+  [20, 8.25],
 ];
+const crownTips = CROWN_TIPS.map(([cx, cy]) => ({ t: "circle" as const, cx, cy, r: 0.75 }));
+const CROWN_BAND = "M5.5 20.25h13";
 
 export const GLYPHS = {
   /** Home: house whose floor is a quarter-pipe transition. */
@@ -49,12 +54,12 @@ export const GLYPHS = {
       cuts: [{ t: "path", d: "M8 20.5v-.5a4.5 4.5 0 0 1 4.5-4.5h3.75", width: 2 }],
     },
   },
-  /** Challenge: top-down deck with trucks, tilted for motion. */
+  /** Challenge: a five-point crown — win the game, take the crown. */
   challenge: {
-    outline: [deck, { t: "path", d: AXLES }, ...WHEELS.map(([cx, cy]) => ({ t: "circle" as const, cx, cy, r: 0.6 }))],
+    outline: [{ t: "path", d: CROWN_BODY }, ...crownTips, { t: "path", d: CROWN_BAND }],
     filled: {
-      body: [deck, { t: "path", d: AXLES }, ...WHEELS.map(([cx, cy]) => ({ t: "circle" as const, cx, cy, r: 0.6 }))],
-      cuts: [{ t: "path", d: "M7.6 15.4l1 1M15.4 7.6l1 1", width: 1.25 }],
+      body: [{ t: "path", d: CROWN_BODY }, ...crownTips, { t: "path", d: CROWN_BAND }],
+      cuts: [],
     },
   },
   /** Clips: a skate wheel with a play mark as the hub. */

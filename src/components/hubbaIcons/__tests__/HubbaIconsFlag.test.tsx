@@ -61,6 +61,10 @@ describe("HubbaIcons flag", () => {
         </MemoryRouter>,
       );
       expect(document.querySelector(".hb-icon")).toBeNull();
+      // Legacy Challenge icon is the crown too (five round tips), not the deck.
+      const challenge = screen.getByRole("link", { name: "Challenge" });
+      expect(challenge.querySelectorAll("svg circle")).toHaveLength(5);
+      expect(challenge.querySelector("svg rect")).toBeNull();
       renderHeader();
       expect(screen.getByRole("button", { name: "Settings" }).querySelector(".hb-icon")).toBeNull();
     });
@@ -83,6 +87,9 @@ describe("HubbaIcons flag", () => {
         </MemoryRouter>,
       );
       expect(screen.getByRole("link", { name: "Home" }).querySelector(".hb-icon")).not.toBeNull();
+      const crown = screen.getByRole("link", { name: "Challenge" }).querySelector(".hb-icon-challenge");
+      expect(crown?.getAttribute("data-state")).toBe("active");
+      expect(crown?.querySelectorAll("circle")).toHaveLength(5);
       renderHeader();
       expect(screen.getByRole("button", { name: "Settings" }).querySelector(".hb-icon")).not.toBeNull();
     });

@@ -177,6 +177,21 @@ export function SkateboardIcon(props: IconProps) {
   );
 }
 
+/** Five-point crown (Challenge tab, legacy icon set). Same silhouette as the HubbaIcons glyph. */
+export function CrownIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M5.25 17 4 10l2.25 2.75L8 8.25 10.25 12.5 12 7l1.75 5.5L16 8.25l1.75 4.5L20 10l-1.25 7z" />
+      <circle cx="4" cy="8.25" r="0.75" />
+      <circle cx="8" cy="6.5" r="0.75" />
+      <circle cx="12" cy="5" r="0.75" />
+      <circle cx="16" cy="6.5" r="0.75" />
+      <circle cx="20" cy="8.25" r="0.75" />
+      <line x1="5.5" y1="20.25" x2="18.5" y2="20.25" />
+    </SvgIcon>
+  );
+}
+
 export function ChevronRightIcon(props: IconProps) {
   return (
     <SvgIcon {...props}>
