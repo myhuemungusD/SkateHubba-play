@@ -110,7 +110,7 @@ describe("writeNotification", () => {
       recipientUid: "user123",
       type: "your_turn",
       title: "Your Turn!",
-      body: "Match @alice's kickflip",
+      body: "Match @alice's Kickflip",
       gameId: "game456",
     });
 
@@ -125,10 +125,29 @@ describe("writeNotification", () => {
     expect(docData.recipientUid).toBe("user123");
     expect(docData.type).toBe("your_turn");
     expect(docData.title).toBe("Your Turn!");
-    expect(docData.body).toBe("Match @alice's kickflip");
+    expect(docData.body).toBe("Match @alice's Kickflip");
     expect(docData.gameId).toBe("game456");
     expect(docData.read).toBe(false);
     expect(docData.createdAt).toBe("SERVER_TS");
+  });
+
+  it("drops a non-preset message before any write or push (M2 preset copy only)", async () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    await writeNotification({
+      senderUid: "sender456",
+      recipientUid: "user123",
+      type: "your_turn",
+      title: "Claim your prize",
+      body: "Set a trick for @bob",
+      gameId: "game456",
+    });
+    expect(mockBatchCommit).not.toHaveBeenCalled();
+    expect(mockDispatchPushNotification).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(
+      "notification_not_preset",
+      expect.objectContaining({ title: "Claim your prize" }),
+    );
+    warn.mockRestore();
   });
 
   it("fires the push dispatcher after the batch commits (best-effort, no await)", async () => {
@@ -137,7 +156,7 @@ describe("writeNotification", () => {
       recipientUid: "user123",
       type: "your_turn" as const,
       title: "Your Turn!",
-      body: "Match @alice's kickflip",
+      body: "Match @alice's Kickflip",
       gameId: "game456",
     };
     await writeNotification(params);
@@ -153,8 +172,8 @@ describe("writeNotification", () => {
       senderUid: "s1",
       recipientUid: "r1",
       type: "your_turn",
-      title: "Turn",
-      body: "x",
+      title: "Your Turn!",
+      body: "Match @alice's trick",
       gameId: "g1",
     });
     // Dispatch is downstream of the commit; if /notifications never landed,
@@ -168,7 +187,7 @@ describe("writeNotification", () => {
       recipientUid: "user123",
       type: "your_turn",
       title: "Your Turn!",
-      body: "Match @alice's kickflip",
+      body: "Match @alice's Heelflip",
       gameId: "game456",
     });
 
@@ -204,7 +223,7 @@ describe("writeNotification", () => {
       recipientUid: "user123",
       type: "your_turn" as const,
       title: "Your Turn!",
-      body: "Match trick",
+      body: "Match @alice's trick",
       gameId: "game456",
     }) as const;
 
@@ -245,7 +264,7 @@ describe("writeNotification", () => {
         recipientUid: "user123",
         type: "your_turn",
         title: "Your Turn!",
-        body: "Match trick",
+        body: "Match @alice's trick",
         gameId: "game456",
       });
 
@@ -254,7 +273,7 @@ describe("writeNotification", () => {
         recipientUid: "user123",
         type: "new_challenge",
         title: "New Challenge!",
-        body: "Challenge",
+        body: "@alice challenged you to S.K.A.T.E.",
         gameId: "game789",
       });
 
@@ -276,7 +295,7 @@ describe("writeNotification", () => {
         recipientUid: "r1",
         type: "new_challenge",
         title: "New Challenge!",
-        body: "@alice challenged you",
+        body: "@alice challenged you to S.K.A.T.E.",
         gameId: "g-await",
       },
       { awaitPush: true },
@@ -327,7 +346,7 @@ describe("writeNotificationInTx", () => {
     recipientUid: "bob",
     type: "your_turn" as const,
     title: "Your Turn!",
-    body: "Match",
+    body: "Match @alice's trick",
     gameId: "g1",
   };
 
@@ -348,6 +367,17 @@ describe("writeNotificationInTx", () => {
     const outbox = { staged: [] as (typeof baseParams)[] };
     writeNotificationInTx(tx as never, baseParams, outbox);
     expect(outbox.staged).toEqual([baseParams]);
+  });
+
+  it("skips a non-preset message instead of staging it (M2: never roll back the game tx)", () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const tx = makeTx();
+    const outbox = { staged: [] as (typeof baseParams)[] };
+    writeNotificationInTx(tx as never, { ...baseParams, body: "Match @alice's free gift at evil.example" }, outbox);
+    expect(tx.set).not.toHaveBeenCalled();
+    expect(outbox.staged).toEqual([]);
+    expect(warn).toHaveBeenCalledWith("notification_not_preset", expect.objectContaining({ type: "your_turn" }));
+    warn.mockRestore();
   });
 
   it("skips outbox staging when no outbox is passed (zero-overhead default)", () => {

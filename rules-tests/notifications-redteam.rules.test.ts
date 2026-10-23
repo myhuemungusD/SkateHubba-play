@@ -61,8 +61,8 @@ function makeValidNotification(overrides: Record<string, unknown> = {}): Record<
     senderUid: SENDER_UID,
     recipientUid: RECIPIENT_UID,
     type: "your_turn",
-    title: "Your turn!",
-    body: "Bob is waiting on you.",
+    title: "Your Turn to Set!",
+    body: "Set a trick for @bob",
     gameId: GAME_ID,
     read: false,
     createdAt: serverTimestamp(),
@@ -126,7 +126,7 @@ describe("notifications — red-team against title/body caps", () => {
     );
   });
 
-  it("legitimate: short title and body within caps succeed", async () => {
+  it("legitimate: a preset title and body within caps succeed", async () => {
     // After the H2 hardening, /notifications create needs a companion write
     // to /notification_limits in the same batch (or a games update — see
     // notifications-companion-write-redteam). Use the batch path so this
@@ -135,7 +135,7 @@ describe("notifications — red-team against title/body caps", () => {
     const notifRef = doc(ctx.firestore(), "notifications", NOTIF_ID);
     const limitRef = doc(ctx.firestore(), "notification_limits", `${SENDER_UID}_${GAME_ID}_your_turn`);
     const batch = writeBatch(ctx.firestore());
-    batch.set(notifRef, makeValidNotification({ title: "A".repeat(80), body: "B".repeat(200) }));
+    batch.set(notifRef, makeValidNotification());
     batch.set(limitRef, {
       senderUid: SENDER_UID,
       gameId: GAME_ID,
@@ -143,5 +143,53 @@ describe("notifications — red-team against title/body caps", () => {
       lastSentAt: serverTimestamp(),
     });
     await assertSucceeds(batch.commit());
+  });
+});
+
+// ── M2 (security audit 2026-10-21): preset copy only ──
+// Game-participant notifications land on another player's (often a
+// stranger's) bell. Only the preset templates in
+// src/services/notificationPresets.ts pass; the variable parts are a handle,
+// a catalog trick name, and preset setup labels.
+describe("notifications — preset copy only (M2)", () => {
+  async function commitWith(overrides: Record<string, unknown>) {
+    const ctx = asSender();
+    const batch = writeBatch(ctx.firestore());
+    batch.set(doc(ctx.firestore(), "notifications", NOTIF_ID), makeValidNotification(overrides));
+    batch.set(doc(ctx.firestore(), "notification_limits", `${SENDER_UID}_${GAME_ID}_your_turn`), {
+      senderUid: SENDER_UID,
+      gameId: GAME_ID,
+      type: "your_turn",
+      lastSentAt: serverTimestamp(),
+    });
+    return batch.commit();
+  }
+
+  it("legitimate: trick name from the catalog (any stance) is accepted", async () => {
+    await assertSucceeds(commitWith({ title: "Your Turn!", body: "Match @alice's Switch Tre Flip" }));
+  });
+
+  it("legitimate: off-catalog trick falls back to the word 'trick'", async () => {
+    await assertSucceeds(commitWith({ title: "Your Turn!", body: "Match @alice's trick" }));
+  });
+
+  it("attack: free-text trick name is rejected", async () => {
+    await assertFails(commitWith({ title: "Your Turn!", body: "Match @alice's free gift at evil.example" }));
+  });
+
+  it("attack: free-text title is rejected", async () => {
+    await assertFails(commitWith({ title: "Claim your prize", body: "Set a trick for @bob" }));
+  });
+
+  it("attack: free text appended to a preset body is rejected", async () => {
+    await assertFails(commitWith({ title: "Your Turn to Set!", body: "Set a trick for @bob https://evil.example" }));
+  });
+
+  it("attack: handle outside [a-z0-9_] is rejected", async () => {
+    await assertFails(commitWith({ title: "Your Turn to Set!", body: "Set a trick for @Bob.Evil" }));
+  });
+
+  it("attack: a preset title paired with another type's body is rejected", async () => {
+    await assertFails(commitWith({ title: "Your Turn!", body: "vs @bob" }));
   });
 });

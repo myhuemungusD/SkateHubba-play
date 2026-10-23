@@ -56,7 +56,7 @@ function asUser(uid: string): RulesTestContext {
 function validDispatch(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     tokens: ["recipient-token-1"],
-    notification: { title: "Your Turn!", body: "Match it" },
+    notification: { title: "Your Turn!", body: "Match @alice's Kickflip" },
     data: { gameId: GAME_ID, type: "your_turn", click_action: `/?game=${GAME_ID}` },
     senderUid: SENDER_UID,
     recipientUid: RECIPIENT_UID,
@@ -167,13 +167,39 @@ describe("push_dispatch — token integrity", () => {
 describe("push_dispatch — payload caps", () => {
   it("attack: title longer than 80 chars rejected", async () => {
     await assertFails(
-      commitDispatch(asUser(SENDER_UID).firestore(), { notification: { title: "A".repeat(81), body: "ok" } }),
+      commitDispatch(asUser(SENDER_UID).firestore(), {
+        notification: { title: "A".repeat(81), body: "Match @alice's Kickflip" },
+      }),
     );
   });
 
   it("attack: body longer than 200 chars rejected", async () => {
     await assertFails(
-      commitDispatch(asUser(SENDER_UID).firestore(), { notification: { title: "ok", body: "B".repeat(201) } }),
+      commitDispatch(asUser(SENDER_UID).firestore(), { notification: { title: "Your Turn!", body: "B".repeat(201) } }),
+    );
+  });
+
+  it("attack: free-text push copy rejected (M2 preset copy only)", async () => {
+    await assertFails(
+      commitDispatch(asUser(SENDER_UID).firestore(), {
+        notification: { title: "Your Turn!", body: "Match @alice's DM me on telegram" },
+      }),
+    );
+  });
+
+  it("attack: free-text push title rejected (M2 preset copy only)", async () => {
+    await assertFails(
+      commitDispatch(asUser(SENDER_UID).firestore(), {
+        notification: { title: "Free skins", body: "Match @alice's Kickflip" },
+      }),
+    );
+  });
+
+  it("legitimate: catalog trick name in push copy accepted (M2)", async () => {
+    await assertSucceeds(
+      commitDispatch(asUser(SENDER_UID).firestore(), {
+        notification: { title: "Your Turn!", body: "Match @alice's Nollie Heelflip" },
+      }),
     );
   });
 

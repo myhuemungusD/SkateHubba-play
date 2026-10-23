@@ -19,6 +19,7 @@ import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { dispatchPushNotification, type PushDispatchOutbox } from "./pushDispatch";
+import { isPresetMessage } from "./notificationPresets";
 import { toGameDoc, type GameDoc } from "./games.mappers";
 
 /**
@@ -82,10 +83,23 @@ export interface WriteNotificationOptions {
   awaitPush?: boolean;
 }
 
+/**
+ * Preset-copy gate (audit M2). The /notifications and /push_dispatch create
+ * rules accept only the preset messages in notificationPresets.ts, so a
+ * non-preset message would be denied anyway. Checking here first means an
+ * in-transaction write is SKIPPED instead of rolling back the game action.
+ */
+function presetOrSkip(params: WriteNotificationParams): boolean {
+  if (isPresetMessage(params.type, params.title, params.body)) return true;
+  logger.warn("notification_not_preset", { type: params.type, title: params.title, gameId: params.gameId });
+  return false;
+}
+
 export async function writeNotification(
   params: WriteNotificationParams,
   options: WriteNotificationOptions = {},
 ): Promise<void> {
+  if (!presetOrSkip(params)) return;
   const key = rateLimitKey(params.senderUid, params.gameId, params.type);
 
   // Client-side rate limit: skip silently if within cooldown
@@ -218,6 +232,7 @@ export function writeNotificationInTx(
   params: WriteNotificationParams,
   pushOutbox?: PushDispatchOutbox,
 ): void {
+  if (!presetOrSkip(params)) return;
   // Client-generated deterministic ID. Safe inside a transaction — if the
   // transaction is retried by the SDK the same ID is reused, keeping the
   // notification create idempotent with the game update.
