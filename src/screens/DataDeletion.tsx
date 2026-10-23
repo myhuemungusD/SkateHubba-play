@@ -37,8 +37,8 @@ export function DataDeletion({ onBack }: { onBack: () => void }) {
 
         <Section title="Delete Your Account (In-App)">
           <p>
-            The fastest way to delete your data is directly in the app, on the web, iPhone or Android. When signed in,
-            open Settings and, under <strong className="text-white">Account</strong>, tap{" "}
+            The fastest way to delete your data is directly in the app, on the web or iPhone. When signed in, open
+            Settings and, under <strong className="text-white">Account</strong>, tap{" "}
             <strong className="text-white">&quot;Delete account&quot;</strong>. Deletion runs on our servers as soon as
             you confirm. What happens to each kind of data is listed under &quot;What Happens After Deletion&quot;
             below.

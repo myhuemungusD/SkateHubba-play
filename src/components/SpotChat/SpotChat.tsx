@@ -1,17 +1,27 @@
 /**
  * Spot group chat UI component.
  *
- * Real-time message list with send input, word filter feedback, rate limiting,
- * and report functionality. Hidden messages (flagged by filter or admin) are
- * shown dimmed with a reason badge.
+ * Real-time message list with send input, word filter feedback and rate
+ * limiting. App Review 1.2: every message that isn't the viewer's own carries
+ * a visible REPORT control that files into the main moderator queue (the same
+ * one comments and clips use), the author's handle opens their profile (where
+ * Block lives), and messages from players the viewer blocked are left out.
+ * Hidden messages (word filter or admin takedown) show a neutral placeholder.
  */
-import { useState, useEffect, useRef, useCallback } from "react";
+import { lazy, Suspense, useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { Link } from "react-router";
 import type { SpotMessage } from "../../types/spotMessage";
-import { sendSpotMessage, subscribeToSpotMessages, reportSpotMessage } from "../../services/spotMessages";
-import { logger } from "../../services/logger";
+import { sendSpotMessage, subscribeToSpotMessages } from "../../services/spotMessages";
 import { parseFirebaseError } from "../../utils/helpers";
-import { AlertCircle, Send, Flag } from "lucide-react";
+import { useBlockedUsersState } from "../../hooks/useBlockedUsers";
+import { useChatAuthors } from "./useChatAuthors";
+import { AlertCircle, Send } from "lucide-react";
 import { Btn } from "../ui/Btn";
+
+/** Keyboard focus ring, matching the comment REPORT controls. */
+const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
+
+const ReportModal = lazy(() => import("../ReportModal").then((m) => ({ default: m.ReportModal })));
 
 interface SpotChatProps {
   spotId: string;
@@ -25,13 +35,24 @@ export function SpotChat({ spotId, spotName, currentUserId, onError }: SpotChatP
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [reportingMessageId, setReportingMessageId] = useState<string | null>(null);
+  const [reporting, setReporting] = useState<SpotMessage | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // Wait for the block list before showing anything, so a blocked player's
+  // message can't flash on screen before the filter knows to drop it.
+  const { blocked, ready } = useBlockedUsersState(currentUserId ?? "");
+
+  // The subscription returns newest first; the thread reads oldest-to-newest
+  // so the latest message sits at the bottom, next to the input.
+  const visible = useMemo(
+    () => (ready ? messages.filter((m) => !blocked.has(m.userId)).reverse() : []),
+    [messages, blocked, ready],
+  );
+  const authors = useChatAuthors(useMemo(() => visible.map((m) => m.userId), [visible]));
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [visible]);
 
   // Subscribe to messages
   useEffect(() => {
@@ -86,30 +107,6 @@ export function SpotChat({ spotId, spotName, currentUserId, onError }: SpotChatP
     [handleSend],
   );
 
-  const handleReport = useCallback(
-    async (message: SpotMessage) => {
-      if (!currentUserId || reportingMessageId) return;
-
-      setReportingMessageId(message.id);
-      try {
-        await reportSpotMessage({
-          messageId: message.id,
-          spotId: message.spotId,
-          reportedBy: currentUserId,
-          reason: "inappropriate",
-        });
-        logger.info("spot_message_report_ui", { messageId: message.id });
-      } catch (err) {
-        const msg = `Failed to report message: ${parseFirebaseError(err)}`;
-        setError(msg);
-        onError?.(msg);
-      } finally {
-        setReportingMessageId(null);
-      }
-    },
-    [currentUserId, reportingMessageId, onError],
-  );
-
   if (!currentUserId) {
     return (
       <div className="rounded-lg border border-slate-700 bg-slate-800 p-4 text-center">
@@ -123,19 +120,29 @@ export function SpotChat({ spotId, spotName, currentUserId, onError }: SpotChatP
       {/* Header */}
       <div className="border-b border-slate-700 px-4 py-3">
         <h3 className="text-sm font-semibold text-white">{spotName} Chat</h3>
-        <p className="text-xs text-slate-400">{messages.length} messages</p>
+        <p className="text-xs text-slate-400">{ready ? `${visible.length} messages` : "Loading messages…"}</p>
       </div>
 
       {/* Messages */}
       <div className="flex-1 space-y-2 overflow-y-auto p-4">
-        {messages.map((message) => {
+        {visible.map((message) => {
           const isOwn = message.userId === currentUserId;
           const shouldHide = message.isHidden && !isOwn;
+          const handle = authors.get(message.userId);
 
           return (
-            <div key={message.id} className={`group flex gap-2 ${isOwn ? "flex-row-reverse" : "flex-row"}`}>
+            <div key={message.id} className={`flex flex-col ${isOwn ? "items-end" : "items-start"}`}>
+              {!isOwn && (
+                // The author's profile is where Block lives, so the handle opens it.
+                <Link
+                  to={`/player/${encodeURIComponent(message.userId)}`}
+                  className={`-my-3 inline-flex min-h-[44px] items-center py-3 text-xs text-slate-400 hover:text-white ${FOCUS}`}
+                >
+                  {handle ? `@${handle}` : "skater"}
+                </Link>
+              )}
               <div
-                className={`flex-1 rounded-lg px-3 py-2 ${
+                className={`max-w-full rounded-lg px-3 py-2 ${
                   shouldHide
                     ? "border border-slate-600 bg-slate-700/50 opacity-50"
                     : isOwn
@@ -144,14 +151,15 @@ export function SpotChat({ spotId, spotName, currentUserId, onError }: SpotChatP
                 }`}
               >
                 {shouldHide ? (
-                  <p className="text-xs italic">[Hidden: {message.hiddenReason || "reported"}]</p>
+                  <p className="text-xs italic">Message hidden by moderation</p>
                 ) : (
                   <>
+                    {/* Untrusted user text: a plain text node, so React escapes it. */}
                     <p className="break-words text-sm">{message.content}</p>
                     {message.isHidden && isOwn && (
                       <div className="mt-1 flex items-center gap-1 text-xs text-slate-300">
                         <AlertCircle className="h-3 w-3" />
-                        <span>Hidden by filter</span>
+                        <span>Hidden from others</span>
                       </div>
                     )}
                   </>
@@ -160,12 +168,11 @@ export function SpotChat({ spotId, spotName, currentUserId, onError }: SpotChatP
               {!isOwn && !shouldHide && (
                 <button
                   type="button"
-                  onClick={() => handleReport(message)}
-                  disabled={reportingMessageId === message.id}
-                  className="opacity-0 transition-opacity group-hover:opacity-100"
-                  aria-label="Report message"
+                  onClick={() => setReporting(message)}
+                  aria-label={handle ? `Report message by @${handle}` : "Report this message"}
+                  className={`inline-flex min-h-[44px] items-center text-[11px] tracking-[0.15em] text-slate-400 hover:text-red-400 ${FOCUS}`}
                 >
-                  <Flag className="h-4 w-4 text-slate-400 hover:text-red-400" />
+                  REPORT
                 </button>
               )}
             </div>
@@ -203,6 +210,21 @@ export function SpotChat({ spotId, spotName, currentUserId, onError }: SpotChatP
           {input.length > 450 && " · Max length"}
         </p>
       </div>
+
+      {reporting && (
+        <Suspense fallback={null}>
+          <ReportModal
+            reporterUid={currentUserId}
+            reportedUid={reporting.userId}
+            reportedUsername={authors.get(reporting.userId) ?? ""}
+            gameId={null}
+            spotId={reporting.spotId}
+            message={{ id: reporting.id, text: reporting.content }}
+            onClose={() => setReporting(null)}
+            onSubmitted={() => setReporting(null)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

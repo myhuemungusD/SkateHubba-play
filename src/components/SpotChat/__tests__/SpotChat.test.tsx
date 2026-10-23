@@ -1,22 +1,48 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render as rtlRender, screen, act, waitFor } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { MemoryRouter } from "react-router";
 import userEvent from "@testing-library/user-event";
 import type { SpotMessage } from "../../../types/spotMessage";
 
 const s = vi.hoisted(() => ({
   send: vi.fn(),
   subscribe: vi.fn(),
-  report: vi.fn(),
   unsub: vi.fn(),
+  profile: vi.fn(),
+  blocked: new Set<string>(),
+  ready: true,
+  modal: vi.fn(),
 }));
 
 vi.mock("../../../services/spotMessages", () => ({
   sendSpotMessage: (...a: unknown[]) => s.send(...a),
   subscribeToSpotMessages: (...a: unknown[]) => s.subscribe(...a),
-  reportSpotMessage: (...a: unknown[]) => s.report(...a),
+}));
+vi.mock("../../../services/users", () => ({ getUserProfile: (...a: unknown[]) => s.profile(...a) }));
+vi.mock("../../../hooks/useBlockedUsers", () => ({
+  useBlockedUsersState: () => ({ blocked: s.blocked, ready: s.ready }),
+}));
+vi.mock("../../ReportModal", () => ({
+  ReportModal: (props: { onClose: () => void; onSubmitted: () => void }) => {
+    s.modal(props);
+    return (
+      <div role="dialog">
+        <button type="button" onClick={props.onClose}>
+          close-report
+        </button>
+        <button type="button" onClick={props.onSubmitted}>
+          submit-report
+        </button>
+      </div>
+    );
+  },
 }));
 
 import { SpotChat } from "../SpotChat";
+import { _resetChatAuthorCache } from "../useChatAuthors";
+
+const render = (ui: ReactElement) => rtlRender(<MemoryRouter>{ui}</MemoryRouter>);
 
 const msg = (over: Partial<SpotMessage>): SpotMessage => ({
   id: "m",
@@ -35,7 +61,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   s.subscribe.mockReturnValue(s.unsub);
   s.send.mockResolvedValue(undefined);
-  s.report.mockResolvedValue(undefined);
+  s.profile.mockImplementation(async (uid: string) => (uid === "other" ? { username: "nyjah" } : null));
+  s.blocked = new Set();
+  s.ready = true;
+  _resetChatAuthorCache();
   Element.prototype.scrollIntoView = vi.fn();
 });
 
@@ -50,7 +79,7 @@ describe("SpotChat", () => {
     expect(s.subscribe).not.toHaveBeenCalled();
   });
 
-  it("renders own, others' and hidden messages", () => {
+  it("renders own, others' and hidden messages", async () => {
     const { unmount } = render(<SpotChat spotId="s1" spotName="Hubba" currentUserId="me" />);
     act(() =>
       lastSub().onMessages([
@@ -62,10 +91,10 @@ describe("SpotChat", () => {
     );
     expect(screen.getByText("Hubba Chat")).toBeInTheDocument();
     expect(screen.getByText("4 messages")).toBeInTheDocument();
-    expect(screen.getByText("Hidden by filter")).toBeInTheDocument();
-    expect(screen.getByText("[Hidden: word_filter]")).toBeInTheDocument();
-    expect(screen.getByText("[Hidden: reported]")).toBeInTheDocument();
-    expect(screen.getAllByLabelText("Report message")).toHaveLength(1);
+    expect(screen.getByText("Hidden from others")).toBeInTheDocument();
+    expect(screen.getAllByText("Message hidden by moderation")).toHaveLength(2);
+    expect(await screen.findAllByLabelText("Report message by @nyjah")).toHaveLength(1);
+    expect(screen.getAllByRole("link", { name: "@nyjah" })[0]).toHaveAttribute("href", "/player/other");
     unmount();
     expect(s.unsub).toHaveBeenCalled();
   });
@@ -107,16 +136,97 @@ describe("SpotChat", () => {
     expect(screen.getByText(/Max length/)).toBeInTheDocument();
   });
 
-  it("reports a message and shows report failures", async () => {
-    const onError = vi.fn();
-    const u = userEvent.setup();
-    render(<SpotChat spotId="s1" spotName="Hubba" currentUserId="me" onError={onError} />);
+  it("shows nothing until the block list is known, so a blocked player can't flash", async () => {
+    s.ready = false;
+    s.blocked = new Set(["blocked"]);
+    const { rerender } = render(<SpotChat spotId="s1" spotName="Hubba" currentUserId="me" />);
+    act(() => lastSub().onMessages([msg({ id: "x", userId: "blocked", content: "from a blocked player" })]));
+    expect(screen.getByText("Loading messages…")).toBeInTheDocument();
+    expect(screen.queryByText("from a blocked player")).not.toBeInTheDocument();
+
+    s.ready = true;
+    rerender(
+      <MemoryRouter>
+        <SpotChat spotId="s1" spotName="Hubba" currentUserId="me" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("0 messages")).toBeInTheDocument();
+    expect(screen.queryByText("from a blocked player")).not.toBeInTheDocument();
+  });
+
+  it("gives the author link and REPORT a 44pt target with a focus ring", async () => {
+    render(<SpotChat spotId="s1" spotName="Hubba" currentUserId="me" />);
     act(() => lastSub().onMessages([msg({ id: "a" })]));
-    await u.click(screen.getByLabelText("Report message"));
-    expect(s.report).toHaveBeenCalledWith({ messageId: "a", spotId: "s1", reportedBy: "me", reason: "inappropriate" });
-    s.report.mockRejectedValue(new Error("nope"));
-    await u.click(screen.getByLabelText("Report message"));
-    expect(screen.getByText(/Failed to report message/)).toBeInTheDocument();
-    expect(onError).toHaveBeenCalled();
+    const link = await screen.findByRole("link", { name: "@nyjah" });
+    const report = screen.getByRole("button", { name: "Report message by @nyjah" });
+    for (const el of [link, report]) {
+      expect(el.className).toContain("min-h-[44px]");
+      expect(el.className).toContain("focus-visible:outline-brand-orange");
+    }
+  });
+
+  it("shows the thread oldest first, leaves out blocked players, and labels unknown authors", async () => {
+    s.blocked = new Set(["blocked"]);
+    render(<SpotChat spotId="s1" spotName="Hubba" currentUserId="me" />);
+    // The subscription delivers newest first.
+    act(() =>
+      lastSub().onMessages([
+        msg({ id: "new", userId: "ghost", content: "second" }),
+        msg({ id: "x", userId: "blocked", content: "from a blocked player" }),
+        msg({ id: "old", content: "first" }),
+      ]),
+    );
+    expect(screen.queryByText("from a blocked player")).not.toBeInTheDocument();
+    expect(screen.getByText("2 messages")).toBeInTheDocument();
+    const texts = screen.getAllByText(/^(first|second)$/).map((el) => el.textContent);
+    expect(texts).toEqual(["first", "second"]);
+    expect(await screen.findByRole("link", { name: "skater" })).toHaveAttribute("href", "/player/ghost");
+    expect(screen.getByLabelText("Report this message")).toBeInTheDocument();
+  });
+
+  it("falls back to 'skater' when a profile can't be read, and caches lookups", async () => {
+    s.profile.mockRejectedValue(new Error("denied"));
+    const { rerender } = render(<SpotChat spotId="s1" spotName="Hubba" currentUserId="me" />);
+    act(() => lastSub().onMessages([msg({ id: "a" }), msg({ id: "b" })]));
+    expect(await screen.findAllByRole("link", { name: "skater" })).toHaveLength(2);
+    rerender(
+      <MemoryRouter>
+        <SpotChat spotId="s1" spotName="Hubba" currentUserId="me" />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(s.profile).toHaveBeenCalledTimes(1));
+  });
+
+  it("opens the report sheet for a chat message, into the main reports queue", async () => {
+    const u = userEvent.setup();
+    render(<SpotChat spotId="s1" spotName="Hubba" currentUserId="me" />);
+    act(() => lastSub().onMessages([msg({ id: "a", content: "rude" })]));
+    await u.click(await screen.findByLabelText("Report message by @nyjah"));
+    await screen.findByRole("dialog");
+    expect(s.modal).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        reporterUid: "me",
+        reportedUid: "other",
+        reportedUsername: "nyjah",
+        gameId: null,
+        spotId: "s1",
+        message: { id: "a", text: "rude" },
+      }),
+    );
+    await u.click(screen.getByText("close-report"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await u.click(screen.getByLabelText("Report message by @nyjah"));
+    await u.click(await screen.findByText("submit-report"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("files a report with an empty handle when the author's handle isn't known yet", async () => {
+    s.profile.mockReturnValue(new Promise(() => {}));
+    const u = userEvent.setup();
+    render(<SpotChat spotId="s1" spotName="Hubba" currentUserId="me" />);
+    act(() => lastSub().onMessages([msg({ id: "a" })]));
+    await u.click(screen.getByLabelText("Report this message"));
+    await screen.findByRole("dialog");
+    expect(s.modal).toHaveBeenLastCalledWith(expect.objectContaining({ reportedUsername: "" }));
   });
 });

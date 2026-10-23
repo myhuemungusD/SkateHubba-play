@@ -106,6 +106,15 @@ export interface AdminReport {
    * only. Empty when this isn't a comment report.
    */
   commentText: string;
+  /** Spot-chat message this report is about (under `spotId`), or `null`. */
+  messageId: string | null;
+  /**
+   * The chat message as it read when reported. UNTRUSTED user text: plain
+   * text only. Empty when this isn't a chat message report.
+   */
+  messageText: string;
+  /** `"profile"` for a report filed from the player's profile, otherwise `null`. */
+  target: string | null;
   /** "pending" | "resolved" | "dismissed" in practice; read as a string. */
   status: string;
   /** Filing time, or `null` when the field is missing or not a Timestamp. */
@@ -394,6 +403,9 @@ function toAdminReport(snap: ParsableDoc): AdminReport | null {
     commentId: toStringOrNull(data.commentId),
     spotId: toStringOrNull(data.spotId),
     commentText: toStringOrEmpty(data.commentText),
+    messageId: toStringOrNull(data.messageId),
+    messageText: toStringOrEmpty(data.messageText),
+    target: toStringOrNull(data.target),
     status: toStringOrEmpty(data.status),
     createdAt: toDateOrNull(data.createdAt),
     // The resolution audit pair. Written by `resolveReport`; absent on every

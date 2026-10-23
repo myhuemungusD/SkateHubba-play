@@ -196,6 +196,30 @@ describe("ReportModal — user-clip reports", () => {
     expect(screen.getByRole("heading", { name: "Report this comment" })).toBeInTheDocument();
   });
 
+  it.each([
+    [
+      { spotId: "s1", message: { id: "m1", text: "rude msg" } },
+      { spotId: "s1", message: { id: "m1", text: "rude msg" } },
+    ],
+    [{ profile: true }, { profile: true, gameId: null }],
+  ])("passes a chat message or profile target through (%o)", async (props, expected) => {
+    const user = userEvent.setup();
+    render(<ReportModal {...baseProps} gameId={null} {...props} />);
+    await user.selectOptions(screen.getByRole("combobox"), "spam");
+    await user.click(screen.getByText("Submit Report"));
+    await waitFor(() => expect(mockSubmitReport).toHaveBeenCalledWith(expect.objectContaining(expected)));
+  });
+
+  it("quotes a chat message under its own title, with or without a handle", () => {
+    const { unmount } = render(<ReportModal {...baseProps} spotId="s1" message={{ id: "m1", text: "rude msg" }} />);
+    expect(screen.getByRole("heading", { name: "Report message by @bob" })).toBeInTheDocument();
+    expect(screen.getByTestId("report-comment-quote")).toHaveTextContent("rude msg");
+    expect(screen.getAllByRole("option")).toHaveLength(5);
+    unmount();
+    render(<ReportModal {...baseProps} reportedUsername="" spotId="s1" message={{ id: "m1", text: "x" }} />);
+    expect(screen.getByRole("heading", { name: "Report this message" })).toBeInTheDocument();
+  });
+
   it("sends a null gameId when reporting a clip that belongs to no game", async () => {
     const user = userEvent.setup();
     const { gameId: _omitted, ...noGame } = baseProps;

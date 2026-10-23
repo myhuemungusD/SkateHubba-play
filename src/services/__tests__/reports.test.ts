@@ -259,6 +259,43 @@ describe("submitReport (user-clip targets)", () => {
     expect(batchSet).not.toHaveBeenCalled();
   });
 
+  it("files a profile report with no game, clip or spot", async () => {
+    await submitReport({ ...base, profile: true });
+    const data = reportSetCall();
+    expect(data.target).toBe("profile");
+    expect(data.gameId).toBeNull();
+    expect(data.clipId).toBeUndefined();
+    expect(data.spotId).toBeUndefined();
+  });
+
+  it("leaves the target off every non-profile report", async () => {
+    await submitReport({ ...base, clipId: "uc1", profile: false });
+    expect(reportSetCall().target).toBeUndefined();
+  });
+
+  it("records a spot-chat message's id and a snapshot of its text", async () => {
+    await submitReport({ ...base, spotId: "s1", message: { id: "m1", text: "y".repeat(600) } });
+    const data = reportSetCall();
+    expect(data.spotId).toBe("s1");
+    expect(data.messageId).toBe("m1");
+    expect(data.messageText).toBe("y".repeat(500));
+    expect(data.commentId).toBeUndefined();
+  });
+
+  it("rejects a chat message report without a spot, with a clip or comment, or with a bad id", async () => {
+    const message = { id: "m1", text: "hi" };
+    await expect(submitReport({ ...base, gameId: "g1", message })).rejects.toThrow(/not valid/);
+    await expect(submitReport({ ...base, spotId: "s1", clipId: "uc1", message })).rejects.toThrow(/not valid/);
+    await expect(submitReport({ ...base, spotId: "s1", message, comment: { id: "cm1", text: "hi" } })).rejects.toThrow(
+      /not valid/,
+    );
+    await expect(submitReport({ ...base, spotId: "s1", message: { id: "", text: "hi" } })).rejects.toThrow(/not valid/);
+    await expect(submitReport({ ...base, spotId: "s1", message: { id: "a/b", text: "hi" } })).rejects.toThrow(
+      /not valid/,
+    );
+    expect(batchSet).not.toHaveBeenCalled();
+  });
+
   it("caps an over-long clipId at 128 chars", async () => {
     await submitReport({ ...base, clipId: "c".repeat(200) });
 

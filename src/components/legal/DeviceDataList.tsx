@@ -24,9 +24,9 @@ export function DeviceDataList() {
       </li>
       <li>
         <strong className="text-white">Push notification tokens:</strong> If you turn on notifications, we store your
-        device&apos;s push token and a platform tag (web, iPhone or Android), and deliver notifications through Firebase
-        Cloud Messaging and, on iPhone, Apple Push Notification service. So that other players&apos; game moves can
-        alert you, a copy of the token can be looked up by signed-in users who know your account ID. Turning
+        device&apos;s push token and a platform tag (for example web or iPhone), and deliver notifications through
+        Firebase Cloud Messaging and, on iPhone, Apple Push Notification service. So that other players&apos; game moves
+        can alert you, a copy of the token can be looked up by signed-in users who know your account ID. Turning
         notifications off removes that copy and stops notifications; the token stays in the private part of your profile
         (only you can read it) until you sign out. Signing out removes the token.
       </li>
@@ -37,9 +37,8 @@ export function DeviceDataList() {
       </li>
       <li>
         <strong className="text-white">Device checks:</strong> To stop automated abuse, we may use Firebase App Check,
-        which asks Google reCAPTCHA v3 (on the web), Apple App Attest or DeviceCheck (on iPhone), or Google Play
-        Integrity (on Android) to confirm that requests come from our real app. These services receive signals about
-        your device or browser.
+        which asks Google reCAPTCHA v3 (on the web) or Apple App Attest or DeviceCheck (on iPhone) to confirm that
+        requests come from our real app. These services receive signals about your device or browser.
       </li>
       <li>
         <strong className="text-white">Usage data (only if you accept the consent banner):</strong> Product-usage events
