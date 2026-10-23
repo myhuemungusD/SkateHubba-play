@@ -13,10 +13,13 @@ import { Link } from "react-router";
 import type { SpotMessage } from "../../types/spotMessage";
 import { sendSpotMessage, subscribeToSpotMessages } from "../../services/spotMessages";
 import { parseFirebaseError } from "../../utils/helpers";
-import { useBlockedUsers } from "../../hooks/useBlockedUsers";
+import { useBlockedUsersState } from "../../hooks/useBlockedUsers";
 import { useChatAuthors } from "./useChatAuthors";
 import { AlertCircle, Send } from "lucide-react";
 import { Btn } from "../ui/Btn";
+
+/** Keyboard focus ring, matching the comment REPORT controls. */
+const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
 
 const ReportModal = lazy(() => import("../ReportModal").then((m) => ({ default: m.ReportModal })));
 
@@ -34,11 +37,16 @@ export function SpotChat({ spotId, spotName, currentUserId, onError }: SpotChatP
   const [error, setError] = useState<string | null>(null);
   const [reporting, setReporting] = useState<SpotMessage | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const blocked = useBlockedUsers(currentUserId ?? "");
+  // Wait for the block list before showing anything, so a blocked player's
+  // message can't flash on screen before the filter knows to drop it.
+  const { blocked, ready } = useBlockedUsersState(currentUserId ?? "");
 
   // The subscription returns newest first; the thread reads oldest-to-newest
   // so the latest message sits at the bottom, next to the input.
-  const visible = useMemo(() => messages.filter((m) => !blocked.has(m.userId)).reverse(), [messages, blocked]);
+  const visible = useMemo(
+    () => (ready ? messages.filter((m) => !blocked.has(m.userId)).reverse() : []),
+    [messages, blocked, ready],
+  );
   const authors = useChatAuthors(useMemo(() => visible.map((m) => m.userId), [visible]));
 
   // Auto-scroll to bottom on new messages
@@ -112,7 +120,7 @@ export function SpotChat({ spotId, spotName, currentUserId, onError }: SpotChatP
       {/* Header */}
       <div className="border-b border-slate-700 px-4 py-3">
         <h3 className="text-sm font-semibold text-white">{spotName} Chat</h3>
-        <p className="text-xs text-slate-400">{visible.length} messages</p>
+        <p className="text-xs text-slate-400">{ready ? `${visible.length} messages` : "Loading messages…"}</p>
       </div>
 
       {/* Messages */}
@@ -128,7 +136,7 @@ export function SpotChat({ spotId, spotName, currentUserId, onError }: SpotChatP
                 // The author's profile is where Block lives, so the handle opens it.
                 <Link
                   to={`/player/${encodeURIComponent(message.userId)}`}
-                  className="mb-0.5 text-xs text-slate-400 hover:text-white"
+                  className={`-my-3 inline-flex min-h-[44px] items-center py-3 text-xs text-slate-400 hover:text-white ${FOCUS}`}
                 >
                   {handle ? `@${handle}` : "skater"}
                 </Link>
@@ -162,7 +170,7 @@ export function SpotChat({ spotId, spotName, currentUserId, onError }: SpotChatP
                   type="button"
                   onClick={() => setReporting(message)}
                   aria-label={handle ? `Report message by @${handle}` : "Report this message"}
-                  className="inline-flex min-h-[44px] items-center text-[11px] tracking-[0.15em] text-slate-400 hover:text-red-400"
+                  className={`inline-flex min-h-[44px] items-center text-[11px] tracking-[0.15em] text-slate-400 hover:text-red-400 ${FOCUS}`}
                 >
                   REPORT
                 </button>

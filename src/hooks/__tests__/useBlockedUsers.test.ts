@@ -7,7 +7,7 @@ vi.mock("../../services/blocking", () => ({
   subscribeToBlockedUsers: (...args: unknown[]) => mockSubscribeToBlockedUsers(...args),
 }));
 
-import { useBlockedUsers } from "../useBlockedUsers";
+import { useBlockedUsers, useBlockedUsersState } from "../useBlockedUsers";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -28,7 +28,7 @@ describe("useBlockedUsers", () => {
 
     const { result } = renderHook(() => useBlockedUsers("u1"));
 
-    expect(mockSubscribeToBlockedUsers).toHaveBeenCalledWith("u1", expect.any(Function));
+    expect(mockSubscribeToBlockedUsers).toHaveBeenCalledWith("u1", expect.any(Function), expect.any(Function));
     expect(result.current).toEqual(new Set(["u2", "u3"]));
   });
 
@@ -54,7 +54,7 @@ describe("useBlockedUsers", () => {
     rerender({ uid: "u2" });
 
     expect(unsub1).toHaveBeenCalled();
-    expect(mockSubscribeToBlockedUsers).toHaveBeenCalledWith("u2", expect.any(Function));
+    expect(mockSubscribeToBlockedUsers).toHaveBeenCalledWith("u2", expect.any(Function), expect.any(Function));
   });
 
   it("updates when subscription fires with new data", () => {
@@ -90,5 +90,58 @@ describe("useBlockedUsers", () => {
     rerender({ uid: "" });
 
     expect(result.current.size).toBe(0);
+  });
+});
+
+type Update = (s: Set<string>) => void;
+
+describe("useBlockedUsersState", () => {
+  it("is ready immediately with no viewer", () => {
+    const { result } = renderHook(() => useBlockedUsersState(""));
+    expect(result.current.ready).toBe(true);
+    expect(result.current.blocked.size).toBe(0);
+  });
+
+  it("is not ready until the first snapshot lands", () => {
+    let push: Update = () => {};
+    mockSubscribeToBlockedUsers.mockImplementation((_uid: string, onUpdate: Update) => {
+      push = onUpdate;
+      return vi.fn();
+    });
+
+    const { result } = renderHook(() => useBlockedUsersState("u1"));
+    expect(result.current.ready).toBe(false);
+
+    act(() => push(new Set(["u2"])));
+    expect(result.current).toEqual({ blocked: new Set(["u2"]), ready: true });
+  });
+
+  it("fails open (ready, nothing filtered) when the listener errors", () => {
+    let fail: () => void = () => {};
+    mockSubscribeToBlockedUsers.mockImplementation((_uid: string, _onUpdate: Update, onError: () => void) => {
+      fail = onError;
+      return vi.fn();
+    });
+
+    const { result } = renderHook(() => useBlockedUsersState("u1"));
+    act(() => fail());
+    expect(result.current).toEqual({ blocked: new Set(), ready: true });
+  });
+
+  it("drops the previous viewer's list while the next one loads", () => {
+    const pushes: Update[] = [];
+    mockSubscribeToBlockedUsers.mockImplementation((_uid: string, onUpdate: Update) => {
+      pushes.push(onUpdate);
+      return vi.fn();
+    });
+
+    const { result, rerender } = renderHook(({ uid }) => useBlockedUsersState(uid), {
+      initialProps: { uid: "u1" },
+    });
+    act(() => pushes[0](new Set(["u9"])));
+    expect(result.current.ready).toBe(true);
+
+    rerender({ uid: "u2" });
+    expect(result.current).toEqual({ blocked: new Set(), ready: false });
   });
 });

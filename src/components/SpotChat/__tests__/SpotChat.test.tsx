@@ -11,6 +11,7 @@ const s = vi.hoisted(() => ({
   unsub: vi.fn(),
   profile: vi.fn(),
   blocked: new Set<string>(),
+  ready: true,
   modal: vi.fn(),
 }));
 
@@ -19,7 +20,9 @@ vi.mock("../../../services/spotMessages", () => ({
   subscribeToSpotMessages: (...a: unknown[]) => s.subscribe(...a),
 }));
 vi.mock("../../../services/users", () => ({ getUserProfile: (...a: unknown[]) => s.profile(...a) }));
-vi.mock("../../../hooks/useBlockedUsers", () => ({ useBlockedUsers: () => s.blocked }));
+vi.mock("../../../hooks/useBlockedUsers", () => ({
+  useBlockedUsersState: () => ({ blocked: s.blocked, ready: s.ready }),
+}));
 vi.mock("../../ReportModal", () => ({
   ReportModal: (props: { onClose: () => void; onSubmitted: () => void }) => {
     s.modal(props);
@@ -60,6 +63,7 @@ beforeEach(() => {
   s.send.mockResolvedValue(undefined);
   s.profile.mockImplementation(async (uid: string) => (uid === "other" ? { username: "nyjah" } : null));
   s.blocked = new Set();
+  s.ready = true;
   _resetChatAuthorCache();
   Element.prototype.scrollIntoView = vi.fn();
 });
@@ -130,6 +134,35 @@ describe("SpotChat", () => {
     await u.click(input);
     await u.paste("x".repeat(460));
     expect(screen.getByText(/Max length/)).toBeInTheDocument();
+  });
+
+  it("shows nothing until the block list is known, so a blocked player can't flash", async () => {
+    s.ready = false;
+    s.blocked = new Set(["blocked"]);
+    const { rerender } = render(<SpotChat spotId="s1" spotName="Hubba" currentUserId="me" />);
+    act(() => lastSub().onMessages([msg({ id: "x", userId: "blocked", content: "from a blocked player" })]));
+    expect(screen.getByText("Loading messages…")).toBeInTheDocument();
+    expect(screen.queryByText("from a blocked player")).not.toBeInTheDocument();
+
+    s.ready = true;
+    rerender(
+      <MemoryRouter>
+        <SpotChat spotId="s1" spotName="Hubba" currentUserId="me" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("0 messages")).toBeInTheDocument();
+    expect(screen.queryByText("from a blocked player")).not.toBeInTheDocument();
+  });
+
+  it("gives the author link and REPORT a 44pt target with a focus ring", async () => {
+    render(<SpotChat spotId="s1" spotName="Hubba" currentUserId="me" />);
+    act(() => lastSub().onMessages([msg({ id: "a" })]));
+    const link = await screen.findByRole("link", { name: "@nyjah" });
+    const report = screen.getByRole("button", { name: "Report message by @nyjah" });
+    for (const el of [link, report]) {
+      expect(el.className).toContain("min-h-[44px]");
+      expect(el.className).toContain("focus-visible:outline-brand-orange");
+    }
   });
 
   it("shows the thread oldest first, leaves out blocked players, and labels unknown authors", async () => {
