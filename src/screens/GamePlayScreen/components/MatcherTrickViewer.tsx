@@ -2,7 +2,7 @@ import { ProUsername } from "../../../components/ProUsername";
 import { Btn } from "../../../components/ui/Btn";
 import type { GameDoc } from "../../../services/games";
 import { isFirebaseStorageUrl } from "../../../utils/helpers";
-import { withFirstFrame } from "../../../lib/clipPoster";
+import { FirstFrameVideo } from "../../../components/FirstFrameVideo";
 
 interface Props {
   game: GameDoc;
@@ -32,11 +32,10 @@ export function MatcherTrickViewer({
         &apos;s TRICK
       </p>
       {game.currentTrickVideoUrl && isFirebaseStorageUrl(game.currentTrickVideoUrl) ? (
-        <video
-          src={withFirstFrame(game.currentTrickVideoUrl)}
+        <FirstFrameVideo
+          src={game.currentTrickVideoUrl}
           controls
           playsInline
-          preload="metadata"
           aria-label={`Video of ${game.currentTrickName || "trick"} set by ${setterUsername}`}
           className="trick-frame rounded-2xl bg-black object-contain border border-border"
         />

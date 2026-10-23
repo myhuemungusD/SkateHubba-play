@@ -1,7 +1,7 @@
 import { useId } from "react";
 import { Btn } from "../ui/Btn";
-import { withFirstFrame } from "../../lib/clipPoster";
 import { TRICK_NAME_MAX_LENGTH } from "./validation";
+import { FirstFrameVideo } from "../FirstFrameVideo";
 
 export interface UserClipFormProps {
   /** Object URL of the staged clip. */
@@ -41,11 +41,10 @@ export function UserClipForm({
 
   return (
     <div className="flex flex-col gap-4">
-      <video
-        src={withFirstFrame(previewUrl)}
+      <FirstFrameVideo
+        src={previewUrl}
         controls
         playsInline
-        preload="metadata"
         aria-label="Your clip"
         className="w-full max-h-[320px] rounded-2xl bg-black object-contain"
       />

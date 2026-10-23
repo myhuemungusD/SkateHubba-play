@@ -2,7 +2,7 @@ import type { GameDoc } from "../../services/games";
 import type { UserProfile } from "../../services/users";
 import { isFirebaseStorageUrl } from "../../utils/helpers";
 import { ClipShareButtons } from "./ClipShareButtons";
-import { withFirstFrame } from "../../lib/clipPoster";
+import { FirstFrameVideo } from "../FirstFrameVideo";
 
 interface WaitingClipPanelProps {
   game: GameDoc;
@@ -27,11 +27,10 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
             <p className="font-display text-sm tracking-wider text-brand-green mb-2">
               Your Attempt: {game.currentTrickName || "Trick"}
             </p>
-            <video
-              src={withFirstFrame(game.matchVideoUrl)}
+            <FirstFrameVideo
+              src={game.matchVideoUrl}
               controls
               playsInline
-              preload="metadata"
               aria-label={`Your attempt at ${game.currentTrickName || "trick"}`}
               className="trick-frame rounded-2xl bg-black object-contain border border-border"
             />
@@ -50,11 +49,10 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
         </p>
         {game.currentTrickVideoUrl && isFirebaseStorageUrl(game.currentTrickVideoUrl) ? (
           <>
-            <video
-              src={withFirstFrame(game.currentTrickVideoUrl)}
+            <FirstFrameVideo
+              src={game.currentTrickVideoUrl}
               controls
               playsInline
-              preload="metadata"
               aria-label={`Video of ${game.currentTrickName || "trick"} you set`}
               className="trick-frame rounded-2xl bg-black object-contain border border-border"
             />
@@ -84,11 +82,10 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
     return (
       <div className="mt-6 w-full">
         <p className="font-display text-sm tracking-wider text-brand-orange mb-2">{clipLabel}</p>
-        <video
-          src={withFirstFrame(clipUrl)}
+        <FirstFrameVideo
+          src={clipUrl}
           controls
           playsInline
-          preload="metadata"
           aria-label={clipLabel}
           className="trick-frame rounded-2xl bg-black object-contain border border-border"
         />
