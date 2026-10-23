@@ -197,19 +197,30 @@ describe("DropDayScreen", () => {
     expect(await screen.findByText(/entered — draw closes/i)).toBeInTheDocument();
   });
 
-  it("shows sold out and upcoming drops with a countdown", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    svc.fetchActiveDrops.mockResolvedValue([
-      drop({ id: "gone", isSoldOut: true, claimed: 10 }),
-      drop({ id: "soon", isLive: false, startsAt: new Date(Date.now() + 90_061_000), stock: 0 }),
-    ]);
-    render(<DropDayScreen />);
-    expect(await screen.findByText(/never return/i)).toBeInTheDocument();
-    expect(screen.getByText("DAYS")).toBeInTheDocument();
-    act(() => {
-      vi.advanceTimersByTime(1000);
-    });
-    vi.useRealTimers();
+  it("shows sold out and upcoming drops with a countdown that ticks every second", async () => {
+    // Fake only the clock and the interval so the tick is deterministic;
+    // setTimeout stays real so findBy* polling still works.
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(new Date("2026-10-23T12:00:00Z"));
+    try {
+      svc.fetchActiveDrops.mockResolvedValue([
+        drop({ id: "gone", isSoldOut: true, claimed: 10 }),
+        // 1 day, 1 hour, 1 minute, 1 second away.
+        drop({ id: "soon", isLive: false, startsAt: new Date(Date.now() + 90_061_000), stock: 0 }),
+      ]);
+      render(<DropDayScreen />);
+      expect(await screen.findByText(/never return/i)).toBeInTheDocument();
+      expect(screen.getByText("DAYS")).toBeInTheDocument();
+      expect(screen.getAllByText("01")).toHaveLength(4);
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      // Only the seconds unit rolls over: 01d 01h 01m 00s.
+      expect(screen.getAllByText("01")).toHaveLength(3);
+      expect(screen.getByText("00")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows the error screen when a claim or entry fails", async () => {

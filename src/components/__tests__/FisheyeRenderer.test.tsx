@@ -6,9 +6,22 @@ vi.mock("../../services/logger", () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
 }));
 
-describe("FisheyeRenderer", () => {
-  beforeEach(() => vi.clearAllMocks());
+// Every test runs on a manual frame queue. With jsdom's real ~16ms rAF the
+// first render() frame sometimes fired before unmount and sometimes did not,
+// so initGL's lines and branches flipped in coverage from run to run.
+let frames: FrameRequestCallback[] = [];
+beforeEach(() => {
+  vi.clearAllMocks();
+  frames = [];
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+    frames.push(cb);
+    return frames.length;
+  });
+  vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+});
+afterEach(() => vi.restoreAllMocks());
 
+describe("FisheyeRenderer", () => {
   it("returns null when not active", () => {
     const { container } = render(<FisheyeRenderer videoEl={null} active={false} />);
     expect(container.firstChild).toBeNull();
@@ -37,6 +50,29 @@ describe("FisheyeRenderer", () => {
     unmount();
     // Should be called with null on cleanup
     expect(onCanvas).toHaveBeenCalledWith(null);
+  });
+
+  it("sizes the canvas to 720x1280 by default and retries next frame when WebGL is unavailable", () => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    render(<FisheyeRenderer videoEl={document.createElement("video")} active={true} />);
+    expect(frames).toHaveLength(1);
+    frames.shift()?.(0);
+    const canvas = screen.getByLabelText("Fisheye camera preview") as HTMLCanvasElement;
+    expect(canvas.width).toBe(720);
+    expect(canvas.height).toBe(1280);
+    expect(frames).toHaveLength(1);
+  });
+
+  it("sizes the canvas to the video's own dimensions when known", () => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    const video = document.createElement("video");
+    Object.defineProperty(video, "videoWidth", { value: 640 });
+    Object.defineProperty(video, "videoHeight", { value: 480 });
+    render(<FisheyeRenderer videoEl={video} active={true} />);
+    frames.shift()?.(0);
+    const canvas = screen.getByLabelText("Fisheye camera preview") as HTMLCanvasElement;
+    expect(canvas.width).toBe(640);
+    expect(canvas.height).toBe(480);
   });
 
   it("calls onCanvas with null when not active", () => {
@@ -73,20 +109,6 @@ function fakeGL(opts: { compileOk: boolean; linkOk: boolean }) {
 }
 
 describe("FisheyeRenderer shader errors", () => {
-  let frames: FrameRequestCallback[] = [];
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    frames = [];
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
-      frames.push(cb);
-      return frames.length;
-    });
-    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-  });
-
-  afterEach(() => vi.restoreAllMocks());
-
   function mountWith(gl: ReturnType<typeof fakeGL>) {
     // getContext is overloaded per context type; the spy is typed against the
     // last overload (WebGPU), so the fake WebGL context needs an untyped cast.

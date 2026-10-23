@@ -1,12 +1,35 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Capacitor } from "@capacitor/core";
 
+// Manual animation-frame queue. jsdom's real rAF runs on a ~16ms timer, so
+// whether the settling guard fired before a test's assertions (and therefore
+// which branches coverage saw) depended on runner load. Frames now run only
+// when a test calls settleOverlay().
+const frames = new Map<number, FrameRequestCallback>();
+let nextFrame = 1;
+beforeEach(() => {
+  frames.clear();
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+    const id = nextFrame++;
+    frames.set(id, cb);
+    return id;
+  });
+  vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+    frames.delete(id);
+  });
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 /** Flush the rAF-based settling guard so keyboard events are accepted. */
 async function settleOverlay(): Promise<void> {
   await act(async () => {
-    await new Promise((r) => requestAnimationFrame(r));
+    const pending = [...frames.values()];
+    frames.clear();
+    for (const cb of pending) cb(0);
   });
 }
 
@@ -135,6 +158,25 @@ describe("TutorialOverlay", () => {
     await settleOverlay();
     await userEvent.keyboard("{Enter}");
     expect(ctxValue.current.advance).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-arms the settling guard on every step change", async () => {
+    const { rerender } = render(<TutorialOverlay />);
+    await settleOverlay();
+    ctxValue.current = { ...ctxValue.current, currentStep: 1 };
+    rerender(<TutorialOverlay />);
+    await userEvent.keyboard("{Enter}");
+    expect(ctxValue.current.advance).not.toHaveBeenCalled();
+    await settleOverlay();
+    await userEvent.keyboard("{Enter}");
+    expect(ctxValue.current.advance).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels the pending settle frame on unmount", () => {
+    const { unmount } = render(<TutorialOverlay />);
+    expect(frames.size).toBe(1);
+    unmount();
+    expect(frames.size).toBe(0);
   });
 
   it("ignores Enter / Space when focus is on a text input", async () => {

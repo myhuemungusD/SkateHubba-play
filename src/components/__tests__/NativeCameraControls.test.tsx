@@ -37,11 +37,43 @@ describe("NativeCameraControls", () => {
   });
 
   it("renders nothing when inactive or when no lens info comes back", async () => {
+    // Fake the warm-up retry timer so it can't fire inside a later test.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     lenses.mockResolvedValue([]);
     const { container, rerender } = render(<NativeCameraControls active={false} />);
     expect(container).toBeEmptyDOMElement();
     rerender(<NativeCameraControls active />);
     await act(async () => {});
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  // The warm-up retry and the unmount guard used to be covered only when the
+  // test above leaked a real 400ms timer that fired before the worker moved on
+  // (load dependent), so pin both paths here with fake timers.
+  it("retries the lens probe once the camera has warmed up", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    lenses.mockResolvedValueOnce([]).mockResolvedValueOnce([1, 2]);
+    render(<NativeCameraControls active />);
+    await act(async () => {});
+    expect(lenses).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "1x lens" })).toBeNull();
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(lenses).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("button", { name: "1x lens" })).toBeInTheDocument();
+  });
+
+  it("drops a lens probe that resolves after unmount", async () => {
+    let resolveProbe: (l: number[]) => void = () => {};
+    lenses.mockReturnValueOnce(new Promise<number[]>((r) => (resolveProbe = r)));
+    const { unmount, container } = render(<NativeCameraControls active />);
+    unmount();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await act(async () => resolveProbe([]));
+    // Cancelled: no retry is scheduled and nothing renders.
+    expect(vi.getTimerCount()).toBe(0);
+    expect(lenses).toHaveBeenCalledTimes(1);
     expect(container).toBeEmptyDOMElement();
   });
 

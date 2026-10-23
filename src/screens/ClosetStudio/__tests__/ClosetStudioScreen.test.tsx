@@ -18,6 +18,9 @@ vi.mock("../../../services/closetStudio", async () => {
   return { ...actual, listMyDesigns: h.listMyDesigns, saveDesign: h.saveDesign, deleteDesign: h.deleteDesign };
 });
 vi.mock("../io", () => ({ loadImage: h.loadImage, loadFile: h.loadFile, toWebp: h.toWebp }));
+// Use the shared firebase mock so the real module never boots (in CI it logs
+// firebase_config_missing because no VITE_FIREBASE_* env is set).
+vi.mock("../../../firebase");
 
 import { ClosetDesignError, type ClosetDesign } from "../../../services/closetStudio";
 import { ClosetStudioScreen } from "../ClosetStudioScreen";
@@ -80,7 +83,8 @@ describe("ClosetStudioScreen", () => {
     expect(onBack).toHaveBeenCalled();
   });
 
-  it("paints with every tool, undoes/redoes, zooms and shows the credit + preview", async () => {
+  // ~2.8s on an idle box; it hit the 5s default under a loaded coverage run.
+  it("paints with every tool, undoes/redoes, zooms and shows the credit + preview", { timeout: 15_000 }, async () => {
     const canvas = await openMikeTemplate();
     expect(screen.getByTestId("studio-credit")).toHaveTextContent("Based on a Mike White design");
     expect(screen.getByTestId("avatar-2d")).toBeInTheDocument();
