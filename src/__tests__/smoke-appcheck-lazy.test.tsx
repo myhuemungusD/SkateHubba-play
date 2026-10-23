@@ -58,7 +58,7 @@ describe("Smoke: App Check stays closet-only on web", () => {
     expect(recaptchaOnPage()).toBe(false);
   });
 
-  it("only firebase.ts (sitewide switch) and closetAppCheck.ts may import firebase/app-check", () => {
+  it("only firebase.ts (sitewide switch), lib/nativeAppCheck.ts (native bridge) and closetAppCheck.ts may import firebase/app-check", () => {
     const root = join(__dirname, "..");
     const hits: string[] = [];
     const walk = (dir: string): void => {
@@ -74,6 +74,7 @@ describe("Smoke: App Check stays closet-only on web", () => {
       }
     };
     walk(root);
-    expect(hits.sort()).toEqual(["firebase.ts", "services/closetAppCheck.ts"]);
+    // lib/nativeAppCheck.ts is the native-only bridge from #849; it loads firebase/app-check with a dynamic import.
+    expect(hits.sort()).toEqual(["firebase.ts", "lib/nativeAppCheck.ts", "services/closetAppCheck.ts"]);
   });
 });
