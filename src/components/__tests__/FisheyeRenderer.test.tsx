@@ -118,7 +118,7 @@ describe("FisheyeRenderer shader errors", () => {
     first?.(0);
   }
 
-  it("logs the compile error, frees the shader and retries next frame instead of drawing", async () => {
+  it("logs the compile error once, frees the shader and stops instead of retrying every frame", async () => {
     const { logger } = await import("../../services/logger");
     const gl = fakeGL({ compileOk: false, linkOk: true });
     mountWith(gl);
@@ -127,10 +127,13 @@ describe("FisheyeRenderer shader errors", () => {
     expect(gl.deleteShader).toHaveBeenCalled();
     expect(gl.createProgram).not.toHaveBeenCalled();
     expect(gl.useProgram).not.toHaveBeenCalled();
-    expect(frames).toHaveLength(1);
+    // A compile error is deterministic: no next frame, so the warning is not
+    // repeated every frame. One warning per shader (vertex + fragment), once.
+    expect(frames).toHaveLength(0);
+    expect(logger.warn).toHaveBeenCalledTimes(2);
   });
 
-  it("logs the link error, frees the program and retries next frame instead of drawing", async () => {
+  it("logs the link error once, frees the program and stops instead of retrying every frame", async () => {
     const { logger } = await import("../../services/logger");
     const gl = fakeGL({ compileOk: true, linkOk: false });
     mountWith(gl);
@@ -138,6 +141,7 @@ describe("FisheyeRenderer shader errors", () => {
     expect(logger.warn).toHaveBeenCalledWith("program_link_error", { info: "link: varying mismatch" });
     expect(gl.deleteProgram).toHaveBeenCalledTimes(1);
     expect(gl.useProgram).not.toHaveBeenCalled();
-    expect(frames).toHaveLength(1);
+    expect(frames).toHaveLength(0);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
   });
 });

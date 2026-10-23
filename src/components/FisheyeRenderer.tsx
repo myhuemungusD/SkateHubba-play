@@ -111,9 +111,13 @@ export function FisheyeRenderer({ videoEl, active, strength = 2.0, onCanvas, cla
     return () => onCanvas?.(null);
   }, [active, onCanvas]);
 
-  const initGL = useCallback(() => {
+  // "retry": no context yet (video dimensions or the GPU may not be ready),
+  // try again next frame. "failed": the shaders did not compile or link,
+  // which is deterministic for a given driver, so retrying would only log the
+  // same warning every frame.
+  const initGL = useCallback((): "ready" | "retry" | "failed" => {
     const canvas = canvasRef.current;
-    if (!canvas) return false;
+    if (!canvas) return "retry";
 
     // Size canvas to match video
     if (videoEl) {
@@ -122,11 +126,11 @@ export function FisheyeRenderer({ videoEl, active, strength = 2.0, onCanvas, cla
     }
 
     const gl = canvas.getContext("webgl", { premultipliedAlpha: false, preserveDrawingBuffer: true });
-    if (!gl) return false;
+    if (!gl) return "retry";
 
     /* v8 ignore start -- WebGL pipeline cannot run in jsdom (no GPU context) */
     const program = createProgram(gl);
-    if (!program) return false;
+    if (!program) return "failed";
 
     gl.useProgram(program);
 
@@ -155,7 +159,7 @@ export function FisheyeRenderer({ videoEl, active, strength = 2.0, onCanvas, cla
     programRef.current = program;
     textureRef.current = texture;
 
-    return true;
+    return "ready";
     /* v8 ignore stop */
   }, [videoEl]);
 
@@ -172,12 +176,15 @@ export function FisheyeRenderer({ videoEl, active, strength = 2.0, onCanvas, cla
       if (!active) return;
 
       if (!initialized) {
-        initialized = initGL();
-        if (!initialized) {
+        const state = initGL();
+        // Shader build failed: stop here and leave the canvas blank.
+        if (state === "failed") return;
+        if (state === "retry") {
           // Retry next frame (video dimensions may not be ready yet)
           rafRef.current = requestAnimationFrame(render);
           return;
         }
+        initialized = true;
       }
 
       const gl = glRef.current;
