@@ -162,7 +162,7 @@ export function Timeline({
               }}
               aria-pressed={selected}
               aria-label={`${label} at ${s.outAtSec.toFixed(2)}s. Drag or arrows to move, tap to edit, Delete to remove`}
-              className={`absolute top-1 h-7 min-w-[28px] touch-none overflow-hidden truncate rounded px-1.5 text-left font-body text-[10px] text-black focus-visible:outline-2 focus-visible:outline-white ${selected ? "bg-white ring-2 ring-brand-orange" : "bg-brand-orange/80"}`}
+              className={`absolute top-1 h-7 min-w-[28px] touch-none overflow-hidden truncate rounded px-1.5 text-left font-body text-xs text-black focus-visible:outline-2 focus-visible:outline-white ${selected ? "bg-white ring-2 ring-brand-orange" : "bg-brand-orange/80"}`}
               style={{ left: pct(s.outAtSec, dur), width: pct(len, dur) }}
             >
               {label.split(" ")[0]}

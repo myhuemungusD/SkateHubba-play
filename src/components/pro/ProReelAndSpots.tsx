@@ -91,7 +91,7 @@ export function ProReelAndSpots({ uid, displayName, isOwn }: Props) {
                   >
                     {spot.name}
                   </Link>
-                  <span className="shrink-0 font-body text-[10px] text-white/60">
+                  <span className="shrink-0 font-body text-[11px] text-white/60">
                     {recommended ? "Recommended · " : ""}
                     {clips.length} {clips.length === 1 ? "clip" : "clips"}
                   </span>

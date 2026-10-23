@@ -192,6 +192,13 @@ interface UserPrivateProfile {
   /** Policy version the skater agreed to, e.g. "2026-10-10". */
   trainingConsentPolicyVersion?: string;
   trainingConsentUpdatedAt?: FieldValue;
+  /**
+   * Server time the skater ticked "I agree to the Terms of Service and
+   * Privacy Policy" on ProfileSetup (App Review 1.2). Written once by
+   * `createProfile`. Absent on accounts created before 1.2.0; nothing gates
+   * on it, so those accounts are never locked out or re-prompted.
+   */
+  termsAcceptedAt?: FieldValue;
   /** Set when they turn the opt-in off. The cron uses this via the revocation doc. */
   trainingConsentRevokedAt?: FieldValue | null;
   /** Set the first time the post-game prompt is dismissed, so it stays one-time. */
@@ -339,6 +346,14 @@ export class AgeVerificationRequiredError extends Error {
   }
 }
 
+/** Thrown by createProfile when the Terms checkbox wasn't ticked. */
+export class TermsAcceptanceRequiredError extends Error {
+  constructor() {
+    super("Agree to the Terms and Privacy Policy to continue");
+    this.name = "TermsAcceptanceRequiredError";
+  }
+}
+
 export async function createProfile(
   uid: string,
   username: string,
@@ -355,6 +370,8 @@ export async function createProfile(
   _emailVerified = false,
   dob?: string,
   parentalConsent?: boolean,
+  /** The ProfileSetup Terms checkbox. Required: new profiles record termsAcceptedAt. */
+  termsAccepted = false,
 ): Promise<UserProfile> {
   const normalized = username.toLowerCase().trim();
 
@@ -363,6 +380,13 @@ export async function createProfile(
   // gate) are rejected here — the service is the canonical enforcement point.
   if (!dob || !DOB_RE.test(dob)) {
     throw new AgeVerificationRequiredError();
+  }
+
+  // App Review 1.2: a new account must agree to the Terms (which ban
+  // objectionable content) before it can post. Enforced here as well as in
+  // the form so no future caller can skip it.
+  if (!termsAccepted) {
+    throw new TermsAcceptanceRequiredError();
   }
 
   if (normalized.length < USERNAME_MIN || normalized.length > USERNAME_MAX) {
@@ -420,6 +444,7 @@ export async function createProfile(
     const privateData: UserPrivateProfile = {
       dob,
       ...(parentalConsent !== undefined ? { parentalConsent } : {}),
+      termsAcceptedAt: serverTimestamp(),
     };
     tx.set(privateRef, privateData, { merge: true });
 

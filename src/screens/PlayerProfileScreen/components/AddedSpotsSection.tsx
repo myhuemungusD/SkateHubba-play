@@ -51,7 +51,7 @@ function AddedSpotsBody({ uid, onAddSpot }: Props) {
         data-testid="added-spots-error"
         className="mb-8 px-4 py-6 rounded-2xl border border-border bg-surface/40 text-center"
       >
-        <h2 className="font-display text-[10px] tracking-[0.2em] text-brand-orange mb-2">SPOTS YOU&apos;VE ADDED</h2>
+        <h2 className="font-display text-[11px] tracking-[0.2em] text-brand-orange mb-2">SPOTS YOU&apos;VE ADDED</h2>
         <p className="font-body text-sm text-muted">Couldn&apos;t load your spots. Try again in a moment.</p>
       </section>
     );
@@ -65,7 +65,7 @@ function AddedSpotsBody({ uid, onAddSpot }: Props) {
         data-testid="added-spots-loading"
         className="mb-8 px-4 py-6 rounded-2xl border border-border bg-surface/40 text-center"
       >
-        <h2 className="font-display text-[10px] tracking-[0.2em] text-brand-orange mb-2">SPOTS YOU&apos;VE ADDED</h2>
+        <h2 className="font-display text-[11px] tracking-[0.2em] text-brand-orange mb-2">SPOTS YOU&apos;VE ADDED</h2>
         <p className="font-body text-sm text-muted">Loading spots…</p>
       </section>
     );
@@ -77,7 +77,7 @@ function AddedSpotsBody({ uid, onAddSpot }: Props) {
 
   return (
     <section aria-label="Spots you've added" data-testid="added-spots-list" className="mb-8">
-      <h2 className="font-display text-[10px] tracking-[0.2em] text-brand-orange mb-3 px-1">SPOTS YOU&apos;VE ADDED</h2>
+      <h2 className="font-display text-[11px] tracking-[0.2em] text-brand-orange mb-3 px-1">SPOTS YOU&apos;VE ADDED</h2>
       <ul className="space-y-2">
         {spots.map((spot) => (
           <li key={spot.id}>
