@@ -179,9 +179,14 @@ export default defineConfig({
       // half of the UI floors below (the globs are aggregate-only).
       reporter: ["text", "lcov", "json-summary"],
       thresholds: {
-        // Whole-repo floor. Every number below is a NO-DROP ratchet: today's
-        // measured value, truncated to one decimal. Raise them as coverage
-        // climbs; never lower one to make a PR pass. Goal: 100 everywhere.
+        // Whole-repo floor. Every number below is a ratchet, set by one rule:
+        // floor = the minimum over at least 5 full coverage runs, truncated to
+        // one decimal. Coverage must be deterministic run to run (fake timers
+        // and manual rAF queues, never real-time races), so the min is stable.
+        // Truncating leaves a few items of slack in the big globs, so this is
+        // a ratchet, not a strict no-drop gate; the per-file gate
+        // (scripts/check-coverage-per-file.mjs) backs it up. Raise them as coverage climbs; never lower one to make a PR
+        // pass. Goal: 100 everywhere.
         lines: 91.4,
         functions: 91.7,
         branches: 91.4,
