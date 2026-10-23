@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])';
@@ -25,6 +25,10 @@ export function useFocusTrap(
   onEscape?: () => void,
 ): void {
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  // Read on the first render, before React's autoFocus moves focus into the
+  // container: that is the only point the opener (e.g. a ••• button) can
+  // still be seen when the modal autofocuses one of its own controls.
+  const [focusAtFirstRender] = useState(() => document.activeElement as HTMLElement | null);
   // Latest-ref pattern: an inline `() => ...` passed as onEscape gets a new
   // identity every render. Reading it through a ref (updated on every
   // render, not just when the trap effect re-runs) keeps that common case
@@ -38,9 +42,10 @@ export function useFocusTrap(
   useEffect(() => {
     if (!enabled) return;
 
-    previousFocusRef.current = document.activeElement as HTMLElement | null;
-
     const container = containerRef.current;
+    const active = document.activeElement as HTMLElement | null;
+    // autoFocus already put focus inside, so `active` is not the opener.
+    previousFocusRef.current = container?.contains(active) ? focusAtFirstRender : active;
     if (!container) return;
 
     // Pull focus into the trap if React's autoFocus didn't land it inside the
@@ -89,5 +94,5 @@ export function useFocusTrap(
         previousFocusRef.current.focus();
       }
     };
-  }, [containerRef, enabled]);
+  }, [containerRef, enabled, focusAtFirstRender]);
 }

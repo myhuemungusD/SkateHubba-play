@@ -1,211 +1,113 @@
-import { RecordFigure } from "./RecordFigure";
-import { useState, useEffect, useCallback } from "react";
-import { getLeaderboard, type UserProfile } from "../services/users";
-import { getBlockedUserIds } from "../services/blocking";
-import { ProUsername } from "./ProUsername";
+import { useEffect, useState } from "react";
+import { Trophy } from "lucide-react";
+import { useLeaderboard } from "./leaderboard/useLeaderboard";
+import { LeaderboardPodium } from "./leaderboard/LeaderboardPodium";
+import { LeaderboardRow } from "./leaderboard/LeaderboardRow";
 
-// gold, silver, bronze. Expressed as Tailwind text-color utility classes
-// (literal arbitrary values) so the CSP `style-src` can drop `'unsafe-inline'`.
-const RANK_COLOR_CLASSES = ["text-[#FFD700]", "text-[#C0C0C0]", "text-[#CD7F32]"] as const;
+/**
+ * True while `node` is scrolled out of view below the fold. Drives the
+ * pinned "You" row; an unmounted node counts as visible.
+ */
+function useBelowViewport(node: HTMLElement | null): boolean {
+  const [below, setBelow] = useState(false);
+  useEffect(() => {
+    if (!node) return;
+    const io = new IntersectionObserver(([entry]) => {
+      setBelow(!entry.isIntersecting && entry.boundingClientRect.top > 0);
+    });
+    io.observe(node);
+    return () => io.disconnect();
+  }, [node]);
+  return below;
+}
 
+/**
+ * Leaderboard (audit #10): a top-three podium, then labelled rows (rank,
+ * avatar, handle, record and win rate). Each row opens the profile, where
+ * Challenge lives. Your row is highlighted, and pinned to the bottom while
+ * it is scrolled out of view.
+ */
 export function Leaderboard({
   currentUserUid,
-  onChallengeUser,
   onViewPlayer,
 }: {
   currentUserUid: string;
-  onChallengeUser?: (username: string) => void;
   onViewPlayer?: (uid: string) => void;
 }) {
-  const [players, setPlayers] = useState<UserProfile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  // Single loader used by both initial mount and the error-state retry. The
-  // retry MUST apply the blocked-user filter — otherwise a transient error
-  // on first load causes the retry to surface players the viewer has
-  // explicitly blocked, a privacy regression.
-  const loadLeaderboard = useCallback(async () => {
-    const [all, blockedIds] = await Promise.all([getLeaderboard(), getBlockedUserIds(currentUserUid)]);
-    return all.filter((p) => !blockedIds.has(p.uid));
-  }, [currentUserUid]);
-
-  useEffect(() => {
-    let stale = false;
-    loadLeaderboard()
-      .then((filtered) => {
-        if (!stale) setPlayers(filtered);
-      })
-      .catch(() => {
-        if (!stale) setError("Could not load leaderboard");
-      })
-      .finally(() => {
-        if (!stale) setLoading(false);
-      });
-    return () => {
-      stale = true;
-    };
-  }, [loadLeaderboard]);
+  const { players, loading, error, retry } = useLeaderboard(currentUserUid);
+  const [youNode, setYouNode] = useState<HTMLLIElement | null>(null);
+  const youBelow = useBelowViewport(youNode);
 
   if (loading) {
-    return <p className="font-body text-xs text-brand-orange text-center my-6">Loading leaderboard...</p>;
+    return (
+      <p role="status" className="my-6 text-center font-body text-sm text-muted">
+        Loading leaderboard…
+      </p>
+    );
   }
 
   if (error) {
     return (
-      <div className="flex flex-col items-center py-8 border border-dashed border-border rounded-2xl my-6">
-        <p className="font-body text-xs text-brand-red">{error}</p>
+      <div
+        role="alert"
+        className="my-6 flex flex-col items-center rounded-2xl border border-border bg-surface px-4 py-8"
+      >
+        <p className="font-body text-sm text-white">{error}</p>
         <button
           type="button"
-          onClick={() => {
-            setError("");
-            setLoading(true);
-            loadLeaderboard()
-              .then(setPlayers)
-              .catch(() => setError("Could not load leaderboard"))
-              .finally(() => setLoading(false));
-          }}
-          className="font-body text-xs text-brand-orange mt-2 underline underline-offset-2"
+          onClick={retry}
+          className="btn-secondary mt-3 min-h-11 rounded-xl px-5 font-body text-sm font-semibold"
         >
-          Retry
+          Try again
         </button>
       </div>
     );
   }
 
-  // Filter to players who have at least one game played
-  const ranked = players.filter((p) => (p.wins ?? 0) + (p.losses ?? 0) > 0);
-
-  if (ranked.length === 0) {
+  if (players.length === 0) {
     return (
-      <div className="my-6">
-        <div className="flex items-center gap-2 mb-3">
-          <h3 className="font-display text-sm tracking-[0.2em] text-brand-orange">LEADERBOARD</h3>
-        </div>
-        <div className="flex flex-col items-center py-8 border border-dashed border-border rounded-2xl">
-          <span className="text-2xl mb-2 opacity-40" aria-hidden="true">
-            🏆
-          </span>
-          <p className="font-body text-xs text-faint">No ranked players yet</p>
-          <p className="font-body text-label text-subtle mt-0.5">Complete a game to appear on the leaderboard</p>
-        </div>
+      <div className="my-6 flex flex-col items-center rounded-2xl border border-dashed border-border px-4 py-8 text-center">
+        <Trophy size={28} aria-hidden="true" className="mb-2 text-subtle" />
+        <p className="font-body text-sm font-semibold text-white">No ranked skaters yet</p>
+        <p className="mt-1 font-body text-xs text-muted">Finish a game to get on the board.</p>
       </div>
     );
   }
 
-  const currentUserRank = ranked.findIndex((p) => p.uid === currentUserUid);
+  const podium = players.length >= 3 ? players.slice(0, 3) : [];
+  const rest = players.slice(podium.length);
+  const youIndex = players.findIndex((p) => p.uid === currentUserUid);
+  const youInList = youIndex >= podium.length;
 
   return (
-    <div className="my-6">
-      <div className="flex items-center gap-2 mb-3">
-        <h3 className="font-display text-sm tracking-[0.2em] text-brand-orange">LEADERBOARD</h3>
-        <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-sm text-brand-orange leading-none tabular-nums">
-          {ranked.length}
-        </span>
-      </div>
-      <div className="space-y-2">
-        {ranked.map((p, i) => {
-          const isCurrentUser = p.uid === currentUserUid;
-          const wins = p.wins ?? 0;
-          const losses = p.losses ?? 0;
-          const total = wins + losses;
-          const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
-          const rankColorClass = i < 3 ? RANK_COLOR_CLASSES[i] : undefined;
-
+    <section aria-labelledby="leaderboard-title" className="my-6">
+      <h2 id="leaderboard-title" className="sr-only">
+        Leaderboard
+      </h2>
+      {podium.length > 0 && <LeaderboardPodium top={podium} viewerUid={currentUserUid} onViewPlayer={onViewPlayer} />}
+      <ol aria-label={podium.length > 0 ? "Everyone else" : "Rankings"} className="space-y-2">
+        {rest.map((p, i) => {
+          const isYou = p.uid === currentUserUid;
           return (
-            <div
+            <LeaderboardRow
               key={p.uid}
-              className={`flex items-center justify-between p-4 rounded-2xl transition-all duration-300 ${
-                isCurrentUser
-                  ? "glass-card border-brand-orange/30 shadow-glow-sm"
-                  : "bg-surface border border-border hover:border-border-hover"
-              }`}
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                {/* Rank */}
-                <span
-                  className={`font-display text-[0.9375rem] w-6 text-center shrink-0 leading-none tabular-nums ${
-                    rankColorClass ?? ""
-                  }`}
-                >
-                  {rankColorClass ? (
-                    <span className="drop-shadow-[0_0_4px_rgba(255,215,0,0.3)]">{i + 1}</span>
-                  ) : (
-                    <span className="text-subtle">{i + 1}</span>
-                  )}
-                </span>
-
-                {/* Avatar */}
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                    isCurrentUser
-                      ? "bg-brand-orange/20 border border-brand-orange/40"
-                      : "bg-surface-alt border border-border"
-                  }`}
-                >
-                  <span
-                    className={`font-display text-sm leading-none ${isCurrentUser ? "text-brand-orange" : "text-brand-orange"}`}
-                  >
-                    {p.username[0].toUpperCase()}
-                  </span>
-                </div>
-
-                {/* Name + stats */}
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    {onViewPlayer ? (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onViewPlayer(p.uid);
-                        }}
-                        className="inline-flex min-h-11 items-center font-display text-base text-white leading-none truncate hover:text-brand-orange transition-colors"
-                      >
-                        <ProUsername username={p.username} isVerifiedPro={p.isVerifiedPro} />
-                      </button>
-                    ) : (
-                      <ProUsername
-                        username={p.username}
-                        isVerifiedPro={p.isVerifiedPro}
-                        className="font-display text-base text-white leading-none truncate"
-                      />
-                    )}
-                    {isCurrentUser && (
-                      <span className="px-1.5 py-0.5 rounded bg-brand-orange font-display text-sm text-black tracking-wider leading-none shrink-0">
-                        YOU
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <RecordFigure wins={wins} games={total} className="font-body text-xs text-white/80" />
-                    <span className="font-body text-xs text-bright">{winRate}%</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Challenge action */}
-              {!isCurrentUser && onChallengeUser && (
-                <button
-                  type="button"
-                  onClick={() => onChallengeUser(p.username)}
-                  className="inline-flex min-h-11 items-center font-display text-sm text-brand-orange shrink-0 ml-1 px-2 hover:text-brand-orange-hover transition-colors rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-                >
-                  Challenge &rarr;
-                </button>
-              )}
-            </div>
+              ref={isYou ? setYouNode : undefined}
+              player={p}
+              rank={podium.length + i + 1}
+              isYou={isYou}
+              onViewPlayer={onViewPlayer}
+            />
           );
         })}
-      </div>
-
-      {/* Show current user's rank if they're not in the visible list or for quick reference */}
-      {currentUserRank >= 0 && ranked.length > 5 && (
-        <p className="font-body text-xs text-muted text-center mt-3">
-          You are ranked <span className="text-brand-orange font-display">#{currentUserRank + 1}</span> of{" "}
-          {ranked.length}
-        </p>
+      </ol>
+      {youInList && youBelow && (
+        <ul
+          aria-label="Your rank"
+          className="sticky bottom-[calc(var(--tabbar-h)+max(env(safe-area-inset-bottom),0.75rem))] mt-2"
+        >
+          <LeaderboardRow player={players[youIndex]} rank={youIndex + 1} isYou pinned onViewPlayer={onViewPlayer} />
+        </ul>
       )}
-    </div>
+    </section>
   );
 }

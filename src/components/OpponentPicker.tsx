@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Users } from "lucide-react";
 import { usePlayerDirectory } from "../hooks/usePlayerDirectory";
 import { PlayerDirectory } from "./PlayerDirectory";
 
@@ -34,9 +35,10 @@ export function OpponentPicker({
       <button
         type="button"
         onClick={() => setReopened(true)}
-        className="touch-target mb-6 inline-flex items-center gap-1 font-body text-sm text-brand-orange hover:text-white transition-colors rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+        className="btn-secondary mb-4 inline-flex min-h-11 items-center gap-2 rounded-xl px-4 font-body text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
         data-testid="browse-skaters-toggle"
       >
+        <Users size={16} aria-hidden="true" />
         Browse skaters
       </button>
     );

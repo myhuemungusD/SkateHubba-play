@@ -1,12 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useFocusTrap } from "../../../hooks/useFocusTrap";
 import { useSwipeDownToClose } from "../../../components/useSwipeDownToClose";
-import {
-  achievementFamilies,
-  BRONZE_ACHIEVEMENTS,
-  type AchievementDef,
-  type AchievementTier,
-} from "../../../constants/xp";
+import { ACHIEVEMENTS, achievementFamilies, type AchievementDef, type AchievementTier } from "../../../constants/xp";
 import type { Achievement } from "../../../services/achievements";
 
 interface Props {
@@ -21,6 +16,11 @@ const TIER_LABEL: Record<AchievementTier, string> = {
   gold: "Gold",
 };
 
+/**
+ * Profile achievements: only the tiles you have lit, plus an "N of M unlocked"
+ * link to the full grid (audit #9). The profile no longer paints a wall of
+ * padlocks before any real stats; locked tiles live in the dialog only.
+ */
 export function AchievementsRibbon({ achievements = [], clipsPosted = 0 }: Props) {
   const [seeAll, setSeeAll] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -28,6 +28,7 @@ export function AchievementsRibbon({ achievements = [], clipsPosted = 0 }: Props
   useFocusTrap(dialogRef, seeAll, closeAll);
   useSwipeDownToClose(dialogRef, closeAll, seeAll);
   const earned = new Set(achievements.map((item) => item.id));
+  const lit = ACHIEVEMENTS.filter((def) => isLit(def, earned, clipsPosted));
 
   return (
     <section aria-label="Achievements" data-testid="achievements-ribbon" className="mb-8 animate-fade-in">
@@ -35,19 +36,23 @@ export function AchievementsRibbon({ achievements = [], clipsPosted = 0 }: Props
         <h2 className="font-display text-sm tracking-[0.2em] text-brand-orange">ACHIEVEMENTS</h2>
         <button
           type="button"
-          className="font-display text-sm tracking-wider text-muted hover:text-white min-h-[44px] px-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          className="-mr-2 font-body text-sm text-muted hover:text-white min-h-[44px] px-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           onClick={() => setSeeAll(true)}
         >
-          See all
+          {lit.length} of {ACHIEVEMENTS.length} unlocked <span aria-hidden="true">›</span>
         </button>
       </div>
-      <ul className="grid grid-cols-4 md:grid-cols-6 gap-2">
-        {BRONZE_ACHIEVEMENTS.map((def) => (
-          <li key={def.id}>
-            <Tile def={def} lit={isLit(def, earned, clipsPosted)} />
-          </li>
-        ))}
-      </ul>
+      {lit.length > 0 ? (
+        <ul className="grid grid-cols-4 md:grid-cols-6 gap-2">
+          {lit.map((def) => (
+            <li key={def.id}>
+              <Tile def={def} lit />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="font-body text-sm text-subtle">Win games and post clips to unlock your first one.</p>
+      )}
       {seeAll && (
         <div
           ref={dialogRef}
@@ -64,7 +69,7 @@ export function AchievementsRibbon({ achievements = [], clipsPosted = 0 }: Props
                 className="font-display text-sm tracking-wider text-brand-orange min-h-[44px] px-3"
                 onClick={() => setSeeAll(false)}
               >
-                Close
+                Done
               </button>
             </div>
             {achievementFamilies().map((group) => (

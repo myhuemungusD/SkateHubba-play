@@ -116,8 +116,8 @@ describe("FeedModeToggle", () => {
     const { container, rerender } = render(
       <FeedModeToggle mode="scroll" onChange={vi.fn()} showJudge showNameIt disputesPending streakDue />,
     );
-    expect(container.querySelectorAll("span.-top-1")).toHaveLength(2);
+    expect(container.querySelectorAll("span[data-mode-badge]")).toHaveLength(2);
     rerender(<FeedModeToggle mode="judge" onChange={vi.fn()} showJudge showNameIt disputesPending />);
-    expect(container.querySelectorAll("span.-top-1")).toHaveLength(0);
+    expect(container.querySelectorAll("span[data-mode-badge]")).toHaveLength(0);
   });
 });

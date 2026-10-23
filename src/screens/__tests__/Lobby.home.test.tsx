@@ -117,19 +117,21 @@ describe("Lobby home order", () => {
     expect(svc.getPlayerDirectory).not.toHaveBeenCalled();
   });
 
-  it("search Challenge opens the challenge form for that skater", async () => {
+  it("a search result opens that skater's profile, where Challenge lives", async () => {
+    const onViewPlayer = vi.fn();
     const onChallengeUser = vi.fn();
-    renderLobby({ onChallengeUser });
+    renderLobby({ onViewPlayer, onChallengeUser });
     await userEvent.type(screen.getByRole("searchbox", { name: "Search skaters by username" }), "TON");
-    await userEvent.click(await screen.findByRole("button", { name: "Challenge @tony" }));
-    expect(onChallengeUser).toHaveBeenCalledWith("tony");
+    await userEvent.click(await screen.findByRole("button", { name: /^@tony.*view profile$/ }));
+    expect(onViewPlayer).toHaveBeenCalledWith("u7");
+    expect(onChallengeUser).not.toHaveBeenCalled();
   });
 
-  it("search Challenge falls back to the plain challenge form without onChallengeUser", async () => {
+  it("an unmatched handle falls back to the plain challenge form without onChallengeUser", async () => {
     const onChallenge = vi.fn();
     renderLobby({ onChallenge });
-    await userEvent.type(screen.getByRole("searchbox"), "tony");
-    await userEvent.click(await screen.findByRole("button", { name: "Challenge @tony" }));
+    await userEvent.type(screen.getByRole("searchbox"), "nobody_here");
+    await userEvent.click(await screen.findByRole("button", { name: "Challenge @nobody_here" }));
     expect(onChallenge).toHaveBeenCalledTimes(1);
   });
 });

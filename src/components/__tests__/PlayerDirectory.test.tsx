@@ -81,7 +81,7 @@ describe("PlayerDirectory", () => {
     render(<PlayerDirectory {...base} players={[player({ uid: "u2", username: "kickflip_king" })]} />);
 
     // Optional-chained callback — must not throw.
-    await userEvent.click(screen.getByRole("button", { name: "View @kickflip_king's profile" }));
+    await userEvent.click(screen.getByRole("button", { name: /^@kickflip_king.*view profile$/ }));
 
     expect(screen.getByText("@kickflip_king")).toBeInTheDocument();
   });
@@ -109,11 +109,20 @@ describe("PlayerDirectory", () => {
     );
     const waiting = screen.getByRole("button", { name: "Challenge @kickflip_king, available in 7s" });
     expect(waiting).toBeDisabled();
-    expect(waiting).toHaveTextContent("Wait 7s");
+    expect(waiting).toHaveTextContent("In 7s");
     await userEvent.click(waiting);
     expect(onChallengeUser).not.toHaveBeenCalled();
     rerender(<PlayerDirectory {...base} players={players} waitSeconds={0} onChallengeUser={onChallengeUser} />);
     expect(screen.getByRole("button", { name: "Challenge @kickflip_king" })).toBeEnabled();
+  });
+
+  it("browse rows (no onChallengeUser) drop the Challenge button and show a chevron", () => {
+    const { container } = render(
+      <PlayerDirectory players={[player({ uid: "u2", username: "kickflip_king" })]} loading={false} />,
+    );
+    expect(screen.queryByRole("button", { name: /^Challenge/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /^@kickflip_king.*view profile$/ })).toBeEnabled();
+    expect(container.querySelector("svg.lucide-chevron-right")).not.toBeNull();
   });
 
   it("disables every Challenge button when canChallenge is false", async () => {

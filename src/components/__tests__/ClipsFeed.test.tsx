@@ -496,7 +496,8 @@ describe("ClipsFeed", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /Thumbs up clip by @alice · current count 4/i })).toBeInTheDocument(),
     );
-    expect(screen.getByRole("button", { name: /Thumbs down clip by @alice · current count 2/i })).toBeInTheDocument();
+    // The thumbs-down count stays private (audit #24); only the thumbs-up count is shown.
+    expect(screen.getByRole("button", { name: /Thumbs down clip by @alice$/i })).not.toHaveTextContent("2");
   });
 
   it("shows both thumbs on the viewer's own clip but disables them — counts stay readable", async () => {
@@ -547,13 +548,13 @@ describe("ClipsFeed", () => {
     mockVoteClip.mockResolvedValueOnce(voteState({ upvoteCount: 2, downvoteCount: 2, myVote: -1 }));
 
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
-    const downBtn = await screen.findByRole("button", { name: /Thumbs down clip by @alice · current count 1/i });
+    const downBtn = await screen.findByRole("button", { name: /Thumbs down clip by @alice$/i });
 
     await user.click(downBtn);
 
     expect(mockVoteClip).toHaveBeenCalledWith(profile.uid, "g1_2_set", -1);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Remove your thumbs down on @alice's clip · 2/i })).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: /Remove your thumbs down on @alice's clip$/i })).toBeInTheDocument(),
     );
     expect(screen.getByRole("button", { name: /Thumbs up clip by @alice · current count 2/i })).toBeInTheDocument();
   });
@@ -626,7 +627,7 @@ describe("ClipsFeed", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /Remove your thumbs up on @alice's clip · 9/i })).toBeInTheDocument(),
     );
-    expect(screen.getByRole("button", { name: /Thumbs down clip by @alice · current count 4/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Thumbs down clip by @alice$/i })).toBeInTheDocument();
   });
 
   it("renders the spotlight video with autoplay/muted attributes and a tap-to-unmute affordance", async () => {
@@ -838,7 +839,7 @@ describe("ClipsFeed", () => {
     expect(mockFetchClipsFeed).toHaveBeenLastCalledWith(cursor, 12, "top");
   });
 
-  it("offers retry when the clip fails to load, and arrow down still moves on", async () => {
+  it("offers retry and skip when the clip fails to load, and arrow down still moves on", async () => {
     const user = userEvent.setup();
     mockFetchClipsFeed.mockResolvedValueOnce([
       makeClip({ id: "a", trickName: "TrickA" }),
@@ -850,7 +851,7 @@ describe("ClipsFeed", () => {
     fireEvent.error(document.querySelector("video") as HTMLVideoElement);
     expect(await screen.findByRole("alert")).toHaveTextContent(/couldn't play this clip/i);
     expect(screen.getByRole("button", { name: /retry clip/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /next trick/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Skip to next" })).toBeInTheDocument();
 
     await user.keyboard("{ArrowDown}");
     await waitFor(() => expect(screen.getByText("TrickB")).toBeInTheDocument());
@@ -1089,7 +1090,7 @@ describe("ClipsFeed — thumbs down", () => {
     mockFetchClipVoteState.mockResolvedValueOnce(new Map([["g1_2_set", voteState({ downvoteCount: 5 })]]));
     mockVoteClip.mockResolvedValueOnce(voteState({ downvoteCount: 6, myVote: -1 }));
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
-    const down = await screen.findByRole("button", { name: /Thumbs down clip by @alice · current count 5/i });
+    const down = await screen.findByRole("button", { name: /Thumbs down clip by @alice$/i });
 
     await user.click(down);
 
@@ -1099,7 +1100,7 @@ describe("ClipsFeed — thumbs down", () => {
       fromSort: "top",
       vote: -1,
     });
-    await screen.findByRole("button", { name: /Remove your thumbs down on @alice's clip · 6/i });
+    await screen.findByRole("button", { name: /Remove your thumbs down on @alice's clip$/i });
   });
 
   it("leaves the clip in the spotlight — a downvote is a rating, not a pass", async () => {
@@ -1122,10 +1123,10 @@ describe("ClipsFeed — thumbs down", () => {
     mockRemoveClipVote.mockResolvedValueOnce(voteState({ downvoteCount: 4, myVote: null }));
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
 
-    await user.click(await screen.findByRole("button", { name: /Remove your thumbs down on @alice's clip · 5/i }));
+    await user.click(await screen.findByRole("button", { name: /Remove your thumbs down on @alice's clip$/i }));
 
     await waitFor(() => expect(mockRemoveClipVote).toHaveBeenCalledWith("me", "g1_2_set"));
-    await screen.findByRole("button", { name: /Thumbs down clip by @alice · current count 4/i });
+    await screen.findByRole("button", { name: /Thumbs down clip by @alice$/i });
   });
 
   it("rolls the count back when the downvote write fails", async () => {
@@ -1135,12 +1136,10 @@ describe("ClipsFeed — thumbs down", () => {
     mockVoteClip.mockRejectedValueOnce(new Error("network"));
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
 
-    await user.click(await screen.findByRole("button", { name: /Thumbs down clip by @alice · current count 5/i }));
+    await user.click(await screen.findByRole("button", { name: /Thumbs down clip by @alice$/i }));
 
     await waitFor(() => expect(mockVoteClip).toHaveBeenCalled());
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Thumbs down clip by @alice · current count 5/i })).toBeEnabled(),
-    );
+    await waitFor(() => expect(screen.getByRole("button", { name: /Thumbs down clip by @alice$/i })).toBeEnabled());
     expect(mockTrackEvent).not.toHaveBeenCalledWith("clip_voted", expect.anything());
   });
 

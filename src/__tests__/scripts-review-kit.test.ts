@@ -91,7 +91,12 @@ describe("plan", () => {
     const kai = doc("users/review-demo-opp-1");
     expect(kai).toMatchObject({ username: "kickflip_kai", wins: 22, losses: 9, gamesPlayed: 31 });
     expect(kai.wins + kai.losses).toBe(kai.gamesPlayed);
-    expect(doc("users/review-demo-opp-2").wins).toBeUndefined();
+    // Every opponent has played, so no row next to a live game says "No games yet".
+    for (const o of plan.DEMO_OPPONENTS) {
+      const u = doc(`users/${o.uid}`);
+      expect(u.gamesPlayed).toBeGreaterThan(0);
+      expect(u.wins + u.losses).toBe(u.gamesPlayed);
+    }
 
     const vsKai = docs
       .filter(([p]: [string]) => p.startsWith("games/"))
@@ -208,6 +213,22 @@ describe("seed storage and emulator", () => {
     expect(url).toMatch(
       /^https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/bkt\/o\/review-kit%2Fsh-video-edit\.mp4\?alt=media&token=/,
     );
+  });
+  it("uploads the cover picture to the banner path and seeds it on the profile", async () => {
+    const save = vi.fn(async () => {});
+    const admin = { bucket: { name: "bkt", file: vi.fn(() => ({ save })) } };
+    const url = await seed.uploadDemoBanner(admin, "U");
+    expect(admin.bucket.file).toHaveBeenCalledWith("users/U/banner.webp");
+    expect(save).toHaveBeenCalledWith(expect.any(Buffer), expect.objectContaining({ contentType: "image/webp" }));
+    expect(url).toMatch(
+      /^https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/bkt\/o\/users%2FU%2Fbanner\.webp\?alt=media&token=/,
+    );
+    expect(await seed.uploadDemoBanner({ bucket: null }, "U")).toBeUndefined();
+
+    const withCover = plan.buildSeedDocs({ uid: "U", username: "a", appUrl: "https://a", bannerUrl: url });
+    expect(withCover.find(([p]: [string]) => p === "users/U")[1].bannerImageUrl).toBe(url);
+    const without = plan.buildSeedDocs({ uid: "U", username: "a", appUrl: "https://a" });
+    expect(without.find(([p]: [string]) => p === "users/U")[1]).not.toHaveProperty("bannerImageUrl");
   });
   it("falls back to the hosted clip without a bucket", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

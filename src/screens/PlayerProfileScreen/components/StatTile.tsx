@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useReducedMotion } from "../../../hooks/useReducedMotion";
 
 /**
@@ -11,10 +11,11 @@ import { useReducedMotion } from "../../../hooks/useReducedMotion";
  * Number formatting via Intl compact (audit H1: "1.2K" instead of "1234").
  * Count-up animation gated by `prefers-reduced-motion` (plan §7.4).
  *
- * **Audit D1 — accessibility critical**: each tile sets `aria-label` to the
- * FINAL numeric value before the animation begins. The visible text tweens
- * from 0 → final, but the screen-reader label is static so NVDA / VoiceOver
- * announce "Lifetime wins: forty-seven" once, not "1, 2, 3...".
+ * **Audit D1 — accessibility critical**: the tweening number is
+ * `aria-hidden` and a visually-hidden copy carries the FINAL value, so
+ * NVDA / VoiceOver announce "Wins 47" once, not "1, 2, 3...". There is no
+ * `aria-label`: the name comes from the visible label plus that value, so a
+ * Voice Control user saying "tap Wins" hits the tile (WCAG 2.5.3).
  */
 
 const formatter = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
@@ -64,8 +65,13 @@ interface StatTileProps {
   /** `null` renders the unavailable placeholder instead of a number. */
   value: number | null;
   suffix?: string;
-  /** Pre-computed final-value label — must NOT change as the count-up runs. */
-  ariaLabel: string;
+  /**
+   * What a screen reader says for the value. Defaults to the final number
+   * ("47", "62 percent"); a null stat passes the reason it's blank.
+   */
+  spokenValue?: string;
+  /** Drawn after the number, e.g. the flame on a live win streak. */
+  icon?: ReactNode;
   onTap?: (name: StatTileName) => void;
 }
 
@@ -74,10 +80,10 @@ const UNAVAILABLE = "—";
 
 /**
  * Individual stat tile. The visible number tweens from 0 → `value` over
- * ~600 ms, gated by `prefers-reduced-motion`. The `aria-label` reflects
- * the final value at all times so screen readers never trip over the tween.
+ * ~600 ms, gated by `prefers-reduced-motion`. The spoken value is the final
+ * one at all times so screen readers never trip over the tween.
  */
-export function StatTile({ name, label, value, suffix, ariaLabel, onTap }: StatTileProps) {
+export function StatTile({ name, label, value, suffix, spokenValue, icon, onTap }: StatTileProps) {
   const reducedMotion = useReducedMotion();
   // Animation source: we tween a separate `tweenValue` from 0 → value when
   // reduced-motion is OFF, and use the prop `value` directly when ON.
@@ -115,15 +121,18 @@ export function StatTile({ name, label, value, suffix, ariaLabel, onTap }: StatT
   }, [reducedMotion, numericValue]);
 
   const handleClick = () => onTap?.(name);
+  const spoken = spokenValue ?? (value === null ? "not available" : `${value}${suffix === "%" ? " percent" : ""}`);
 
   return (
     <button
       type="button"
       onClick={handleClick}
-      aria-label={ariaLabel}
       className="text-left rounded-xl bg-surface border border-white/[0.06] shadow-card p-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
     >
-      <p className="font-display text-xl text-white leading-none tabular-nums">
+      <span
+        aria-hidden="true"
+        className="flex items-center gap-1 font-display text-xl text-white leading-none tabular-nums"
+      >
         {value === null ? (
           <span className="text-subtle">{UNAVAILABLE}</span>
         ) : (
@@ -132,8 +141,10 @@ export function StatTile({ name, label, value, suffix, ariaLabel, onTap }: StatT
             {suffix}
           </>
         )}
-      </p>
-      <p className="font-body text-label uppercase tracking-wider text-subtle mt-1.5">{label}</p>
+        {icon}
+      </span>
+      <span className="block font-body text-label uppercase tracking-wider text-subtle mt-1.5">{label}</span>{" "}
+      <span className="sr-only">{spoken}</span>
     </button>
   );
 }

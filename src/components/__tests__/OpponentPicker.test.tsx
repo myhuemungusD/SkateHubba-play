@@ -82,7 +82,7 @@ describe("OpponentPicker", () => {
     const onViewPlayer = vi.fn();
     render(<OpponentPicker {...base} onViewPlayer={onViewPlayer} />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "View @kickflip_king's profile" }));
+    await userEvent.click(await screen.findByRole("button", { name: /^@kickflip_king.*view profile$/ }));
 
     expect(onViewPlayer).toHaveBeenCalledWith("u2");
   });

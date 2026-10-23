@@ -28,36 +28,41 @@ export const ClipCommentRow = memo(function ClipCommentRow({
   onViewAuthor,
 }: ClipCommentRowProps) {
   return (
-    <li data-testid={`comment-${comment.id}`} className="rounded-xl border border-border bg-surface/60 px-3 py-2.5">
-      <div className="flex items-baseline justify-between gap-2">
+    <li
+      data-testid={`comment-${comment.id}`}
+      className="rounded-xl border border-border bg-surface/60 px-3 pt-1 pb-2.5"
+    >
+      <div className="flex items-center justify-between gap-2">
         {onViewAuthor ? (
+          // One 44pt target for avatar + handle (audit #1): the handle leads
+          // to the profile, where Block lives, so it must not be a mis-tap.
           <button
             type="button"
             onClick={() => onViewAuthor(comment.userId)}
-            aria-label={`View @${comment.username}'s profile`}
-            className="text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            aria-label={`@${comment.username}, view profile`}
+            className="-ml-1 inline-flex min-h-11 min-w-0 items-center gap-2 rounded-lg pl-1 pr-2 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
-            <ProUsername username={comment.username} className="font-body text-xs text-white/80" />
+            <Author username={comment.username} />
           </button>
         ) : (
-          <ProUsername username={comment.username} className="font-body text-xs text-white/80" />
+          <span className="inline-flex min-h-11 min-w-0 items-center gap-2">
+            <Author username={comment.username} />
+          </span>
         )}
         <span className="shrink-0 font-body text-label text-faint">{relativeClipTime(comment.createdAt)}</span>
       </div>
       {/* Untrusted user text. Rendered as a plain text node so React escapes
           it, `whitespace-pre-wrap` to keep the author's line breaks, and
           `break-words` so an unbroken 300-char string can't widen the sheet. */}
-      <p className="mt-1 font-body text-sm leading-relaxed break-words whitespace-pre-wrap text-white/90">
-        {comment.text}
-      </p>
+      <p className="font-body text-sm leading-relaxed break-words whitespace-pre-wrap text-white/90">{comment.text}</p>
       {!canDelete && onReport && (
         <button
           type="button"
           onClick={() => onReport(comment)}
           aria-label={`Report comment by @${comment.username}`}
-          className="mt-1.5 inline-flex min-h-[44px] items-center font-display text-sm tracking-[0.15em] text-faint transition-colors hover:text-brand-red focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          className="-mb-2 mt-0.5 inline-flex min-h-11 items-center font-body text-xs font-semibold text-subtle transition-colors hover:text-brand-red focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
         >
-          REPORT
+          Report
         </button>
       )}
       {canDelete && (
@@ -66,11 +71,26 @@ export const ClipCommentRow = memo(function ClipCommentRow({
           onClick={() => onDelete(comment)}
           disabled={deleting}
           aria-label="Delete your comment"
-          className="mt-1.5 inline-flex min-h-[44px] items-center font-display text-sm tracking-[0.15em] text-faint transition-colors hover:text-brand-red disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          className="-mb-2 mt-0.5 inline-flex min-h-11 items-center font-body text-xs font-semibold text-subtle transition-colors hover:text-brand-red disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
         >
-          {deleting ? "DELETING..." : "DELETE"}
+          {deleting ? "Deleting…" : "Delete"}
         </button>
       )}
     </li>
   );
 });
+
+/** 28px initial avatar and handle. Comments carry no photo URL (denormalised username only). */
+function Author({ username }: { username: string }) {
+  return (
+    <>
+      <span
+        aria-hidden="true"
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-alt font-display text-sm text-white/80"
+      >
+        {username[0]?.toUpperCase() ?? "?"}
+      </span>
+      <ProUsername username={username} className="truncate font-body text-sm font-semibold text-white/90" />
+    </>
+  );
+}

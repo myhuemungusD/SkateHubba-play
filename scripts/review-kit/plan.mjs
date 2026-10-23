@@ -60,24 +60,35 @@ export const DEMO_OPPONENTS = [
   { uid: "review-demo-opp-6", username: "grind_gabe", stance: "Goofy" },
 ];
 
+/** Server-written stats so a games-played count is never "No games yet" next to live games (audit #34). */
+const opp = (wins, losses, bestWinStreak, recentResults) => ({
+  wins,
+  losses,
+  gamesPlayed: wins + losses,
+  currentWinStreak: 0,
+  bestWinStreak,
+  recentResults,
+});
+
 /**
- * Server-written stats for the opponent the screenshots open (kai), so his
+ * Every demo opponent has played, since Home shows games with each of them.
+ * Kai, the opponent the screenshots open, gets a full stat line so his
  * profile above VS YOU isn't all zeros. Oldest result first; his last game is
  * the loss to the reviewer, so his current streak is 0.
  */
 export const DEMO_OPPONENT_STATS = {
   "review-demo-opp-1": {
-    wins: 22,
-    losses: 9,
-    gamesPlayed: 31,
-    currentWinStreak: 0,
-    bestWinStreak: 6,
+    ...opp(22, 9, 6, ["W", "W", "L", "W", "W", "W", "L", "W", "W", "L"]),
     tricksLanded: 96,
     tricksFailed: 41,
     lettersGiven: 137,
     lettersTaken: 89,
-    recentResults: ["W", "W", "L", "W", "W", "W", "L", "W", "W", "L"],
   },
+  "review-demo-opp-2": opp(9, 7, 3, ["W", "L", "W", "W", "L", "L", "W", "L"]),
+  "review-demo-opp-3": opp(12, 5, 4, ["W", "W", "W", "L", "W", "W", "L", "L"]),
+  "review-demo-opp-4": opp(6, 6, 2, ["L", "W", "W", "L", "L", "W", "L", "L"]),
+  "review-demo-opp-5": opp(15, 8, 5, ["W", "W", "W", "W", "L", "W", "L", "L"]),
+  "review-demo-opp-6": opp(4, 7, 2, ["L", "W", "L", "L", "W", "L", "L", "L"]),
 };
 
 /** Mike White Signature shoes the demo profile owns (credited in-app by DesignerCredit). */
@@ -124,6 +135,15 @@ export function reviewEnv(env) {
 export const DEMO_VIDEO_PATH = "review-kit/sh-video-edit.mp4";
 
 /**
+ * The reviewer's cover picture, at the same Storage path the in-app banner
+ * upload uses, so store screenshots never show the "Add cover" prompt
+ * (audit #35). It's a crop of the app's own graffiti backdrop, not Mike
+ * White art, so no credit is needed.
+ */
+export const DEMO_BANNER_SOURCE = "scripts/review-kit/demo-cover.webp";
+export const demoBannerPath = (uid) => `users/${uid}/banner.webp`;
+
+/**
  * Firebase Storage download URL. The game screen only plays trick videos from
  * firebasestorage.googleapis.com, so a clip hosted anywhere else shows
  * "No video recorded".
@@ -140,6 +160,7 @@ export function buildSeedDocs({
   tutorialVersion = 2,
   tipsDisabled = false,
   videoUrl,
+  bannerUrl,
   includeEmulatorOnly = true,
 }) {
   const day = 24 * 60 * 60 * 1000;
@@ -169,6 +190,7 @@ export function buildSeedDocs({
     level: 11,
     // Oldest first. Ends L, L, W, W to match the four finished games below.
     recentResults: ["W", "W", "L", "W", "W", "W", "L", "L", "W", "W"],
+    ...(bannerUrl ? { bannerImageUrl: bannerUrl } : {}),
   });
   put(`usernames/${username}`, { uid });
   put(`users/${uid}/private/profile`, {

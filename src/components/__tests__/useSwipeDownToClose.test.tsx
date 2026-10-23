@@ -13,6 +13,18 @@ function Sheet({ onClose, enabled = true }: { onClose: () => void; enabled?: boo
   );
 }
 
+function ScrollingSheet({ onClose }: { onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useSwipeDownToClose(ref, onClose);
+  return (
+    <div ref={ref} data-testid="panel">
+      <div data-testid="list" style={{ overflowY: "auto" }}>
+        <p data-testid="row">comment</p>
+      </div>
+    </div>
+  );
+}
+
 function drag(el: HTMLElement, from: number, to: number) {
   fireEvent.touchStart(el, { touches: [{ clientY: from }] });
   fireEvent.touchEnd(el, { changedTouches: [{ clientY: to }] });
@@ -45,5 +57,19 @@ describe("useSwipeDownToClose", () => {
     render(<Sheet onClose={onClose} enabled={false} />);
     drag(screen.getByTestId("sheet"), 0, 500);
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("ignores a pull-down while an inner list is scrolled, and closes once it is back at the top (SF-C1)", () => {
+    const onClose = vi.fn();
+    render(<ScrollingSheet onClose={onClose} />);
+    const list = screen.getByTestId("list");
+    const row = screen.getByTestId("row");
+    list.scrollTop = 120;
+    drag(row, 100, 400);
+    expect(onClose).not.toHaveBeenCalled();
+
+    list.scrollTop = 0;
+    drag(row, 100, 400);
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

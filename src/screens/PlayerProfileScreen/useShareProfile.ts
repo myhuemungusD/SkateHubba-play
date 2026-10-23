@@ -8,7 +8,7 @@ import { hashUid } from "../../utils/pii";
  * apps open the OS share sheet (Android's WebView has no Web Share), and
  * builds the link from VITE_APP_URL so the app shell never shares its own
  * capacitor://localhost origin. `/player/:uid` is the public profile route.
- * Falls back to copying the link; `copied` drives the "LINK COPIED" label.
+ * Falls back to copying the link; `copied` drives the "COPIED" label.
  */
 export function useShareProfile(viewerUid: string, username: string | undefined) {
   const [copied, setCopied] = useState(false);

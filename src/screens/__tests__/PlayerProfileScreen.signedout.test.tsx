@@ -55,9 +55,9 @@ describe("PlayerProfileScreen — signed-out visitor", () => {
     // Verified Pro is frozen by default (VITE_FEATURE_EXTRAS_ENABLED unset).
     expect(screen.queryByTitle("Pro")).not.toBeInTheDocument();
     // 10-3 clears the rated-games floor, so the public record is real.
-    expect(screen.getByLabelText("Lifetime wins: 10")).toBeInTheDocument();
-    expect(screen.getByLabelText("Lifetime losses: 3")).toBeInTheDocument();
-    expect(screen.getByLabelText("Win rate: 77 percent")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Wins 10" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Losses 3" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Win % 77 percent" })).toBeInTheDocument();
   });
 
   it("shows the verified-pro badge to visitors when extras are enabled", () => {
@@ -101,8 +101,7 @@ describe("PlayerProfileScreen — signed-out visitor", () => {
 
   it("withholds the block controls", () => {
     render(<PlayerProfileScreen {...visitorProps} blockedUids={new Set()} />);
-    expect(screen.queryByText("Block this player")).not.toBeInTheDocument();
-    expect(screen.queryByText("Report this player")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /More options/ })).not.toBeInTheDocument();
   });
 
   it("withholds own-profile affordances", () => {

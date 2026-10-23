@@ -1,4 +1,5 @@
 import { useId, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useSheetFocusTrap } from "../useSheetFocusTrap";
 
 interface ConfirmSheetProps {
@@ -15,6 +16,10 @@ interface ConfirmSheetProps {
 /**
  * A two-button bottom sheet for anything that can't be undone (forfeit,
  * decline, sign out). The safe choice is the primary white button.
+ *
+ * Portalled to <body>: callers sit in headers with backdrop-filter (.glass),
+ * which makes them the containing block for position:fixed, so an inline
+ * sheet would be squeezed into the header box.
  */
 export function ConfirmSheet({
   title,
@@ -28,7 +33,7 @@ export function ConfirmSheet({
   const panelRef = useRef<HTMLDivElement>(null);
   const id = useId();
   useSheetFocusTrap(panelRef, onCancel);
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm"
       role="alertdialog"
@@ -67,6 +72,7 @@ export function ConfirmSheet({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

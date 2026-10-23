@@ -187,7 +187,9 @@ describe("ClipComments", () => {
     mockFetch.mockResolvedValueOnce({ comments: [other], cursor: null });
     const onViewPlayer = vi.fn();
     renderSheet("me", vi.fn(), undefined, undefined, onViewPlayer);
-    await user.click(await screen.findByRole("button", { name: `View @${other.username}'s profile` }));
+    const author = await screen.findByRole("button", { name: `@${other.username}, view profile` });
+    expect(author).toHaveClass("min-h-11");
+    await user.click(author);
     expect(onViewPlayer).toHaveBeenCalledWith(other.userId);
   });
 
@@ -204,14 +206,31 @@ describe("ClipComments", () => {
     expect(screen.queryByRole("button", { name: /report this clip/i })).not.toBeInTheDocument();
   });
 
-  it("calls onReport when the report control is tapped", async () => {
+  it("reports the clip from the ••• menu in the title row", async () => {
     const user = userEvent.setup();
     const onReport = vi.fn();
-    renderSheet("me", vi.fn(), onReport);
+    const { onClose } = renderSheet("me", vi.fn(), onReport);
     await screen.findByTestId("comments-empty");
+    const menu = screen.getByRole("button", { name: "More options for this clip" });
 
-    await user.click(screen.getByRole("button", { name: /report this clip/i }));
+    // Escape in the menu closes only the menu, not the sheet underneath.
+    await user.click(menu);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "More options for this clip" })).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+
+    await user.click(menu);
+    await user.click(screen.getByRole("button", { name: "Report clip" }));
     expect(onReport).toHaveBeenCalledTimes(1);
+  });
+
+  it("is a full-width sheet on phones, capped from sm up, clear of the home indicator", async () => {
+    renderSheet();
+    await screen.findByTestId("comments-empty");
+    const panel = screen.getByRole("heading", { name: "Comments" }).closest(".glass-card");
+    expect(panel).toHaveClass("w-full", "sm:max-w-sm");
+    expect(panel).not.toHaveClass("max-w-sm");
+    expect(panel?.className).toContain("env(safe-area-inset-bottom)");
   });
 
   it("leaves a blocked author's comment out of the rendered thread", async () => {
@@ -236,12 +255,12 @@ describe("ClipComments", () => {
     expect(screen.queryByText("nope")).not.toBeInTheDocument();
   });
 
-  it("closes on the CLOSE control and on Escape", async () => {
+  it("closes on Done and on Escape", async () => {
     const user = userEvent.setup();
     const { onClose } = renderSheet();
     await screen.findByTestId("comments-empty");
 
-    await user.click(screen.getByRole("button", { name: /close comments/i }));
+    await user.click(screen.getByRole("button", { name: "Done" }));
     expect(onClose).toHaveBeenCalledTimes(1);
 
     await user.keyboard("{Escape}");

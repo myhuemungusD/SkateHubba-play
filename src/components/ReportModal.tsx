@@ -1,6 +1,7 @@
-import { FIELD_LABEL } from "./ui/Field";
 import { useState, useId, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Btn } from "./ui/Btn";
+import { FIELD_LABEL } from "./ui/Field";
 import { ErrorBanner } from "./ui/ErrorBanner";
 import {
   submitReport,
@@ -63,10 +64,8 @@ export function ReportModal({
   useFocusTrap(panelRef);
 
   const handleSubmit = async () => {
-    if (!reason) {
-      setError("Please select a reason.");
-      return;
-    }
+    // Submit is disabled until a reason is picked, and submitReport rejects an
+    // empty one itself, so no separate guard is needed here.
     setSubmitting(true);
     setError("");
     try {
@@ -75,7 +74,7 @@ export function ReportModal({
         reportedUid,
         reportedUsername,
         gameId: gameId ?? null,
-        reason,
+        reason: reason as ReportReason,
         description,
         ...(clipId ? { clipId } : {}),
         ...(disputeId ? { disputeId } : {}),
@@ -99,8 +98,11 @@ export function ReportModal({
   const quotedNoun = comment ? "comment" : "message";
   const detailsLabel = illegal ? "EXPLANATION (REQUIRED)" : "DETAILS (OPTIONAL)";
 
+  // Both branches portal to <body>: callers such as the profile ••• menu sit
+  // in a .glass header whose backdrop-filter is the containing block for
+  // position:fixed, which would squeeze the dialog into the header box.
   if (receiptId) {
-    return (
+    return createPortal(
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-6 z-50"
         role="dialog"
@@ -129,11 +131,12 @@ export function ReportModal({
             Done
           </Btn>
         </div>
-      </div>
+      </div>,
+      document.body,
     );
   }
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-6 z-50"
       role="dialog"
@@ -173,7 +176,7 @@ export function ReportModal({
         {/* Reason select */}
         <div className="mb-4">
           <label htmlFor={selectId} className={`block ${FIELD_LABEL} mb-2`}>
-            REASON
+            Reason
           </label>
           <select
             id={selectId}
@@ -234,6 +237,7 @@ export function ReportModal({
           </Btn>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

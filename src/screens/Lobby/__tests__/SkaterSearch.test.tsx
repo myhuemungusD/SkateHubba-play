@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UserProfile } from "../../../services/users";
 
@@ -12,6 +12,11 @@ import { SkaterSearch, mergeMatches, normalizeSkaterQuery } from "../components/
 
 const p = (uid: string, username: string): UserProfile => ({ uid, username, stance: "regular", createdAt: null });
 const players = [p("a", "skatekid"), p("b", "kidflip"), p("c", "tony"), p("d", "kickflipking")];
+// Result rows are one button each, named by their own text (audit #10, #32).
+const rowHandles = () =>
+  screen
+    .getAllByRole("button", { name: /, view profile$/ })
+    .map((b) => within(b).getByText(/^@/).textContent?.slice(1));
 
 function setup(canChallenge = true) {
   const onChallengeUser = vi.fn();
@@ -59,8 +64,7 @@ describe("SkaterSearch", () => {
     const { input } = setup();
     await userEvent.type(input, "Kid");
     expect(prefix.usePrefixSkaterSearch).toHaveBeenLastCalledWith("kid", "me");
-    const names = screen.getAllByRole("button", { name: /^Challenge @/ }).map((b) => b.getAttribute("aria-label"));
-    expect(names).toEqual(["Challenge @kidold", "Challenge @kidflip", "Challenge @skatekid"]);
+    expect(rowHandles()).toEqual(["kidold", "kidflip", "skatekid"]);
   });
 
   it("holds the empty state while the prefix search is still running", async () => {
@@ -76,16 +80,16 @@ describe("SkaterSearch", () => {
     expect(dir.usePlayerDirectory).not.toHaveBeenCalled();
   });
 
-  it("filters by handle, prefix matches first, and challenges a result", async () => {
+  it("filters by handle, prefix matches first, and opens a result's profile", async () => {
     const { input, onChallengeUser, onViewPlayer } = setup();
     await userEvent.type(input, "@KID");
     expect(dir.usePlayerDirectory).toHaveBeenCalledWith("me");
-    const challenges = screen.getAllByRole("button", { name: /^Challenge @/ });
-    expect(challenges.map((b) => b.getAttribute("aria-label"))).toEqual(["Challenge @kidflip", "Challenge @skatekid"]);
-    await userEvent.click(challenges[0]);
-    expect(onChallengeUser).toHaveBeenCalledWith("kidflip");
-    await userEvent.click(screen.getByRole("button", { name: "View @skatekid's profile" }));
+    expect(rowHandles()).toEqual(["kidflip", "skatekid"]);
+    // Browse rows carry no Challenge button: Challenge lives on the profile.
+    expect(screen.queryByRole("button", { name: /^Challenge @/ })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /^@skatekid.*view profile$/ }));
     expect(onViewPlayer).toHaveBeenCalledWith("a");
+    expect(onChallengeUser).not.toHaveBeenCalled();
   });
 
   it("caps the result list", async () => {
@@ -96,7 +100,7 @@ describe("SkaterSearch", () => {
     });
     const { input } = setup();
     await userEvent.type(input, "sk8");
-    expect(screen.getAllByRole("button", { name: /^Challenge @/ })).toHaveLength(8);
+    expect(rowHandles()).toHaveLength(8);
   });
 
   it("shows the loading skeleton while the directory loads", async () => {
@@ -129,9 +133,10 @@ describe("SkaterSearch", () => {
     expect(screen.queryByRole("button", { name: /Challenge @/ })).toBeNull();
   });
 
-  it("disables result Challenge buttons for an unverified viewer", async () => {
-    const { input } = setup(false);
+  it("still lets an unverified viewer open a result's profile", async () => {
+    const { input, onViewPlayer } = setup(false);
     await userEvent.type(input, "tony");
-    expect(screen.getByRole("button", { name: "Challenge @tony" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: /^@tony.*view profile$/ }));
+    expect(onViewPlayer).toHaveBeenCalledWith("c");
   });
 });

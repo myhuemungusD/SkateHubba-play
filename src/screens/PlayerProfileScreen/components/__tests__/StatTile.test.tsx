@@ -36,19 +36,23 @@ describe("StatTile count-up", () => {
   });
 
   it("tweens from 0 to the final value across frames and stops at 600 ms", () => {
-    render(<StatTile name="wins" label="Wins" value={100} ariaLabel="Wins: 100" />);
-    const tile = screen.getByRole("button", { name: "Wins: 100" });
-    expect(tile).toHaveTextContent("0");
+    render(<StatTile name="wins" label="Wins" value={100} />);
+    // The spoken name holds the final value the whole time (audit D1) ...
+    const tile = screen.getByRole("button", { name: "Wins 100" });
+    // ... while the drawn number tweens, hidden from assistive tech.
+    const drawn = tile.querySelector('[aria-hidden="true"]');
+    expect(drawn).toHaveTextContent(/^0$/);
     tick(1000); // first frame anchors the start time
     tick(1300); // halfway: ease-out cubic of 0.5 = 0.875
-    expect(tile).toHaveTextContent("88");
+    expect(drawn).toHaveTextContent(/^88$/);
     tick(1600); // done
-    expect(tile).toHaveTextContent("100");
+    expect(drawn).toHaveTextContent(/^100$/);
+    expect(screen.getByRole("button", { name: "Wins 100" })).toBe(tile);
     expect(queue).toHaveLength(0);
   });
 
   it("cancels a pending frame on unmount", () => {
-    const { unmount } = render(<StatTile name="wins" label="Wins" value={5} ariaLabel="Wins: 5" />);
+    const { unmount } = render(<StatTile name="wins" label="Wins" value={5} />);
     unmount();
     expect(cancelAnimationFrame).toHaveBeenCalled();
   });
@@ -56,8 +60,32 @@ describe("StatTile count-up", () => {
   it("shows the final value at once with reduced motion, and a dash for null", () => {
     motion.reduced = true;
     const onTap = vi.fn();
-    render(<StatTile name="winRate" label="Win rate" value={null} ariaLabel="Win rate: none" onTap={onTap} />);
-    expect(screen.getByRole("button", { name: "Win rate: none" })).toHaveTextContent("—");
+    render(<StatTile name="winRate" label="Win rate" value={null} onTap={onTap} />);
+    expect(screen.getByRole("button", { name: "Win rate not available" })).toHaveTextContent("—");
     expect(queue).toHaveLength(0);
+  });
+
+  it("names the tile from its visible label first, so voice control can target it", () => {
+    motion.reduced = true;
+    render(<StatTile name="winRate" label="Win %" value={62} suffix="%" />);
+    const tile = screen.getByRole("button", { name: "Win % 62 percent" });
+    expect(tile).not.toHaveAttribute("aria-label");
+    expect(tile).toHaveTextContent("62%");
+  });
+
+  it("speaks a custom value and draws a trailing icon", () => {
+    motion.reduced = true;
+    render(
+      <StatTile
+        name="currentStreak"
+        label="Streak"
+        value={3}
+        spokenValue="3 game win streak"
+        icon={<i data-testid="flame" />}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Streak 3 game win streak" })).toContainElement(
+      screen.getByTestId("flame"),
+    );
   });
 });

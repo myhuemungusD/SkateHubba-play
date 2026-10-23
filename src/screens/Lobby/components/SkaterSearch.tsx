@@ -62,13 +62,8 @@ function SkaterSearchResults({
   }
 
   return (
-    <PlayerDirectory
-      players={matches}
-      loading={loading && matches.length === 0}
-      canChallenge={canChallenge}
-      onViewPlayer={onViewPlayer}
-      onChallengeUser={onChallengeUser}
-    />
+    // Browse rows open the profile, where Challenge lives (audit #10).
+    <PlayerDirectory players={matches} loading={loading && matches.length === 0} onViewPlayer={onViewPlayer} />
   );
 }
 

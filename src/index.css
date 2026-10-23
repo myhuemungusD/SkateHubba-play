@@ -458,6 +458,27 @@
   animation: scale-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* Bottom sheets: slide up from the edge on phones (matches the grabber),
+   scale in as a centred dialog from sm up. Transform only, like scale-in. */
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.animate-sheet-in {
+  animation: slide-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@media (min-width: 40rem) {
+  .animate-sheet-in {
+    animation-name: scale-in;
+  }
+}
+
 /* One-take recording pulse */
 @keyframes rec-pulse {
   0%,

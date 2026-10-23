@@ -3,6 +3,7 @@ import { PlayIcon } from "../icons";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
 import { CLIP_POSTER } from "../../lib/clipPoster";
 import { BELOW_HEADER, RAIL_BTN } from "./feedLayout";
+import { ClipPlaybackError } from "./ClipPlaybackError";
 
 /**
  * Full-bleed clip player for one snapped page.
@@ -218,22 +219,7 @@ function SpotlightVideoImpl({ src, active = true, mediaLabel, muted: mutedProp, 
         </button>
       )}
 
-      {failed && (
-        <div
-          role="alert"
-          className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black/70 p-4 backdrop-blur-sm"
-        >
-          <p className="font-display text-sm tracking-[0.2em] text-white/70">Couldn&apos;t play this clip</p>
-          <button
-            type="button"
-            onClick={handleRetry}
-            aria-label="Retry clip"
-            className="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-border bg-surface/80 px-5 font-display text-sm tracking-wider text-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-          >
-            RETRY
-          </button>
-        </div>
-      )}
+      {failed && <ClipPlaybackError onRetry={handleRetry} />}
     </div>
   );
 }
