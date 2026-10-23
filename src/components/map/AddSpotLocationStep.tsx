@@ -16,7 +16,7 @@ export function AddSpotLocationStep({ userLocation, pinLatText, pinLngText, onLa
       {/* Assumption: Static map preview showing pin location. Full drag-to-reposition
           requires Mapbox Static Images API or a second map instance. Using coordinate
           input for MVP. */}
-      <div className="bg-background rounded-xl p-4 mb-4 border border-[#333]">
+      <div className="bg-background rounded-xl p-4 mb-4 border border-line-strong">
         <div className="text-center text-muted text-sm mb-3">Adjust coordinates or use your current location</div>
         <div className="grid grid-cols-2 gap-3">
           <div>

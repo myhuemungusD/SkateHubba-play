@@ -109,7 +109,7 @@ export function SpotDetailPage() {
   return (
     <div className="min-h-dvh bg-background text-white">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-[#222] px-4 pt-safe pb-3 flex items-center gap-3">
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-line px-4 pt-safe pb-3 flex items-center gap-3">
         <BackChevron onClick={backToMap} label="Back to map" />
         <h1 className="text-lg font-semibold truncate">{spot.name}</h1>
         {spot.isVerified && (
@@ -153,7 +153,7 @@ export function SpotDetailPage() {
         </div>
 
         {/* Description */}
-        {spot.description && <p className="text-[#CCC] text-sm leading-relaxed">{spot.description}</p>}
+        {spot.description && <p className="text-soft text-sm leading-relaxed">{spot.description}</p>}
 
         {/* Obstacles */}
         {spot.obstacles.length > 0 && (
@@ -163,7 +163,7 @@ export function SpotDetailPage() {
               {spot.obstacles.map((o) => (
                 <span
                   key={o}
-                  className="px-3 py-1 text-xs rounded-full bg-surface-alt border border-[#333] text-[#CCC]"
+                  className="px-3 py-1 text-xs rounded-full bg-surface-alt border border-line-strong text-soft"
                 >
                   {o.replaceAll("_", " ")}
                 </span>

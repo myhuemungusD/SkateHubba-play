@@ -125,7 +125,7 @@ function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
       <button
         type="button"
         onClick={onBack}
-        className="px-6 py-3 rounded-xl bg-brand-orange text-surface-alt font-display tracking-wider focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+        className="px-6 py-3 rounded-xl bg-brand-orange text-on-brand font-display tracking-wider focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
       >
         Back to Lobby
       </button>
@@ -491,7 +491,7 @@ function AppRoutes() {
       )}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:rounded-xl focus:bg-brand-orange focus:text-surface-alt focus:font-display focus:tracking-wider focus:outline-none"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:rounded-xl focus:bg-brand-orange focus:text-on-brand focus:font-display focus:tracking-wider focus:outline-none"
       >
         Skip to main content
       </a>

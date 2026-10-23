@@ -45,7 +45,7 @@ class MapErrorBoundary extends Component<{ children: ReactNode; onReset?: () => 
       return (
         <div role="alert" className="w-full h-dvh flex items-center justify-center bg-background">
           <div className="text-center px-6 max-w-xs">
-            <p className="text-[#CCC] text-sm mb-1">
+            <p className="text-soft text-sm mb-1">
               {showReload ? "The map still isn't loading." : "Something went wrong loading the map."}
             </p>
             <p className="text-dim text-xs mb-5">

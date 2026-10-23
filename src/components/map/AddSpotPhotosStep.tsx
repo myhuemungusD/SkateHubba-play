@@ -66,7 +66,7 @@ export function AddSpotPhotosStep({
             type="button"
             onClick={addPhotoUrl}
             disabled={!photoInput.trim()}
-            className="px-4 py-2 bg-[#333] text-white text-sm rounded-lg
+            className="px-4 py-2 bg-line-strong text-white text-sm rounded-lg
                        hover:bg-[#444] disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Add

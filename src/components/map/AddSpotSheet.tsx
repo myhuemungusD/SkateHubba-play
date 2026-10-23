@@ -188,7 +188,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
         }}
       >
         {/* Header */}
-        <div className="sticky top-0 bg-surface-alt px-4 pt-4 pb-2 flex items-center justify-between border-b border-[#333]">
+        <div className="sticky top-0 bg-surface-alt px-4 pt-4 pb-2 flex items-center justify-between border-b border-line-strong">
           <div className="flex items-center gap-2">
             {step > 1 && (
               <button

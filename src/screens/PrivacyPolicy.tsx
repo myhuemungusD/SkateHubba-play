@@ -191,7 +191,7 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
               <button
                 type="button"
                 onClick={() => onNav("datadeletion")}
-                className="py-2.5 -my-2.5 text-brand-orange hover:underline"
+                className="py-2.5 -my-2.5 text-brand-orange hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
               >
                 Data Deletion page
               </button>

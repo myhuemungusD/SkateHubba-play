@@ -110,7 +110,7 @@ export function ExportPanel({ project, onChange, caps, exporting, progress, onEx
         type="button"
         onClick={onExport}
         disabled={exporting}
-        className="min-h-[52px] rounded-2xl bg-brand-orange font-display text-lg tracking-wider text-surface-alt disabled:opacity-60"
+        className="min-h-[52px] rounded-2xl bg-brand-orange font-display text-lg tracking-wider text-on-brand disabled:opacity-60"
       >
         {exporting ? `Exporting ${Math.round(progress * 100)}%` : "Export"}
       </button>

@@ -8,6 +8,8 @@ interface ConfirmSheetProps {
   cancelLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
+  /** While the confirm action is in flight: disables confirm and sets aria-busy so a double-tap can't fire it twice. */
+  busy?: boolean;
 }
 
 /**
@@ -21,6 +23,7 @@ export function ConfirmSheet({
   cancelLabel = "Keep playing",
   onConfirm,
   onCancel,
+  busy = false,
 }: ConfirmSheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const id = useId();
@@ -49,14 +52,16 @@ export function ConfirmSheet({
           <button
             type="button"
             onClick={onCancel}
-            className="min-h-12 w-full rounded-2xl bg-white font-display text-lg tracking-wider text-[#111]"
+            className="min-h-12 w-full rounded-2xl bg-white font-display text-lg tracking-wider text-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
             {cancelLabel}
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className="min-h-12 w-full rounded-2xl border border-brand-red/50 font-display text-lg tracking-wider text-brand-red"
+            disabled={busy}
+            aria-busy={busy || undefined}
+            className="min-h-12 w-full rounded-2xl border border-brand-red/50 font-display text-lg tracking-wider text-brand-red disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
             {confirmLabel}
           </button>

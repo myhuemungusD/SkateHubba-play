@@ -16,7 +16,7 @@
  * tags (see platforms.ts), so a dice push queued before the tags existed, or
  * by any future writer, still never reaches an iPhone while dice is off there.
  */
-import { diceEligibleTokens, isDicePush } from "./platforms.js";
+import { diceEligibleTokens, isDicePush, mirrorTokens } from "./platforms.js";
 import { webpushOptions, type WebpushOptions } from "./webpush.js";
 
 /** Drop undelivered pushes older than this. Matches the endpoint's TTL. */
@@ -47,7 +47,11 @@ const DEAD_TOKEN_CODES = new Set([
 ]);
 
 export interface DispatchPayload {
-  tokens: string[];
+  /**
+   * Tokens named on the doc (server writers and older clients), or null when
+   * the doc names none: the courier then resolves them from pushTargets (M1).
+   */
+  tokens: string[] | null;
   title: string;
   body: string;
   data: Record<string, string>;
@@ -69,7 +73,7 @@ export interface DrainDeps {
   }) => Promise<MulticastResult>;
   /** Remove dead tokens from pushTargets + private profile. */
   prune: (recipientUid: string, dead: string[]) => Promise<void>;
-  /** The recipient's pushTargets doc, for the dice platform check. Undefined when missing. */
+  /** The recipient's pushTargets doc, for token lookup and the dice check. Undefined when missing. */
   pushTarget: (recipientUid: string) => Promise<Record<string, unknown> | undefined>;
   warn: (event: string, fields: Record<string, unknown>) => void;
   nowMs: number;
@@ -81,7 +85,7 @@ export interface QueuedDoc {
   delete: () => Promise<unknown>;
 }
 
-/** "filtered": a dice push whose tokens are all iOS or untagged, dropped without sending. */
+/** "filtered": dropped without sending: the recipient has no registered device, or a dice push whose tokens are all iOS or untagged. */
 export type DocOutcome = "sent" | "expired" | "malformed" | "filtered" | "error";
 
 export interface DrainSummary {
@@ -97,10 +101,15 @@ export interface DrainSummary {
 /** Validate a dispatch doc. Null means malformed and deletable. */
 export function parseDispatchDoc(raw: Record<string, unknown> | undefined): DispatchPayload | null {
   if (!raw) return null;
+  // No `tokens` key: resolve from the recipient's pushTargets doc at send
+  // time (M1). A present-but-bad list is still malformed.
   const tokensRaw = raw.tokens;
-  if (!Array.isArray(tokensRaw)) return null;
-  const tokens = tokensRaw.filter((t): t is string => typeof t === "string" && t.length > 0);
-  if (tokens.length === 0) return null;
+  let tokens: string[] | null = null;
+  if (tokensRaw !== undefined) {
+    if (!Array.isArray(tokensRaw)) return null;
+    tokens = tokensRaw.filter((t): t is string => typeof t === "string" && t.length > 0);
+    if (tokens.length === 0) return null;
+  }
 
   const notification = raw.notification;
   if (typeof notification !== "object" || notification === null) return null;
@@ -154,13 +163,16 @@ export async function deliverDispatch(doc: QueuedDoc, deps: DrainDeps): Promise<
       return "expired";
     }
 
-    let tokens = payload.tokens;
-    if (isDicePush(payload.data)) {
-      tokens = diceEligibleTokens(await deps.pushTarget(payload.recipientUid), tokens);
-      if (tokens.length === 0) {
-        await doc.delete();
-        return "filtered";
-      }
+    // One mirror read serves both the token lookup (doc names none) and the
+    // dice platform check.
+    const needsMirror = payload.tokens === null || isDicePush(payload.data);
+    const mirror = needsMirror ? await deps.pushTarget(payload.recipientUid) : undefined;
+    let tokens = payload.tokens ?? mirrorTokens(mirror);
+    if (isDicePush(payload.data)) tokens = diceEligibleTokens(mirror, tokens);
+    if (tokens.length === 0) {
+      // No registered device, or none allowed for dice: nothing to send.
+      await doc.delete();
+      return "filtered";
     }
 
     const response = await deps.send({
