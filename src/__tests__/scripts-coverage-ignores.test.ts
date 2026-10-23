@@ -38,7 +38,7 @@ describe("checkHintLine", () => {
     },
   );
 
-  it.each(["/* v8 ignore next -- */", "/* v8 ignore next -- x */", "/* v8 ignore next -- TODO */"])(
+  it.each(["/* v8 ignore next -- */", "/* v8 ignore next -- x */", "/* v8 ignore next -- tbd */"])(
     "rejects an empty or placeholder reason: %s",
     (line) => {
       expect(checkHintLine(line)).toMatch(/empty or a placeholder/);
