@@ -87,9 +87,16 @@ export function BottomNav() {
   const items = extrasEnabled ? NAV_ITEMS : NAV_ITEMS.filter((item) => !item.extra);
 
   return (
-    <nav aria-label="Primary navigation" className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-safe">
+    // Horizontal chrome and the tab minimums are in px, not rem: Dynamic Type
+    // scales the root font, and at 320px with the largest text rem padding
+    // alone ate the room the five 44pt targets need. 44 is a pt floor, so it
+    // must not grow with the text either.
+    <nav
+      aria-label="Primary navigation"
+      className="fixed bottom-0 left-0 right-0 z-40 px-[12px] min-[360px]:px-[16px] pb-safe"
+    >
       <div className="max-w-[430px] mx-auto glass rounded-2xl shadow-glass">
-        <ul className="flex items-stretch justify-around px-2 py-2">
+        <ul className="flex items-stretch justify-around px-[4px] min-[360px]:px-[8px] py-2">
           {items.map((item) => {
             const active = nav.screen === item.screen;
             const path = screenToPath(item.screen);
@@ -97,13 +104,13 @@ export function BottomNav() {
             // the lobby header's bell already carries the count in place.
             const badgeCount = item.screen === "lobby" && !active ? unreadCount : 0;
             return (
-              <li key={item.screen} className="flex-1">
+              <li key={item.screen} className="min-w-[44px] flex-1">
                 <Link
                   to={path}
                   aria-current={active ? "page" : undefined}
                   aria-label={badgeCount > 0 ? `${item.label} (${badgeCount} unread)` : item.label}
                   data-tutorial={item.tutorialId}
-                  className={`hb-press group relative w-full min-h-[44px] flex flex-col items-center justify-center gap-1 px-0.5 py-2 rounded-xl transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${
+                  className={`hb-press group relative w-full min-w-[44px] min-h-[44px] flex flex-col items-center justify-center gap-1 px-0.5 py-2 rounded-xl transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${
                     active
                       ? "text-brand-orange"
                       : "text-faint hover:text-white hover:bg-white/[0.03] active:scale-[0.97]"
@@ -115,7 +122,7 @@ export function BottomNav() {
                         ? // Raised filled disc: Challenge is the only creation
                           // action in the app, so it carries the visual weight
                           // of a FAB while staying a plain tab <Link>.
-                          "relative inline-flex items-center justify-center -mt-5 w-11 h-11 rounded-full bg-brand-orange text-on-brand shadow-glow-sm ring-4 ring-background/80"
+                          "relative inline-flex items-center justify-center -mt-5 w-[44px] h-[44px] rounded-full bg-brand-orange text-on-brand shadow-glow-sm ring-4 ring-background/80"
                         : "relative inline-flex"
                     }
                   >
@@ -136,16 +143,21 @@ export function BottomNav() {
                     {badgeCount > 0 && (
                       <span
                         aria-hidden="true"
-                        className="absolute -top-1 -right-2 min-w-[17px] h-[17px] px-1 flex items-center justify-center rounded-full bg-brand-orange font-display text-sm text-on-brand leading-none tabular-nums"
+                        className="absolute -top-1 -right-2 min-w-[1.3em] h-[1.3em] px-[0.3em] flex items-center justify-center rounded-full bg-brand-orange font-display text-sm text-on-brand leading-none tabular-nums"
                       >
                         {badgeCount > 9 ? "9+" : badgeCount}
                       </span>
                     )}
                   </span>
                   {/* Tracking is tighter than the 0.15em used elsewhere so the
-                      14px labels (incl. "Challenge") fit five ~73px tabs at a
-                      320px viewport without wrapping. */}
-                  <span className="font-display text-sm tracking-[0.05em] leading-none uppercase">{item.label}</span>
+                      14px labels (incl. "Challenge") fit five tabs of about
+                      53–68px at a 320px viewport (measured, extras on). At
+                      large Dynamic Type the label truncates rather than
+                      squeezing a neighbour below 44pt; aria-label keeps the
+                      full name. */}
+                  <span className="max-w-full truncate font-display text-sm tracking-[0.05em] leading-none uppercase">
+                    {item.label}
+                  </span>
                   {active && (
                     <span
                       className="absolute bottom-1 h-[3px] w-8 rounded-full bg-brand-orange shadow-glow-sm"

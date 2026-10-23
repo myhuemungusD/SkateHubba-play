@@ -1,4 +1,3 @@
-import type { FocusEvent, KeyboardEvent } from "react";
 import type { GameDoc } from "../../../services/games";
 import { LobbyTimer } from "../../../components/LobbyTimer";
 import { ChevronRightIcon } from "../../../components/icons";
@@ -17,11 +16,6 @@ interface Props {
   myLetters: number;
   theirLetters: number;
   turnLabel: string;
-  cardButtonProps: {
-    onKeyDown: (e: KeyboardEvent<HTMLElement>) => void;
-    onKeyUp: (e: KeyboardEvent<HTMLElement>) => void;
-    onBlur: (e: FocusEvent<HTMLElement>) => void;
-  };
   onOpenGame: () => void;
   onViewPlayer?: (uid: string) => void;
 }
@@ -36,7 +30,6 @@ export function ActiveGameCard({
   myLetters,
   theirLetters,
   turnLabel,
-  cardButtonProps,
   onOpenGame,
   onViewPlayer,
 }: Props) {
@@ -69,7 +62,6 @@ export function ActiveGameCard({
       <button
         type="button"
         onClick={onOpenGame}
-        {...cardButtonProps}
         className="card-main flex min-w-0 flex-1 items-center justify-between text-left outline-none after:absolute after:inset-0 after:rounded-2xl after:content-['']"
       >
         <span className="block min-w-0">
