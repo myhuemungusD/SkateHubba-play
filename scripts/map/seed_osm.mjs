@@ -154,7 +154,7 @@ async function fetchOverpass(region) {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": "SkateHubba-seed/1.0 (jayham710@gmail.com)",
+      "User-Agent": "SkateHubba-seed/1.0 (support@skatehubba.com)",
     },
     body: `data=${encodeURIComponent(overpassQuery(region))}`,
   });

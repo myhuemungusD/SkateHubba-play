@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import "./spotMap.css";
 import { Crosshair, Plus } from "lucide-react";
 import type { Spot } from "../../types/spot";
 import type { NearbySpot } from "../../services/spots";
@@ -10,7 +11,6 @@ import { MAPBOX_TOKEN, MAP_STYLE, MAP_DEFAULTS, reportMapStyleConfig } from "../
 import { SpotPreviewCard } from "./SpotPreviewCard";
 import { AddSpotSheet } from "./AddSpotSheet";
 import { SpotFilterBar, applySpotFilters, DEFAULT_SPOT_FILTERS, type SpotFilters } from "./SpotFilterBar";
-import { injectPulseCSS } from "./spotMapStyles";
 import { useSpotsInBounds } from "./useSpotsInBounds";
 import { useUserGeolocation } from "./useUserGeolocation";
 import { useSpotMarkers } from "./useSpotMarkers";
@@ -140,7 +140,6 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry, autoOpenAddSp
     // below renders a dedicated unavailable-state instead.
     if (!MAPBOX_TOKEN) return;
 
-    injectPulseCSS();
     mapboxgl.accessToken = MAPBOX_TOKEN;
 
     const m = new mapboxgl.Map({
