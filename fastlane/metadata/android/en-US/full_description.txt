@@ -8,7 +8,7 @@ SkateHubba is a game of S.K.A.T.E. played over video. You and another skater tak
 • Spell S.K.A.T.E. and the game's over.
 
 <b>One take</b>
-Game turns are filmed in the app in one continuous take. You can't upload from your camera roll and you can't edit. The clip is the proof.
+Game turns are filmed in the app in one continuous take, so the clip is the proof: no camera-roll uploads and no edits on a turn. Clips you post to the feed are different: import from your library and trim them in the clip editor.
 
 <b>On your clock</b>
 Pick 24 hours, 3 days or 7 days a turn when you start a game.
