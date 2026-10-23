@@ -7,6 +7,7 @@
  * authenticated session. `redactPII` is applied inside the logger's breadcrumb
  * path so every current and future call site is covered without touching the
  * sites themselves. Console output remains raw for developer ergonomics.
+ * http(s) URL values also lose their query string (see stripUrlQuery).
  */
 
 const EMAIL_PLACEHOLDER = "[REDACTED_EMAIL]";
@@ -73,6 +74,16 @@ export function hashIdentity(uid: string): string {
 const HASHED_UID_RE = /^uid_[0-9a-f]{8}(?:[0-9a-f]{8})?$/;
 const HASHED_USERNAME_RE = /^name-[0-9a-f]{8}$/;
 
+// Firebase Storage download URLs carry their access token in the query
+// (?alt=media&token=...), so anyone holding the URL can fetch the clip. The
+// path alone is enough to find the file when triaging, so http(s) URLs lose
+// their query and fragment before they reach Sentry.
+const HTTP_URL_RE = /^https?:\/\//i;
+
+export function stripUrlQuery(value: string): string {
+  return HTTP_URL_RE.test(value) ? value.replace(/[?#].*$/s, "") : value;
+}
+
 export function redactPII(data: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
   if (!data) return data;
   const out: Record<string, unknown> = {};
@@ -83,6 +94,8 @@ export function redactPII(data: Record<string, unknown> | undefined): Record<str
       out[key] = HASHED_UID_RE.test(value) ? value : hashUid(value);
     } else if (typeof value === "string" && USERNAME_KEY_RE.test(key)) {
       out[key] = !value || HASHED_USERNAME_RE.test(value) ? value : `name-${fnv1a(value)}`;
+    } else if (typeof value === "string") {
+      out[key] = stripUrlQuery(value);
     } else {
       out[key] = value;
     }
