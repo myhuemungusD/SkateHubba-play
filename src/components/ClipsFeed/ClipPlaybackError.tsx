@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { VideoOff } from "lucide-react";
+import { useReducedMotion } from "../../hooks/useReducedMotion";
 
 /** The feed page after this one, if the clip sits in the vertical feed. */
 function nextSlide(from: HTMLElement | null): HTMLElement | null {
@@ -17,6 +18,8 @@ const BTN =
  */
 export function ClipPlaybackError({ onRetry }: { onRetry: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
+  // Skip jumps instead of gliding when the OS asks for Reduce Motion (SF-C3).
+  const reducedMotion = useReducedMotion();
   const [hasNext, setHasNext] = useState(false);
   useLayoutEffect(() => setHasNext(nextSlide(ref.current) !== null), []);
 
@@ -36,7 +39,9 @@ export function ClipPlaybackError({ onRetry }: { onRetry: () => void }) {
         {hasNext && (
           <button
             type="button"
-            onClick={() => nextSlide(ref.current)?.scrollIntoView?.({ block: "start", behavior: "smooth" })}
+            onClick={() =>
+              nextSlide(ref.current)?.scrollIntoView?.({ block: "start", behavior: reducedMotion ? "auto" : "smooth" })
+            }
             className={`${BTN} btn-primary-fill`}
           >
             Skip to next

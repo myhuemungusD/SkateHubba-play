@@ -26,14 +26,12 @@ export function Switch({ checked, onChange, label, disabled }: SwitchProps) {
       <span
         aria-hidden="true"
         className={`relative inline-flex h-7 w-12 items-center rounded-full border transition-all duration-300 ${
-          checked
-            ? "bg-brand-orange/25 border-brand-orange/60 shadow-[0_0_8px_rgba(255,107,0,0.2)]"
-            : "bg-surface-alt border-border"
+          checked ? "bg-brand-orange border-brand-orange" : "bg-surface-alt border-border"
         }`}
       >
         <span
-          className={`inline-block h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-300 ${
-            checked ? "translate-x-6" : "translate-x-1"
+          className={`inline-block h-5 w-5 rounded-full shadow-md transition-transform duration-300 ${
+            checked ? "translate-x-6 bg-black" : "translate-x-1 bg-white"
           }`}
         />
       </span>

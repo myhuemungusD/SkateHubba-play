@@ -48,7 +48,7 @@ describe("ReportModal", () => {
 
   it("submits report with reason and description", async () => {
     render(<ReportModal {...baseProps} />);
-    await userEvent.selectOptions(screen.getByLabelText("REASON"), "cheating");
+    await userEvent.selectOptions(screen.getByLabelText("Reason"), "cheating");
     await userEvent.type(screen.getByLabelText("DETAILS (OPTIONAL)"), "They faked the landing");
     await userEvent.click(screen.getByText("Submit Report"));
 
@@ -71,7 +71,7 @@ describe("ReportModal", () => {
 
   it("requires a 20-character explanation for illegal content", async () => {
     render(<ReportModal {...baseProps} />);
-    await userEvent.selectOptions(screen.getByLabelText("REASON"), "illegal_content");
+    await userEvent.selectOptions(screen.getByLabelText("Reason"), "illegal_content");
     expect(screen.getByLabelText("EXPLANATION (REQUIRED)")).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("EXPLANATION (REQUIRED)"), "too short");
     expect(screen.getByText("Submit Report")).toBeDisabled();
@@ -79,7 +79,7 @@ describe("ReportModal", () => {
 
   it("submits an illegal-content report once the explanation is long enough", async () => {
     render(<ReportModal {...baseProps} />);
-    await userEvent.selectOptions(screen.getByLabelText("REASON"), "illegal_content");
+    await userEvent.selectOptions(screen.getByLabelText("Reason"), "illegal_content");
     await userEvent.type(screen.getByLabelText("EXPLANATION (REQUIRED)"), "This clip contains illegal content.");
     await userEvent.click(screen.getByText("Submit Report"));
     await waitFor(() =>
@@ -90,7 +90,7 @@ describe("ReportModal", () => {
 
   it("confirms the receipt on Escape", async () => {
     render(<ReportModal {...baseProps} />);
-    await userEvent.selectOptions(screen.getByLabelText("REASON"), "spam");
+    await userEvent.selectOptions(screen.getByLabelText("Reason"), "spam");
     await userEvent.click(screen.getByText("Submit Report"));
     const dialog = await screen.findByRole("dialog");
     dialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
@@ -99,7 +99,7 @@ describe("ReportModal", () => {
 
   it("confirms the receipt when the overlay is clicked", async () => {
     render(<ReportModal {...baseProps} />);
-    await userEvent.selectOptions(screen.getByLabelText("REASON"), "spam");
+    await userEvent.selectOptions(screen.getByLabelText("Reason"), "spam");
     await userEvent.click(screen.getByText("Submit Report"));
     await screen.findByText("We received your report");
     await userEvent.click(screen.getByRole("dialog"));
@@ -109,7 +109,7 @@ describe("ReportModal", () => {
   it("shows error on submit failure", async () => {
     mockSubmitReport.mockRejectedValue(new Error("Server error"));
     render(<ReportModal {...baseProps} />);
-    await userEvent.selectOptions(screen.getByLabelText("REASON"), "spam");
+    await userEvent.selectOptions(screen.getByLabelText("Reason"), "spam");
     await userEvent.click(screen.getByText("Submit Report"));
 
     await waitFor(() => {
@@ -144,7 +144,7 @@ describe("ReportModal", () => {
   it("shows Sending... while submitting", async () => {
     mockSubmitReport.mockReturnValue(new Promise(() => {})); // never resolves
     render(<ReportModal {...baseProps} />);
-    await userEvent.selectOptions(screen.getByLabelText("REASON"), "other");
+    await userEvent.selectOptions(screen.getByLabelText("Reason"), "other");
     await userEvent.click(screen.getByText("Submit Report"));
     expect(screen.getByText("Sending...")).toBeInTheDocument();
   });

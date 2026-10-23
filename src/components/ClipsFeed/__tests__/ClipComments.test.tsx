@@ -187,7 +187,7 @@ describe("ClipComments", () => {
     mockFetch.mockResolvedValueOnce({ comments: [other], cursor: null });
     const onViewPlayer = vi.fn();
     renderSheet("me", vi.fn(), undefined, undefined, onViewPlayer);
-    const author = await screen.findByRole("button", { name: `View @${other.username}'s profile` });
+    const author = await screen.findByRole("button", { name: `@${other.username}, view profile` });
     expect(author).toHaveClass("min-h-11");
     await user.click(author);
     expect(onViewPlayer).toHaveBeenCalledWith(other.userId);

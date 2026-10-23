@@ -84,7 +84,29 @@ describe("PlayerSafetyMenu", () => {
     expect(p.onCancelBlockConfirm).toHaveBeenCalledTimes(1);
 
     rerender(<PlayerSafetyMenu {...p} showBlockConfirm blockLoading />);
-    expect(screen.getByRole("button", { name: "Blocking…" })).toBeInTheDocument();
+    const busy = screen.getByRole("button", { name: "Blocking…" });
+    // A second tap while the write is in flight does nothing (SF-C2).
+    expect(busy).toBeDisabled();
+    expect(busy).toHaveAttribute("aria-busy", "true");
+    await user.click(busy);
+    expect(p.onConfirmBlock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the Report this player path intact whether or not the player is blocked (App Review 1.2)", async () => {
+    const user = userEvent.setup();
+    for (const isBlocked of [false, true]) {
+      modal.mockClear();
+      const { unmount } = render(<PlayerSafetyMenu {...props({ isBlocked, blockLoading: true })} />);
+      await openMenu(user);
+      const report = screen.getByRole("button", { name: "Report" });
+      expect(report).toBeEnabled();
+      await user.click(report);
+      await screen.findByRole("dialog", { name: "Report" });
+      expect(modal).toHaveBeenLastCalledWith(
+        expect.objectContaining({ reporterUid: "me", reportedUid: "them", profile: true, gameId: null }),
+      );
+      unmount();
+    }
   });
 
   it("offers Unblock once blocked, disabled while the write is in flight", async () => {

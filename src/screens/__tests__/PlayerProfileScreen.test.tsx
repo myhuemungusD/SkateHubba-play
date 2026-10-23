@@ -364,7 +364,7 @@ describe("PlayerProfileScreen", () => {
     mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: opponentProfile }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} blockedUids={new Set(["u2"])} />);
 
-    expect(screen.getByRole("status")).toHaveTextContent("You blocked @sk8rboi");
+    expect(screen.getByRole("status")).toHaveTextContent(/^Blocked\s*·\s*Unblock$/);
     // Challenge button should be hidden when blocked
     expect(screen.queryByText("Challenge @sk8rboi")).not.toBeInTheDocument();
 
@@ -373,6 +373,28 @@ describe("PlayerProfileScreen", () => {
     await waitFor(() => {
       expect(unblockUser).toHaveBeenCalledWith("me", "u2");
     });
+  });
+
+  it("unblocks from the inline Blocked row under the header", async () => {
+    const { unblockUser } = await import("../../services/blocking");
+    vi.mocked(unblockUser).mockClear();
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: opponentProfile }));
+    render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} blockedUids={new Set(["u2"])} />);
+
+    const unblock = screen.getByRole("button", { name: "Unblock @sk8rboi" });
+    expect(unblock).toHaveClass("min-h-11");
+    await userEvent.click(unblock);
+    await waitFor(() => {
+      expect(unblockUser).toHaveBeenCalledWith("me", "u2");
+    });
+  });
+
+  it("keeps Report this player reachable while blocked (App Review 1.2)", async () => {
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: opponentProfile }));
+    render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} blockedUids={new Set(["u2"])} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "More options for @sk8rboi" }));
+    expect(screen.getByRole("button", { name: "Report" })).toBeEnabled();
   });
 
   // ── H2H tap navigation (line 446) ───────────────────

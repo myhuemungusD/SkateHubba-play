@@ -56,6 +56,7 @@ export function PlayerSafetyMenu({
           body="They won't be able to challenge you, and you won't see their clips."
           confirmLabel={blockLoading ? "Blocking…" : "Block"}
           cancelLabel="Cancel"
+          busy={blockLoading}
           onConfirm={onConfirmBlock}
           onCancel={onCancelBlockConfirm}
         />

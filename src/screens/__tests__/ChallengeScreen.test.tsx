@@ -68,6 +68,15 @@ describe("ChallengeScreen", () => {
     };
   }
 
+  it("focuses the handle field on first open, but not when tabbing back from Leaderboard", async () => {
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
+    expect(screen.getByPlaceholderText("their_handle")).toHaveFocus();
+
+    await userEvent.click(screen.getByRole("tab", { name: "Leaderboard" }));
+    await userEvent.click(screen.getByRole("tab", { name: "Challenge" }));
+    expect(screen.getByPlaceholderText("their_handle")).not.toHaveFocus();
+  });
+
   it("rejects short username on submit", async () => {
     renderWithRouter(<ChallengeScreen {...defaultProps} />);
 

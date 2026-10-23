@@ -1,5 +1,5 @@
 import type { UserProfile } from "../../services/users";
-import { ratedWinRate } from "../../constants/stats";
+import { ratedWinRate, MIN_RATED_GAMES } from "../../constants/stats";
 import { ProUsername } from "../ProUsername";
 import { MEDAL_TEXT, PlayerInitial } from "./LeaderboardRow";
 
@@ -34,7 +34,9 @@ export function LeaderboardPodium({ top, viewerUid, onViewPlayer }: Props) {
               isVerifiedPro={p.isVerifiedPro}
               className="mt-1.5 block max-w-full truncate font-body text-sm font-semibold text-white"
             />
-            <span className="font-body text-xs text-muted">{rate === null ? "Provisional" : `${rate}% win rate`}</span>
+            <span className="font-body text-xs text-muted">
+              {rate === null ? `New. Needs ${MIN_RATED_GAMES} games.` : `${rate}% win rate`}
+            </span>
             <span
               className={`mt-2 flex w-full items-start justify-center rounded-t-xl border border-b-0 border-border bg-surface pt-2 font-display text-2xl leading-none ${plinth} ${MEDAL_TEXT[index]}`}
             >

@@ -66,6 +66,9 @@ export function ChallengeScreen({
   const [view, setView] = useState<ChallengeView>(
     searchParams.get("view") === "leaderboard" ? "leaderboard" : "challenge",
   );
+  // Focus the handle field only when the screen first opens on the form.
+  // Tabbing back from Leaderboard must not pop the keyboard again.
+  const [autoFocusHandle, setAutoFocusHandle] = useState(view === "challenge");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   // Optional spot passed in via ?spot=<uuid> (e.g. when the user taps
@@ -237,7 +240,10 @@ export function ChallengeScreen({
         <SegmentedTabs
           tabs={VIEWS}
           value={view}
-          onChange={setView}
+          onChange={(next) => {
+            setAutoFocusHandle(false);
+            setView(next);
+          }}
           label="Challenge or leaderboard"
           idPrefix="challenge-view"
         />
@@ -274,7 +280,7 @@ export function ChallengeScreen({
                   placeholder="their_handle"
                   icon="@"
                   maxLength={20}
-                  autoFocus
+                  autoFocus={autoFocusHandle}
                   disabled={loading}
                   autoComplete="off"
                   inputMode="text"

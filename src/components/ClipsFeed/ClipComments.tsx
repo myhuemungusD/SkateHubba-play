@@ -64,7 +64,7 @@ export function ClipComments({
     >
       <div
         ref={panelRef}
-        className="glass-card flex max-h-[85vh] w-full animate-scale-in flex-col rounded-t-3xl px-5 pt-2 pb-[max(env(safe-area-inset-bottom),1.25rem)] sm:max-w-sm sm:rounded-2xl sm:pt-5"
+        className="glass-card flex max-h-[85vh] w-full animate-sheet-in flex-col rounded-t-3xl px-5 pt-2 pb-[max(env(safe-area-inset-bottom),1.25rem)] sm:max-w-sm sm:rounded-2xl sm:pt-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div aria-hidden="true" className="mx-auto mb-2 h-[5px] w-9 shrink-0 rounded-full bg-white/25 sm:hidden" />

@@ -76,7 +76,7 @@ describe("Leaderboard", () => {
     await screen.findByText("@alice");
     expect(screen.getByText("10 wins out of 12 games")).toBeInTheDocument();
     expect(screen.getByText(/83% win rate/)).toBeInTheDocument();
-    expect(screen.getByText(/rated after 5 games/)).toBeInTheDocument();
+    expect(screen.getAllByText(/New\. Needs 5 games\./)[0]).toBeInTheDocument();
   });
 
   it("puts the top three on a podium in rank order and the rest below", async () => {

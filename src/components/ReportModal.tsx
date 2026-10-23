@@ -1,6 +1,6 @@
-import { FIELD_LABEL } from "./ui/Field";
 import { useState, useId, useRef } from "react";
 import { Btn } from "./ui/Btn";
+import { FIELD_LABEL } from "./ui/Field";
 import { ErrorBanner } from "./ui/ErrorBanner";
 import {
   submitReport,
@@ -173,7 +173,7 @@ export function ReportModal({
         {/* Reason select */}
         <div className="mb-4">
           <label htmlFor={selectId} className={`block ${FIELD_LABEL} mb-2`}>
-            REASON
+            Reason
           </label>
           <select
             id={selectId}

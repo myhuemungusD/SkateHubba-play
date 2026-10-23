@@ -274,6 +274,23 @@ export function PlayerProfileScreen({
       />
 
       <div className="px-5 pt-7 max-w-[430px] mx-auto">
+        {/* The blocked state stays visible on the page, not only in the ••• label (SF-C2). */}
+        {!isOwnProfile && hasViewer && c.isBlocked && (
+          <div role="status" className="-mt-4 mb-4 flex items-center gap-2 font-body text-sm text-dim">
+            <span>Blocked</span>
+            <span aria-hidden="true">·</span>
+            <button
+              type="button"
+              onClick={c.handleUnblock}
+              disabled={c.blockLoading}
+              aria-busy={c.blockLoading || undefined}
+              aria-label={`Unblock @${profile.username}`}
+              className="min-h-11 rounded px-1 font-semibold text-white underline-offset-4 hover:underline disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            >
+              Unblock
+            </button>
+          </div>
+        )}
         {isProfileBannerEnabled() && (
           <ProfileBanner
             uid={profile.uid}
@@ -349,12 +366,6 @@ export function PlayerProfileScreen({
         )}
 
         {!hasViewer && onSignUp && <SignUpToChallengeCta username={profile.username} onSignUp={onSignUp} />}
-
-        {!isOwnProfile && hasViewer && c.isBlocked && (
-          <p role="status" className="mb-6 font-body text-sm text-subtle">
-            You blocked @{profile.username}. Unblock from the ••• menu.
-          </p>
-        )}
 
         <BadgesRow achievements={c.achievements} />
 

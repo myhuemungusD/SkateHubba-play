@@ -39,7 +39,7 @@ export const ClipCommentRow = memo(function ClipCommentRow({
           <button
             type="button"
             onClick={() => onViewAuthor(comment.userId)}
-            aria-label={`View @${comment.username}'s profile`}
+            aria-label={`@${comment.username}, view profile`}
             className="-ml-1 inline-flex min-h-11 min-w-0 items-center gap-2 rounded-lg pl-1 pr-2 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
             <Author username={comment.username} />

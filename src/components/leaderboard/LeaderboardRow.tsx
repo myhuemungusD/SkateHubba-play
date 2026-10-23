@@ -5,10 +5,13 @@ import { ratedWinRate, totalGames, MIN_RATED_GAMES } from "../../constants/stats
 import { ProUsername } from "../ProUsername";
 import { RecordFigure } from "../RecordFigure";
 
-/** Gold, silver, bronze as literal utilities so the CSP can drop 'unsafe-inline' styles. */
-export const MEDAL_TEXT = ["text-[#FFD700]", "text-[#C0C0C0]", "text-[#CD7F32]"] as const;
+/**
+ * Top-three rank colours: brand orange, then bright and dim. Tokens rather
+ * than Olympic gold/silver/bronze, so the handles carry the podium.
+ */
+export const MEDAL_TEXT = ["text-brand-orange", "text-bright", "text-dim"] as const;
 
-/** "4 / 6 won · 67% win rate", or "· rated after 5 games" while provisional. Every figure is labelled. */
+/** "4 / 6 won · 67% win rate", or "· New. Needs 5 games." before the rate counts. Every figure is labelled. */
 export function LeaderboardStat({ player, className = "" }: { player: UserProfile; className?: string }) {
   const games = totalGames(player.wins, player.losses);
   const rate = ratedWinRate(player.wins, player.losses);
@@ -16,7 +19,7 @@ export function LeaderboardStat({ player, className = "" }: { player: UserProfil
     <span className={`font-body text-xs text-muted ${className}`}>
       <RecordFigure wins={player.wins} games={games} caption="won" className="text-white/80" />
       {" · "}
-      {rate === null ? `rated after ${MIN_RATED_GAMES} games` : `${rate}% win rate`}
+      {rate === null ? `New. Needs ${MIN_RATED_GAMES} games.` : `${rate}% win rate`}
     </span>
   );
 }
