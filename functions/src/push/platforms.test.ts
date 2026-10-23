@@ -4,6 +4,7 @@ import {
   DICE_PUSH_PLATFORMS,
   diceEligibleTokens,
   isDicePush,
+  mirrorTokens,
   tokenAllowsDice,
 } from "./platforms.js";
 
@@ -26,6 +27,17 @@ describe("dice push platforms", () => {
     expect(isDicePush({ type: "dice_result" })).toBe(true);
     expect(isDicePush({ type: "your_turn" })).toBe(false);
     expect(isDicePush({})).toBe(false);
+  });
+});
+
+describe("mirrorTokens", () => {
+  it("keeps non-empty strings, de-duplicates and caps at 10", () => {
+    const many = Array.from({ length: 12 }, (_, i) => `t${i}`);
+    expect(mirrorTokens({ tokens: ["t0", ...many, 3, "", null] })).toEqual(many.slice(0, 10));
+  });
+  it("returns [] for a missing doc or a non-list", () => {
+    expect(mirrorTokens(undefined)).toEqual([]);
+    expect(mirrorTokens({ tokens: "t" })).toEqual([]);
   });
 });
 
