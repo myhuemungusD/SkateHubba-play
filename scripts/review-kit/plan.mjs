@@ -103,10 +103,12 @@ export function reviewEnv(env) {
   const missing = [];
   if (!email) missing.push("REVIEW_EMAIL");
   if (password.length < 10) missing.push("REVIEW_PASSWORD (10+ characters)");
+  const username = env.REVIEW_USERNAME?.trim().toLowerCase() ?? "";
+  if (!username) missing.push("REVIEW_USERNAME");
   return {
     email,
     password,
-    username: (env.REVIEW_USERNAME || "appreview").toLowerCase(),
+    username,
     appUrl: (env.REVIEW_BASE_URL || "https://skatehubba.com").replace(/\/$/, ""),
     missing,
   };
@@ -138,6 +140,7 @@ export function buildSeedDocs({
   tutorialVersion = 2,
   tipsDisabled = false,
   videoUrl,
+  includeEmulatorOnly = true,
 }) {
   const day = 24 * 60 * 60 * 1000;
   const at = (offsetDays) => new Date(now.getTime() + offsetDays * day);
@@ -358,5 +361,21 @@ export function buildSeedDocs({
   spot("review-demo-spot-4", "Stevens Creek Gap", 37.3237, -122.0322, ["gap"]);
   spot("review-demo-spot-5", "Infinite Loop Curbs", 37.3318, -122.0312, ["curb", "ledge"]);
   spot("review-demo-spot-6", "Wolfe Rd Bank", 37.3301, -122.0146, ["bank"]);
-  return docs;
+  return includeEmulatorOnly ? docs : docs.filter(([path]) => !isEmulatorOnlyPath(path, uid));
+}
+
+/**
+ * Docs only the emulator seed writes. Feed clips, map spots and passport
+ * stamps would be seen by every real user, so production leaves them out.
+ * Closet items are left out too, because the Closet is off in the store
+ * build and the review notes say so. The emulator keeps all of them for
+ * screenshots.
+ */
+export function isEmulatorOnlyPath(path, uid) {
+  return (
+    path.startsWith("clips/") ||
+    path.startsWith("spots/") ||
+    path.startsWith(`users/${uid}/passport/`) ||
+    path.startsWith(`users/${uid}/locker/`)
+  );
 }

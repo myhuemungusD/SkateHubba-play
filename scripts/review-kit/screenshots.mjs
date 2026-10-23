@@ -96,8 +96,10 @@ async function signIn(page, baseUrl, email, password) {
 
 export async function main(argv = process.argv.slice(2), env = process.env) {
   const cfg = reviewEnv(env);
-  if (cfg.missing.length) {
-    console.error(`[review:screenshots] set ${cfg.missing.join(" and ")} first.`);
+  // Screenshots sign in with email and password; the handle only matters to the seed.
+  const missing = cfg.missing.filter((m) => m !== "REVIEW_USERNAME");
+  if (missing.length) {
+    console.error(`[review:screenshots] set ${missing.join(" and ")} first.`);
     return 1;
   }
   const opts = parseArgs(argv, env);
