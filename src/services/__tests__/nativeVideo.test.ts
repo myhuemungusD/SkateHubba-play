@@ -74,7 +74,13 @@ vi.mock("../../lib/sentry", () => ({
   addBreadcrumb: mockAddBreadcrumb,
 }));
 
-import { isNativePlatform, recordNativeVideo } from "../nativeVideo";
+import {
+  closeNativePreview,
+  isNativePlatform,
+  isNativePreviewLive,
+  openNativePreview,
+  recordNativeVideo,
+} from "../nativeVideo";
 import { MAX_VIDEO_DURATION_MS } from "../../constants/video";
 
 beforeEach(() => {
@@ -684,5 +690,96 @@ describe("native pro-capture extras", () => {
     vr.getQualityModes = originalGetQualityModes;
     vr.setPreRoll = originalSetPreRoll;
     vr.setNativeFisheye = originalSetNativeFisheye;
+  });
+});
+
+/* ── Live preview before recording (build 3 "no preview" fix) ── */
+
+describe("native live preview", () => {
+  afterEach(async () => {
+    await closeNativePreview();
+  });
+
+  it("opens the preview once, reports it live, and releases it on close", async () => {
+    await expect(openNativePreview()).resolves.toBe(true);
+    expect(isNativePreviewLive()).toBe(true);
+    expect(mockInitialize).toHaveBeenCalledTimes(1);
+    expect(mockInitialize).toHaveBeenCalledWith(expect.objectContaining({ camera: 1, quality: 2, autoShow: true }));
+    expect(mockAddBreadcrumb).toHaveBeenCalledWith({ category: "camera", message: "native_preview_open" });
+
+    // Already live: no second initialize (the plugin would never settle it).
+    await expect(openNativePreview()).resolves.toBe(true);
+    expect(mockInitialize).toHaveBeenCalledTimes(1);
+
+    await closeNativePreview();
+    expect(isNativePreviewLive()).toBe(false);
+    expect(mockDestroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("records on the live preview without re-initializing, then releases the camera", async () => {
+    const fakeBlob = new Blob(["video-data"], { type: "video/mp4" });
+    mockStopRecording.mockResolvedValue({ videoUrl: "file:///tmp/video.mp4" });
+    mockFetch.mockResolvedValue({ blob: (): Promise<Blob> => Promise.resolve(fakeBlob) });
+    await openNativePreview();
+
+    const pending = recordNativeVideo();
+    await flushAutoStop();
+    const result = await pending;
+
+    expect(result.blob).toBe(fakeBlob);
+    expect(mockInitialize).toHaveBeenCalledTimes(1);
+    expect(mockStartRecording).toHaveBeenCalledTimes(1);
+    expect(mockDestroy).toHaveBeenCalledTimes(1);
+    expect(isNativePreviewLive()).toBe(false);
+  });
+
+  it("releases a half-built session and rethrows when initialize rejects", async () => {
+    mockInitialize.mockRejectedValueOnce(new Error("denied"));
+    await expect(openNativePreview()).rejects.toThrow("denied");
+    expect(mockDestroy).toHaveBeenCalledTimes(1);
+    expect(isNativePreviewLive()).toBe(false);
+  });
+
+  it("tears down an open that resolves after a close landed", async () => {
+    let resolveInit: () => void = () => undefined;
+    mockInitialize.mockReturnValueOnce(new Promise<void>((r) => (resolveInit = r)));
+    const opening = openNativePreview();
+    await closeNativePreview();
+    resolveInit();
+    await expect(opening).resolves.toBe(false);
+    expect(isNativePreviewLive()).toBe(false);
+    // Once for the close, once for the stale session.
+    expect(mockDestroy).toHaveBeenCalledTimes(2);
+  });
+
+  it("queues a second open behind the one in flight (StrictMode remount)", async () => {
+    let resolveInit: () => void = () => undefined;
+    mockInitialize.mockReturnValueOnce(new Promise<void>((r) => (resolveInit = r)));
+    const first = openNativePreview();
+    const second = openNativePreview();
+    resolveInit();
+    await expect(first).resolves.toBe(true);
+    await expect(second).resolves.toBe(true);
+    expect(mockInitialize).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries from scratch when the queued-behind open failed", async () => {
+    let rejectInit: (e: Error) => void = () => undefined;
+    mockInitialize.mockReturnValueOnce(new Promise<void>((_, rej) => (rejectInit = rej)));
+    const first = openNativePreview();
+    const second = openNativePreview();
+    rejectInit(new Error("busy"));
+    await expect(first).rejects.toThrow("busy");
+    await expect(second).resolves.toBe(true);
+    expect(mockInitialize).toHaveBeenCalledTimes(2);
+    expect(isNativePreviewLive()).toBe(true);
+  });
+
+  it("breadcrumbs a failed teardown on close instead of throwing", async () => {
+    mockDestroy.mockRejectedValueOnce(new Error("teardown"));
+    await expect(closeNativePreview()).resolves.toBeUndefined();
+    expect(mockAddBreadcrumb).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "video_recorder_destroy_failed", data: { error: "teardown" } }),
+    );
   });
 });

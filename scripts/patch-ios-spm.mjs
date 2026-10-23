@@ -130,6 +130,56 @@ if (existsSync(recorderSwift)) {
   }
 }
 
+/* ── Fix 4: video-recorder see-through web view (camera preview visibility) ──
+ * The plugin draws the camera BEHIND the WKWebView and, to let it show
+ * through, clears `webView.backgroundColor` and `isOpaque`. It never touches
+ * `webView.scrollView.backgroundColor` — and Capacitor paints that scroll view
+ * with `ios.backgroundColor` (#0A0A0A in capacitor.config.ts). That opaque
+ * near-black layer sits between the camera and the page, so capture runs (the
+ * green dot is on) but the preview is invisible: TestFlight build 3. Clear
+ * the scroll view too while the camera is up, and put both colours back on
+ * destroy() instead of the plugin's hard-coded white. Own marker, so builds
+ * that already carry Fix 3 still pick this up. */
+
+const SEE_THROUGH_MARK = "SkateHubba see-through webview";
+if (existsSync(recorderSwift)) {
+  let swift = readFileSync(recorderSwift, "utf-8");
+  if (!swift.includes(SEE_THROUGH_MARK)) {
+    const edits = [
+      [
+        "import Capacitor\n",
+        "import Capacitor\n\n" +
+          `// ${SEE_THROUGH_MARK}: the scroll view colour Capacitor set, restored on destroy().\n` +
+          "fileprivate var shSavedWebViewColor: UIColor? = nil\n",
+      ],
+      [
+        "                        self.capWebView?.backgroundColor = UIColor.clear\n",
+        "                        if shSavedWebViewColor == nil { shSavedWebViewColor = self.capWebView?.scrollView.backgroundColor }\n" +
+          "                        self.capWebView?.backgroundColor = UIColor.clear\n" +
+          "                        self.capWebView?.scrollView.isOpaque = false\n" +
+          "                        self.capWebView?.scrollView.backgroundColor = UIColor.clear\n",
+      ],
+      [
+        "            self.capWebView?.backgroundColor = UIColor.white\n",
+        "            self.capWebView?.backgroundColor = shSavedWebViewColor ?? UIColor.black\n" +
+          "            self.capWebView?.scrollView.isOpaque = true\n" +
+          "            self.capWebView?.scrollView.backgroundColor = shSavedWebViewColor ?? UIColor.black\n",
+      ],
+    ];
+    for (const [anchor, replacement] of edits) {
+      if (swift.split(anchor).length !== 2) {
+        console.error(
+          `[patch-ios-spm] video-recorder Plugin.swift anchor not found once: ${anchor.trim().slice(0, 60)}`,
+        );
+        process.exit(1);
+      }
+      swift = swift.replace(anchor, replacement);
+    }
+    writeFileSync(recorderSwift, swift);
+    log("made the web view see-through while the native camera preview is up");
+  }
+}
+
 /* ── Fix 2: app-check identity mirror ── */
 
 const appCheckSrc = resolve(root, "node_modules/@capacitor-firebase/app-check");
