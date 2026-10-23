@@ -13,6 +13,16 @@ function reasonLabel(reason: string): string {
   return Object.hasOwn(REPORT_REASON_LABELS, reason) ? REPORT_REASON_LABELS[reason as ReportReason] : reason;
 }
 
+/** Where the report was filed from, for the row's provenance line. */
+function provenance(report: AdminReport): string {
+  if (report.gameId) return `game ${report.gameId}`;
+  if (report.messageId) return "spot chat (no game)";
+  if (report.spotId) return "spot page (no game)";
+  if (report.clipId) return "feed clip (no game)";
+  if (report.target === "profile") return "player profile (no game)";
+  return "feed clip (no game)";
+}
+
 export interface ReportRowProps {
   report: AdminReport;
   /** True while any action on THIS report is in flight. */
@@ -22,6 +32,7 @@ export interface ReportRowProps {
   onBan: (report: AdminReport) => void;
   onHideDispute: (report: AdminReport) => void;
   onDeleteComment: (report: AdminReport) => void;
+  onHideMessage: (report: AdminReport) => void;
 }
 
 /**
@@ -40,6 +51,7 @@ export function ReportRow({
   onBan,
   onHideDispute,
   onDeleteComment,
+  onHideMessage,
 }: ReportRowProps) {
   return (
     <li data-testid={`report-${report.id}`} className="rounded-2xl border border-border bg-surface p-3">
@@ -81,6 +93,18 @@ export function ReportRow({
         </p>
       )}
 
+      {/* The reported spot-chat message as it read at report time. Plain text
+          node: untrusted user input. */}
+      {report.messageId && (
+        <p
+          data-testid={`report-message-${report.id}`}
+          className="mt-2 rounded-lg border border-brand-red/30 bg-surface-alt/60 p-2 font-body text-xs leading-relaxed break-words whitespace-pre-wrap text-white/90"
+        >
+          <span className="font-display text-[10px] tracking-[0.15em] text-brand-red">CHAT </span>
+          {report.messageText || "(text not captured)"}
+        </p>
+      )}
+
       {report.spotId && (
         <p data-testid={`report-spot-${report.id}`} className="mt-2 font-mono text-[11px] break-all text-subtle">
           spot {report.spotId}
@@ -98,9 +122,7 @@ export function ReportRow({
           literal null has to go and find out whether it means "no game" or
           "we lost the field". */}
       <p className="mt-1 font-body text-[11px] break-all text-faint">
-        {relativeAge(report.createdAt)} ·{" "}
-        {report.gameId ? `game ${report.gameId}` : report.spotId ? "spot page (no game)" : "feed clip (no game)"} ·
-        reporter {report.reporterUid}
+        {relativeAge(report.createdAt)} · {provenance(report)} · reporter {report.reporterUid}
       </p>
 
       {/* Resolution audit trail. Only a report that already carries a verdict
@@ -121,6 +143,7 @@ export function ReportRow({
         onBan={onBan}
         onHideDispute={onHideDispute}
         onDeleteComment={onDeleteComment}
+        onHideMessage={onHideMessage}
       />
     </li>
   );
