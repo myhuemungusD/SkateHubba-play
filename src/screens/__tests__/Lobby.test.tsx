@@ -347,6 +347,10 @@ describe("Lobby", () => {
     renderLobby({ games: [makeGame({ status: "complete", winner: "u2" })], onChallenge });
     expect(screen.queryByText("Ready to S.K.A.T.E.?")).not.toBeInTheDocument();
     expect(screen.getByText("No games going")).toBeInTheDocument();
+    // Skateboard (side view) art — the old glyph read as a shopping cart.
+    const art = screen.getByTestId("empty-lobby-deck");
+    expect(art.querySelectorAll("circle")).toHaveLength(2);
+    expect(art.querySelector('path[d^="M2.5 9.5"]')).not.toBeNull();
     await userEvent.click(screen.getByRole("button", { name: /Start a game/i }));
     expect(onChallenge).toHaveBeenCalledTimes(1);
   });

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { useNavigationContext, screenToPath, type Screen } from "../context/NavigationContext";
 import { useNotifications } from "../context/NotificationContext";
-import { FilmIcon, HomeIcon, MapPinIcon, SkateboardIcon, UserIcon } from "./icons";
+import { CrownIcon, FilmIcon, HomeIcon, MapPinIcon, UserIcon } from "./icons";
 import { HubbaIcon, type GlyphName } from "./hubbaIcons";
 import { isExtrasEnabled, isHubbaIconsEnabled } from "../lib/featureFlags";
 
@@ -55,7 +55,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   {
     screen: "challenge",
     label: "Challenge",
-    Icon: SkateboardIcon,
+    Icon: CrownIcon,
     icon: "challenge",
     primary: true,
     tutorialId: "challenge-cta",
@@ -123,7 +123,7 @@ export function BottomNav() {
                       <HubbaIcon
                         name={item.icon}
                         // The raised Challenge disc is always solid, so its
-                        // deck always uses the filled form for contrast.
+                        // crown always uses the filled form for contrast.
                         active={active || item.primary === true}
                         size={item.primary ? 24 : 22}
                       />
