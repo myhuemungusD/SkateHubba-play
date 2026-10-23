@@ -7,12 +7,17 @@ const mockResolveReport = vi.fn();
 const mockHideDispute = vi.fn();
 const mockDeleteComment = vi.fn();
 const mockBanUser = vi.fn();
+const mockHideMessage = vi.fn();
 
 vi.mock("../../../../services/admin", () => ({
   fetchReports: (...args: unknown[]) => mockFetchReports(...args),
   resolveReport: (...args: unknown[]) => mockResolveReport(...args),
   hideDispute: (...args: unknown[]) => mockHideDispute(...args),
   deleteReportedComment: (...args: unknown[]) => mockDeleteComment(...args),
+}));
+
+vi.mock("../../../../services/spotMessages", () => ({
+  hideSpotMessage: (...args: unknown[]) => mockHideMessage(...args),
 }));
 
 vi.mock("../../../../services/admin.bans", () => ({
@@ -61,6 +66,7 @@ beforeEach(() => {
   mockHideDispute.mockResolvedValue(undefined);
   mockDeleteComment.mockResolvedValue(undefined);
   mockBanUser.mockResolvedValue(undefined);
+  mockHideMessage.mockResolvedValue(undefined);
 });
 
 describe("ReportsPanel", () => {
@@ -130,6 +136,49 @@ describe("ReportsPanel", () => {
     await user.click(row.getByRole("button", { name: "DELETE COMMENT" }));
     await user.click(row.getByRole("button", { name: "DELETE" }));
     await waitFor(() => expect(mockDeleteComment).toHaveBeenCalledWith({ kind: "spots", id: "s1" }, "cm2"));
+  });
+
+  it("shows a reported chat message as plain text and hides it without closing the report", async () => {
+    mockFetchReports.mockResolvedValue([
+      { ...report, gameId: null, clipId: null, spotId: "s1", messageId: "m1", messageText: "<i>rude</i>" },
+    ]);
+    const user = userEvent.setup();
+    renderPanel();
+
+    const row = within(await screen.findByTestId("report-r1"));
+    expect(row.getByTestId("report-message-r1")).toHaveTextContent("CHAT <i>rude</i>");
+    expect(row.getByText(/spot chat \(no game\)/)).toBeInTheDocument();
+    await user.click(row.getByRole("button", { name: "HIDE CHAT MESSAGE" }));
+    await user.click(row.getByRole("button", { name: "HIDE" }));
+    await waitFor(() => expect(mockHideMessage).toHaveBeenCalledWith("s1", "m1"));
+    expect(mockResolveReport).not.toHaveBeenCalled();
+  });
+
+  it("labels an uncaptured chat message and surfaces a failed hide", async () => {
+    mockFetchReports.mockResolvedValue([
+      { ...report, gameId: null, clipId: null, spotId: "s1", messageId: "m1", messageText: "" },
+    ]);
+    mockHideMessage.mockRejectedValueOnce(new Error("Couldn't hide that message."));
+    const user = userEvent.setup();
+    renderPanel();
+
+    const row = within(await screen.findByTestId("report-r1"));
+    expect(row.getByTestId("report-message-r1")).toHaveTextContent("(text not captured)");
+    await user.click(row.getByRole("button", { name: "HIDE CHAT MESSAGE" }));
+    await user.click(row.getByRole("button", { name: "HIDE" }));
+    expect(await screen.findByText("Couldn't hide that message.")).toBeInTheDocument();
+  });
+
+  it("labels a profile report, and a null-game report with no target as a feed clip", async () => {
+    mockFetchReports.mockResolvedValue([
+      { ...report, id: "r1", gameId: null, clipId: null, target: "profile" },
+      { ...report, id: "r2", gameId: null, clipId: null },
+    ]);
+    renderPanel();
+    const row = within(await screen.findByTestId("report-r1"));
+    expect(row.getByText(/player profile \(no game\)/)).toBeInTheDocument();
+    expect(row.queryByRole("button", { name: "HIDE CHAT MESSAGE" })).not.toBeInTheDocument();
+    expect(within(screen.getByTestId("report-r2")).getByText(/feed clip \(no game\)/)).toBeInTheDocument();
   });
 
   it("does not offer comment delete on a report without a comment", async () => {

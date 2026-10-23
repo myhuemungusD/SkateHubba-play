@@ -75,10 +75,24 @@ export interface SubmitReportParams {
    * deletes it before review. Requires `clipId` or `spotId`.
    */
   comment?: { id: string; text: string };
+  /**
+   * Report the player themselves, filed from their profile. There is no game,
+   * clip or spot to point at, so the doc carries `target: "profile"` and
+   * `gameId: null` instead.
+   */
+  profile?: boolean;
+  /**
+   * A single spot-chat message (spots/{spotId}/messages/{id}). Needs `spotId`
+   * and can't be combined with `clipId` or `comment`. The text is snapshotted
+   * like a comment's, so the moderator sees it even after the message changes.
+   */
+  message?: { id: string; text: string };
 }
 
 /** Same bound as a comment body (firestore.rules clip comments: 1–300 chars). */
 const COMMENT_TEXT_MAX = 300;
+/** Same bound as a spot-chat message body (firestore.rules spot messages: 1–500 chars). */
+const MESSAGE_TEXT_MAX = 500;
 
 function optionalTargetId(value: string | undefined): string | null {
   if (typeof value !== "string") return null;
@@ -110,6 +124,8 @@ export async function submitReport(params: SubmitReportParams): Promise<string> 
     disputeId,
     spotId,
     comment,
+    profile,
+    message,
   } = params;
 
   if (!reason) throw new Error("Please select a reason for your report.");
@@ -120,13 +136,24 @@ export async function submitReport(params: SubmitReportParams): Promise<string> 
   const targetClipId = typeof clipId === "string" && clipId.length > 0 ? clipId.slice(0, 128) : null;
   const targetDisputeId = optionalTargetId(disputeId);
   const targetSpotId = optionalTargetId(spotId);
-  if (targetGameId === null && targetClipId === null && targetSpotId === null) {
-    throw new Error("Nothing to report — no game, clip or spot was identified.");
+  if (targetGameId === null && targetClipId === null && targetSpotId === null && profile !== true) {
+    throw new Error("Nothing to report — no game, clip, spot or player was identified.");
   }
   if (
     comment &&
     // Exactly one parent: the comment lives under a clip or a spot, never both.
     ((targetClipId === null) === (targetSpotId === null) || comment.id.length === 0 || comment.id.includes("/"))
+  ) {
+    throw new Error("That report target is not valid.");
+  }
+  if (
+    message &&
+    // A chat message lives under a spot only, and is never also a comment.
+    (targetSpotId === null ||
+      targetClipId !== null ||
+      comment !== undefined ||
+      message.id.length === 0 ||
+      message.id.includes("/"))
   ) {
     throw new Error("That report target is not valid.");
   }
@@ -162,6 +189,13 @@ export async function submitReport(params: SubmitReportParams): Promise<string> 
     if (comment) {
       payload.commentId = comment.id.slice(0, 128);
       payload.commentText = comment.text.slice(0, COMMENT_TEXT_MAX);
+    }
+    if (message) {
+      payload.messageId = message.id.slice(0, 128);
+      payload.messageText = message.text.slice(0, MESSAGE_TEXT_MAX);
+    }
+    if (profile === true) {
+      payload.target = "profile";
     }
 
     // Atomic batch: report + companion cooldown anchor. The rule requires

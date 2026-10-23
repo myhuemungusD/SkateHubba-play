@@ -11,6 +11,7 @@ import { ClosetShowcase } from "../../components/ClosetShowcase";
 import { ProfileShowcase } from "../../components/ProfileShowcase";
 import { usePlayerProfileController } from "./usePlayerProfileController";
 import { BlockControls } from "./components/BlockControls";
+import { ReportPlayerButton } from "./components/ReportPlayerButton";
 import { ChallengeButton } from "./components/ChallengeButton";
 import { RollDiceButton } from "./components/RollDiceButton";
 import {
@@ -349,6 +350,9 @@ export function PlayerProfileScreen({
             onConfirmBlock={c.confirmBlock}
             onUnblock={c.handleUnblock}
           />
+        )}
+        {!isOwnProfile && hasViewer && (
+          <ReportPlayerButton reporterUid={viewerUid} reportedUid={profile.uid} username={profile.username} />
         )}
 
         {c.stats.currentWinStreak >= MIN_DISPLAYED_WIN_STREAK && (
