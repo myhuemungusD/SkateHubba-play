@@ -312,10 +312,18 @@ describe.each([
   afterEach(() => {
     vi.unstubAllEnvs();
   });
+  /** Own page reads the signed-in profile; another player's page reads the fetch. */
+  function renderWithXp(xp: number) {
+    const withXp = { ...profile, xp };
+    fetchedProfile.mockReturnValue(fetchedState({ profile: withXp }));
+    const own = !("isOwnProfile" in over);
+    render(<PlayerProfileScreen {...props} {...over} {...(own ? { currentUserProfile: withXp } : {})} />);
+  }
 
   it("hides the level chip, the XP bar and the achievements ribbon while the XP flag is off", async () => {
     vi.stubEnv("VITE_FEATURE_XP_ENABLED", "false");
-    render(<PlayerProfileScreen {...props} {...over} />);
+    // Earned XP still shows nothing while the flag is off.
+    renderWithXp(10);
     expect(await screen.findByText(`@${profile.username}`)).toBeInTheDocument();
     expect(screen.queryByTestId("xp-progress")).toBeNull();
     expect(screen.queryByText(/\d+ \/ \d+ XP/)).toBeNull();
@@ -325,20 +333,17 @@ describe.each([
 
   it("shows the level chip and the XP bar while the XP flag is on", async () => {
     vi.stubEnv("VITE_FEATURE_XP_ENABLED", "true");
-    // Own page reads the signed-in profile; another player's page reads the fetch.
-    const withXp = { ...profile, xp: 10 };
-    fetchedProfile.mockReturnValue(fetchedState({ profile: withXp }));
-    const own = !("isOwnProfile" in over);
-    render(<PlayerProfileScreen {...props} {...over} {...(own ? { currentUserProfile: withXp } : {})} />);
+    renderWithXp(10);
     expect(await screen.findByTestId("xp-progress")).toBeInTheDocument();
     expect(screen.getByText("10 / 24 XP")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Level 1" })).toBeInTheDocument();
   });
 
-  it("keeps the level chip but drops the empty 0 / 24 XP bar at 0 XP", async () => {
+  it("hides the level chip and the empty 0 / 24 XP bar at 0 XP", async () => {
     vi.stubEnv("VITE_FEATURE_XP_ENABLED", "true");
     render(<PlayerProfileScreen {...props} {...over} />);
-    expect(await screen.findByRole("img", { name: "Level 1" })).toBeInTheDocument();
+    expect(await screen.findByText(`@${profile.username}`)).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /^Level \d+$/ })).toBeNull();
     expect(screen.queryByTestId("xp-progress")).toBeNull();
     expect(screen.queryByText("0 / 24 XP")).toBeNull();
   });
