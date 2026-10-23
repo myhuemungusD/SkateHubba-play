@@ -463,7 +463,7 @@ describe("Smoke: public /player/:uid for a signed-out visitor", () => {
     await renderPublicProfile();
     expect(screen.getByTestId("location").textContent).toBe("/player/u2");
     expect(screen.getByText("goofy")).toBeInTheDocument();
-    expect(screen.getByLabelText("Lifetime wins: 10")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Wins 10" })).toBeInTheDocument();
   });
 
   it("reads only the public profile doc, never the participant-gated games", async () => {
@@ -484,7 +484,7 @@ describe("Smoke: public /player/:uid for a signed-out visitor", () => {
   it("withholds every affordance that needs an account", async () => {
     await renderPublicProfile();
     expect(screen.queryByText("Challenge @sk8rboi")).not.toBeInTheDocument();
-    expect(screen.queryByText("Block this player")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /More options/ })).not.toBeInTheDocument();
     expect(screen.queryByTestId("share-my-profile-button")).not.toBeInTheDocument();
     expect(screen.queryByTestId("added-spots-placeholder")).not.toBeInTheDocument();
     expect(screen.queryByText("GAMES VS YOU")).not.toBeInTheDocument();

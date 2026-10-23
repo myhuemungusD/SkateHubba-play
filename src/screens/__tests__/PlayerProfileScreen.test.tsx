@@ -52,25 +52,26 @@ describe("PlayerProfileScreen", () => {
     expect(document.querySelector('img[src="/logonew.webp"]')).toBeInTheDocument();
     expect(screen.getByText("@viewer")).toBeInTheDocument();
     expect(screen.getByText("regular")).toBeInTheDocument();
-    expect(screen.queryByText("Report this player")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /More options/ })).not.toBeInTheDocument();
   });
 
   it("shows 0 stats when no games", () => {
     render(<PlayerProfileScreen {...baseProps} />);
-    expect(screen.getByText("Lifetime Wins")).toBeInTheDocument();
-    expect(screen.getByText("Lifetime Losses")).toBeInTheDocument();
-    expect(screen.getByText("Win Rate %")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Wins 0" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Losses 0" })).toBeInTheDocument();
+    expect(screen.getByText("Win %")).toBeInTheDocument();
   });
 
-  it("shows the four public dispute counters, defaulting missing fields to 0", () => {
+  it("shows the four public dispute counters, defaulting missing fields to 0", async () => {
     render(<PlayerProfileScreen {...baseProps} />);
-    expect(screen.getByLabelText("Tricks of yours disputed: 0")).toBeInTheDocument();
-    expect(screen.getByLabelText("Tricks you disputed: 0")).toBeInTheDocument();
-    expect(screen.getByLabelText("Disputes you got right: 0")).toBeInTheDocument();
-    expect(screen.getByLabelText("Disputes you got wrong: 0")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "All stats" }));
+    expect(screen.getByRole("button", { name: "Tricks of yours disputed 0" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tricks you disputed 0" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Disputes Right 0" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Disputes Wrong 0" })).toBeInTheDocument();
   });
 
-  it("reads dispute counters straight off the profile doc", () => {
+  it("reads dispute counters straight off the profile doc", async () => {
     const currentUserProfile = {
       ...baseProps.currentUserProfile,
       tricksDisputed: 4,
@@ -79,37 +80,41 @@ describe("PlayerProfileScreen", () => {
       disputesWrong: 1,
     };
     render(<PlayerProfileScreen {...baseProps} currentUserProfile={currentUserProfile} />);
-    expect(screen.getByLabelText("Tricks of yours disputed: 4")).toBeInTheDocument();
-    expect(screen.getByLabelText("Tricks you disputed: 3")).toBeInTheDocument();
-    expect(screen.getByLabelText("Disputes you got right: 2")).toBeInTheDocument();
-    expect(screen.getByLabelText("Disputes you got wrong: 1")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "All stats" }));
+    expect(screen.getByRole("button", { name: "Tricks of yours disputed 4" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tricks you disputed 3" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Disputes Right 2" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Disputes Wrong 1" })).toBeInTheDocument();
   });
 
-  it("shows the letter counters, defaulting missing fields to 0", () => {
+  it("shows the letter counters, defaulting missing fields to 0", async () => {
     render(<PlayerProfileScreen {...baseProps} />);
-    expect(screen.getByLabelText("Letters given: 0")).toBeInTheDocument();
-    expect(screen.getByLabelText("Letters taken: 0")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "All stats" }));
+    expect(screen.getByRole("button", { name: "Letters Given 0" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Letters Taken 0" })).toBeInTheDocument();
   });
 
-  it("reads letter counters straight off the profile doc", () => {
+  it("reads letter counters straight off the profile doc", async () => {
     const currentUserProfile = { ...baseProps.currentUserProfile, lettersGiven: 9, lettersTaken: 4 };
     render(<PlayerProfileScreen {...baseProps} currentUserProfile={currentUserProfile} />);
-    expect(screen.getByLabelText("Letters given: 9")).toBeInTheDocument();
-    expect(screen.getByLabelText("Letters taken: 4")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "All stats" }));
+    expect(screen.getByRole("button", { name: "Letters Given 9" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Letters Taken 4" })).toBeInTheDocument();
   });
 
-  it("defaults every stats-overhaul counter to zero on a legacy profile doc", () => {
+  it("defaults every stats-overhaul counter to zero on a legacy profile doc", async () => {
     // A doc written before these counters shipped simply lacks the fields.
     // Reading them as 0 is what keeps the new sections from rendering NaN.
     render(<PlayerProfileScreen {...baseProps} />);
-    expect(screen.getByLabelText("Clean wins: 0")).toBeInTheDocument();
-    expect(screen.getByLabelText("Comeback wins: 0")).toBeInTheDocument();
-    expect(screen.getByLabelText("Games judged: 0")).toBeInTheDocument();
-    expect(screen.getByLabelText("Total games: 0")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "All stats" }));
+    expect(screen.getByRole("button", { name: "Clean Wins 0" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Comeback Wins 0" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Games Judged 0" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Total Games 0" })).toBeInTheDocument();
     expect(screen.queryByTestId("last-ten-row")).not.toBeInTheDocument();
   });
 
-  it("reads the game-style counters straight off the profile doc", () => {
+  it("reads the game-style counters straight off the profile doc", async () => {
     const currentUserProfile = {
       ...baseProps.currentUserProfile,
       gamesPlayed: 20,
@@ -119,26 +124,29 @@ describe("PlayerProfileScreen", () => {
       gamesJudged: 5,
     };
     render(<PlayerProfileScreen {...baseProps} currentUserProfile={currentUserProfile} />);
-    expect(screen.getByLabelText("Clean wins: 6")).toBeInTheDocument();
-    expect(screen.getByLabelText("Comeback wins: 3")).toBeInTheDocument();
-    expect(screen.getByLabelText("Games judged: 5")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "All stats" }));
+    expect(screen.getByRole("button", { name: "Clean Wins 6" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Comeback Wins 3" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Games Judged 5" })).toBeInTheDocument();
     // (20 games - 1 abandoned) / 20 = 95%.
-    expect(screen.getByLabelText("Games finished: 95 percent")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Games Finished 95 percent" })).toBeInTheDocument();
   });
 
-  it("prefers the gamesPlayed counter over wins + losses for total games", () => {
+  it("prefers the gamesPlayed counter over wins + losses for total games", async () => {
     // PlayerDirectory has always read gamesPlayed; the profile derived its own
     // total from wins + losses, so a game that incremented one counter and not
     // the other made the two surfaces disagree in front of the user.
     const currentUserProfile = { ...baseProps.currentUserProfile, wins: 4, losses: 2, gamesPlayed: 9 };
     render(<PlayerProfileScreen {...baseProps} currentUserProfile={currentUserProfile} />);
-    expect(screen.getByLabelText("Total games: 9")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "All stats" }));
+    expect(screen.getByRole("button", { name: "Total Games 9" })).toBeInTheDocument();
   });
 
-  it("falls back to wins + losses when the gamesPlayed counter is absent", () => {
+  it("falls back to wins + losses when the gamesPlayed counter is absent", async () => {
     const currentUserProfile = { ...baseProps.currentUserProfile, wins: 4, losses: 2 };
     render(<PlayerProfileScreen {...baseProps} currentUserProfile={currentUserProfile} />);
-    expect(screen.getByLabelText("Total games: 6")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "All stats" }));
+    expect(screen.getByRole("button", { name: "Total Games 6" })).toBeInTheDocument();
   });
 
   it("renders the last-10 form guide from recentResults", () => {
@@ -327,13 +335,14 @@ describe("PlayerProfileScreen", () => {
     mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: opponentProfile }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} blockedUids={new Set()} />);
 
-    await userEvent.click(screen.getByText("Block this player"));
-    expect(screen.getByText(/Block @sk8rboi\?/)).toBeInTheDocument();
-
-    await userEvent.click(screen.getByText("Cancel"));
-    expect(screen.getByText("Block this player")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "More options for @sk8rboi" }));
     // App Review 1.2: a player can be reported as well as blocked.
-    expect(screen.getByRole("button", { name: "Report this player" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Report" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Block" }));
+    expect(screen.getByRole("alertdialog", { name: "Block @sk8rboi?" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
   it("confirms block and calls blockUser", async () => {
@@ -341,7 +350,8 @@ describe("PlayerProfileScreen", () => {
     mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: opponentProfile }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} blockedUids={new Set()} />);
 
-    await userEvent.click(screen.getByText("Block this player"));
+    await userEvent.click(screen.getByRole("button", { name: "More options for @sk8rboi" }));
+    await userEvent.click(screen.getByRole("button", { name: "Block" }));
     await userEvent.click(screen.getByRole("button", { name: "Block" }));
 
     await waitFor(() => {
@@ -354,11 +364,12 @@ describe("PlayerProfileScreen", () => {
     mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: opponentProfile }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} blockedUids={new Set(["u2"])} />);
 
-    expect(screen.getByText("You have blocked this user")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("You blocked @sk8rboi");
     // Challenge button should be hidden when blocked
     expect(screen.queryByText("Challenge @sk8rboi")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByText("Unblock"));
+    await userEvent.click(screen.getByRole("button", { name: "More options for @sk8rboi" }));
+    await userEvent.click(screen.getByRole("button", { name: "Unblock" }));
     await waitFor(() => {
       expect(unblockUser).toHaveBeenCalledWith("me", "u2");
     });

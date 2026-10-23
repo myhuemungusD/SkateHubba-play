@@ -19,7 +19,11 @@ describe("OwnProfileActions", () => {
       expect(el).toHaveClass("btn-secondary", "press-feedback", "rounded-xl");
       expect(el).not.toHaveClass("btn-primary-fill");
     }
-    expect(screen.getByTestId("my-stats-button")).toHaveClass("w-full");
+    // One row (audit #9): every action is a sibling in the same flex row.
+    const row = screen.getByTestId("edit-profile-button").parentElement;
+    for (const name of ["Edit profile", "Share my profile", "My stats", "Customize profile"]) {
+      expect(screen.getByRole("button", { name }).parentElement).toBe(row);
+    }
   });
 
   it("wires each action and shows the copied state", () => {
@@ -30,6 +34,7 @@ describe("OwnProfileActions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Share my profile" }));
     expect(onShare).toHaveBeenCalledTimes(1);
     rerender(<OwnProfileActions onShare={onShare} shareCopied />);
-    expect(screen.getByTestId("share-my-profile-button")).toHaveTextContent("LINK COPIED");
+    expect(screen.getByTestId("share-my-profile-button")).toHaveTextContent("COPIED");
+    expect(screen.getByRole("button", { name: "Link copied" })).toBeInTheDocument();
   });
 });

@@ -10,8 +10,7 @@ import { BadgesRow } from "../../components/BadgesRow";
 import { ClosetShowcase } from "../../components/ClosetShowcase";
 import { ProfileShowcase } from "../../components/ProfileShowcase";
 import { usePlayerProfileController } from "./usePlayerProfileController";
-import { BlockControls } from "./components/BlockControls";
-import { ReportPlayerButton } from "./components/ReportPlayerButton";
+import { PlayerSafetyMenu } from "./components/PlayerSafetyMenu";
 import { ChallengeButton } from "./components/ChallengeButton";
 import { RollDiceButton } from "./components/RollDiceButton";
 import {
@@ -39,7 +38,6 @@ import { ProfileSkeleton } from "./components/ProfileSkeleton";
 import { ProfileStatsGrid } from "./components/ProfileStatsGrid";
 import { SignUpToChallengeCta } from "./components/SignUpToChallengeCta";
 import { AddedSpotsSection } from "./components/AddedSpotsSection";
-import { WinStreakBanner } from "./components/WinStreakBanner";
 import { ProShowcaseGate } from "./components/ProShowcaseGate";
 import { PropsRow } from "../../components/pro/ProPicks";
 import { OwnProfileActions } from "./components/OwnProfileActions";
@@ -51,12 +49,6 @@ import { SignatureShowcase } from "./components/custom/SignatureShowcase";
 import { ProfileCustomizeSheet } from "./components/custom/ProfileCustomizeSheet";
 import { gradientCss, type SectionId } from "../../services/profileCustom";
 import { SpotPassport } from "../../components/SpotPassport";
-
-/**
- * Streak length before the banner appears. A "1 win streak" is just a win —
- * the banner should mark a run worth bragging about, not fire after every game.
- */
-const MIN_DISPLAYED_WIN_STREAK = 2;
 
 interface Props {
   viewedUid: string;
@@ -260,7 +252,26 @@ export function PlayerProfileScreen({
       {isOwnProfile && (
         <PullToRefreshIndicator offset={ptr.offset} state={ptr.state} triggerReached={ptr.triggerReached} />
       )}
-      <ProfileHeader onBack={onBack} backLabel={backLabel} />
+      <ProfileHeader
+        onBack={onBack}
+        backLabel={backLabel}
+        actions={
+          !isOwnProfile && hasViewer ? (
+            <PlayerSafetyMenu
+              reporterUid={viewerUid}
+              reportedUid={profile.uid}
+              username={profile.username}
+              isBlocked={c.isBlocked}
+              blockLoading={c.blockLoading}
+              showBlockConfirm={c.showBlockConfirm}
+              onOpenBlockConfirm={c.openBlockConfirm}
+              onCancelBlockConfirm={c.cancelBlockConfirm}
+              onConfirmBlock={c.confirmBlock}
+              onUnblock={c.handleUnblock}
+            />
+          ) : undefined
+        }
+      />
 
       <div className="px-5 pt-7 max-w-[430px] mx-auto">
         {isProfileBannerEnabled() && (
@@ -339,24 +350,10 @@ export function PlayerProfileScreen({
 
         {!hasViewer && onSignUp && <SignUpToChallengeCta username={profile.username} onSignUp={onSignUp} />}
 
-        {!isOwnProfile && hasViewer && (
-          <BlockControls
-            username={profile.username}
-            isBlocked={c.isBlocked}
-            blockLoading={c.blockLoading}
-            showBlockConfirm={c.showBlockConfirm}
-            onOpenBlockConfirm={c.openBlockConfirm}
-            onCancelBlockConfirm={c.cancelBlockConfirm}
-            onConfirmBlock={c.confirmBlock}
-            onUnblock={c.handleUnblock}
-          />
-        )}
-        {!isOwnProfile && hasViewer && (
-          <ReportPlayerButton reporterUid={viewerUid} reportedUid={profile.uid} username={profile.username} />
-        )}
-
-        {c.stats.currentWinStreak >= MIN_DISPLAYED_WIN_STREAK && (
-          <WinStreakBanner currentStreak={c.stats.currentWinStreak} />
+        {!isOwnProfile && hasViewer && c.isBlocked && (
+          <p role="status" className="mb-6 font-body text-sm text-subtle">
+            You blocked @{profile.username}. Unblock from the ••• menu.
+          </p>
         )}
 
         <BadgesRow achievements={c.achievements} />

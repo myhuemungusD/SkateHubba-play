@@ -248,7 +248,7 @@ describe("uploadAvatar", () => {
 });
 
 describe("getAvatarFallbackUrl", () => {
-  it("returns the static SVG path", () => {
-    expect(getAvatarFallbackUrl()).toBe("/default-skater.svg");
+  it("returns Mike White's Creamsicle art, served from public/", () => {
+    expect(getAvatarFallbackUrl()).toBe("/assets/closet/mike-white/mike-white-creamsicle.webp");
   });
 });

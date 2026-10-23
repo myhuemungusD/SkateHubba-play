@@ -46,8 +46,12 @@ const NSFW_REJECT_THRESHOLD = 0.85;
 /** Warn-band lower bound — same as `avatarModeration.ts` WARN_THRESHOLD. */
 const NSFW_WARN_THRESHOLD = 0.5;
 
-/** Path to the SVG fallback shipped from the public/ folder. */
-const FALLBACK_SVG_URL = "/default-skater.svg";
+/**
+ * The default avatar for a skater with no photo: Mike White's "Creamsicle"
+ * (white / brand orange), shipped from public/. Wherever it renders, credit
+ * it with `MIKE_WHITE_CREDIT` (docs/MIKE_WHITE_COLLECTION.md).
+ */
+const FALLBACK_AVATAR_URL = "/assets/closet/mike-white/mike-white-creamsicle.webp";
 
 /** Thrown when the moderation gate hard-rejects an upload (score >0.85). */
 export class AvatarRejectedError extends Error {
@@ -274,10 +278,10 @@ export async function uploadAvatar(uid: string, blob: Blob, opts: UploadAvatarOp
 }
 
 /**
- * The universal fallback avatar URL. Pure function so the import
- * is tree-shakable and consumers can render it server-side without
- * touching the network.
+ * The universal fallback avatar URL (Mike White art, so render his credit
+ * beside it). Pure function so the import is tree-shakable and consumers can
+ * render it server-side without touching the network.
  */
 export function getAvatarFallbackUrl(): string {
-  return FALLBACK_SVG_URL;
+  return FALLBACK_AVATAR_URL;
 }
