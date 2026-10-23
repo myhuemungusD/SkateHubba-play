@@ -161,64 +161,112 @@ async function expectNoSidewaysScroll(page: Page, where: string): Promise<void> 
     innerWidth: window.innerWidth,
   }));
   expect(widths.scrollWidth, `${where} scrolls sideways`).toBeLessThanOrEqual(widths.innerWidth);
+
+  // The document is not the only scroller. overflow-y:auto forces overflow-x
+  // to auto (CSS Overflow 3), so a too-wide child of a screen root such as the
+  // profile's is clipped and dragged sideways *inside* that div while the
+  // document stays phone-wide. Any element that scrolls on x must fit, unless
+  // it is a rail built to scroll sideways and says so with data-scroll-x.
+  const offenders = await page.evaluate(() => {
+    const out: string[] = [];
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>("body *"))) {
+      if (el.hasAttribute("data-scroll-x")) continue;
+      const { overflowX } = getComputedStyle(el);
+      if (overflowX !== "auto" && overflowX !== "scroll") continue;
+      if (el.scrollWidth <= el.clientWidth + 1) continue;
+      const cls = typeof el.className === "string" ? el.className.slice(0, 120) : "";
+      out.push(
+        `<${el.tagName.toLowerCase()} class="${cls}"> scrollWidth ${el.scrollWidth} > clientWidth ${el.clientWidth}`,
+      );
+    }
+    return out;
+  });
+  expect(offenders, `${where} has an element that scrolls sideways`).toEqual([]);
 }
 
+/** Longest handles the username rules allow, so truncation and wrapping are exercised. */
+async function seedLetterRows(): Promise<{ rivalUid: string }> {
+  const me = await createUser("fit-me@test.com", "password123");
+  const rival = await createUser("fit-rival@test.com", "password123");
+  const other = await createUser("fit-other@test.com", "password123");
+  await createProfile(me.uid, "fitcheckskater", me.email, true, false);
+  await createProfile(rival.uid, "longhandleskater20", rival.email, true, false);
+  await createProfile(other.uid, "anotherlonghandle1", other.email, true, false);
+
+  // My turn, both sides carrying letters: the widest Lobby card.
+  await createGame("fit-mine", me.uid, "fitcheckskater", rival.uid, "longhandleskater20", {
+    p1Letters: 3,
+    p2Letters: 4,
+  });
+  // Their turn, so the "waiting on them" group is populated too.
+  await createGame("fit-theirs", other.uid, "anotherlonghandle1", me.uid, "fitcheckskater", {
+    currentTurn: other.uid,
+    currentSetter: other.uid,
+    p1Letters: 2,
+    p2Letters: 1,
+  });
+  // A finished game for the profile history row.
+  await createGame("fit-done", me.uid, "fitcheckskater", rival.uid, "longhandleskater20", {
+    status: "complete",
+    winner: me.uid,
+    p1Letters: 4,
+    p2Letters: 5,
+  });
+  return { rivalUid: rival.uid };
+}
+
+async function signInToLobby(page: Page, width: number, height: number): Promise<void> {
+  await page.setViewportSize({ width, height });
+  await signInViaUI(page, "fit-me@test.com", "password123");
+  await dismissBottomOverlays(page);
+  await expect(page.getByText("@longhandleskater20").first()).toBeVisible({ timeout: 15_000 });
+}
+
+// One test per screen, so each screen's check fails on its own instead of
+// hiding behind the first failure.
 test.describe("signed-in letter rows", () => {
+  let rivalUid = "";
   test.beforeEach(async () => {
     await clearAll();
+    ({ rivalUid } = await seedLetterRows());
   });
 
   for (const phone of NARROW_PHONES) {
-    test(`lobby, game and profile fit at ${phone.name}`, async ({ page }) => {
-      test.setTimeout(120_000);
-      await page.setViewportSize({ width: phone.width, height: phone.height });
-
-      const me = await createUser("fit-me@test.com", "password123");
-      const rival = await createUser("fit-rival@test.com", "password123");
-      const other = await createUser("fit-other@test.com", "password123");
-      // Longest handles the username rules allow, so truncation is exercised.
-      await createProfile(me.uid, "fitcheckskater", me.email, true, false);
-      await createProfile(rival.uid, "longhandleskater20", rival.email, true, false);
-      await createProfile(other.uid, "anotherlonghandle1", other.email, true, false);
-
-      // My turn, both sides carrying letters: the widest Lobby card.
-      await createGame("fit-mine", me.uid, "fitcheckskater", rival.uid, "longhandleskater20", {
-        p1Letters: 3,
-        p2Letters: 4,
-      });
-      // Their turn, so the "waiting on them" group is populated too.
-      await createGame("fit-theirs", other.uid, "anotherlonghandle1", me.uid, "fitcheckskater", {
-        currentTurn: other.uid,
-        currentSetter: other.uid,
-        p1Letters: 2,
-        p2Letters: 1,
-      });
-      // A finished game for the profile history row.
-      await createGame("fit-done", me.uid, "fitcheckskater", rival.uid, "longhandleskater20", {
-        status: "complete",
-        winner: me.uid,
-        p1Letters: 4,
-        p2Letters: 5,
-      });
-
-      await signInViaUI(page, "fit-me@test.com", "password123");
-      await dismissBottomOverlays(page);
-      await expect(page.getByText("@longhandleskater20").first()).toBeVisible({ timeout: 15_000 });
+    test(`lobby fits at ${phone.name}`, async ({ page }) => {
+      test.setTimeout(90_000);
+      await signInToLobby(page, phone.width, phone.height);
       await expectNoSidewaysScroll(page, "Lobby");
       await shot(page, `lobby-${phone.name}`);
+    });
 
+    test(`game fits at ${phone.name}`, async ({ page }) => {
+      test.setTimeout(90_000);
+      await signInToLobby(page, phone.width, phone.height);
       await openActiveGameFromLobby(page, "longhandleskater20");
       await expect(page).toHaveURL(/\/game/, { timeout: 15_000 });
       await expect(page.getByText("YOUR MOVE")).toBeVisible({ timeout: 15_000 });
       await expectNoSidewaysScroll(page, "Game");
       await shot(page, `game-${phone.name}`);
+    });
 
-      await page.goto(`/player/${rival.uid}`);
-      await expect(page.getByText("longhandleskater20").first()).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByRole("img", { name: /^You: / }).first()).toBeVisible({ timeout: 15_000 });
+    test(`profile fits at ${phone.name}`, async ({ page }) => {
+      test.setTimeout(90_000);
+      await signInToLobby(page, phone.width, phone.height);
+      await page.goto(`/player/${rivalUid}`);
+      await expect(page.getByRole("heading", { level: 1, name: /longhandleskater20/ })).toBeVisible({
+        timeout: 15_000,
+      });
       await dismissBottomOverlays(page);
       await expectNoSidewaysScroll(page, "Profile");
       await shot(page, `profile-${phone.name}`);
+
+      // The history row carries the second pair of pip rows (MF-B1); bring
+      // it on screen so the shot shows it and the check runs with it laid out.
+      const historyRow = page.locator("button[aria-expanded]", { hasText: "fitcheckskater" }).first();
+      await historyRow.scrollIntoViewIfNeeded();
+      await expect(page.getByRole("img", { name: /^You: / }).first()).toBeVisible({ timeout: 15_000 });
+      await expectNoSidewaysScroll(page, "Profile history");
+      await shot(page, `profile-history-${phone.name}`);
     });
   }
 });

@@ -48,7 +48,7 @@ export function ToolTabs<T extends string>({
   onTab: (t: T) => void;
 }) {
   return (
-    <div role="tablist" aria-label="Editor tools" className="flex gap-1 overflow-x-auto">
+    <div data-scroll-x role="tablist" aria-label="Editor tools" className="flex gap-1 overflow-x-auto">
       {tabs.map((t) => (
         <button
           key={t}
