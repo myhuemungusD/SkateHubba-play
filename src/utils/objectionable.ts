@@ -64,7 +64,6 @@ const USERNAME_SUBSTRING_TERMS = BLOCKED_TERMS.filter((t) => t.length >= 5);
 const LOOKALIKES: Record<string, string> = {
   "0": "o",
   "1": "i",
-  "!": "i",
   "3": "e",
   "4": "a",
   "@": "a",
@@ -77,11 +76,16 @@ const LOOKALIKES: Record<string, string> = {
 };
 
 function fold(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[01!3-9@$]/g, (c) => LOOKALIKES[c] ?? c);
+  return (
+    text
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[013-9@$]/g, (c) => LOOKALIKES[c] ?? c)
+      // "!" reads as "i" only mid-word ("n!gger"). A trailing "!" is
+      // punctuation: folding it turned "kys!" into "kysi" and let it through.
+      .replace(/!(?=[a-z])/g, "i")
+  );
 }
 
 /** True when free text (a comment) contains a blocked term as a word. */

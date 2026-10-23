@@ -89,6 +89,23 @@ describe("self-harm phrases and leetspeak (#886 review S4)", () => {
   });
 });
 
+describe("trailing '!' is punctuation, not an 'i' (#886 review should-fix A)", () => {
+  it("blocks taunts and slurs that end in '!'", () => {
+    for (const t of ["kill yourself!", "kys!", "fag!", "retard!!", "you n1gger!", "go kill urself!!!"]) {
+      expect(containsObjectionableText(t), t).toBe(true);
+    }
+  });
+  it("still folds '!' to 'i' when a letter follows", () => {
+    expect(containsObjectionableText("n!gger")).toBe(true);
+    expect(isObjectionableUsername("x_n!gger!")).toBe(true);
+  });
+  it("lets exclamations through", () => {
+    for (const t of ["sick!", "stomped it!", "kill it!", "landed!!", "!!!"]) {
+      expect(containsObjectionableText(t), t).toBe(false);
+    }
+  });
+});
+
 describe("trick catalog never trips the filter", () => {
   it("passes every string exported from src/constants", async () => {
     const modules = import.meta.glob("../../constants/*.ts", { eager: true });
