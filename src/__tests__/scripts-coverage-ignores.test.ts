@@ -23,6 +23,8 @@ describe("checkHintLine", () => {
     "/* v8 ignore start -- native-only bridge */",
     "/* c8 ignore else -- unreachable in browsers */",
     "/* istanbul ignore if -- @preserve server-only path */",
+    "/* node:coverage ignore next -- native shell only, no jsdom bridge */",
+    "/* v8 ignore next -- first reason here */ const a = 1; /* v8 ignore next -- second reason here */",
   ])("accepts a hint with a reason: %s", (line) => {
     expect(checkHintLine(line)).toBeNull();
   });
@@ -31,19 +33,48 @@ describe("checkHintLine", () => {
     expect(checkHintLine("  /* v8 ignore stop */")).toBeNull();
   });
 
-  it.each(["/* v8 ignore next */", "/* v8 ignore next 2 */", "/* c8 ignore start */", "// istanbul ignore else"])(
-    "rejects a hint without a reason: %s",
-    (line) => {
-      expect(checkHintLine(line)).toMatch(/without a reason/);
-    },
-  );
+  it.each([
+    "/* v8 ignore next */",
+    "/* v8 ignore next 2 */",
+    "/* c8 ignore start */",
+    "// istanbul ignore else",
+    "/* node:coverage ignore next */",
+    "/* node:coverage ignore start */",
+    "// node:coverage ignore next",
+  ])("rejects a hint without a reason: %s", (line) => {
+    expect(checkHintLine(line)).toMatch(/without a reason/);
+  });
 
-  it.each(["/* v8 ignore next -- */", "/* v8 ignore next -- x */", "/* v8 ignore next -- tbd */"])(
-    "rejects an empty or placeholder reason: %s",
-    (line) => {
-      expect(checkHintLine(line)).toMatch(/empty or a placeholder/);
-    },
-  );
+  it.each([
+    "/* v8 ignore next -- */",
+    "/* v8 ignore next -- x */",
+    "/* v8 ignore next -- tbd */",
+    "/* v8 ignore next -- abc */",
+    "/* v8 ignore next -- untestable */",
+    "/* v8 ignore next -- a b c d e f */",
+    "/* v8 ignore next -- ok go */",
+    "/* node:coverage ignore next -- abc */",
+  ])("rejects an empty, placeholder or one-word reason: %s", (line) => {
+    expect(checkHintLine(line)).toMatch(/empty, a placeholder or too short/);
+  });
+
+  it.each([
+    // A reasoned hint followed by a bare one on the same line.
+    "/* v8 ignore next -- ok reason here */ /* v8 ignore next */",
+    // A reasoned hint, more code, then a bare hint of another prefix.
+    "/* v8 ignore next -- ok reason here */ const y = 2; /* c8 ignore next */",
+    "/* v8 ignore next -- ok reason here */ /* node:coverage ignore start */",
+  ])("checks every hint on a line, not just the first: %s", (line) => {
+    expect(checkHintLine(line)).toMatch(/without a reason/);
+  });
+
+  it("checks a later hint's reason even when the first is fine", () => {
+    expect(checkHintLine("/* v8 ignore next -- ok reason here */ /* v8 ignore next -- abc */")).toMatch(/too short/);
+  });
+
+  it("reports a reason wrapped onto the next line as missing", () => {
+    expect(checkHintLine("/* v8 ignore next")).toMatch(/without a reason/);
+  });
 });
 
 describe("check-coverage-ignores CLI", () => {
@@ -79,6 +110,9 @@ describe("check-coverage-ignores CLI", () => {
       "src/node_modules/c.ts": "/* v8 ignore next */\n",
       "src/lib/__tests__/d.ts": "/* v8 ignore next */\n",
       "src/lib/e.test.ts": "/* v8 ignore next */\n",
+      "src/lib/f.ts": "/* node:coverage ignore next */\nx();\n",
+      "src/lib/g.ts": "/* v8 ignore next -- ok reason here */ /* v8 ignore next */\n",
+      "src/lib/h.ts": "/* v8 ignore next -- abc */\n",
     });
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("src/lib/a.ts:2:");
@@ -86,6 +120,9 @@ describe("check-coverage-ignores CLI", () => {
     expect(r.stderr).not.toContain("node_modules");
     expect(r.stderr).not.toContain("__tests__");
     expect(r.stderr).not.toContain("e.test.ts");
-    expect(r.stderr).toContain("2 coverage ignore(s) without a reason");
+    expect(r.stderr).toContain("src/lib/f.ts:1:");
+    expect(r.stderr).toContain("src/lib/g.ts:1:");
+    expect(r.stderr).toContain("src/lib/h.ts:1:");
+    expect(r.stderr).toContain("5 coverage ignore(s) without a reason");
   });
 });

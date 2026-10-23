@@ -6,14 +6,19 @@
  * hides a branch from the 100% gates with no record of whether it is truly
  * untestable or just untested, and the next reader cannot tell.
  *
- * Rule: a `v8 ignore`, `c8 ignore` or `istanbul ignore` hint (next, next N,
- * start, if, else, file) must carry a written reason after `--`:
+ * Rule: a `v8 ignore`, `c8 ignore`, `istanbul ignore` or `node:coverage
+ * ignore` hint (next, next N, start, if, else, file) must carry a written
+ * reason after `--`. These are the four prefixes the coverage remapper
+ * (ast-v8-to-istanbul) honors. Every hint on a line is checked, not just the
+ * first, and the reason must be on the same line as the hint:
  *
  *   /* v8 ignore next -- jsdom has no WebGL context *\/
  *
  * `ignore stop` closes a block and needs no reason of its own. The reason
- * must contain at least one word (3+ letters) so `-- x` or `-- todo` style
- * placeholders do not pass.
+ * must be a real explanation: at least two words (each with 2+ letters) and
+ * at least 10 characters, and not a placeholder, so `-- x`, `-- abc` or
+ * `-- todo` do not pass. A reason wrapped onto the next line of a block
+ * comment is reported as missing; keep it on the hint's line.
  *
  * Scans: src/, api/, functions/src/ and scripts/ (the code our coverage and
  * lint gates cover). Test files (`__tests__/`, `*.test.*`) are skipped: they
@@ -33,7 +38,9 @@ const SKIP_DIRS = new Set(["node_modules", "dist", "coverage", "__fixtures__", "
 const EXTENSIONS = /\.(ts|tsx|js|jsx|mjs|cjs)$/;
 const TEST_FILE = /\.test\.[cm]?[jt]sx?$/;
 
-const HINT = /\b(?:v8|c8|istanbul)\s+ignore\b(.*)/;
+// Global: a line can carry more than one hint. The capture stops at the end
+// of the enclosing block comment, so a later hint is matched on its own.
+const HINT = /\b(?:v8|c8|istanbul|node:coverage)\s+ignore\b((?:(?!\*\/).)*)/g;
 const STOP = /^\s*stop\b/;
 const PLACEHOLDER = /^(todo|tbd|fixme|reason|n\/?a)$/i;
 
@@ -42,9 +49,21 @@ const PLACEHOLDER = /^(todo|tbd|fixme|reason|n\/?a)$/i;
  * Exported for the unit test.
  */
 export function checkHintLine(line) {
-  const m = HINT.exec(line);
-  if (!m) return null;
-  const rest = m[1].replace(/\*\/.*$/, "");
+  for (const m of line.matchAll(HINT)) {
+    const problem = checkHintRest(m[1]);
+    if (problem) return problem;
+  }
+  return null;
+}
+
+/** Minimum bar for a reason: two real words and 10+ characters. */
+function isRealReason(reason) {
+  if (reason.length < 10 || PLACEHOLDER.test(reason)) return false;
+  const words = reason.split(/\s+/).filter((w) => /[A-Za-z]{2,}/.test(w));
+  return words.length >= 2;
+}
+
+function checkHintRest(rest) {
   if (STOP.test(rest)) return null;
   const sep = rest.indexOf("--");
   if (sep === -1) return "coverage ignore without a reason (add `-- why this cannot be tested`)";
@@ -52,8 +71,8 @@ export function checkHintLine(line) {
     .slice(sep + 2)
     .replace(/@preserve/g, "")
     .trim();
-  if (!/[A-Za-z]{3,}/.test(reason) || PLACEHOLDER.test(reason)) {
-    return "coverage ignore reason is empty or a placeholder";
+  if (!isRealReason(reason)) {
+    return "coverage ignore reason is empty, a placeholder or too short (explain why in a few words)";
   }
   return null;
 }
