@@ -145,7 +145,7 @@ export const FIRESTORE_ERASURE: Readonly<Record<string, ErasureEntry>> = {
 /** Storage, keyed by top-level folder (see storage.rules). */
 export const STORAGE_ERASURE: Readonly<Record<string, ErasureEntry>> = {
   games: { action: "delete", why: "videos of every game the orchestrator deletes" },
-  users: { action: "delete", why: "avatar and banner" },
+  users: { action: "delete", why: "the whole users/{uid}/ folder: avatar, banner and resize-extension thumbnails" },
   closetDesigns: { action: "delete", why: "Closet Studio artwork" },
   userClips: { action: "delete", why: "private clip uploads" },
   approvedClips: { action: "delete", why: "approved clip videos" },

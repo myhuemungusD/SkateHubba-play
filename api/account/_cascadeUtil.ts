@@ -113,25 +113,69 @@ export async function deleteIfPresent(db: Firestore, collectionName: string, uid
   return 1;
 }
 
+/** Objects listed per `getFiles` page. GCS caps a page at 1000. */
+const STORAGE_LIST_PAGE_SIZE = 1000;
+
 /**
  * Delete every object under a Storage prefix.
  *
- * `deleteFiles` paginates internally. A missing prefix is not an error — it
- * resolves with nothing deleted, which is exactly the resumed-run case.
+ * Lists one page at a time (`autoPaginate: false` + `pageToken`) so a heavy
+ * prefix never has to sit in memory as one array, and so every page is
+ * provably visited. GCS page tokens are positional (lexicographic), so
+ * deleting a page before fetching the next one does not skip objects. A
+ * missing prefix is not an error — it resolves with nothing deleted, which is
+ * exactly the resumed-run case.
+ *
+ * A list or delete failure throws. The caller turns that into
+ * `erasure_failed` and never reports success.
  */
 export async function deletePrefix(deps: CascadeDeps, prefix: string): Promise<number> {
   const bucket = deps.storage.bucket(deps.bucketName);
-  const [files] = await bucket.getFiles({ prefix });
-  // Bounded fan-out. A heavy account (many finished games x turns) can hold
-  // hundreds of objects; firing every delete at once invites GCS rate limits,
-  // and because this phase runs first, a single 429 would abort the cascade
-  // before any Firestore document is touched — every retry replaying the same
-  // burst. Chunking keeps a big account deletable.
-  for (let i = 0; i < files.length; i += STORAGE_DELETE_CONCURRENCY) {
-    const chunk = files.slice(i, i + STORAGE_DELETE_CONCURRENCY);
-    await Promise.all(chunk.map((f) => withStorageRetry(() => f.delete({ ignoreNotFound: true }))));
+  let deleted = 0;
+  let pageToken: string | undefined;
+  do {
+    const [files, nextQuery] = await bucket.getFiles({
+      prefix,
+      autoPaginate: false,
+      maxResults: STORAGE_LIST_PAGE_SIZE,
+      ...(pageToken ? { pageToken } : {}),
+    });
+    // Bounded fan-out. A heavy account (many finished games x turns) can hold
+    // hundreds of objects; firing every delete at once invites GCS rate limits,
+    // and because this phase runs first, a single 429 would abort the cascade
+    // before any Firestore document is touched — every retry replaying the same
+    // burst. Chunking keeps a big account deletable.
+    for (let i = 0; i < files.length; i += STORAGE_DELETE_CONCURRENCY) {
+      const chunk = files.slice(i, i + STORAGE_DELETE_CONCURRENCY);
+      await Promise.all(chunk.map((f) => withStorageRetry(() => f.delete({ ignoreNotFound: true }))));
+    }
+    deleted += files.length;
+    const next = (nextQuery as { pageToken?: unknown } | null | undefined)?.pageToken;
+    pageToken = typeof next === "string" && next.length > 0 ? next : undefined;
+  } while (pageToken !== undefined);
+  return deleted;
+}
+
+/**
+ * The Storage folder that belongs to one account: `users/{uid}/`.
+ *
+ * Everything the app or a Firebase extension writes for a profile lives here:
+ * `avatar.{webp,jpeg,png}`, `banner.webp`, and the Resize Images extension's
+ * `avatar_200x200.webp` / `banner_200x200.webp` thumbnails (G8). Deleting the
+ * whole folder means a new extension size or output subfolder is covered
+ * without another code change.
+ *
+ * The trailing `/` is load-bearing: GCS prefixes are plain string prefixes,
+ * so `users/abc` would also match `users/abcd/...` — another account. A uid
+ * that is empty or holds a `/` is refused outright, since either would widen
+ * the prefix beyond one account (an empty uid gives `users//`, a uid like
+ * `a/..` is not a Firebase uid at all).
+ */
+export function userStoragePrefix(uid: string): string {
+  if (typeof uid !== "string" || uid.length === 0 || uid.includes("/")) {
+    throw new Error("userStoragePrefix: refusing an empty or path-like uid");
   }
-  return files.length;
+  return `users/${uid}/`;
 }
 
 /**

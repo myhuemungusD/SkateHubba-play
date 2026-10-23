@@ -6,6 +6,7 @@
  * NOT YET DEPLOYED — stubbed behind WTT_ENABLED flag.
  */
 
+import { isCronAuthorized } from "./_cronAuth.js";
 import { wttFailureResponse } from "./_wttFailure.js";
 
 // WTT_ENABLED would be imported from config when this is deployed
@@ -17,13 +18,21 @@ const WTT_ENABLED = false;
  *
  * Should be triggered hourly via GitHub Actions or similar scheduler.
  */
-export default async function buildWttItems(req: Request): Promise<Response> {
-  if (req.method !== "GET" && req.method !== "POST") {
-    return Response.json({ error: "Method not allowed" }, { status: 405 });
+export async function buildWttItems(req: Request): Promise<Response> {
+  // Auth first, then verb, like the other crons: an unauthenticated caller
+  // gets 401 and never learns which verbs are allowed.
+  if (!isCronAuthorized(req)) {
+    return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  // GET only, like the live crons (Vercel Cron sends GET); POST included gets 405.
+  if (req.method !== "GET") {
+    return Response.json({ error: "method_not_allowed" }, { status: 405 });
+  }
+
+  // Disabled: return at once with 204 No Content. Nothing to do, nothing to say.
   if (!WTT_ENABLED) {
-    return Response.json({ message: "WTT disabled", processed: 0 });
+    return new Response(null, { status: 204 });
   }
 
   console.log("[WTT] Starting buildWttItems cron");
@@ -69,3 +78,12 @@ export default async function buildWttItems(req: Request): Promise<Response> {
     return wttFailureResponse("wtt_build_items_failed", error, "Failed to build WTT items");
   }
 }
+
+/**
+ * Web-signature export. Vercel treats a default-exported *function* as a Node
+ * `(req, res)` handler and ignores its return value, so a function that
+ * returns a `Response` never ends `res` and the request hangs until the
+ * function times out. `export default { fetch }` is the Web `Request` ->
+ * `Response` form Vercel's Node.js runtime awaits and sends.
+ */
+export default { fetch: buildWttItems };
