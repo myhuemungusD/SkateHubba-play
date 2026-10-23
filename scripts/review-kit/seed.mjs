@@ -12,6 +12,8 @@
  * Application Default Credentials, like the other admin scripts. Safe to
  * re-run: deterministic doc ids, password and data are reset each time.
  * The account gets public features only (no featureTesters entry).
+ * Production gets no feed clips, map spots, passport stamps or Closet items;
+ * only --emulator seeds those, for screenshots.
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -45,7 +47,7 @@ export async function main(argv = process.argv.slice(2), env = process.env, admi
     uid = dry
       ? "(new uid)"
       : (await admin.auth.createUser({ email: cfg.email, password: cfg.password, emailVerified: true })).uid;
-    console.log("[review:seed] created reviewer account");
+    console.log(`[review:seed] ${dry ? "would create" : "created"} reviewer account`);
   }
   const videoUrl = dry ? undefined : await uploadDemoVideo(admin);
   const docs = buildSeedDocs({
@@ -55,6 +57,7 @@ export async function main(argv = process.argv.slice(2), env = process.env, admi
     appUrl: cfg.appUrl,
     tutorialVersion: tutorialVersion(),
     tipsDisabled: emulator !== null,
+    includeEmulatorOnly: emulator !== null,
   });
   // Logs carry counts only. Doc paths embed the reviewer uid and username,
   // and nothing derived from the REVIEW_* env (credentials) is ever printed.
