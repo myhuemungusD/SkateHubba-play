@@ -120,10 +120,19 @@ describe("Smoke: Profile Setup", () => {
     asUnverifiedUser(newProfile);
     withGames([]);
 
+    await userEvent.click(screen.getByTestId("terms-accept"));
     await userEvent.click(screen.getByText("Lock It In"));
 
     await waitFor(() => {
-      expect(users.refs.createProfile).toHaveBeenCalledWith("u1", "newsk8r", "Regular", false, "2000-01-15", false);
+      expect(users.refs.createProfile).toHaveBeenCalledWith(
+        "u1",
+        "newsk8r",
+        "Regular",
+        false,
+        "2000-01-15",
+        false,
+        true,
+      );
     });
   });
 
@@ -159,6 +168,7 @@ describe("Smoke: Profile Setup", () => {
     await userEvent.type(screen.getByLabelText("Birth month"), "01");
     await userEvent.type(screen.getByLabelText("Birth day"), "15");
     await userEvent.type(screen.getByLabelText("Birth year"), "2000");
+    await userEvent.click(screen.getByTestId("terms-accept"));
     await userEvent.click(screen.getByText("Lock It In"));
 
     await waitFor(() => {

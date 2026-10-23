@@ -30,7 +30,7 @@ interface Props {
 const UNAVAILABLE = "—";
 
 function SectionLabel({ title }: { title: string }) {
-  return <p className="font-display text-[10px] tracking-[0.2em] text-brand-orange mb-2.5 mt-6 first:mt-0">{title}</p>;
+  return <p className="font-display text-[11px] tracking-[0.2em] text-brand-orange mb-2.5 mt-6 first:mt-0">{title}</p>;
 }
 
 /**
@@ -45,7 +45,7 @@ function Metric({ label, value, suffix }: { label: string; value: string | numbe
       <p className={`font-display text-xl leading-none tabular-nums ${value === null ? "text-subtle" : "text-white"}`}>
         {shown}
       </p>
-      <p className="font-body text-[10px] uppercase tracking-wider text-subtle mt-1.5">{label}</p>
+      <p className="font-body text-[11px] uppercase tracking-wider text-subtle mt-1.5">{label}</p>
     </div>
   );
 }

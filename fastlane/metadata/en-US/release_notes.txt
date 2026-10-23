@@ -1,1 +1,7 @@
-First release: a game of S.K.A.T.E. over video. One-take turns filmed in the app, 24-hour to 7-day turn clocks, an optional referee or community vote on disputed makes, your record with head-to-head, and the spot passport.
+1.2.0 is here.
+- S.K.A.T.E. over video: one take per turn, filmed right in the app.
+- Pick your turn clock: 24 hours, 3 days or 7 days.
+- Disputed make? Call in a ref or let the community vote.
+- Your record, with head-to-head against every skater you've played.
+- Spot passport: check in at spots and stack them up.
+- New icon, easier-to-read text and a bunch of fixes.

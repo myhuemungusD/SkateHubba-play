@@ -62,7 +62,7 @@ export function ClipReviewPanel() {
   return (
     <section aria-label="Clips in review">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="font-display text-[10px] tracking-[0.2em] text-brand-orange">CLIPS IN REVIEW</h2>
+        <h2 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">CLIPS IN REVIEW</h2>
         <button
           type="button"
           onClick={() => setReloadKey((key) => key + 1)}

@@ -44,8 +44,21 @@ describe("BootLanding", () => {
   it("paints the auth shell copy before Firebase loads", () => {
     renderAt("/auth");
     expect(
-      screen.getByText("Join the crew. It's free. We collect your DOB to comply with COPPA & CCPA."),
+      screen.getByText("Join the crew. It's free. We ask for your birthday to keep SkateHubba 13+."),
     ).toBeInTheDocument();
+  });
+
+  it("shows the Terms agreement on the auth shell and links to the legal pages", async () => {
+    renderAt("/auth");
+    expect(screen.getByTestId("terms-agreement-notice")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("link", { name: "Terms" }));
+    expect(screen.getByTestId("path")).toHaveTextContent("/terms");
+  });
+
+  it("routes the auth shell Privacy Policy link to /privacy", async () => {
+    renderAt("/auth");
+    await userEvent.click(screen.getByRole("link", { name: "Privacy Policy" }));
+    expect(screen.getByTestId("path")).toHaveTextContent("/privacy");
   });
 
   it("keeps typed auth-shell values for the handoff", async () => {

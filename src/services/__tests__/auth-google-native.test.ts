@@ -19,7 +19,9 @@ const {
   mockNativeSignInWithGoogle,
   mockNativeSignOut,
   mockGoogleCredentialFactory,
+  mockGetRedirectResult,
 } = vi.hoisted(() => ({
+  mockGetRedirectResult: vi.fn(),
   mockSignInWithPopup: vi.fn(),
   mockSignInWithRedirect: vi.fn(),
   mockSignInWithCredential: vi.fn(),
@@ -50,10 +52,10 @@ vi.mock("firebase/auth", () => {
         return {};
       }
     },
+    getRedirectResult: (...args: unknown[]) => mockGetRedirectResult(...args),
     signInWithPopup: (...args: unknown[]) => mockSignInWithPopup(...args),
     signInWithRedirect: (...args: unknown[]) => mockSignInWithRedirect(...args),
     signInWithCredential: (...args: unknown[]) => mockSignInWithCredential(...args),
-    getRedirectResult: vi.fn(),
     createUserWithEmailAndPassword: vi.fn(),
     signInWithEmailAndPassword: vi.fn(),
     signOut: (...args: unknown[]) => mockSignOut(...args),
@@ -76,7 +78,7 @@ vi.mock("@capacitor-firebase/authentication", () => ({
 
 vi.mock("../../firebase");
 
-import { signInWithGoogle, signOut } from "../auth";
+import { resolveGoogleRedirect, signInWithGoogle, signOut } from "../auth";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -172,5 +174,24 @@ describe("signOut (native)", () => {
     await expect(signOut()).resolves.toBeUndefined();
     expect(mockNativeSignOut).toHaveBeenCalledTimes(1);
     expect(mockSignOut).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("resolveGoogleRedirect (native)", () => {
+  it("skips getRedirectResult on native, where it throws auth/argument-error on launch", async () => {
+    mockGetRedirectResult.mockRejectedValue(
+      Object.assign(new Error("argument-error"), { code: "auth/argument-error" }),
+    );
+
+    await expect(resolveGoogleRedirect()).resolves.toBeNull();
+    expect(mockGetRedirectResult).not.toHaveBeenCalled();
+  });
+
+  it("still checks the redirect result on the web", async () => {
+    mockIsNativePlatform.mockReturnValue(false);
+    mockGetRedirectResult.mockResolvedValue(null);
+
+    await expect(resolveGoogleRedirect()).resolves.toBeNull();
+    expect(mockGetRedirectResult).toHaveBeenCalledTimes(1);
   });
 });

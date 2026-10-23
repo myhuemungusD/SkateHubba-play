@@ -49,6 +49,7 @@ import { ProfileCustomizeSheet } from "./components/custom/ProfileCustomizeSheet
 import { gradientCss, type SectionId } from "../../services/profileCustom";
 import { SpotPassport } from "../../components/SpotPassport";
 import { isMapCheckinsEnabled } from "../../lib/featureFlags";
+import { isClosetEnabled } from "../../lib/featureFlags";
 
 /**
  * Streak length before the banner appears. A "1 win streak" is just a win —
@@ -388,7 +389,7 @@ export function PlayerProfileScreen({
                       pinnedItems={c.pinnedItems}
                       isOwnProfile={isOwnProfile}
                     />
-                    <ClosetShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} />
+                    {isClosetEnabled() && <ClosetShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} />}
                   </>
                 )}
                 {id === "crew" && hasViewer && (
@@ -420,7 +421,7 @@ export function PlayerProfileScreen({
               onTileTap={handleTileTap}
             />
 
-            <ClosetShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} />
+            {isClosetEnabled() && <ClosetShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} />}
 
             {/* Owner-only: advertising an unbuilt feature on someone else's public
               profile is noise to every visitor but the owner. */}

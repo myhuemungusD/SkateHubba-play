@@ -82,6 +82,8 @@ export async function completeProfileSetup(page: Page, username: string): Promis
   await page.getByPlaceholder("sk8legend").fill(username);
   // Wait for availability check to resolve (debounced 400 ms).
   await expect(page.getByText(`@${username} is available ✓`)).toBeVisible({ timeout: 5_000 });
+  // Required Terms agreement (App Review 1.2).
+  await page.getByTestId("terms-accept").check();
   await page.getByRole("button", { name: "Lock It In" }).click();
   await expectOnLobby(page);
 }

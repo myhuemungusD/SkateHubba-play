@@ -201,7 +201,7 @@ function DisputeTallyMeter({ tally, ownVerdict }: { tally: DisputeTally; ownVerd
         </p>
         {ownVerdict && (
           <span
-            className={`rounded-md border px-2 py-1 font-display text-[10px] tracking-[0.15em] ${
+            className={`rounded-md border px-2 py-1 font-display text-[11px] tracking-[0.15em] ${
               ownVerdict === "land"
                 ? "border-brand-green/40 bg-brand-green/10 text-brand-green"
                 : "border-brand-red/40 bg-brand-red/10 text-brand-red"

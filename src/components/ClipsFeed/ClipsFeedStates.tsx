@@ -13,7 +13,7 @@ export function ClipsFeedError({
   return (
     <div className="glass-card rounded-2xl p-5 mb-3 border border-brand-red/30">
       <p className="font-body text-sm text-white/80 mb-3">{error}</p>
-      {errorCode && import.meta.env.DEV && <p className="font-body text-[10px] text-faint mb-3">code: {errorCode}</p>}
+      {errorCode && import.meta.env.DEV && <p className="font-body text-[11px] text-faint mb-3">code: {errorCode}</p>}
       <Btn onClick={onRetry} variant="secondary">
         Try again
       </Btn>
