@@ -113,6 +113,25 @@ describe("ProfileSetup", () => {
     );
   });
 
+  it("names the Terms checkbox with its full label and flags it invalid after an unchecked submit", async () => {
+    render(<ProfileSetup {...defaultProps} />);
+    await typeAvailableUsername();
+    // No aria-label override: VoiceOver reads the zero-tolerance sentence too.
+    const box = screen.getByRole("checkbox", { name: /Zero tolerance for objectionable content or abusive users/ });
+    expect(box).not.toHaveAttribute("aria-label");
+    expect(box).not.toHaveAttribute("aria-invalid");
+    expect(box).not.toHaveAttribute("aria-describedby");
+
+    await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
+    expect(box).toHaveAttribute("aria-invalid", "true");
+    expect(box).toHaveAccessibleDescription("Agree to the Terms and Privacy Policy to continue");
+
+    await userEvent.click(box);
+    expect(box).not.toHaveAttribute("aria-invalid");
+    expect(box).not.toHaveAttribute("aria-describedby");
+    expect(screen.queryByText("Agree to the Terms and Privacy Policy to continue")).not.toBeInTheDocument();
+  });
+
   it("links the Terms and Privacy Policy from the checkbox and routes them in-app", async () => {
     const onNavLegal = vi.fn();
     render(<ProfileSetup {...defaultProps} onNavLegal={onNavLegal} />);
