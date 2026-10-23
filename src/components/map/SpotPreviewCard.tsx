@@ -130,7 +130,7 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
                 so users coming in from a direct URL know why the card matters. */}
             {isActiveGame && (
               <div
-                className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold tracking-wide
+                className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold tracking-wide
                            uppercase text-[#F97316]"
                 data-testid="active-game-badge"
               >

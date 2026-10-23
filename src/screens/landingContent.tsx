@@ -20,7 +20,7 @@ export const HOW_IT_WORKS = [
   {
     step: "02",
     label: "Send the Challenge",
-    desc: "Call out your opponent. They got 24 hours to match it or eat a letter.",
+    desc: "Call out your opponent. They got till the clock runs out (24 hours to 7 days) to match it or eat a letter.",
     circleClass:
       "bg-[radial-gradient(circle,#FF853318,#FF853308)] border border-[#FF853325] shadow-[0_0_30px_#FF853310]",
     numClass: "text-[#FF8533]",

@@ -146,6 +146,22 @@ export interface UserProfile {
   profileImageUrl?: string | null;
   /** Profile banner URL, pinned to `users/{uid}/banner.webp` (see banners.ts). */
   bannerImageUrl?: string | null;
+  /**
+   * Internal QA / test account. Set only by the Admin SDK
+   * (scripts/set-test-account.mjs); the rules deny it on client create and
+   * update. Absent means a real player. Public lists skip these accounts.
+   */
+  isTestAccount?: boolean;
+}
+
+/**
+ * Public lists (directory, opponent pickers, leaderboard) skip test accounts.
+ * Filtered here rather than in the query: `where("isTestAccount", "!=", true)`
+ * would drop every doc that lacks the field, which is every real player, and
+ * would need a composite index with each list's orderBy.
+ */
+function isPubliclyListed(p: UserProfile): boolean {
+  return p.isTestAccount !== true;
 }
 
 /**
@@ -192,6 +208,13 @@ interface UserPrivateProfile {
   /** Policy version the skater agreed to, e.g. "2026-10-10". */
   trainingConsentPolicyVersion?: string;
   trainingConsentUpdatedAt?: FieldValue;
+  /**
+   * Server time the skater ticked "I agree to the Terms of Service and
+   * Privacy Policy" on ProfileSetup (App Review 1.2). Written once by
+   * `createProfile`. Absent on accounts created before 1.2.0; nothing gates
+   * on it, so those accounts are never locked out or re-prompted.
+   */
+  termsAcceptedAt?: FieldValue;
   /** Set when they turn the opt-in off. The cron uses this via the revocation doc. */
   trainingConsentRevokedAt?: FieldValue | null;
   /** Set the first time the post-game prompt is dismissed, so it stays one-time. */
@@ -339,6 +362,14 @@ export class AgeVerificationRequiredError extends Error {
   }
 }
 
+/** Thrown by createProfile when the Terms checkbox wasn't ticked. */
+export class TermsAcceptanceRequiredError extends Error {
+  constructor() {
+    super("Agree to the Terms and Privacy Policy to continue");
+    this.name = "TermsAcceptanceRequiredError";
+  }
+}
+
 export async function createProfile(
   uid: string,
   username: string,
@@ -355,6 +386,8 @@ export async function createProfile(
   _emailVerified = false,
   dob?: string,
   parentalConsent?: boolean,
+  /** The ProfileSetup Terms checkbox. Required: new profiles record termsAcceptedAt. */
+  termsAccepted = false,
 ): Promise<UserProfile> {
   const normalized = username.toLowerCase().trim();
 
@@ -363,6 +396,13 @@ export async function createProfile(
   // gate) are rejected here — the service is the canonical enforcement point.
   if (!dob || !DOB_RE.test(dob)) {
     throw new AgeVerificationRequiredError();
+  }
+
+  // App Review 1.2: a new account must agree to the Terms (which ban
+  // objectionable content) before it can post. Enforced here as well as in
+  // the form so no future caller can skip it.
+  if (!termsAccepted) {
+    throw new TermsAcceptanceRequiredError();
   }
 
   if (normalized.length < USERNAME_MIN || normalized.length > USERNAME_MAX) {
@@ -420,6 +460,7 @@ export async function createProfile(
     const privateData: UserPrivateProfile = {
       dob,
       ...(parentalConsent !== undefined ? { parentalConsent } : {}),
+      termsAcceptedAt: serverTimestamp(),
     };
     tx.set(privateRef, privateData, { merge: true });
 
@@ -437,7 +478,7 @@ export async function createProfile(
 export async function getPlayerDirectory(): Promise<UserProfile[]> {
   const q = query(collection(requireDb(), "users"), orderBy("createdAt", "desc"), limit(100));
   const snap = await withRetry(() => getDocs(q));
-  return snap.docs.map((d) => d.data() as UserProfile);
+  return snap.docs.map((d) => d.data() as UserProfile).filter(isPubliclyListed);
 }
 
 /**
@@ -475,7 +516,7 @@ const LEADERBOARD_CANDIDATE_POOL = LEADERBOARD_SIZE * 4;
 export async function getLeaderboard(): Promise<UserProfile[]> {
   const q = query(collection(requireDb(), "users"), orderBy("wins", "desc"), limit(LEADERBOARD_CANDIDATE_POOL));
   const snap = await withRetry(() => getDocs(q));
-  const profiles = snap.docs.map((d) => d.data() as UserProfile);
+  const profiles = snap.docs.map((d) => d.data() as UserProfile).filter(isPubliclyListed);
 
   return profiles
     .sort((a, b) => {
