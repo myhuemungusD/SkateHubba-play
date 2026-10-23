@@ -8,7 +8,9 @@ HOW IT WORKS
 • Spell S.K.A.T.E. and the game's over.
 
 ONE TAKE
-Game turns are filmed in the app in one continuous take, so the clip is the proof: no camera-roll uploads and no edits on a turn. Clips you post to the feed are different: import from your library and trim them in the clip editor.
+Game turns are filmed in the app in one continuous take. No camera-roll uploads, no edits on a turn. The clip is the proof.
+
+Feed clips are your call. Pull footage from your camera roll and cut it in the clip editor.
 
 ON YOUR CLOCK
 Pick 24 hours, 3 days or 7 days a turn when you start a game. You get a notification when it's your move.

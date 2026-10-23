@@ -1,4 +1,4 @@
-/* Styles for /support.html. External, not inline: the CSP's style-src is 'self' (vercel.json). */
+/* Styles for /support.html. External, not inline: the CSP's style-src is 'self' (vercel.json). /support and /support/ redirect here (vercel.json), so no SPA route is needed. */
 :root {
   color-scheme: dark;
 }
