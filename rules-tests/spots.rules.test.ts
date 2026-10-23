@@ -65,7 +65,7 @@ function makeValidComment(uid: string, overrides: Record<string, unknown> = {}):
   return {
     userId: uid,
     content: "good spot",
-    createdAt: new Date(),
+    createdAt: serverTimestamp(),
     ...overrides,
   };
 }
@@ -453,6 +453,21 @@ describe("spots/{id}/comments", () => {
     });
     const admin = testEnv.authenticatedContext("admin-uid", { email_verified: true, admin: true });
     await assertSucceeds(deleteDoc(doc(admin.firestore(), "spots", SPOT_ID, "comments", "c1")));
+  });
+
+  it("rejects a client-chosen createdAt or an unknown field", async () => {
+    const col = collection(asOtherVerified().firestore(), "spots", SPOT_ID, "comments");
+    await assertFails(addDoc(col, makeValidComment(OTHER_UID, { createdAt: new Date(0) })));
+    await assertFails(addDoc(col, makeValidComment(OTHER_UID, { pinned: true })));
+  });
+
+  it("rejects a handle when the author has no profile handle to match", async () => {
+    await assertFails(
+      addDoc(
+        collection(asOtherVerified().firestore(), "spots", SPOT_ID, "comments"),
+        makeValidComment(OTHER_UID, { username: "stranger" }),
+      ),
+    );
   });
 
   it("accepts the author's real handle and rejects a borrowed one", async () => {

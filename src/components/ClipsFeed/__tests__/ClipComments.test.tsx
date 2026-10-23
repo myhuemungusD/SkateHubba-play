@@ -19,6 +19,7 @@ function renderSheet(
   onClose = vi.fn(),
   onReport?: () => void,
   onReportComment?: (c: ReturnType<typeof comment>) => void,
+  onViewPlayer?: (uid: string) => void,
 ) {
   render(
     <ClipComments
@@ -28,6 +29,7 @@ function renderSheet(
       onClose={onClose}
       onReport={onReport}
       onReportComment={onReportComment}
+      onViewPlayer={onViewPlayer}
     />,
   );
   return { onClose };
@@ -177,6 +179,16 @@ describe("ClipComments", () => {
     expect(buttons).toHaveLength(1);
     await user.click(buttons[0]!);
     expect(onReportComment).toHaveBeenCalledWith(other);
+  });
+
+  it("opens a comment author's profile from their handle", async () => {
+    const user = userEvent.setup();
+    const other = comment();
+    mockFetch.mockResolvedValueOnce({ comments: [other], cursor: null });
+    const onViewPlayer = vi.fn();
+    renderSheet("me", vi.fn(), undefined, undefined, onViewPlayer);
+    await user.click(await screen.findByRole("button", { name: `View @${other.username}'s profile` }));
+    expect(onViewPlayer).toHaveBeenCalledWith(other.userId);
   });
 
   it("shows no per-comment report without a handler", async () => {

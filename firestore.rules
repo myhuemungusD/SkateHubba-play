@@ -7,6 +7,8 @@ service cloud.firestore {
     function fsGetAfter(c, id) { return getAfter(/databases/$(database)/documents/$(c)/$(id)); }
     function fsExists(c, id) { return exists(/databases/$(database)/documents/$(c)/$(id)); }
     function fsExistsAfter(c, id) { return existsAfter(/databases/$(database)/documents/$(c)/$(id)); }
+    // A comment under a clip or spot: kind is "clips" or "spots".
+    function commentDoc(kind, parentId, commentId) { return get(/databases/$(database)/documents/$(kind)/$(parentId)/comments/$(commentId)); }
 
 
     // ── Project bucket name (audit S5+S12, PR-B) ──
@@ -2557,6 +2559,8 @@ service cloud.firestore {
         allow create: if isSignedIn()
           && notBanned()
           && request.auth.token.email_verified == true
+          && request.resource.data.keys().hasOnly(['userId', 'content', 'createdAt', 'username'])
+          && request.resource.data.createdAt == request.time
           && request.resource.data.userId == request.auth.uid
           && request.resource.data.content is string
           && request.resource.data.content.size() >= 1
@@ -3001,12 +3005,12 @@ service cloud.firestore {
               && (
                 ('clipId' in request.resource.data
                   && !('spotId' in request.resource.data)
-                  && get(/databases/$(database)/documents/clips/$(request.resource.data.clipId)/comments/$(request.resource.data.commentId)).data.userId == request.resource.data.reportedUid
-                  && get(/databases/$(database)/documents/clips/$(request.resource.data.clipId)/comments/$(request.resource.data.commentId)).data.text == request.resource.data.commentText)
+                  && commentDoc('clips', request.resource.data.clipId, request.resource.data.commentId).data.userId == request.resource.data.reportedUid
+                  && commentDoc('clips', request.resource.data.clipId, request.resource.data.commentId).data.text == request.resource.data.commentText)
                 || ('spotId' in request.resource.data
                   && !('clipId' in request.resource.data)
-                  && get(/databases/$(database)/documents/spots/$(request.resource.data.spotId)/comments/$(request.resource.data.commentId)).data.userId == request.resource.data.reportedUid
-                  && get(/databases/$(database)/documents/spots/$(request.resource.data.spotId)/comments/$(request.resource.data.commentId)).data.content == request.resource.data.commentText)
+                  && commentDoc('spots', request.resource.data.spotId, request.resource.data.commentId).data.userId == request.resource.data.reportedUid
+                  && commentDoc('spots', request.resource.data.spotId, request.resource.data.commentId).data.content == request.resource.data.commentText)
               ))
         )
         && (

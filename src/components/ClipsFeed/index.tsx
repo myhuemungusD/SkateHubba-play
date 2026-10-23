@@ -228,6 +228,10 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
           setCommentsTarget(null);
           setCommentReport(target);
         }}
+        onViewPlayer={(playerUid) => {
+          setCommentsTarget(null);
+          onViewPlayer(playerUid);
+        }}
         uploadOpen={uploadOpen}
         onCloseUpload={() => setUploadOpen(false)}
         onPosted={() => {
