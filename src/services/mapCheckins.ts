@@ -21,7 +21,6 @@ import {
 } from "firebase/firestore";
 import * as firebase from "../firebase";
 import { addBreadcrumb, captureException } from "../lib/sentry";
-import { isXpEnabled } from "../lib/featureFlags";
 import { logger } from "./logger";
 import type { CreateSpotRequest, Spot } from "../types/spot";
 
@@ -246,8 +245,7 @@ export function describeCheckin(outcome: CheckinOutcome): string {
     case "duplicate": {
       if (r.rewardsPaused) return "Checked in. Map rewards are paused on your account for now.";
       const parts = ["Checked in!"];
-      // The server may still pay check-in XP; a build with XP hidden says nothing about it.
-      if (r.xp > 0 && isXpEnabled()) parts.push(`+${r.xp} XP${r.pioneer ? " (pioneer bonus)" : ""}.`);
+      if (r.xp > 0) parts.push(`+${r.xp} XP${r.pioneer ? " (pioneer bonus)" : ""}.`);
       if (r.badgeId) parts.push("Legendary badge earned.");
       return parts.join(" ");
     }

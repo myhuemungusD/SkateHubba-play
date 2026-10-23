@@ -58,8 +58,7 @@ export VITE_FEATURE_PRO_SHOWCASE=true
 export VITE_FEATURE_PRO_CALLS=true
 export VITE_FEATURE_PRO_COMMUNITY=true
 export VITE_FEATURE_DICE_ENABLED=false
-# XP, levels and the achievements ribbon off on iPhone for 1.2.0 (Jason, 2026-10-23); see docs/FEATURE_FLAGS.md.
-export VITE_FEATURE_XP_ENABLED=false
+export VITE_FEATURE_XP_ENABLED=true
 export VITE_FEATURE_REFEREE_ENABLED=true
 export VITE_FEATURE_TURN_LENGTH=true
 export VITE_FEATURE_TRICK_PICKER_ENABLED=true

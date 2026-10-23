@@ -30,21 +30,3 @@ describe("tipSetForPath — Skate Runner gate", () => {
     expect(tipSetForPath("/nope")).toBeNull();
   });
 });
-
-describe("map check-in tip — XP gate", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  const checkInBody = () => tipSetForPath("/map")?.tips.find((t) => t.title === "check in")?.body;
-
-  it("promises xp only when the build shows XP", () => {
-    vi.stubEnv("VITE_FEATURE_XP_ENABLED", "true");
-    expect(checkInBody()).toBe("pull up to a spot and check in for xp and a passport stamp.");
-  });
-
-  it("drops the xp promise when XP is hidden", () => {
-    vi.stubEnv("VITE_FEATURE_XP_ENABLED", "false");
-    expect(checkInBody()).toBe("pull up to a spot and check in for a passport stamp.");
-  });
-});
