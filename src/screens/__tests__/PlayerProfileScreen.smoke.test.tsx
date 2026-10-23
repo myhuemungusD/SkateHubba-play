@@ -24,6 +24,7 @@ import {
  *   - "Share my profile" (own-profile) Web Share / clipboard fallback.
  *   - Placeholder section visibility rules (achievements / added-spots).
  *   - Custom avatar image rendering from `profileImageUrl`.
+ *   - XP surfaces (level chip, XP bar, ribbon) in both XP flag states.
  *
  * Assertions are outcome-based (telemetry args, visible copy, callback
  * invocation) so they survive internal refactors of the controller/components.
@@ -285,5 +286,48 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
     render(<PlayerProfileScreen {...props} currentUserProfile={{ ...viewerProfile, profileImageUrl: null }} />);
     // Fallback chain: no profileImageUrl → first-letter circle ("V" for viewer).
     expect(screen.getByText("V")).toBeInTheDocument();
+  });
+});
+
+/**
+ * The profile XP surfaces (level chip, the "L1 · 0 / 24 XP" progress line,
+ * the achievements ribbon) are gated on isXpEnabled() alone: no platform
+ * check, so a local Xcode archive and the CI build behave the same for the
+ * same VITE_FEATURE_XP_ENABLED value. Covered at screen level for both the
+ * viewer's own page and another player's page, in both flag states.
+ */
+describe.each([
+  { label: "own profile", profile: { ...viewerProfile, xp: 0 }, over: {} },
+  {
+    label: "another player's profile",
+    profile: { ...opponentProfile, xp: 0 },
+    over: { viewedUid: opponentProfile.uid, isOwnProfile: false },
+  },
+])("PlayerProfileScreen — XP surfaces on $label", ({ profile, over }) => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    listSpotsByCreator.mockResolvedValue([]);
+    fetchedProfile.mockReturnValue(fetchedState({ profile }));
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("hides the level chip, the XP bar and the achievements ribbon while the XP flag is off", async () => {
+    vi.stubEnv("VITE_FEATURE_XP_ENABLED", "false");
+    render(<PlayerProfileScreen {...props} {...over} />);
+    expect(await screen.findByText(`@${profile.username}`)).toBeInTheDocument();
+    expect(screen.queryByTestId("xp-progress")).toBeNull();
+    expect(screen.queryByText(/\d+ \/ \d+ XP/)).toBeNull();
+    expect(screen.queryByRole("img", { name: /^Level \d+$/ })).toBeNull();
+    expect(screen.queryByTestId("achievements-ribbon")).toBeNull();
+  });
+
+  it("shows the level chip and the XP bar while the XP flag is on", async () => {
+    vi.stubEnv("VITE_FEATURE_XP_ENABLED", "true");
+    render(<PlayerProfileScreen {...props} {...over} />);
+    expect(await screen.findByTestId("xp-progress")).toBeInTheDocument();
+    expect(screen.getByText("0 / 24 XP")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Level 1" })).toBeInTheDocument();
   });
 });
