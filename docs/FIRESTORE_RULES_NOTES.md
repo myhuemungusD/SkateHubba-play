@@ -721,22 +721,18 @@ in the same batch the rule rejects.
 Precedes: `match /pushTargets/{uid} {`
 
 ```text
-── Push targets (cross-readable token mirror) ──
+── Push targets (owner-only token mirror) ──
 The canonical FCM token list lives at users/{uid}/private/profile
-.fcmTokens (owner-only). This mirror exposes the same tokens to any
-signed-in user so a SENDER (game opponent / nominated judge) can
-embed them into a /push_dispatch doc — the Firebase Extension that
-dispatches background push reads `tokens` from each dispatch doc.
+.fcmTokens (owner-only). This mirror carries the same tokens plus
+per-token platform tags for the server push couriers.
 
-Why cross-readable is bounded risk: FCM tokens alone cannot be turned
-into a push attack — the FCM HTTP API requires OAuth2 with the
-project's service account, which only the Extension (running as
-Admin SDK) has. A leaked token can be paired with a uid (privacy
-leak surface) but cannot be abused for push spam by another
-authenticated user. The /push_dispatch create rule below additionally
-requires the sender to be a game participant AND requires
-`tokens.hasOnly(<mirror>)` so a sender cannot inject bogus tokens to
-misroute pushes.
+Owner-only since the 2026-10-21 security audit (M1). It used to be
+readable by any signed-in user so a sender could copy the recipient's
+tokens into its /push_dispatch doc, which leaked every user's device
+tokens to anyone who knew a uid. Now client dispatch docs carry no
+tokens (the /push_dispatch create rule forbids the key) and both
+couriers (functions/src/push/drain.ts, api/cron/drain-push-dispatch.ts)
+look the recipient's tokens up here with the Admin SDK.
 
 Cap mirrors the canonical fcmTokens cap (≤10) — keeps fan-out bounded
 even when a user is signed in on every device they own.
@@ -764,7 +760,8 @@ deployment outside functions/src/, so it slips past the gate cleanly.
 Anti-abuse posture:
  1. Sender must be a signed-in game participant
  2. Recipient must be a participant of the same game (player or judge)
- 3. tokens.hasOnly(<recipient's mirror>) — no token injection
+ 3. No `tokens` key from clients (M1): the courier looks the
+    recipient's devices up itself, so nothing can be injected
  4. Title/body caps mirror /notifications (≤80 / ≤200) to bound payload
  5. Rate anchor: a fresh /notification_limits or /games update by the
     SAME sender for the SAME (game, type) must exist within 10s.

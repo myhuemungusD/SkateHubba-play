@@ -1,5 +1,5 @@
 /**
- * pushTargets/{uid} — cross-readable FCM token mirror.
+ * pushTargets/{uid} — owner-only FCM token mirror (cross-user reads removed 2026-10-21, M1).
  *
  * Red-team the new collection introduced for the firestore-send-fcm
  * dispatch pipeline. The canonical fcmTokens list stays at
@@ -175,16 +175,26 @@ describe("pushTargets — platform tags (dice stays off iPhones)", () => {
 });
 
 describe("pushTargets — reads", () => {
-  it("legitimate: any signed-in user can read another user's mirror", async () => {
-    // The whole point of the mirror is cross-user readability so a sender
-    // can embed the recipient's tokens in a /push_dispatch doc.
+  it("legitimate: the owner can read their own mirror", async () => {
     await getEnv().withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), "pushTargets", OWNER_UID), {
         tokens: ["t1"],
         updatedAt: serverTimestamp(),
       });
     });
-    await assertSucceeds(getDoc(doc(asUser(OTHER_UID).firestore(), "pushTargets", OWNER_UID)));
+    await assertSucceeds(getDoc(doc(asUser(OWNER_UID).firestore(), "pushTargets", OWNER_UID)));
+  });
+
+  it("attack: another signed-in user CANNOT read someone else's device tokens (M1)", async () => {
+    // Security audit 2026-10-21: senders no longer embed tokens in
+    // /push_dispatch; the couriers look them up with the Admin SDK.
+    await getEnv().withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "pushTargets", OWNER_UID), {
+        tokens: ["t1"],
+        updatedAt: serverTimestamp(),
+      });
+    });
+    await assertFails(getDoc(doc(asUser(OTHER_UID).firestore(), "pushTargets", OWNER_UID)));
   });
 
   it("attack: unauthenticated readers cannot read", async () => {

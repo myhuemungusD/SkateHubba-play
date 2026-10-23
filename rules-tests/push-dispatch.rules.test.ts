@@ -9,7 +9,8 @@
  * Properties under test:
  *   1. Sender must own the auth uid
  *   2. Sender + recipient must both be game participants (player OR judge)
- *   3. Tokens MUST be a subset of recipient's /pushTargets mirror
+ *   3. No `tokens` key from clients (M1, 2026-10-21): the courier looks the
+ *      recipient's devices up in the owner-only /pushTargets mirror itself
  *   4. Title ≤ 80, body ≤ 200 (matches /notifications caps)
  *   5. Companion-write rate limit: every dispatch MUST commit a same-batch
  *      /push_dispatch_limits/{senderUid_recipientUid_gameId_type} doc with
@@ -55,7 +56,6 @@ function asUser(uid: string): RulesTestContext {
 
 function validDispatch(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    tokens: ["recipient-token-1"],
     notification: { title: "Your Turn!", body: "Match it" },
     data: { gameId: GAME_ID, type: "your_turn", click_action: `/?game=${GAME_ID}` },
     senderUid: SENDER_UID,
@@ -117,10 +117,9 @@ describe("push_dispatch — happy path", () => {
     await assertSucceeds(commitDispatch(asUser(SENDER_UID).firestore()));
   });
 
-  it("legitimate: dispatch with multiple tokens that ALL appear in the mirror", async () => {
-    await assertSucceeds(
-      commitDispatch(asUser(SENDER_UID).firestore(), { tokens: ["recipient-token-1", "recipient-token-2"] }),
-    );
+  it("legitimate: the sender cannot read the recipient's token mirror, and does not need to", async () => {
+    await assertFails(getDoc(doc(asUser(SENDER_UID).firestore(), "pushTargets", RECIPIENT_UID)));
+    await assertSucceeds(commitDispatch(asUser(SENDER_UID).firestore()));
   });
 });
 
@@ -144,23 +143,17 @@ describe("push_dispatch — sender / recipient gating", () => {
   });
 });
 
-describe("push_dispatch — token integrity", () => {
-  it("attack: sender CANNOT inject a token that is NOT in the recipient's mirror", async () => {
-    // The core abuse this rule blocks: a sender writes their OWN device
-    // token (or one scraped from another collection) and tricks the
-    // Extension into delivering pushes to the wrong device.
-    await assertFails(
-      commitDispatch(asUser(SENDER_UID).firestore(), { tokens: ["recipient-token-1", "spoofed-token"] }),
-    );
+describe("push_dispatch — no client-named tokens (M1)", () => {
+  it("attack: a dispatch naming a token that IS in the recipient's mirror is still denied", async () => {
+    await assertFails(commitDispatch(asUser(SENDER_UID).firestore(), { tokens: ["recipient-token-1"] }));
   });
 
-  it("attack: dispatch with zero tokens rejected (no fan-out target)", async () => {
+  it("attack: sender CANNOT inject their own or a spoofed token", async () => {
+    await assertFails(commitDispatch(asUser(SENDER_UID).firestore(), { tokens: ["spoofed-token"] }));
+  });
+
+  it("attack: an empty tokens list is denied too (the key itself is forbidden)", async () => {
     await assertFails(commitDispatch(asUser(SENDER_UID).firestore(), { tokens: [] }));
-  });
-
-  it("attack: dispatch with > 10 tokens rejected (caps FCM API fan-out per event)", async () => {
-    const tooMany = Array.from({ length: 11 }, (_, i) => `recipient-token-${i}`);
-    await assertFails(commitDispatch(asUser(SENDER_UID).firestore(), { tokens: tooMany }));
   });
 });
 
@@ -274,7 +267,7 @@ describe("push_dispatch — nudge type", () => {
     await assertFails(commitDispatch(asUser(OUTSIDER_UID).firestore(), nudgeDispatch({ senderUid: OUTSIDER_UID })));
   });
 
-  it("attack: a nudge cannot embed a token missing from the recipient's mirror", async () => {
+  it("attack: a nudge cannot embed a token", async () => {
     await assertFails(
       commitDispatch(asUser(SENDER_UID).firestore(), nudgeDispatch({ tokens: ["attacker-controlled-token"] })),
     );

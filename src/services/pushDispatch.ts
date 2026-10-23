@@ -33,21 +33,20 @@
  *    once FCM accepts it. Notifications are NOT deleted
  *    on read — they persist in the feed until the user clears them.
  *
- * Tokens live at /pushTargets/{uid} — a mirror of users/{uid}/private/profile
- * .fcmTokens that's READABLE by signed-in users. The mirror exists because
- * tokens cannot stay owner-only AND be embeddable in a dispatch doc by a
- * sender. The privacy regression is bounded: FCM tokens alone cannot be
- * abused without server credentials (the drain endpoint owns the only legitimate
- * dispatch surface), and the /push_dispatch create rule still requires the
- * sender to be a game participant — so a leaked token can't be turned into
- * an attack vector by another authenticated user.
+ * Tokens live at /pushTargets/{uid}, a mirror of users/{uid}/private/profile
+ * .fcmTokens. Since the 2026-10-21 security audit (M1) the mirror is
+ * OWNER-READ-ONLY: a sender no longer reads the recipient's tokens and the
+ * dispatch doc carries none (the create rule forbids a `tokens` key). The
+ * couriers (functions/src/push/drain.ts and api/cron/drain-push-dispatch.ts)
+ * look the recipient's devices up with the Admin SDK. The create rule still
+ * requires sender and recipient to be participants of the same game.
  *
  * Best-effort by design. A failed dispatch never blocks the originating
  * game action — the recipient still gets the in-app notification via
  * /notifications onSnapshot the next time they open the tab.
  */
 
-import { collection, doc, getDoc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { collection, doc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
@@ -79,7 +78,8 @@ export interface PushDispatchParams {
  * ──────────────────────────────────────────── */
 
 /**
- * Collection path for the cross-readable token mirror. One doc per user,
+ * Collection path for the owner-only token mirror (M1; the couriers read it
+ * with the Admin SDK). One doc per user,
  * keyed by uid. Kept top-level (not nested under /users/{uid}) so the rules
  * stay short and the reader doesn't accidentally inherit /users/{uid}
  * permissions on adjacent fields.
@@ -104,41 +104,9 @@ export const PUSH_DISPATCH_COLLECTION = "push_dispatch" as const;
  */
 export const PUSH_DISPATCH_LIMITS_COLLECTION = "push_dispatch_limits" as const;
 
-interface PushTargetsDoc {
-  tokens: string[];
-}
-
-/**
- * Read the cross-readable token mirror for a user. Returns the deduplicated
- * token list, or [] if no mirror exists yet (no devices registered, or the
- * user signed up before the mirror was introduced).
- */
-export async function getRecipientPushTokens(uid: string): Promise<string[]> {
-  try {
-    const snap = await getDoc(doc(requireDb(), PUSH_TARGETS_COLLECTION, uid));
-    if (!snap.exists()) return [];
-    const data = snap.data() as Partial<PushTargetsDoc>;
-    const tokens = Array.isArray(data.tokens) ? data.tokens : [];
-    // Filter non-string entries defensively — Firestore preserves array
-    // shape but a malicious or legacy writer could have stuffed nulls in.
-    return tokens.filter((t): t is string => typeof t === "string" && t.length > 0);
-  } catch (err) {
-    logger.warn("push_targets_read_failed", { uid, error: parseFirebaseError(err) });
-    return [];
-  }
-}
-
 /* ────────────────────────────────────────────
  * Dispatch
  * ──────────────────────────────────────────── */
-
-/**
- * Cap on tokens per dispatch doc. Matches the per-user fcmTokens cap in
- * firestore.rules (≤10) so the worst-case fan-out is bounded: even if the
- * recipient signed in on every device they own, one game event triggers
- * at most 10 FCM sends per drained doc.
- */
-const MAX_TOKENS_PER_DISPATCH = 10;
 
 /**
  * Hard caps on user-visible strings, mirrored on the /push_dispatch create
@@ -155,17 +123,17 @@ function truncate(value: string, max: number): string {
 
 /**
  * Build the dispatch doc shape consumed by the drain endpoint. It reads
- * `tokens`, `notification.{title,body}`, and `data` — everything else
+ * `notification.{title,body}` and `data`, and looks the recipient's tokens
+ * up in /pushTargets itself (no `tokens` key, M1). Everything else
  * (senderUid, recipientUid, gameId, type) is metadata used by firestore.rules
  * to enforce write permissions and rate limits.
  *
  * `data.gameId` is what the service worker's notificationclick handler
  * (public/firebase-messaging-sw.js) reads to deep-link into the right game.
  */
-function buildDispatchDoc(params: PushDispatchParams, tokens: string[]): Record<string, unknown> {
+function buildDispatchDoc(params: PushDispatchParams): Record<string, unknown> {
   return {
     // Drain-endpoint contract
-    tokens,
     notification: {
       title: truncate(params.title, MAX_TITLE_LEN),
       body: truncate(params.body, MAX_BODY_LEN),
@@ -196,9 +164,9 @@ function dispatchLimitKey(params: PushDispatchParams): string {
 }
 
 /**
- * Dispatch a single push notification to the recipient's registered devices.
- * No-ops (without error) when the recipient has no tokens — common during
- * the rollout window before users have granted notification permission.
+ * Queue a single push notification for the recipient's registered devices.
+ * The courier looks the devices up; a recipient with none is dropped there
+ * without an FCM call.
  *
  * Atomic writeBatch: /push_dispatch + /push_dispatch_limits commit together.
  * The limits doc is the rate-anchor companion the create rule requires
@@ -211,21 +179,13 @@ function dispatchLimitKey(params: PushDispatchParams): string {
  * action stays uncoupled from push delivery health.
  */
 export async function dispatchPushNotification(params: PushDispatchParams): Promise<void> {
-  const allTokens = await getRecipientPushTokens(params.recipientUid);
-  if (allTokens.length === 0) return;
-
-  // De-duplicate then cap. A user with a stale token list (>10 from before
-  // a rules tighten or a manual cleanup) should still get a push.
-  const unique = Array.from(new Set(allTokens));
-  const tokens = unique.slice(0, MAX_TOKENS_PER_DISPATCH);
-
   try {
     const db = requireDb();
     const dispatchRef = doc(collection(db, PUSH_DISPATCH_COLLECTION));
     const limitRef = doc(db, PUSH_DISPATCH_LIMITS_COLLECTION, dispatchLimitKey(params));
 
     const batch = writeBatch(db);
-    batch.set(dispatchRef, buildDispatchDoc(params, tokens));
+    batch.set(dispatchRef, buildDispatchDoc(params));
     batch.set(limitRef, {
       senderUid: params.senderUid,
       recipientUid: params.recipientUid,
@@ -256,8 +216,8 @@ export async function dispatchPushNotification(params: PushDispatchParams): Prom
  * is a tiny container the tx body fills as it stages notifications; once
  * the tx commits, the caller drains the outbox to fire pushes.
  *
- * Why not inside the tx? `dispatchPushNotification` reads /pushTargets and
- * writes /push_dispatch — neither belongs in a game tx. The push is a
+ * Why not inside the tx? `dispatchPushNotification` writes /push_dispatch,
+ * which does not belong in a game tx. The push is a
  * fire-and-forget side effect, not part of the atomic state machine.
  */
 export interface PushDispatchOutbox {
