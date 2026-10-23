@@ -1,4 +1,3 @@
-import type { FocusEvent, KeyboardEvent } from "react";
 import type { GameDoc } from "../../../services/games";
 import { LETTERS } from "../../../utils/helpers";
 import { LobbyTimer } from "../../../components/LobbyTimer";
@@ -17,11 +16,6 @@ interface Props {
   myLetters: number;
   theirLetters: number;
   turnLabel: string;
-  cardButtonProps: {
-    onKeyDown: (e: KeyboardEvent<HTMLElement>) => void;
-    onKeyUp: (e: KeyboardEvent<HTMLElement>) => void;
-    onBlur: (e: FocusEvent<HTMLElement>) => void;
-  };
   onOpenGame: () => void;
   onViewPlayer?: (uid: string) => void;
 }
@@ -36,133 +30,106 @@ export function ActiveGameCard({
   myLetters,
   theirLetters,
   turnLabel,
-  cardButtonProps,
   onOpenGame,
   onViewPlayer,
 }: Props) {
   const showCategory = !!game.trickCategory && game.trickCategory !== "any";
+  const showProfile = !!onViewPlayer && !judgeViewer;
+  // One tap target per card (design audit #4): the card is a native button
+  // whose ::after stretches over the whole card; the opponent's avatar is a
+  // separate sibling button layered above it, so nothing is nested.
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={onOpenGame}
-      {...cardButtonProps}
-      className={`relative flex items-center justify-between p-4 rounded-2xl cursor-pointer select-none transition-all duration-300 ease-smooth overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full
+      className={`relative flex items-center gap-3 p-4 rounded-2xl select-none transition-all duration-300 ease-smooth has-[.card-main:focus-visible]:outline-2 has-[.card-main:focus-visible]:outline-offset-2 has-[.card-main:focus-visible]:outline-brand-orange
       ${
         isMyTurn
-          ? "glass-card border-brand-orange/30 shadow-glow-sm hover:shadow-glow-md hover:-translate-y-0.5"
-          : "glass-card hover:border-white/[0.1] hover:-translate-y-0.5"
+          ? "glass-card border-brand-orange/30 shadow-glow-sm hover:shadow-glow-md"
+          : "glass-card hover:border-white/[0.1]"
       }`}
     >
-      {isMyTurn && (
-        <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-brand-orange rounded-l-2xl" aria-hidden="true" />
+      {showProfile && (
+        <button
+          type="button"
+          onClick={() => onViewPlayer(opponentUid)}
+          aria-label={`View @${opponentName}'s profile`}
+          className="relative z-10 -my-1 -ml-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-orange/10 border border-brand-orange/20 hover:border-brand-orange/50 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+        >
+          <span aria-hidden="true" className="font-display text-lg text-brand-orange leading-none">
+            {opponentName[0]?.toUpperCase()}
+          </span>
+        </button>
       )}
-      <div className="pl-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
+      <button
+        type="button"
+        onClick={onOpenGame}
+        className="card-main flex min-w-0 flex-1 items-center justify-between text-left outline-none after:absolute after:inset-0 after:rounded-2xl after:content-['']"
+      >
+        <span className="block min-w-0">
+          <span className="flex items-center gap-2 mb-1">
+            {judgeViewer ? (
+              <span className="font-display text-[1.1875rem] text-white leading-none">
+                <span className="text-amber-400 text-label tracking-wider align-middle mr-1.5">REF</span>@
+                {game.player1Username} vs @{game.player2Username}
+              </span>
+            ) : (
+              <span className="font-display text-[1.1875rem] text-white leading-none">
+                vs <ProUsername username={opponentName} isVerifiedPro={opponentIsVerifiedPro} />
+              </span>
+            )}
+            {isMyTurn && (
+              <span
+                className={`px-2 py-0.5 rounded font-display text-sm text-black tracking-wider leading-none shrink-0 ${judgeViewer ? "bg-amber-500" : "bg-brand-orange"}`}
+              >
+                {judgeViewer ? "RULE" : "PLAY"}
+              </span>
+            )}
+          </span>
+          <span className="flex items-center gap-2">
+            <span
+              className={`font-body text-label ${isMyTurn ? (judgeViewer ? "text-amber-400" : "text-brand-orange") : "text-brand-green"}`}
+            >
+              {turnLabel}
+            </span>
+            <LobbyTimer deadline={game.turnDeadline?.toMillis?.() ?? 0} isMyTurn={isMyTurn} />
+            {showCategory && (
+              <span className="inline-flex items-center rounded-full border border-white/[0.08] px-2 py-0.5 font-body text-xs text-bright shrink-0">
+                {trickCategoryLabel(game.trickCategory)}
+              </span>
+            )}
+            <TurnLengthChip hours={game.turnLengthHours} />
+          </span>
           {judgeViewer ? (
-            <span className="font-display text-[19px] text-white leading-none">
-              <span className="text-amber-400 text-[11px] tracking-wider align-middle mr-1.5">REF</span>@
-              {game.player1Username} vs @{game.player2Username}
+            <span className="flex items-center gap-3 mt-2.5">
+              <LetterRow label={`@${game.player1Username}`} tone="text-amber-400" count={game.p1Letters} />
+              <span className="block w-px h-3 bg-border shrink-0" aria-hidden="true" />
+              <LetterRow label={`@${game.player2Username}`} tone="text-amber-400" count={game.p2Letters} />
             </span>
           ) : (
-            <span className="font-display text-[19px] text-white leading-none">
-              vs <ProUsername username={opponentName} isVerifiedPro={opponentIsVerifiedPro} />
+            <span className="flex items-center gap-3 mt-2.5">
+              <LetterRow label="You" tone="text-brand-orange" count={myLetters} />
+              <span className="block w-px h-3 bg-border shrink-0" aria-hidden="true" />
+              <LetterRow label="Them" tone="text-brand-orange" count={theirLetters} />
             </span>
           )}
-          {onViewPlayer && !judgeViewer && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onViewPlayer(opponentUid);
-              }}
-              className="min-h-11 min-w-11 inline-flex items-center justify-center px-2 rounded-md font-display text-xs text-brand-orange hover:text-[#FF7A1A] hover:bg-brand-orange/10 transition-colors shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-              aria-label={`View @${opponentName}'s profile`}
-            >
-              Profile
-            </button>
-          )}
-          {isMyTurn && (
-            <span
-              className={`px-2 py-0.5 rounded font-display text-xs text-black tracking-wider leading-none shrink-0 ${judgeViewer ? "bg-amber-500" : "bg-brand-orange"}`}
-            >
-              {judgeViewer ? "RULE" : "PLAY"}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <span
-            className={`font-body text-[11px] ${isMyTurn ? (judgeViewer ? "text-amber-400" : "text-brand-orange") : "text-brand-green"}`}
-          >
-            {turnLabel}
-          </span>
-          <LobbyTimer deadline={game.turnDeadline?.toMillis?.() ?? 0} isMyTurn={isMyTurn} />
-          {showCategory && (
-            <span className="inline-flex items-center rounded-full border border-white/[0.08] px-2 py-0.5 font-body text-xs text-bright shrink-0">
-              {trickCategoryLabel(game.trickCategory)}
-            </span>
-          )}
-          <TurnLengthChip hours={game.turnLengthHours} />
-        </div>
-        {judgeViewer ? (
-          <div className="flex items-center gap-3 mt-2.5">
-            <div className="flex items-center gap-1">
-              <span className="font-body text-xs text-amber-400 uppercase tracking-wider mr-0.5">
-                @{game.player1Username}
-              </span>
-              {LETTERS.map((l, i) => (
-                <span
-                  key={i}
-                  className={`font-display text-[13px] leading-none tracking-wide ${i < game.p1Letters ? "text-brand-red" : "text-faint"}`}
-                >
-                  {l}
-                </span>
-              ))}
-            </div>
-            <div className="w-px h-3 bg-border shrink-0" aria-hidden="true" />
-            <div className="flex items-center gap-1">
-              <span className="font-body text-xs text-amber-400 uppercase tracking-wider mr-0.5">
-                @{game.player2Username}
-              </span>
-              {LETTERS.map((l, i) => (
-                <span
-                  key={i}
-                  className={`font-display text-[13px] leading-none tracking-wide ${i < game.p2Letters ? "text-brand-red" : "text-faint"}`}
-                >
-                  {l}
-                </span>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center gap-3 mt-2.5">
-            <div className="flex items-center gap-1">
-              <span className="font-body text-xs text-brand-orange uppercase tracking-wider mr-0.5">You</span>
-              {LETTERS.map((l, i) => (
-                <span
-                  key={i}
-                  className={`font-display text-[13px] leading-none tracking-wide ${i < myLetters ? "text-brand-red" : "text-faint"}`}
-                >
-                  {l}
-                </span>
-              ))}
-            </div>
-            <div className="w-px h-3 bg-border shrink-0" aria-hidden="true" />
-            <div className="flex items-center gap-1">
-              <span className="font-body text-xs text-brand-orange uppercase tracking-wider mr-0.5">Them</span>
-              {LETTERS.map((l, i) => (
-                <span
-                  key={i}
-                  className={`font-display text-[13px] leading-none tracking-wide ${i < theirLetters ? "text-brand-red" : "text-faint"}`}
-                >
-                  {l}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-      <ChevronRightIcon size={15} className={`shrink-0 ml-3 ${isMyTurn ? "text-brand-orange" : "text-faint"}`} />
+        </span>
+        <ChevronRightIcon size={15} className={`shrink-0 ml-3 ${isMyTurn ? "text-brand-orange" : "text-faint"}`} />
+      </button>
     </div>
+  );
+}
+
+function LetterRow({ label, tone, count }: { label: string; tone: string; count: number }) {
+  return (
+    <span className="flex items-center gap-1">
+      <span className={`font-body text-xs ${tone} uppercase tracking-wider mr-0.5`}>{label}</span>
+      {LETTERS.map((l, i) => (
+        <span
+          key={i}
+          className={`font-display text-sm leading-none tracking-wide ${i < count ? "text-brand-red" : "text-faint"}`}
+        >
+          {l}
+        </span>
+      ))}
+    </span>
   );
 }

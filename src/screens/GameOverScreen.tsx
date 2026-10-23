@@ -186,7 +186,7 @@ export function GameOverScreen({
           <button
             type="button"
             onClick={() => onViewPlayer(opponentUid)}
-            className="font-display text-sm text-brand-orange hover:text-[#FF7A1A] transition-colors mb-6 underline underline-offset-2"
+            className="font-display text-sm text-brand-orange hover:text-brand-orange-hover transition-colors mb-6 underline underline-offset-2"
           >
             View <ProUsername username={opponentName} isVerifiedPro={opponentIsPro} />
             &apos;s Record
@@ -200,7 +200,7 @@ export function GameOverScreen({
         )}
 
         {game.judgeUsername && game.judgeStatus === "accepted" && (
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/[0.06] px-3 py-1 text-[11px] text-amber-400">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/[0.06] px-3 py-1 text-label text-amber-400">
             <span className="font-display tracking-wider">REFEREED</span>
             <span className="font-body">by @{game.judgeUsername}</span>
           </div>

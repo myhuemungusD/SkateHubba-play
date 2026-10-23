@@ -30,14 +30,7 @@ const profile = { uid: "u1", username: "sk8er" } as unknown as UserProfile;
 function renderHeader() {
   return render(
     <MemoryRouter>
-      <LobbyHeader
-        profile={profile}
-        games={[]}
-        onViewRecord={vi.fn()}
-        onOpenGame={vi.fn()}
-        onOpenSettings={vi.fn()}
-        onSignOut={vi.fn()}
-      />
+      <LobbyHeader profile={profile} games={[]} onViewRecord={vi.fn()} onOpenGame={vi.fn()} onOpenSettings={vi.fn()} />
     </MemoryRouter>,
   );
 }
@@ -80,7 +73,7 @@ describe("HubbaIcons flag", () => {
       expect(container.querySelector(".hb-icon")).not.toBeNull();
     });
 
-    it("tab bar and settings button render HubbaIcons", () => {
+    it("tab bar renders HubbaIcons; settings keeps the standard gear (design audit #2)", () => {
       render(
         <MemoryRouter>
           <BottomNav />
@@ -91,7 +84,7 @@ describe("HubbaIcons flag", () => {
       expect(crown?.getAttribute("data-state")).toBe("active");
       expect(crown?.querySelectorAll("circle")).toHaveLength(5);
       renderHeader();
-      expect(screen.getByRole("button", { name: "Settings" }).querySelector(".hb-icon")).not.toBeNull();
+      expect(screen.getByRole("button", { name: "Settings" }).querySelector(".hb-icon")).toBeNull();
     });
   });
 });

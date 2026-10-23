@@ -80,7 +80,7 @@ export function PullToRefreshIndicator({
           </svg>
         )}
         <span
-          className={`font-display text-[11px] tracking-wider leading-none ${
+          className={`font-display text-sm tracking-wider leading-none ${
             state === "refreshing" ? "text-brand-orange" : triggerReached ? "text-brand-green" : "text-muted"
           }`}
         >

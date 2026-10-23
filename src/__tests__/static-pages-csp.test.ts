@@ -1,9 +1,10 @@
 /**
  * Static pages in public/ are served as-is under the production CSP
  * (vercel.json): style-src 'self' https://api.mapbox.com and script-src with
- * no 'unsafe-inline'. An inline <style> block, a style="" attribute or an
- * inline <script> or on*= handler is blocked by the browser, so the page renders unstyled or
- * broken. /support.html is the App Store Support URL, so it must render.
+ * no 'unsafe-inline'. An inline <style> block, a style="" attribute, an
+ * inline <script> or an on*= handler is blocked by the browser, so the page
+ * renders unstyled or broken. /support.html is the App Store Support URL, so
+ * it must render.
  * Styles ship as files (public/support.css) instead.
  */
 import { describe, expect, it } from "vitest";

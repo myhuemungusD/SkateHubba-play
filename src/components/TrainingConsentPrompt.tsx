@@ -72,7 +72,7 @@ export function TrainingConsentPrompt({ profile }: { profile: UserProfile }) {
           type="button"
           disabled={busy}
           onClick={() => void optIn()}
-          className="min-h-11 flex-1 rounded-xl bg-brand-orange/90 font-display text-xs tracking-wider text-black disabled:opacity-40"
+          className="min-h-11 flex-1 rounded-xl bg-brand-orange/90 font-display text-sm tracking-wider text-black disabled:opacity-40"
         >
           Yes, I&apos;ll help
         </button>
@@ -80,7 +80,7 @@ export function TrainingConsentPrompt({ profile }: { profile: UserProfile }) {
           type="button"
           disabled={busy}
           onClick={() => void dismiss()}
-          className="min-h-11 flex-1 rounded-xl border border-border font-display text-xs tracking-wider text-white disabled:opacity-40"
+          className="min-h-11 flex-1 rounded-xl border border-border font-display text-sm tracking-wider text-white disabled:opacity-40"
         >
           Not now
         </button>

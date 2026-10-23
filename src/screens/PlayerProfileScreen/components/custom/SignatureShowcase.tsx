@@ -18,13 +18,13 @@ export function SignatureShowcase({ items, accent }: { items: LockerItem[]; acce
   const hero = credited.find(({ item }) => shoeSkinFor(item.itemDefId) !== null);
   return (
     <section aria-label={MIKE_WHITE_COLLECTION_NAME} data-testid="signature-showcase" className="mb-8">
-      <h3 className="mb-3 font-display text-[11px] tracking-[0.2em]" style={{ color: accent }}>
+      <h3 className="mb-3 font-display text-sm tracking-[0.2em]" style={{ color: accent }}>
         SIGNATURE PIECES
       </h3>
       {hero && (
         <div className="mb-2 rounded-xl border border-border bg-surface p-2" data-testid="signature-hero">
           <Shoe360 itemDefId={hero.id} imageUrl={cardArtFor(hero.id)} alt={hero.item.name} />
-          <p className="mt-1 truncate font-body text-[12px] text-white/90">{hero.item.name}</p>
+          <p className="mt-1 truncate font-body text-label text-white/90">{hero.item.name}</p>
           <DesignerCredit credit={hero.credit} compact />
         </div>
       )}
@@ -37,7 +37,7 @@ export function SignatureShowcase({ items, accent }: { items: LockerItem[]; acce
               loading="lazy"
               className="aspect-square w-full rounded-lg object-cover"
             />
-            <p className="mt-1 truncate font-body text-[11px] text-white/90">{item.name}</p>
+            <p className="mt-1 truncate font-body text-label text-white/90">{item.name}</p>
             <DesignerCredit credit={credit} compact />
           </div>
         ))}

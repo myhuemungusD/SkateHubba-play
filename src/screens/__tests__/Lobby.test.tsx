@@ -62,7 +62,6 @@ const defaultProps: LobbyProps = {
   games: [],
   onChallenge: vi.fn(),
   onOpenGame: vi.fn(),
-  onSignOut: vi.fn(),
   onViewRecord: vi.fn(),
   user: { emailVerified: true },
 };
@@ -89,7 +88,7 @@ async function renderExpanded(overrides: Partial<LobbyProps> = {}) {
   return result;
 }
 
-const yourTurnSection = () => screen.queryByRole("region", { name: "YOUR TURN" });
+const yourTurnSection = () => screen.queryByRole("region", { name: "Your turn" });
 const theirTurnToggle = () => screen.queryByRole("button", { name: /waiting on them/ });
 const cardByOpponent = (name: RegExp) => screen.getByRole("button", { name });
 
@@ -307,7 +306,7 @@ describe("Lobby", () => {
     ];
     renderLobby({ games });
 
-    const btn = screen.getByRole("button", { name: "3 finished. 1 win out of 3 games. View record" });
+    const btn = screen.getByRole("button", { name: "3 finished · 1 win out of 3 games. View record" });
     expect(btn).toHaveTextContent("3 finished · 1 / 3 won");
   });
 
@@ -318,7 +317,7 @@ describe("Lobby", () => {
     ];
     renderLobby({ profile: judgeProfile, games });
 
-    expect(screen.getByRole("button", { name: "2 finished. 1 win out of 1 game. View record" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "2 finished · 1 win out of 1 game. View record" })).toBeInTheDocument();
   });
 
   it("hides the completed summary when nothing is finished", () => {
@@ -436,57 +435,9 @@ describe("Lobby", () => {
     expect(onOpenGame).not.toHaveBeenCalled();
   });
 
-  // A held key (auto-repeat) should not re-fire navigation — matches native
-  // <button> semantics and avoids stuttered double-navigation on the card.
-  it("active game card ignores repeated keydown from a held key", () => {
-    const onOpenGame = vi.fn();
-    renderLobby({ games: [makeGame()], onOpenGame });
-
-    const card = cardByOpponent(/vs @rival/i);
-    // Simulate auto-repeat (e.repeat === true on held key)
-    card.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, repeat: true }));
-    card.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true, repeat: true }));
-
-    expect(onOpenGame).not.toHaveBeenCalled();
-  });
-
-  // Native-button keyboard parity: Enter activates on keydown (immediate),
-  // Space arms on keydown and only activates on keyup — letting the user
-  // move focus off the card to cancel before releasing.
-  it("active game card fires Enter on keydown (native <button> parity)", () => {
-    const onOpenGame = vi.fn();
-    renderLobby({ games: [makeGame()], onOpenGame });
-
-    cardByOpponent(/vs @rival/i).dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-
-    expect(onOpenGame).toHaveBeenCalledTimes(1);
-  });
-
-  it("active game card fires Space on keyup, not on keydown alone", () => {
-    const onOpenGame = vi.fn();
-    renderLobby({ games: [makeGame()], onOpenGame });
-
-    const card = cardByOpponent(/vs @rival/i);
-    card.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
-    expect(onOpenGame).not.toHaveBeenCalled();
-
-    card.dispatchEvent(new KeyboardEvent("keyup", { key: " ", bubbles: true }));
-    expect(onOpenGame).toHaveBeenCalledTimes(1);
-  });
-
-  it("active game card cancels a primed Space when focus leaves before keyup", () => {
-    const onOpenGame = vi.fn();
-    renderLobby({ games: [makeGame()], onOpenGame });
-
-    const card = cardByOpponent(/vs @rival/i);
-    card.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
-    // User tabs away or otherwise blurs the card — native buttons abort here.
-    // React delegates onBlur via the bubbling `focusout` event at the root.
-    card.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
-    card.dispatchEvent(new KeyboardEvent("keyup", { key: " ", bubbles: true }));
-
-    expect(onOpenGame).not.toHaveBeenCalled();
-  });
+  // The card is a native <button>, so the browser owns Enter / Space
+  // activation (Enter on keydown, Space on keyup, cancel on blur). The two
+  // userEvent tests above cover it; no hand-rolled key handlers remain.
 
   it("Profile button on a game card opens the profile without opening the game", async () => {
     const onOpenGame = vi.fn();
@@ -501,13 +452,14 @@ describe("Lobby", () => {
 
   // ── Header & pagination ──
 
-  it("Sign Out button fires onSignOut", async () => {
-    const onSignOut = vi.fn();
-    renderLobby({ onSignOut });
+  it("header has no Sign Out (it lives in Settings) and the gear opens Settings", async () => {
+    const onOpenSettings = vi.fn();
+    renderLobby({ onOpenSettings });
 
-    await userEvent.click(screen.getByRole("button", { name: "Sign Out" }));
+    expect(screen.queryByRole("button", { name: /sign out/i })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
 
-    expect(onSignOut).toHaveBeenCalledTimes(1);
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
   it("View my record header button fires onViewRecord", async () => {

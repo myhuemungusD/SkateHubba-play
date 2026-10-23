@@ -1,4 +1,4 @@
-import { useCallback, type FocusEvent, type KeyboardEvent } from "react";
+import { useCallback } from "react";
 import type { GameDoc } from "../../services/games";
 import type { UserProfile } from "../../services/users";
 
@@ -36,12 +36,6 @@ export interface LobbyController {
   myLetters: (g: GameDoc) => number;
   theirLetters: (g: GameDoc) => number;
   turnLabel: (g: GameDoc) => string;
-
-  cardButtonProps: (handler: () => void) => {
-    onKeyDown: (e: KeyboardEvent<HTMLElement>) => void;
-    onKeyUp: (e: KeyboardEvent<HTMLElement>) => void;
-    onBlur: (e: FocusEvent<HTMLElement>) => void;
-  };
 }
 
 export function useLobbyController({ profile, games }: Args): LobbyController {
@@ -145,32 +139,6 @@ export function useLobbyController({ profile, games }: Args): LobbyController {
     losses: done.filter((g) => isPlayer(g) && !!g.winner && g.winner !== profile.uid).length,
   };
 
-  const cardButtonProps = useCallback(
-    (handler: () => void) => ({
-      onKeyDown: (e: KeyboardEvent<HTMLElement>) => {
-        if (e.repeat) return;
-        if (e.key === "Enter") {
-          e.preventDefault();
-          handler();
-        } else if (e.key === " ") {
-          e.preventDefault();
-          e.currentTarget.dataset.spacePrimed = "true";
-        }
-      },
-      onKeyUp: (e: KeyboardEvent<HTMLElement>) => {
-        if (e.key === " " && e.currentTarget.dataset.spacePrimed === "true") {
-          delete e.currentTarget.dataset.spacePrimed;
-          e.preventDefault();
-          handler();
-        }
-      },
-      onBlur: (e: FocusEvent<HTMLElement>) => {
-        delete e.currentTarget.dataset.spacePrimed;
-      },
-    }),
-    [],
-  );
-
   return {
     myTurn,
     theirTurn,
@@ -184,6 +152,5 @@ export function useLobbyController({ profile, games }: Args): LobbyController {
     myLetters,
     theirLetters,
     turnLabel,
-    cardButtonProps,
   };
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, within, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
@@ -192,12 +192,12 @@ describe("Settings", () => {
   it("shows the credits and, behind its flag, a Closet Studio link", () => {
     const { unmount } = render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
     expect(screen.getByTestId("app-credits")).toHaveTextContent("Mike White");
-    expect(screen.queryByText("Closet Studio")).toBeNull();
+    expect(screen.queryByRole("link", { name: /Closet Studio/ })).toBeNull();
     unmount();
     vi.stubEnv("VITE_FEATURE_CLOSET_STUDIO", "true");
     try {
       render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
-      expect(screen.getByText("Closet Studio").closest("a")).toHaveAttribute("href", "/closet/studio");
+      expect(screen.getByRole("link", { name: /Closet Studio/ })).toHaveAttribute("href", "/closet/studio");
     } finally {
       vi.unstubAllEnvs();
     }
@@ -206,20 +206,40 @@ describe("Settings", () => {
   it("renders the main header, subsections, and back button", () => {
     render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
     expect(screen.getByRole("heading", { name: /Settings/i })).toBeInTheDocument();
-    expect(screen.getByText(/NOTIFICATIONS/)).toBeInTheDocument();
-    expect(screen.getByText(/FEEDBACK/)).toBeInTheDocument();
-    expect(screen.getByText(/INSTALL APP/)).toBeInTheDocument();
-    expect(screen.getByText(/BLOCKED PLAYERS/)).toBeInTheDocument();
-    expect(screen.getByText(/HELP & SUPPORT/)).toBeInTheDocument();
-    expect(screen.getByText(/LEGAL/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Back to lobby/)).toBeInTheDocument();
+    // Grouped list: sentence-case section headers, Account + Privacy first.
+    const headers = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(headers.slice(0, 2)).toEqual(["Account", "Privacy"]);
+    for (const title of [
+      "Notifications",
+      "Sound & haptics",
+      "Install app",
+      "Blocked players",
+      "Help & support",
+      "Legal",
+    ]) {
+      expect(headers).toContain(title);
+    }
+    expect(screen.getByRole("button", { name: "Back" })).toBeInTheDocument();
   });
 
   it("calls onBack when the back button is clicked", async () => {
     const onBack = vi.fn();
     render(wrap(<Settings profile={profile} onBack={onBack} />));
-    await userEvent.click(screen.getByLabelText(/Back to lobby/));
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(onBack).toHaveBeenCalledOnce();
+  });
+
+  it("puts Sign out at the bottom, above Delete account, behind a confirm", async () => {
+    const onSignOut = vi.fn();
+    render(wrap(<Settings profile={profile} onBack={vi.fn()} onSignOut={onSignOut} onDeleteAccount={vi.fn()} />));
+    const headers = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(headers.at(-1)).toBe("Your data & sign out");
+    const signOut = screen.getByRole("button", { name: /^Sign out/ });
+    const del = screen.getByRole("button", { name: /^Delete account/ });
+    expect(signOut.compareDocumentPosition(del) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await userEvent.click(signOut);
+    await userEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Sign out" }));
+    expect(onSignOut).toHaveBeenCalledOnce();
   });
 
   it("toggles sound effects and haptics switches", async () => {
@@ -414,7 +434,7 @@ describe("Settings", () => {
 
   it("renders the FOLLOW SKATEHUBBA section linking to every official account", () => {
     render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
-    expect(screen.getByText(/FOLLOW SKATEHUBBA/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Follow SkateHubba" })).toBeInTheDocument();
 
     // Each card must resolve to the shared SOCIAL_LINKS URL and open safely
     // off-site — a wrong href or missing rel ships users to the wrong place
@@ -560,7 +580,7 @@ describe("Settings", () => {
   describe("install app section", () => {
     it("shows manual instructions on a browser without an install prompt", () => {
       render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
-      expect(screen.getByText(/INSTALL APP/)).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Install app" })).toBeInTheDocument();
       expect(screen.getByText(/If your browser supports it/)).toBeInTheDocument();
     });
 
@@ -574,7 +594,7 @@ describe("Settings", () => {
     it("hides the whole section inside the native shell", () => {
       mockInstallStatus.mockReturnValue("native");
       render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
-      expect(screen.queryByText(/INSTALL APP/)).toBeNull();
+      expect(screen.queryByRole("heading", { name: "Install app" })).toBeNull();
       expect(screen.queryByText(/Install SkateHubba/)).toBeNull();
     });
   });

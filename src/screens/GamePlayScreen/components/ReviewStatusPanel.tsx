@@ -55,7 +55,7 @@ export function ReviewStatusPanel({ kind, opponentUsername, deadline, dispute, d
 
       {community && tally && (
         <div className="mb-4" aria-label="Community vote tally">
-          <div className="flex items-center justify-between font-display text-xs tracking-[0.15em] tabular-nums">
+          <div className="flex items-center justify-between font-display text-sm tracking-[0.15em] tabular-nums">
             <span className="text-brand-green">LAND {tally.land}</span>
             <span className="text-faint">{total} TOTAL</span>
             <span className="text-brand-red">{tally.bail} BAIL</span>

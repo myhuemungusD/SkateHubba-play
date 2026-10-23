@@ -1,3 +1,4 @@
+import { FIELD_LABEL } from "../ui/Field";
 import { useId } from "react";
 import { Btn } from "../ui/Btn";
 import { CLIP_POSTER } from "../../lib/clipPoster";
@@ -58,7 +59,7 @@ export function UserClipForm({
       )}
 
       <div>
-        <label htmlFor={nameId} className="mb-2 block font-display text-sm tracking-[0.12em] text-dim">
+        <label htmlFor={nameId} className={`mb-2 block ${FIELD_LABEL}`}>
           TRICK
         </label>
         <input

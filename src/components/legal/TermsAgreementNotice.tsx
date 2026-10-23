@@ -27,7 +27,7 @@ export function LegalLink({
     <a
       href={LEGAL_HREF[doc]}
       onClick={handleClick}
-      className="text-brand-orange underline underline-offset-2 hover:text-white rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+      className="py-2 -my-2 text-brand-orange underline underline-offset-2 hover:text-white rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
     >
       {children}
     </a>

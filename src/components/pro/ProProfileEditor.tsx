@@ -18,7 +18,7 @@ interface Props {
   onCancel: () => void;
 }
 
-const LABEL = "mb-1 block font-display text-[11px] tracking-[0.2em] text-brand-orange";
+const LABEL = "mb-1 block font-display text-sm tracking-[0.2em] text-brand-orange";
 const INPUT =
   "mb-3 min-h-[44px] w-full rounded-xl border border-white/[0.08] bg-surface-alt px-3 font-body text-sm text-white";
 const CHIP = "min-h-[36px] rounded-lg border px-2.5 font-body text-xs transition-colors";
@@ -104,11 +104,11 @@ export function ProProfileEditor({ uid, initial, onSaved, onCancel }: Props) {
         placeholder="In your own words: where you skate, what you're into."
         className="w-full rounded-xl border border-white/[0.08] bg-surface-alt p-3 font-body text-sm text-white"
       />
-      <p className="mb-3 text-right font-body text-[11px] text-white/50 tabular-nums">
+      <p className="mb-3 text-right font-body text-label text-white/50 tabular-nums">
         {bio.length}/{PRO_BIO_MAX}
       </p>
       <fieldset>
-        <legend className="mb-2 font-display text-[11px] tracking-[0.2em] text-brand-orange">
+        <legend className="mb-2 font-display text-sm tracking-[0.2em] text-brand-orange">
           SIGNATURE TRICKS ({tricks.length}/{PRO_TRICKS_MAX})
         </legend>
         <div className="flex flex-wrap gap-1.5">
@@ -138,7 +138,7 @@ export function ProProfileEditor({ uid, initial, onSaved, onCancel }: Props) {
         <button
           type="button"
           onClick={onCancel}
-          className="min-h-[44px] flex-1 rounded-xl border border-white/[0.08] font-display text-xs tracking-wider text-white/80"
+          className="min-h-[44px] flex-1 rounded-xl border border-white/[0.08] font-display text-sm tracking-wider text-white/80"
         >
           CANCEL
         </button>
@@ -146,7 +146,7 @@ export function ProProfileEditor({ uid, initial, onSaved, onCancel }: Props) {
           type="button"
           onClick={save}
           disabled={saving}
-          className="min-h-[44px] flex-1 rounded-xl bg-gradient-to-r from-amber-400 to-brand-orange font-display text-xs tracking-wider text-black disabled:opacity-60"
+          className="min-h-[44px] flex-1 rounded-xl bg-gradient-to-r from-amber-400 to-brand-orange font-display text-sm tracking-wider text-black disabled:opacity-60"
         >
           {saving ? "SAVING…" : "SAVE"}
         </button>

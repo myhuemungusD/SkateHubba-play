@@ -67,7 +67,7 @@ export function TrickPicker({ selection, onChange, disabled, trickCategory, cust
 
   return (
     <div className="mb-5 rounded-2xl border bg-brand-orange/[0.06] border-brand-orange/30 shadow-[0_0_20px_rgba(255,107,0,0.06)] p-3">
-      <p className="font-display text-[11px] tracking-[0.2em] text-brand-orange text-center">TRICK</p>
+      <p className="font-display text-sm tracking-[0.2em] text-brand-orange text-center">TRICK</p>
       {constraintText && <p className="font-body text-xs text-brand-orange/80 pt-1 text-center">{constraintText}</p>}
       <div className="mt-2 grid grid-cols-4 gap-1" role="group" aria-label="Stance">
         {TRICK_STANCES.map((item) => (
@@ -136,7 +136,7 @@ export function TrickPicker({ selection, onChange, disabled, trickCategory, cust
         {rows.length === 0 && <p className="px-3 py-4 font-body text-sm text-faint">No tricks match that.</p>}
         {rows.map((row) =>
           row.kind === "header" ? (
-            <p key={row.id} className="px-3 pt-3 pb-1 font-display text-[11px] tracking-[0.16em] text-brand-orange">
+            <p key={row.id} className="px-3 pt-3 pb-1 font-display text-sm tracking-[0.16em] text-brand-orange">
               {row.label}
             </p>
           ) : (

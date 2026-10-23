@@ -83,6 +83,19 @@ function modal(): ReturnType<typeof within> {
   return within(screen.getByRole("dialog"));
 }
 
+/**
+ * Sign out the way a player does: lobby gear → Settings → "Sign out" row →
+ * confirm. `beforeConfirm` runs right before the confirm tap, so tests can
+ * flip the auth mock to signed-out without unmounting Settings first.
+ */
+async function signOutViaSettings(beforeConfirm?: () => void): Promise<void> {
+  await userEvent.click(await screen.findByRole("button", { name: "Settings" }));
+  await userEvent.click(await screen.findByRole("button", { name: /^Sign out/ }));
+  const sheet = within(await screen.findByRole("alertdialog"));
+  beforeConfirm?.();
+  await userEvent.click(sheet.getByRole("button", { name: "Sign out" }));
+}
+
 describe("Smoke: Account & Sign Out", () => {
   it("sign out returns to landing", async () => {
     authSvc.refs.signOut.mockResolvedValueOnce(undefined);
@@ -93,8 +106,7 @@ describe("Smoke: Account & Sign Out", () => {
 
     await renderApp();
 
-    expect(await screen.findByText("Sign Out")).toBeInTheDocument();
-    await userEvent.click(screen.getByText("Sign Out"));
+    await signOutViaSettings();
 
     expect(authSvc.refs.signOut).toHaveBeenCalled();
   });
@@ -106,7 +118,7 @@ describe("Smoke: Account & Sign Out", () => {
     withGames([]);
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Sign Out"));
+    await signOutViaSettings();
 
     expect(fcm.refs.removeCurrentFcmToken).toHaveBeenCalledWith("u1");
     expect(authSvc.refs.signOut).toHaveBeenCalled();
@@ -126,9 +138,7 @@ describe("Smoke: Account & Sign Out", () => {
     await renderApp();
 
     // Post-signout useAuth snaps to null so the UI flips to landing
-    asSignedOut();
-
-    await userEvent.click(await screen.findByText("Sign Out"));
+    await signOutViaSettings(asSignedOut);
 
     // fbSignOut still runs — a failed scrub can't strand the user on a
     // "still signed in" screen.
@@ -386,18 +396,19 @@ describe("Smoke: Account & Sign Out", () => {
     });
   });
 
-  it("handles signOut error gracefully without crashing", async () => {
-    authSvc.refs.signOut.mockRejectedValueOnce(new Error("Sign out network error"));
+  // Sign-out clears local state even when the network call rejects, so the
+  // app always lands back on the landing page.
+  it.each([
+    ["an Error", new Error("Sign out network error")],
+    ["a non-Error value", "string error"],
+  ])("handles signOut rejecting with %s gracefully", async (_kind, reason) => {
+    authSvc.refs.signOut.mockRejectedValueOnce(reason);
     asUnverifiedUser();
     withGames([]);
     await renderApp();
 
-    // After sign-out (even on error), the context clears state → useAuth returns no user
-    asSignedOut();
+    await signOutViaSettings(asSignedOut);
 
-    await userEvent.click(await screen.findByText("Sign Out"));
-
-    // Despite error, app navigates to landing (sign-out clears state even on error)
     await waitFor(() => {
       expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     });
@@ -468,20 +479,6 @@ describe("Smoke: Account & Sign Out", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Deletion failed — try again")).toBeInTheDocument();
-    });
-  });
-
-  it("handles signOut non-Error rejection gracefully", async () => {
-    authSvc.refs.signOut.mockRejectedValueOnce("string error");
-    asUnverifiedUser();
-    withGames([]);
-    await renderApp();
-
-    asSignedOut();
-    await userEvent.click(await screen.findByText("Sign Out"));
-
-    await waitFor(() => {
-      expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     });
   });
 });

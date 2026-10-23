@@ -26,8 +26,8 @@ export function ComingSoonCard({ title, description, icon, status }: Props) {
       )}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <h4 className="font-display text-xs tracking-[0.15em] text-white">{title.toUpperCase()}</h4>
-          <span className="rounded-full border border-brand-orange/40 bg-brand-orange/10 px-2 py-0.5 font-display text-[11px] tracking-[0.15em] text-brand-orange">
+          <h4 className="font-display text-sm tracking-[0.15em] text-white">{title.toUpperCase()}</h4>
+          <span className="rounded-full border border-brand-orange/40 bg-brand-orange/10 px-2 py-0.5 font-display text-sm tracking-[0.15em] text-brand-orange">
             {status ?? "COMING SOON"}
           </span>
         </div>

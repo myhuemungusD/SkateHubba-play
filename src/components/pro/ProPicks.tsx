@@ -56,7 +56,7 @@ function ChallengeRow({ c, player, clips }: { c: ProChallenge; player: Player; c
             type="button"
             disabled={!clipId}
             onClick={() => void enter()}
-            className="min-h-[36px] rounded-lg bg-brand-orange px-3 font-display text-[11px] text-black disabled:opacity-50"
+            className="min-h-[36px] rounded-lg bg-brand-orange px-3 font-display text-sm text-black disabled:opacity-50"
           >
             ENTER
           </button>
@@ -98,7 +98,7 @@ export function ProPicks({ player }: { player: Player }) {
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="pointer-events-auto mt-2 flex min-h-[36px] items-center gap-1.5 rounded-full border border-amber-300/40 bg-black/70 px-3 font-display text-[11px] tracking-[0.15em] text-amber-100"
+        className="pointer-events-auto mt-2 flex min-h-[36px] items-center gap-1.5 rounded-full border border-amber-300/40 bg-black/70 px-3 font-display text-sm tracking-[0.15em] text-amber-100"
       >
         <Sparkles size={12} aria-hidden="true" /> PRO PICKS
       </button>
@@ -111,7 +111,7 @@ export function ProPicks({ player }: { player: Player }) {
             <p className="font-body text-xs text-white/60">Loading…</p>
           ) : (
             <>
-              <h2 className="mb-2 font-display text-xs tracking-[0.15em] text-amber-100">FEATURED BY PROS</h2>
+              <h2 className="mb-2 font-display text-sm tracking-[0.15em] text-amber-100">FEATURED BY PROS</h2>
               {featured.length === 0 ? (
                 <p className="mb-3 font-body text-xs text-white/60">No pro picks yet.</p>
               ) : (
@@ -128,14 +128,14 @@ export function ProPicks({ player }: { player: Player }) {
                           className="aspect-[9/16] w-full rounded-xl bg-black object-cover"
                         />
                       )}
-                      <figcaption className="mt-1 truncate font-body text-[11px] text-white/80">
+                      <figcaption className="mt-1 truncate font-body text-label text-white/80">
                         {f.trickName} · @{f.proUsername}
                       </figcaption>
                     </figure>
                   ))}
                 </div>
               )}
-              <h2 className="mb-2 font-display text-xs tracking-[0.15em] text-amber-100">PRO CHALLENGES</h2>
+              <h2 className="mb-2 font-display text-sm tracking-[0.15em] text-amber-100">PRO CHALLENGES</h2>
               {challenges.length === 0 ? (
                 <p className="font-body text-xs text-white/60">No open challenges.</p>
               ) : (
@@ -169,7 +169,7 @@ export function PropsRow({ uid }: { uid: string }) {
       aria-label="Props from pros"
       className="mb-4 rounded-2xl border border-white/[0.06] bg-surface p-4 shadow-card"
     >
-      <h3 className="mb-2 flex items-center gap-1.5 font-display text-[11px] tracking-[0.2em] text-brand-orange">
+      <h3 className="mb-2 flex items-center gap-1.5 font-display text-sm tracking-[0.2em] text-brand-orange">
         <Award size={12} aria-hidden="true" /> PROPS FROM PROS
       </h3>
       <ul className="flex flex-wrap gap-2">

@@ -146,9 +146,9 @@ describe("AddSpotSheet", () => {
     await userEvent.click(screen.getByRole("button", { name: "Next" }));
     const ledge = screen.getByRole("button", { name: "ledge" });
     await userEvent.click(ledge);
-    expect(ledge.className).toContain("F97316");
+    expect(ledge.className).toContain("bg-brand-orange");
     await userEvent.click(ledge);
-    expect(ledge.className).not.toContain("F97316");
+    expect(ledge.className).not.toContain("bg-brand-orange");
   });
 
   it("closes when Escape is pressed inside the dialog", async () => {

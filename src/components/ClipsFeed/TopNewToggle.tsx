@@ -44,7 +44,7 @@ function ToggleButton({
       onClick={onClick}
       disabled={disabled}
       aria-pressed={pressed}
-      className={`min-h-[44px] inline-flex items-center justify-center rounded-lg px-3.5 font-display text-[11px] tracking-[0.2em] transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100 ${
+      className={`min-h-[44px] inline-flex items-center justify-center rounded-lg px-3.5 font-display text-sm tracking-[0.2em] transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100 ${
         pressed
           ? "border border-brand-orange/40 bg-brand-orange/15 text-brand-orange"
           : "border border-transparent text-white/80 hover:border-brand-orange/30 hover:bg-brand-orange/5 hover:text-white"

@@ -32,9 +32,9 @@ export const ClipsFeedHeader = memo(function ClipsFeedHeader({
   return (
     <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-between gap-2 px-3 pt-safe">
       <div className="pointer-events-auto flex items-center gap-2">
-        <h2 className="font-display text-[11px] tracking-[0.2em] text-white drop-shadow">CLIPS</h2>
+        <h2 className="font-display text-sm tracking-[0.2em] text-white drop-shadow">CLIPS</h2>
         {position && (
-          <span className="rounded bg-black/50 px-1.5 py-0.5 font-display text-[11px] leading-none tabular-nums text-white/80">
+          <span className="rounded bg-black/50 px-1.5 py-0.5 font-display text-sm leading-none tabular-nums text-white/80">
             {position.index + 1}/{position.total}
           </span>
         )}
@@ -45,7 +45,7 @@ export const ClipsFeedHeader = memo(function ClipsFeedHeader({
           onClick={onPostClip}
           aria-label="Post a clip to the feed"
           data-tutorial="feed-camera"
-          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-black/50 px-3 font-display text-[11px] tracking-[0.15em] text-white backdrop-blur-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-black/50 px-3 font-display text-sm tracking-[0.15em] text-white backdrop-blur-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
         >
           <CameraIcon size={14} />
           <span className="sr-only sm:not-sr-only">POST</span>

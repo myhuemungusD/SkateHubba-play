@@ -48,7 +48,7 @@ export function WhosSkatingHere({ spot }: { spot: { id: string; name: string } }
       {skaters === null ? (
         <p className="mt-2 text-xs text-muted">Looking around…</p>
       ) : others.length === 0 ? (
-        <p className="mt-2 text-sm text-[#CCC]" data-testid="whos-skating-here-empty">
+        <p className="mt-2 text-sm text-soft" data-testid="whos-skating-here-empty">
           Nobody&apos;s here right now, so there&apos;s no one to challenge. Anyone who checks in shows up here.
         </p>
       ) : (
@@ -62,7 +62,7 @@ export function WhosSkatingHere({ spot }: { spot: { id: string; name: string } }
                 type="button"
                 disabled={!meHere}
                 onClick={() => navigate(`/challenge?spot=${spot.id}&here=1&to=${encodeURIComponent(s.username)}`)}
-                className="shrink-0 min-h-9 px-3 rounded-lg bg-[#F97316] text-white text-xs font-semibold disabled:opacity-50"
+                className="shrink-0 min-h-9 px-3 rounded-lg bg-brand-orange text-black text-xs font-semibold disabled:opacity-50"
                 aria-label={`Challenge @${s.username}`}
               >
                 Challenge
@@ -74,7 +74,7 @@ export function WhosSkatingHere({ spot }: { spot: { id: string; name: string } }
       {!meHere && others.length > 0 && <p className="mt-1.5 text-xs text-muted">Check in here to challenge them.</p>}
 
       <div className="mt-2 flex items-center justify-between gap-2">
-        <label className="flex items-center gap-2 text-xs text-[#CCC]">
+        <label className="flex items-center gap-2 text-xs text-soft">
           <input
             type="checkbox"
             checked={auto}

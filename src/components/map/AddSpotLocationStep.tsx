@@ -16,7 +16,7 @@ export function AddSpotLocationStep({ userLocation, pinLatText, pinLngText, onLa
       {/* Assumption: Static map preview showing pin location. Full drag-to-reposition
           requires Mapbox Static Images API or a second map instance. Using coordinate
           input for MVP. */}
-      <div className="bg-background rounded-xl p-4 mb-4 border border-[#333]">
+      <div className="bg-background rounded-xl p-4 mb-4 border border-line-strong">
         <div className="text-center text-muted text-sm mb-3">Adjust coordinates or use your current location</div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -57,7 +57,7 @@ export function AddSpotLocationStep({ userLocation, pinLatText, pinLngText, onLa
               onLat(String(userLocation.lat), userLocation.lat);
               onLng(String(userLocation.lng), userLocation.lng);
             }}
-            className="mt-3 text-xs text-[#F97316] hover:underline"
+            className="mt-3 text-xs text-brand-orange hover:underline"
           >
             Use my current location
           </button>
@@ -67,8 +67,8 @@ export function AddSpotLocationStep({ userLocation, pinLatText, pinLngText, onLa
       <button
         type="button"
         onClick={onNext}
-        className="w-full py-2.5 rounded-xl bg-[#F97316] text-white font-semibold text-sm
-                   hover:bg-[#EA580C] transition-colors"
+        className="w-full py-2.5 rounded-xl bg-brand-orange text-black font-semibold text-sm
+                   hover:bg-brand-orange-hover transition-colors"
       >
         Next
       </button>

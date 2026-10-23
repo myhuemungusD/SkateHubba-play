@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { ConfirmSheet } from "../ConfirmSheet";
+import { ConfirmSheet } from "../../ui/ConfirmSheet";
 import { MatchResult } from "../MatchResult";
 import { MatchRow } from "../MatchRow";
 import { RoundLog } from "../RoundLog";

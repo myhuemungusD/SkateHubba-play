@@ -30,7 +30,7 @@ function Row({ side, target }: { side: ScoreSide; target: number }) {
           <p className="flex items-center gap-2 truncate font-body text-sm font-semibold text-white">
             <span className="truncate">{side.isYou ? "You" : `@${side.name}`}</span>
             {side.toMove ? (
-              <span className="shrink-0 font-display text-[11px] tracking-[0.16em] text-brand-orange">To roll</span>
+              <span className="shrink-0 font-display text-sm tracking-[0.16em] text-brand-orange">To roll</span>
             ) : null}
           </p>
           {side.hand ? (

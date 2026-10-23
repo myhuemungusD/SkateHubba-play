@@ -114,7 +114,7 @@ export function SpotFilterBar({
     <div ref={panelRef} className="absolute top-3 left-3 right-3 z-30 pointer-events-none">
       {/* Search + filter toggle row */}
       <div className="flex items-center gap-2 pointer-events-auto">
-        <label className="flex-1 flex items-center gap-2 bg-surface-alt/95 backdrop-blur border border-[#333] rounded-xl px-3 h-10">
+        <label className="flex-1 flex items-center gap-2 bg-surface-alt/95 backdrop-blur border border-line-strong rounded-xl px-3 h-10">
           <Search size={16} className="text-muted flex-shrink-0" aria-hidden="true" />
           <input
             ref={inputRef}
@@ -150,8 +150,8 @@ export function SpotFilterBar({
           className={`relative h-10 min-w-[40px] px-3 rounded-xl border flex items-center justify-center
                       transition-colors ${
                         active > 0
-                          ? "bg-[#F97316] border-[#F97316] text-white"
-                          : "bg-surface-alt/95 backdrop-blur border-[#333] text-[#CCC] hover:bg-[#222]"
+                          ? "bg-brand-orange border-brand-orange text-black"
+                          : "bg-surface-alt/95 backdrop-blur border-line-strong text-soft hover:bg-line"
                       }`}
         >
           <SlidersHorizontal size={16} aria-hidden="true" />
@@ -178,8 +178,8 @@ export function SpotFilterBar({
           map stays uncluttered. */}
       {isFiltering && totalCount > 0 && (
         <div
-          className="mt-2 inline-block pointer-events-auto bg-surface-alt/90 backdrop-blur border border-[#333]
-                     rounded-full px-3 py-1 text-xs text-[#CCC]"
+          className="mt-2 inline-block pointer-events-auto bg-surface-alt/90 backdrop-blur border border-line-strong
+                     rounded-full px-3 py-1 text-xs text-soft"
           role="status"
           aria-live="polite"
           data-testid="filter-result-count"
@@ -189,7 +189,7 @@ export function SpotFilterBar({
             <button
               type="button"
               onClick={reset}
-              className="ml-2 text-[#F97316] hover:underline"
+              className="ml-2 text-brand-orange hover:underline"
               aria-label="Clear all filters"
             >
               Clear

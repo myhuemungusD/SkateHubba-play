@@ -1,3 +1,4 @@
+import { FIELD_LABEL } from "./ui/Field";
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import type { TotpSecret } from "firebase/auth";
@@ -173,7 +174,7 @@ export function TwoFactorSection() {
           type="button"
           onClick={() => void startEnroll()}
           disabled={busy}
-          className="mt-3 inline-flex min-h-[44px] items-center justify-center rounded-full border border-brand-orange/30 bg-brand-orange/[0.12] px-4 font-display text-xs tracking-wider text-brand-orange disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          className="mt-3 inline-flex min-h-[44px] items-center justify-center rounded-full border border-brand-orange/30 bg-brand-orange/[0.12] px-4 font-display text-sm tracking-wider text-brand-orange disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
         >
           Set up authenticator app
         </button>
@@ -186,7 +187,7 @@ export function TwoFactorSection() {
             type="button"
             onClick={() => void turnOff(enrolled.uid)}
             disabled={busy}
-            className="mt-2 inline-flex min-h-[44px] items-center justify-center rounded-full border border-border px-4 font-display text-xs tracking-wider text-muted disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            className="mt-2 inline-flex min-h-[44px] items-center justify-center rounded-full border border-border px-4 font-display text-sm tracking-wider text-muted disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
             Turn off
           </button>
@@ -210,7 +211,7 @@ export function TwoFactorSection() {
           <p className="font-mono text-sm text-white break-all" data-testid="totp-manual-key">
             {setup.secretKey}
           </p>
-          <label className="block font-display text-[11px] tracking-[0.12em] text-dim" htmlFor="totp-code">
+          <label className={`block ${FIELD_LABEL}`} htmlFor="totp-code">
             AUTHENTICATOR CODE
           </label>
           <input
@@ -225,7 +226,7 @@ export function TwoFactorSection() {
             type="button"
             onClick={() => void finishEnroll()}
             disabled={busy}
-            className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-brand-orange px-4 font-display text-xs tracking-wider text-[#1a1a1a] disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-brand-orange px-4 font-display text-sm tracking-wider text-on-brand disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
             Verify code
           </button>
@@ -252,7 +253,7 @@ export function TwoFactorSection() {
               type="button"
               onClick={() => void confirmRecent()}
               disabled={busy}
-              className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-brand-orange px-4 font-display text-xs tracking-wider text-[#1a1a1a] disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-brand-orange px-4 font-display text-sm tracking-wider text-on-brand disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
               {method === "google"
                 ? "Confirm with Google"

@@ -170,7 +170,7 @@ export function ReportsPanel({ adminUid }: { adminUid: string }) {
   return (
     <section aria-label="Reports">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">{view.toUpperCase()} REPORTS</h2>
+        <h2 className="font-display text-sm tracking-[0.2em] text-brand-orange">{view.toUpperCase()} REPORTS</h2>
         <button
           type="button"
           onClick={() => setReloadKey((key) => key + 1)}
@@ -190,7 +190,7 @@ export function ReportsPanel({ adminUid }: { adminUid: string }) {
             role="tab"
             aria-selected={view === status}
             onClick={() => selectView(status)}
-            className={`inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border px-3 font-display text-[11px] tracking-[0.15em] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${
+            className={`inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border px-3 font-display text-sm tracking-[0.15em] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${
               view === status
                 ? "border-brand-orange/40 bg-brand-orange/[0.1] text-brand-orange"
                 : "border-border text-muted hover:text-white"

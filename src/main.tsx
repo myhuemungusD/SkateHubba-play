@@ -7,6 +7,7 @@ import { initSentry, captureException, addBreadcrumb } from "./lib/sentry";
 import { initPosthogOnConsent } from "./lib/posthog";
 import { captureInstallPrompt } from "./lib/installPrompt";
 import { installToolbarOverlay } from "./lib/toolbarOverlay";
+import { installDynamicType } from "./lib/dynamicType";
 import { captureGameLinkFromLocation } from "./lib/gameLink";
 import { Root } from "./boot/Root";
 import { runWhenIdle, setLandingBooted, shouldBootLanding } from "./boot/landingBoot";
@@ -14,6 +15,9 @@ import "./index.css";
 
 // Before first paint. Safari, Chrome iOS, the PWA, and Capacitor stay at 0.
 installToolbarOverlay();
+
+// iOS Text Size (Dynamic Type) scales the rem-based UI. Native iOS only.
+installDynamicType();
 
 // A push tap opens /?game=<id>. Park the id and strip it before the router
 // (and the boot landing, whose buttons navigate away) can drop it.

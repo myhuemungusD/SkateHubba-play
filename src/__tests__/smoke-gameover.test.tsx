@@ -144,7 +144,7 @@ describe("Smoke: Game Over", () => {
     await userEvent.click(screen.getByText("Back to Lobby"));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "YOUR TURN" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Your turn" })).toBeInTheDocument();
     });
   });
 

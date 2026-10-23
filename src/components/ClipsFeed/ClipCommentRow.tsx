@@ -42,7 +42,7 @@ export const ClipCommentRow = memo(function ClipCommentRow({
         ) : (
           <ProUsername username={comment.username} className="font-body text-xs text-white/80" />
         )}
-        <span className="shrink-0 font-body text-[11px] text-faint">{relativeClipTime(comment.createdAt)}</span>
+        <span className="shrink-0 font-body text-label text-faint">{relativeClipTime(comment.createdAt)}</span>
       </div>
       {/* Untrusted user text. Rendered as a plain text node so React escapes
           it, `whitespace-pre-wrap` to keep the author's line breaks, and
@@ -55,7 +55,7 @@ export const ClipCommentRow = memo(function ClipCommentRow({
           type="button"
           onClick={() => onReport(comment)}
           aria-label={`Report comment by @${comment.username}`}
-          className="mt-1.5 inline-flex min-h-[44px] items-center font-display text-[11px] tracking-[0.15em] text-faint transition-colors hover:text-brand-red focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          className="mt-1.5 inline-flex min-h-[44px] items-center font-display text-sm tracking-[0.15em] text-faint transition-colors hover:text-brand-red focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
         >
           REPORT
         </button>
@@ -66,7 +66,7 @@ export const ClipCommentRow = memo(function ClipCommentRow({
           onClick={() => onDelete(comment)}
           disabled={deleting}
           aria-label="Delete your comment"
-          className="mt-1.5 inline-flex min-h-[44px] items-center font-display text-[11px] tracking-[0.15em] text-faint transition-colors hover:text-brand-red disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          className="mt-1.5 inline-flex min-h-[44px] items-center font-display text-sm tracking-[0.15em] text-faint transition-colors hover:text-brand-red disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
         >
           {deleting ? "DELETING..." : "DELETE"}
         </button>

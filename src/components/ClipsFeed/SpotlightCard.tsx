@@ -32,7 +32,7 @@ function ClipBadge({ clip }: { clip: ClipDoc }) {
   if (clip.source === "user") {
     return (
       <span
-        className="rounded-md border border-white/20 bg-white/10 px-2 py-0.5 font-display text-[11px] tracking-[0.2em] text-white/80"
+        className="rounded-md border border-white/20 bg-white/10 px-2 py-0.5 font-display text-sm tracking-[0.2em] text-white/80"
         aria-label="Clip posted straight to the feed"
       >
         CLIP
@@ -41,7 +41,7 @@ function ClipBadge({ clip }: { clip: ClipDoc }) {
   }
   return (
     <span
-      className={`rounded-md border px-2 py-0.5 font-display text-[11px] tracking-[0.2em] ${
+      className={`rounded-md border px-2 py-0.5 font-display text-sm tracking-[0.2em] ${
         clip.role === "set"
           ? "border-brand-orange/40 bg-brand-orange/15 text-brand-orange"
           : "border-brand-green/40 bg-brand-green/15 text-brand-green"
@@ -108,7 +108,7 @@ export const SpotlightCard = memo(function SpotlightCard({
           <div className={`absolute left-4 right-24 z-20 ${ABOVE_NAV}`}>
             <div className="mb-2 flex items-center gap-2">
               <ClipBadge clip={clip} />
-              <span className="font-body text-[11px] text-white/70">{relativeClipTime(clip.createdAt)}</span>
+              <span className="font-body text-label text-white/70">{relativeClipTime(clip.createdAt)}</span>
             </div>
             <h2 className="font-display text-2xl leading-tight tracking-wide text-white drop-shadow">
               {clip.trickName}
@@ -119,7 +119,7 @@ export const SpotlightCard = memo(function SpotlightCard({
               className="mt-1 flex min-h-[44px] items-center gap-2 rounded-xl px-1.5 py-1 -ml-1.5 hover:bg-white/[0.06] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/40">
-                <span className="font-display text-[11px] leading-none text-white/90">
+                <span className="font-display text-sm leading-none text-white/90">
                   {clip.playerUsername[0]?.toUpperCase() ?? "?"}
                 </span>
               </span>

@@ -28,7 +28,7 @@
   position: absolute;
   inset: -6px;
   border-radius: 50%;
-  border: 2px solid #f97316;
+  border: 2px solid var(--color-brand-orange);
   animation: spot-pulse 1.8s ease-out infinite;
   pointer-events: none;
 }
@@ -41,7 +41,7 @@
 .spot-user-dot {
   width: 12px;
   height: 12px;
-  background: #f97316;
+  background: var(--color-brand-orange);
   border: 3px solid white;
   border-radius: 50%;
   box-shadow: 0 0 6px rgba(249, 115, 22, 0.5);
@@ -56,4 +56,26 @@
   border-radius: 50%;
   background: rgba(249, 115, 22, 0.15);
   pointer-events: none;
+}
+
+/*
+ * Mapbox zoom buttons default to 29–32px. Grow them to the 44pt HIG minimum
+ * and match the dark chrome. The attribution control is left untouched
+ * (Mapbox's terms require it to stay visible).
+ */
+.mapboxgl-ctrl-group button.mapboxgl-ctrl-zoom-in,
+.mapboxgl-ctrl-group button.mapboxgl-ctrl-zoom-out {
+  width: 44px;
+  height: 44px;
+}
+.mapboxgl-ctrl-group:not(:empty) {
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-line-strong);
+  box-shadow: none;
+}
+.mapboxgl-ctrl-group button + button {
+  border-top-color: var(--color-line-strong);
+}
+.mapboxgl-ctrl-group button .mapboxgl-ctrl-icon {
+  filter: invert(1);
 }

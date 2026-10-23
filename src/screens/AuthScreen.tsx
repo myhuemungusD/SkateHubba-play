@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { ChevronLeft } from "lucide-react";
+import { BackChevron } from "../components/ScreenHeader";
 import { signUp, signIn, resetPassword, type SignUpResult } from "../services/auth";
 import { loadSignupPasswordPolicy } from "../services/passwordPolicy";
 import { EMAIL_RE, getErrorCode, parseFirebaseError } from "../utils/helpers";
@@ -273,15 +273,7 @@ export function AuthScreen({
     <div className="min-h-dvh flex flex-col items-center px-6 pt-[max(env(safe-area-inset-top),1.25rem)] pb-[calc(var(--consent-banner-space,0px)+1.25rem)]">
       {onBack && (
         <div className="w-full max-w-sm">
-          <button
-            type="button"
-            onClick={onBack}
-            aria-label="Back"
-            data-testid="screen-back"
-            className="-ml-2 inline-flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-white hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-brand-orange"
-          >
-            <ChevronLeft size={26} aria-hidden="true" />
-          </button>
+          <BackChevron onClick={onBack} />
         </div>
       )}
       <div className="my-auto w-full max-w-sm p-6 sm:p-8 rounded-2xl glass-card animate-scale-in">

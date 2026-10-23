@@ -30,8 +30,8 @@ export function GnarRating({ value, size = "md", readonly = true, onChange }: Gn
           >
             <Flame
               size={px}
-              fill={filled ? "#F97316" : "none"}
-              color={filled ? "#F97316" : "currentColor"}
+              fill={filled ? "#ff6b00" : "none"}
+              color={filled ? "#ff6b00" : "currentColor"}
               strokeWidth={1.5}
             />
           </button>

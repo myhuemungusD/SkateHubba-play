@@ -48,7 +48,7 @@ export function PinnedClips({ clips, editor }: Props) {
                 <Scissors size={14} aria-hidden="true" />
               </button>
             )}
-            <figcaption className="truncate px-2 py-1 font-body text-[11px] text-white/80">{c.trickName}</figcaption>
+            <figcaption className="truncate px-2 py-1 font-body text-label text-white/80">{c.trickName}</figcaption>
           </figure>
         ))}
       </div>

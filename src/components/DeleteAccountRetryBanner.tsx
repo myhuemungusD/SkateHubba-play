@@ -51,7 +51,7 @@ export function DeleteAccountRetryBanner() {
       className="mx-5 mt-4 p-3.5 rounded-2xl bg-[rgba(255,61,26,0.08)] border border-brand-red/50 flex items-center justify-between gap-3 shadow-[0_0_16px_rgba(255,61,26,0.08)] animate-fade-in"
     >
       <div>
-        <span className="font-display text-xs tracking-wider text-brand-red block">
+        <span className="font-display text-sm tracking-wider text-brand-red block">
           {pendingDeleteErased ? "FINISH ACCOUNT DELETION" : "ACCOUNT NOT DELETED"}
         </span>
         <span className="font-body text-xs text-muted">
@@ -66,7 +66,7 @@ export function DeleteAccountRetryBanner() {
         onClick={onFinish}
         disabled={submitting}
         aria-label={pendingDeleteErased ? "Finish deleting your account" : "Retry deleting your account"}
-        className="touch-target inline-flex items-center justify-center font-display text-[11px] tracking-wider text-brand-red border border-brand-red/50 rounded-xl px-3.5 py-1.5 whitespace-nowrap disabled:opacity-40 hover:bg-brand-red/[0.08] hover:border-brand-red/70 active:scale-[0.97] transition-all duration-300"
+        className="touch-target inline-flex items-center justify-center font-display text-sm tracking-wider text-brand-red border border-brand-red/50 rounded-xl px-3.5 py-1.5 whitespace-nowrap disabled:opacity-40 hover:bg-brand-red/[0.08] hover:border-brand-red/70 active:scale-[0.97] transition-all duration-300"
       >
         {submitting ? "..." : pendingDeleteErased ? "Finish" : "Retry"}
       </button>

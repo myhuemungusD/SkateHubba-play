@@ -2,7 +2,7 @@ import { Palette } from "lucide-react";
 
 /** Shared tokens (src/index.css): btn-secondary / btn-primary-fill + press-feedback. */
 const SHAPE =
-  "min-h-[44px] rounded-xl font-display text-xs tracking-wider press-feedback focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
+  "min-h-[44px] rounded-xl font-display text-sm tracking-wider press-feedback focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
 const BTN = `flex-1 px-3 btn-secondary ${SHAPE}`;
 const PRIMARY = `flex-1 px-3 btn-primary-fill ${SHAPE}`;
 

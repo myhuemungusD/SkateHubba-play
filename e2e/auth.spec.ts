@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { clearAll, verifyEmail } from "./helpers/emulator";
 import { signUpViaUI, completeProfileSetup, fillAgeFields, waitForAuthForm } from "./helpers/auth-flow";
-import { expectOnLobby, openChallengeForm, tapChallengeTab } from "./helpers/lobby-nav";
+import { clickPastOverlays, expectOnLobby, openChallengeForm, tapChallengeTab } from "./helpers/lobby-nav";
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -137,8 +137,12 @@ test("sign in with existing account reaches lobby", async ({ page }) => {
   await signUpViaUI(page, "returner@test.com", "password123");
   await completeProfileSetup(page, "returner");
 
-  // Sign out
-  await page.getByRole("button", { name: "Sign Out" }).click();
+  // Sign out: lobby gear → Settings → Sign out → confirm
+  // The onboarding coach mark can mount late over any screen, so each tap
+  // clears it first (same as the lobby helpers).
+  await clickPastOverlays(page, page.getByRole("button", { name: "Settings" }));
+  await clickPastOverlays(page, page.getByRole("button", { name: /^Sign out/ }));
+  await clickPastOverlays(page, page.getByRole("alertdialog").getByRole("button", { name: "Sign out", exact: true }));
   await expect(page.getByText("S.K.A.T.E.")).toBeVisible({ timeout: 5_000 });
 
   // Sign back in

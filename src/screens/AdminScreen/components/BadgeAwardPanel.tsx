@@ -86,7 +86,7 @@ export function BadgeAwardPanel({ uid, username }: { uid: string; username: stri
 
   return (
     <section aria-label="Badges" className="mb-8">
-      <h2 className="mb-3 font-display text-[11px] tracking-[0.2em] text-brand-orange">BADGES</h2>
+      <h2 className="mb-3 font-display text-sm tracking-[0.2em] text-brand-orange">BADGES</h2>
 
       <AdminTextField
         label="Reason"
@@ -114,7 +114,7 @@ export function BadgeAwardPanel({ uid, username }: { uid: string; username: stri
                   <meta.Icon size={18} strokeWidth={1.8} className="shrink-0 text-brand-orange" aria-hidden="true" />
                   <div className="min-w-0">
                     <p className="truncate font-display text-sm text-white">{meta.label}</p>
-                    <p className="font-body text-[11px] text-subtle">{earned ? "Earned" : meta.description}</p>
+                    <p className="font-body text-label text-subtle">{earned ? "Earned" : meta.description}</p>
                   </div>
                 </div>
                 {earned ? (
@@ -132,7 +132,7 @@ export function BadgeAwardPanel({ uid, username }: { uid: string; username: stri
                     onClick={() => void award(badgeId)}
                     disabled={reasonMissing || acting === badgeId}
                     aria-label={`Award ${meta.label} to ${username}`}
-                    className="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-xl border border-brand-orange/40 bg-brand-orange/[0.12] px-4 font-display text-[11px] tracking-[0.15em] text-brand-orange transition-colors active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-xl border border-brand-orange/40 bg-brand-orange/[0.12] px-4 font-display text-sm tracking-[0.15em] text-brand-orange transition-colors active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {acting === badgeId ? "..." : "AWARD"}
                   </button>

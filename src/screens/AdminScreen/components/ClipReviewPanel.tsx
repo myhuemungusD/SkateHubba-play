@@ -62,7 +62,7 @@ export function ClipReviewPanel() {
   return (
     <section aria-label="Clips in review">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">CLIPS IN REVIEW</h2>
+        <h2 className="font-display text-sm tracking-[0.2em] text-brand-orange">CLIPS IN REVIEW</h2>
         <button
           type="button"
           onClick={() => setReloadKey((key) => key + 1)}
@@ -102,7 +102,7 @@ export function ClipReviewPanel() {
           type="button"
           onClick={() => void loadMore()}
           disabled={loadingMore}
-          className="mt-4 min-h-[44px] w-full rounded-xl border border-border font-display text-xs tracking-wider text-white disabled:opacity-40"
+          className="mt-4 min-h-[44px] w-full rounded-xl border border-border font-display text-sm tracking-wider text-white disabled:opacity-40"
         >
           {loadingMore ? "Loading…" : "Load more"}
         </button>
@@ -154,7 +154,7 @@ function ReviewCard({
           type="button"
           disabled={busy}
           onClick={() => void act("approved")}
-          className="min-h-[44px] flex-1 rounded-xl bg-brand-green/20 font-display text-xs tracking-wider text-brand-green"
+          className="min-h-[44px] flex-1 rounded-xl bg-brand-green/20 font-display text-sm tracking-wider text-brand-green"
         >
           Keep
         </button>
@@ -173,7 +173,7 @@ function ReviewCard({
         type="button"
         disabled={busy || reason.trim().length === 0}
         onClick={() => void act("removed")}
-        className="mt-2 min-h-[44px] w-full rounded-xl bg-brand-red/20 font-display text-xs tracking-wider text-brand-red disabled:opacity-40"
+        className="mt-2 min-h-[44px] w-full rounded-xl bg-brand-red/20 font-display text-sm tracking-wider text-brand-red disabled:opacity-40"
       >
         Remove
       </button>

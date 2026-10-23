@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ChevronLeft, ShieldCheck } from "lucide-react";
+import { BackChevron } from "../../components/ScreenHeader";
+import { ShieldCheck } from "lucide-react";
 import { AdminTabs, type AdminTab } from "./components/AdminTabs";
 import { VerifyProPanel } from "./components/VerifyProPanel";
 import { AwardsPanel } from "./components/AwardsPanel";
@@ -34,17 +35,9 @@ export function AdminScreen({ adminUid, onBack }: Props) {
   const [tab, setTab] = useState<AdminTab>(verifyProEnabled ? "verify" : "awards");
 
   return (
-    <div className="min-h-dvh overflow-y-auto bg-background pb-24">
+    <div className="min-h-dvh overflow-y-auto bg-background pb-tabbar">
       <div className="glass flex items-center justify-between border-b border-white/[0.04] px-5 pt-safe pb-4">
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label="Back to lobby"
-          className="touch-target flex items-center gap-2 rounded-lg text-muted transition-colors hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-        >
-          <ChevronLeft size={16} strokeWidth={2} aria-hidden="true" />
-          <span className="font-body text-xs">Lobby</span>
-        </button>
+        <BackChevron onClick={onBack} label="Back to lobby" />
         <span className="flex items-center gap-2 font-display text-sm tracking-[0.2em] text-brand-orange">
           <ShieldCheck size={16} strokeWidth={2} aria-hidden="true" />
           ADMIN

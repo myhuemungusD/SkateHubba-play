@@ -274,7 +274,7 @@ export function VideoRecorder({
               />
             )}
             <div className="bg-brand-orange/90 px-2.5 py-1 rounded-md">
-              <span className="font-display text-[11px] text-white tracking-[0.1em]">ONE TAKE</span>
+              <span className="font-display text-sm text-black tracking-[0.1em]">ONE TAKE</span>
             </div>
           </div>
         )}

@@ -7,7 +7,7 @@ export function JudgeStatusBadge({ game, viewerIsJudge }: { game: GameDoc; viewe
   if (game.judgeStatus === "pending") {
     return (
       <div
-        className="mb-4 inline-flex items-center gap-2 rounded-full border border-subtle/40 bg-white/[0.03] px-3 py-1 text-[11px] text-subtle"
+        className="mb-4 inline-flex items-center gap-2 rounded-full border border-subtle/40 bg-white/[0.03] px-3 py-1 text-label text-subtle"
         data-testid="judge-pending-badge"
       >
         <span className="font-display tracking-wider">REFEREE PENDING</span>
@@ -18,7 +18,7 @@ export function JudgeStatusBadge({ game, viewerIsJudge }: { game: GameDoc; viewe
   if (game.judgeStatus === "accepted") {
     return (
       <div
-        className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand-orange/30 bg-brand-orange/[0.06] px-3 py-1 text-[11px] text-brand-orange"
+        className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand-orange/30 bg-brand-orange/[0.06] px-3 py-1 text-label text-brand-orange"
         data-testid="judge-active-badge"
       >
         <span className="font-display tracking-wider">REFEREE</span>
@@ -29,7 +29,7 @@ export function JudgeStatusBadge({ game, viewerIsJudge }: { game: GameDoc; viewe
   if (game.judgeStatus === "declined") {
     return (
       <div
-        className="mb-4 inline-flex items-center gap-2 rounded-full border border-subtle/40 bg-white/[0.03] px-3 py-1 text-[11px] text-subtle"
+        className="mb-4 inline-flex items-center gap-2 rounded-full border border-subtle/40 bg-white/[0.03] px-3 py-1 text-label text-subtle"
         data-testid="judge-declined-badge"
       >
         <span className="font-display tracking-wider">NO REFEREE</span>

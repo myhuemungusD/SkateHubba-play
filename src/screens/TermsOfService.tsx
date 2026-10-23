@@ -1,5 +1,6 @@
 import { PolicySection } from "../components/legal/PolicySection";
 import { Btn } from "../components/ui/Btn";
+import { LegalTopBar } from "../components/legal/LegalTopBar";
 
 const EFFECTIVE_DATE = "October 22, 2026";
 const CONTACT_EMAIL = "legal@skatehubba.com";
@@ -7,16 +8,7 @@ const CONTACT_EMAIL = "legal@skatehubba.com";
 export function TermsOfService({ onBack }: { onBack: () => void }) {
   return (
     <div className="min-h-dvh bg-background/90 text-white">
-      <div className="px-5 pt-safe pb-4 border-b border-[#222] flex items-center gap-4">
-        {/* Btn is w-full. In this row that width is the whole header, which
-            pushes the logo past the viewport. w-fit sizes the control to its label. */}
-        <div className="w-fit shrink-0">
-          <Btn onClick={onBack} variant="ghost">
-            ← Back
-          </Btn>
-        </div>
-        <img src="/logonew.webp" alt="" draggable={false} className="h-6 w-auto select-none" aria-hidden="true" />
-      </div>
+      <LegalTopBar onBack={onBack} />
 
       <article className="max-w-2xl mx-auto px-5 py-8">
         <h1 className="font-display text-4xl text-white mb-1">Terms of Service</h1>
@@ -168,7 +160,7 @@ export function TermsOfService({ onBack }: { onBack: () => void }) {
 
       <div className="px-5 pb-12 flex justify-center">
         <Btn onClick={onBack} variant="ghost">
-          ← Back to App
+          Back to app
         </Btn>
       </div>
     </div>

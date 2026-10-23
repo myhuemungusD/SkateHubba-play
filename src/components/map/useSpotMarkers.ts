@@ -35,7 +35,7 @@ export function useSpotMarkers({ map, visibleSpots, activeGameSpotId, onSpotClic
     el.style.border = "1px solid white";
     el.style.cursor = "pointer";
     el.style.position = "relative";
-    el.style.backgroundColor = spot.isVerified ? "#22C55E" : "#F97316";
+    el.style.backgroundColor = spot.isVerified ? "#22C55E" : "#ff6b00";
     // Test hook — anonymous marker divs are otherwise unselectable in e2e
     // without coordinate math.
     el.setAttribute("data-testid", `spot-marker-${spot.id}`);

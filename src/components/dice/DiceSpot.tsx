@@ -92,7 +92,7 @@ export function DiceSpot({
       </div>
       {kept && kept.length > 0 ? (
         <div className="relative flex items-center gap-1.5 border-t border-black/15 bg-black/10 px-3 py-2">
-          <span className="mr-1 font-display text-xs tracking-[0.18em] text-white/70">Set aside</span>
+          <span className="mr-1 font-display text-sm tracking-[0.18em] text-white/70">Set aside</span>
           {kept.map((face, index) => (
             <Die key={`kept-${index}`} face={face} size="xs" order={index} />
           ))}

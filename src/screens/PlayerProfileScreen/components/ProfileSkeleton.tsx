@@ -3,7 +3,7 @@ import { ProfileHeader } from "./ProfileHeader";
 export function ProfileSkeleton({ onBack, backLabel }: { onBack: () => void; backLabel?: string }) {
   return (
     <div
-      className="min-h-dvh pb-24 overflow-y-auto bg-profile-glow"
+      className="min-h-dvh pb-tabbar overflow-y-auto bg-profile-glow"
       role="status"
       aria-busy="true"
       aria-label="Loading player profile"

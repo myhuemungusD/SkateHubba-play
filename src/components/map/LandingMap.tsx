@@ -70,7 +70,7 @@ function FallbackCard({ onSignUpPrompt }: LandingMapProps) {
         <button
           type="button"
           onClick={onSignUpPrompt}
-          className="px-6 py-2.5 bg-brand-orange text-[#1a1a1a] rounded-xl font-body font-semibold text-sm hover:bg-[#EA580C] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          className="px-6 py-2.5 bg-brand-orange text-on-brand rounded-xl font-body font-semibold text-sm hover:bg-brand-orange-hover transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
         >
           Sign up to explore
         </button>
@@ -116,7 +116,7 @@ function CtaModal({ onClose, onSignUpPrompt }: CtaModalProps) {
             type="button"
             autoFocus
             onClick={onSignUpPrompt}
-            className="w-full px-4 py-2.5 bg-brand-orange text-[#1a1a1a] rounded-xl font-body font-semibold text-sm hover:bg-[#EA580C] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            className="w-full px-4 py-2.5 bg-brand-orange text-on-brand rounded-xl font-body font-semibold text-sm hover:bg-brand-orange-hover transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
             Sign up free
           </button>
@@ -200,7 +200,7 @@ export function LandingMap({ onSignUpPrompt }: LandingMapProps) {
           el.setAttribute("aria-label", `${spot.name} (locked — sign up to view)`);
           el.dataset.testid = `landing-pin-${spot.id}`;
           el.className =
-            "relative flex h-5 w-5 items-center justify-center rounded-full bg-[#FF6B00] ring-2 ring-[#FF6B00]/40 shadow-[0_0_8px_rgba(255,107,0,0.5)] cursor-pointer focus:outline-2 focus:outline-offset-2 focus:outline-white";
+            "relative flex h-5 w-5 items-center justify-center rounded-full bg-brand-orange ring-2 ring-brand-orange/40 shadow-[0_0_8px_rgba(255,107,0,0.5)] cursor-pointer focus:outline-2 focus:outline-offset-2 focus:outline-white";
           el.innerHTML =
             '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="white" stroke-width="2.5" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
           el.addEventListener("click", (e) => {

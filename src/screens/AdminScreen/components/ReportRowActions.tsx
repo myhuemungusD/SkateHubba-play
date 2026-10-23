@@ -1,3 +1,4 @@
+import { FIELD_LABEL } from "../../../components/ui/Field";
 import { useId, useState } from "react";
 import type { AdminReport } from "../../../services/admin";
 import { ConfirmButton } from "./ConfirmButton";
@@ -14,7 +15,7 @@ export interface ReportRowActionsProps {
 }
 
 const VERDICT_BTN =
-  "inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border px-3 font-display text-[11px] tracking-[0.15em] transition-colors active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-not-allowed disabled:opacity-40";
+  "inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border px-3 font-display text-sm tracking-[0.15em] transition-colors active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-not-allowed disabled:opacity-40";
 
 /**
  * Verdict + enforcement controls for one pending report.
@@ -53,7 +54,7 @@ export function ReportRowActions({
       <div className="mt-3 flex gap-2">
         {drafting ? (
           <div className="flex-1">
-            <label htmlFor={statementId} className="block font-display text-[11px] tracking-[0.12em] text-dim mb-2">
+            <label htmlFor={statementId} className={`block ${FIELD_LABEL} mb-2`}>
               STATEMENT OF REASONS
             </label>
             <textarea

@@ -63,7 +63,7 @@ export function MusicPanel({ project, onChange }: PanelProps) {
           </label>
         </>
       )}
-      <p className="font-body text-[11px] text-faint">
+      <p className="font-body text-label text-faint">
         All tracks are original SkateHubba music (CC0) — safe to post anywhere.
       </p>
     </div>
@@ -129,7 +129,7 @@ export function SoundsPanel({ project, onChange, outputTime, onAdded }: SoundsPa
       >
         {pickedSound ? `ADD ${pickedSound.label.toUpperCase()} AT ${outputTime.toFixed(1)}S` : "TAP A SOUND TO HEAR IT"}
       </button>
-      <p className="font-body text-[11px] text-faint" data-testid="sfx-credits">
+      <p className="font-body text-label text-faint" data-testid="sfx-credits">
         Sound credits:{" "}
         {soundCredits().map((c, i) => (
           <span key={c.url}>

@@ -55,7 +55,7 @@ function comboLabel(multiplier: number): string {
 function CreditParagraph({ text }: { text: string }) {
   const parts = text.split(/(https?:\/\/[^\s)]+)/g);
   return (
-    <p className="font-body text-[11px] leading-snug text-white/50">
+    <p className="font-body text-label leading-snug text-white/50">
       {parts.map((part, index) =>
         part.startsWith("http") ? (
           <a
@@ -115,13 +115,13 @@ export function RunnerHud({
             </p>
           ) : null}
           {hud.best > 0 && hud.status !== "gameover" ? (
-            <p data-testid="runner-best" className="font-body text-[11px] tracking-wider text-white/50">
+            <p data-testid="runner-best" className="font-body text-label tracking-wider text-white/50">
               Best {hud.best}
             </p>
           ) : null}
         </div>
         <div className="pointer-events-auto flex flex-col items-end gap-2">
-          <p className="font-body text-[11px] tracking-wider text-white/50" aria-hidden>
+          <p className="font-body text-label tracking-wider text-white/50" aria-hidden>
             FPS <span ref={fpsRef}>—</span>
           </p>
           {hud.status === "playing" ? (
@@ -184,7 +184,7 @@ export function RunnerHud({
 
       {hud.onGrind ? (
         <div className="mt-auto flex flex-col items-center pb-1" data-testid="runner-balance">
-          <p className="font-body text-[11px] tracking-[0.28em] text-white/70">BALANCE</p>
+          <p className="font-body text-label tracking-[0.28em] text-white/70">BALANCE</p>
           <div className="relative mt-1 h-2 w-28 overflow-hidden rounded-full bg-white/15">
             <span
               className={`absolute top-0 left-1/2 h-2 w-2 -ml-1 rounded-full ${leanClass(hud.balance)} ${

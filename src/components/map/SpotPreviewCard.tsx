@@ -130,8 +130,8 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
                 so users coming in from a direct URL know why the card matters. */}
             {isActiveGame && (
               <div
-                className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold tracking-wide
-                           uppercase text-[#F97316]"
+                className="mt-1 inline-flex items-center gap-1 text-label font-semibold tracking-wide
+                           uppercase text-brand-orange"
                 data-testid="active-game-badge"
               >
                 <Flag size={10} aria-hidden="true" />
@@ -155,12 +155,14 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
             {spot.obstacles.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2">
                 {visibleObstacles.map((o) => (
-                  <span key={o} className="px-2 py-0.5 text-xs rounded-full bg-[#333] text-[#CCC]">
+                  <span key={o} className="px-2 py-0.5 text-xs rounded-full bg-line-strong text-soft">
                     {o.replace("_", " ")}
                   </span>
                 ))}
                 {hiddenCount > 0 && (
-                  <span className="px-2 py-0.5 text-xs rounded-full bg-[#333] text-muted">+{hiddenCount} more</span>
+                  <span className="px-2 py-0.5 text-xs rounded-full bg-line-strong text-muted">
+                    +{hiddenCount} more
+                  </span>
                 )}
               </div>
             )}
@@ -178,8 +180,8 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
           <button
             type="button"
             onClick={() => navigate(`/challenge?spot=${spot.id}`)}
-            className="mt-4 w-full py-2.5 rounded-xl bg-[#F97316] text-white font-semibold text-sm
-                     hover:bg-[#EA580C] transition-colors"
+            className="mt-4 w-full py-2.5 rounded-xl bg-brand-orange text-black font-semibold text-sm
+                     hover:bg-brand-orange-hover transition-colors"
           >
             Challenge from here
           </button>
@@ -193,8 +195,8 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
             type="button"
             disabled={spot.scope === "private"}
             onClick={() => navigate(`/spots/${spot.id}`)}
-            className="py-2.5 rounded-xl bg-surface-alt border border-[#333] text-[#CCC]
-                       font-semibold text-sm hover:bg-[#222] hover:border-[#444] transition-colors"
+            className="py-2.5 rounded-xl bg-surface-alt border border-line-strong text-soft
+                       font-semibold text-sm hover:bg-line hover:border-[#444] transition-colors"
           >
             View Spot
           </button>
@@ -203,8 +205,8 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
             target="_blank"
             rel="noopener noreferrer"
             aria-label={`Get directions to ${spot.name}`}
-            className="py-2.5 rounded-xl bg-surface-alt border border-[#333] text-[#CCC]
-                       font-semibold text-sm hover:bg-[#222] hover:border-[#444] transition-colors
+            className="py-2.5 rounded-xl bg-surface-alt border border-line-strong text-soft
+                       font-semibold text-sm hover:bg-line hover:border-[#444] transition-colors
                        flex items-center justify-center gap-1.5"
           >
             <Navigation size={14} aria-hidden="true" />

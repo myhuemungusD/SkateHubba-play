@@ -252,7 +252,7 @@ export function PlayerProfileScreen({
 
   return (
     <div
-      className="min-h-dvh pb-24 overflow-y-auto bg-profile-glow"
+      className="min-h-dvh pb-tabbar overflow-y-auto bg-profile-glow"
       style={customOn ? { backgroundImage: gradientCss(pc.custom) } : undefined}
       data-testid="player-profile-root"
       {...ptrBindings}

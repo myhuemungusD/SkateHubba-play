@@ -57,7 +57,7 @@ export function AddSpotDetailsStep({
           }}
           placeholder="e.g. Hollywood High 16"
           className="w-full bg-background border border-[#444] rounded-lg px-3 py-2 text-white text-base
-                     placeholder:text-subtle focus:outline-none focus:border-[#F97316]"
+                     placeholder:text-subtle focus:outline-none focus:border-brand-orange"
         />
         {nameError && <p className="text-red-400 text-xs mt-1">{nameError}</p>}
         <p className="text-subtle text-xs mt-1">{name.length}/80</p>
@@ -73,7 +73,7 @@ export function AddSpotDetailsStep({
           placeholder="What makes this spot special?"
           rows={3}
           className="w-full bg-background border border-[#444] rounded-lg px-3 py-2 text-white text-base
-                     placeholder:text-subtle focus:outline-none focus:border-[#F97316] resize-none"
+                     placeholder:text-subtle focus:outline-none focus:border-brand-orange resize-none"
         />
         <p className="text-subtle text-xs mt-1">{description.length}/500</p>
       </div>
@@ -89,7 +89,7 @@ export function AddSpotDetailsStep({
               onClick={() => toggleObstacle(o)}
               className={`touch-target inline-flex items-center justify-center px-3 py-1 text-xs rounded-full border transition-colors ${
                 obstacles.includes(o)
-                  ? "bg-[#F97316] border-[#F97316] text-white"
+                  ? "bg-brand-orange border-brand-orange text-black"
                   : "bg-transparent border-[#444] text-muted hover:border-[#666]"
               }`}
             >
@@ -119,8 +119,8 @@ export function AddSpotDetailsStep({
         type="button"
         disabled={!canProceedStep2}
         onClick={onNext}
-        className="w-full py-2.5 rounded-xl bg-[#F97316] text-white font-semibold text-sm
-                   hover:bg-[#EA580C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        className="w-full py-2.5 rounded-xl bg-brand-orange text-black font-semibold text-sm
+                   hover:bg-brand-orange-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
         Next
       </button>

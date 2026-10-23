@@ -36,7 +36,7 @@ describe("Smoke: Lobby", () => {
     await renderLobby([game]);
 
     expect(await screen.findByText(/@sk8r/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "YOUR TURN" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Your turn" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /vs @rival/i })).toBeInTheDocument();
     expect(screen.getByText("Your turn to set")).toBeInTheDocument();
   });
@@ -71,11 +71,11 @@ describe("Smoke: Lobby", () => {
     });
     await renderLobby([active1, completed]);
 
-    const turnStack = await screen.findByRole("region", { name: "YOUR TURN" });
+    const turnStack = await screen.findByRole("region", { name: "Your turn" });
     expect(within(turnStack).getByRole("button", { name: /vs @rival/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /vs @loser/i })).not.toBeInTheDocument();
 
-    const summary = screen.getByRole("button", { name: /1 finished\. 1 win out of 1 game/ });
+    const summary = screen.getByRole("button", { name: "1 finished · 1 win out of 1 game. View record" });
     expect(turnStack.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
@@ -113,8 +113,10 @@ describe("Smoke: Lobby", () => {
     });
     await renderLobby([game]);
 
-    expect(await screen.findByRole("button", { name: /1 finished\. 1 win out of 1 game/ })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "YOUR TURN" })).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "1 finished · 1 win out of 1 game. View record" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Your turn" })).not.toBeInTheDocument();
   });
 
   it("opens game via keyboard Enter on active game card", async () => {
@@ -144,7 +146,7 @@ describe("Smoke: Lobby", () => {
     await renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(await screen.findByRole("button", { name: /1 finished\. 1 win out of 1 game/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "1 finished · 1 win out of 1 game. View record" }));
 
     await waitFor(() => {
       expect(screen.getByRole("link", { name: "Me" })).toHaveAttribute("aria-current", "page");
@@ -190,6 +192,6 @@ describe("Smoke: Lobby", () => {
     await userEvent.keyboard("a");
 
     // Still on lobby
-    expect(screen.getByRole("heading", { name: "YOUR TURN" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Your turn" })).toBeInTheDocument();
   });
 });
