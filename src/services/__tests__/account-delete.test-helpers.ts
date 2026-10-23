@@ -172,7 +172,16 @@ export interface FakeFile {
 }
 
 export interface FakeStorage {
-  bucket(name: string): { getFiles(opts: { prefix: string }): Promise<[FakeFile[]]> };
+  bucket(name: string): {
+    getFiles(opts: GetFilesOpts): Promise<[FakeFile[], { pageToken: string } | null]>;
+  };
+}
+
+export interface GetFilesOpts {
+  prefix: string;
+  autoPaginate?: boolean;
+  maxResults?: number;
+  pageToken?: string;
 }
 
 export interface FakeStore {
@@ -200,6 +209,13 @@ export interface FakeStore {
   failNextCommit: string | null;
   /** Set to make `getFiles` reject for any prefix starting with this value. */
   failGetFilesPrefix: string | null;
+  /**
+   * Caps the objects returned per `getFiles` page (on top of `maxResults`),
+   * so tests can force the pagination path without seeding 1000+ objects.
+   */
+  getFilesPageSize: number | null;
+  /** Every `getFiles` call's options, in order. */
+  getFilesCalls: GetFilesOpts[];
   /**
    * Called before each object delete with the object name and its 0-based
    * attempt number; return an error to throw, or null to let it succeed. Drives
@@ -276,6 +292,8 @@ export function makeFakeStore(seed: Seed = {}, objects: string[] = []): FakeStor
     fileDeleteAttempts: [],
     maxConcurrentFileDeletes: 0,
     bucketsRequested: [],
+    getFilesPageSize: null,
+    getFilesCalls: [],
     failNextCommit: null,
     failGetFilesPrefix: null,
     failFileDelete: null,
@@ -416,35 +434,49 @@ export function makeFakeStore(seed: Seed = {}, objects: string[] = []): FakeStor
     bucket: (name: string) => {
       store.bucketsRequested.push(name);
       return {
-        getFiles: ({ prefix }) => {
+        getFiles: (opts) => {
+          const { prefix, pageToken } = opts;
+          store.getFilesCalls.push({ ...opts });
           store.events.push(`getFiles:${prefix}`);
           const failPrefix = store.failGetFilesPrefix;
           if (failPrefix !== null && prefix.startsWith(failPrefix)) {
             return Promise.reject(new Error(`storage list failed: ${prefix}`));
           }
-          const files = [...store.objects]
+          // Real GCS semantics: a page token is the position after the last
+          // name returned, so objects deleted from earlier pages never shift
+          // the next page. With autoPaginate left on, everything comes back.
+          const matching = [...store.objects]
             .filter((objectName) => objectName.startsWith(prefix))
-            .sort()
-            .map((objectName) => ({
-              name: objectName,
-              delete: (opts?: { ignoreNotFound?: boolean }) => {
-                const attempt = store.fileDeleteAttempts.filter((n) => n === objectName).length;
-                store.fileDeleteAttempts.push(objectName);
-                inFlight += 1;
-                store.maxConcurrentFileDeletes = Math.max(store.maxConcurrentFileDeletes, inFlight);
-                const settle = <T>(value: T): T => {
-                  inFlight -= 1;
-                  return value;
-                };
-                const injected = store.failFileDelete?.(objectName, attempt) ?? null;
-                if (injected !== null) return Promise.resolve().then(() => Promise.reject(settle(injected)));
-                store.events.push(`storageDelete:${objectName}`);
-                store.fileDeletes.push({ name: objectName, ignoreNotFound: opts?.ignoreNotFound === true });
-                store.objects.delete(objectName);
-                return Promise.resolve().then(() => settle(undefined));
-              },
-            }));
-          return Promise.resolve([files] as [FakeFile[]]);
+            .filter((objectName) => pageToken === undefined || objectName > pageToken)
+            .sort();
+          const caps = [
+            opts.autoPaginate === false ? opts.maxResults : undefined,
+            store.getFilesPageSize ?? undefined,
+          ].filter((n): n is number => typeof n === "number");
+          const limit = caps.length > 0 ? Math.min(...caps) : matching.length;
+          const page = matching.slice(0, limit);
+          const nextQuery =
+            page.length > 0 && matching.length > page.length ? { pageToken: page[page.length - 1] } : null;
+          const files = page.map((objectName) => ({
+            name: objectName,
+            delete: (opts?: { ignoreNotFound?: boolean }) => {
+              const attempt = store.fileDeleteAttempts.filter((n) => n === objectName).length;
+              store.fileDeleteAttempts.push(objectName);
+              inFlight += 1;
+              store.maxConcurrentFileDeletes = Math.max(store.maxConcurrentFileDeletes, inFlight);
+              const settle = <T>(value: T): T => {
+                inFlight -= 1;
+                return value;
+              };
+              const injected = store.failFileDelete?.(objectName, attempt) ?? null;
+              if (injected !== null) return Promise.resolve().then(() => Promise.reject(settle(injected)));
+              store.events.push(`storageDelete:${objectName}`);
+              store.fileDeletes.push({ name: objectName, ignoreNotFound: opts?.ignoreNotFound === true });
+              store.objects.delete(objectName);
+              return Promise.resolve().then(() => settle(undefined));
+            },
+          }));
+          return Promise.resolve([files, nextQuery] as [FakeFile[], { pageToken: string } | null]);
         },
       };
     },

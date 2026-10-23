@@ -292,7 +292,7 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 
 ### P3-7 · Verified NOT problems (no action)
 
-- `lucide-react ^1.27.0` and `uuid ^14` **resolve cleanly** to `1.28.0` / `14.0.0` in both lockfile and `node_modules` — not bugs.
+- `lucide-react ^1.27.0` **resolves cleanly** to `1.28.0` in both lockfile and `node_modules`, not a bug. ~~`uuid ^14` resolves cleanly~~ **Wrong, it was a bug:** uuid 12+ is ESM-only and gaxios 6 (under `@google-cloud/storage`) `require()`s it, so the first Storage call in `/api/account/delete` failed with ERR_REQUIRE_ESM (500 `erasure_failed`). The override is now `uuid ^11.1.1` (patched for GHSA-w5hq-g745-h8pq, still ships CommonJS), and `npm run check:api-load` runs call-time probes that catch this class.
 - `firebase-admin` in `dependencies` (not dev) is **correct** — Vercel builds `api/` from root; verified it doesn't leak into the client bundle.
 - `games.create.ts:164` `setDoc` (not `runTransaction`) is **correct** — idempotent create at a deterministic id, not a state mutation.
 - The `/games` turn-order / letter / deadline / stats-lockdown invariants are airtight and well-tested. `DISPUTE_BINDING_DESIGN.md` is fully implemented (only its status header is stale).

@@ -28,9 +28,9 @@
  *   • Dry-run: `?dryRun=1` (or DRY_RUN=1) logs intended forfeits, writes nothing.
  */
 
-import { timingSafeEqual } from "node:crypto";
 import { cert, getApps, initializeApp, type App, type ServiceAccount } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp, type Firestore } from "firebase-admin/firestore";
+import { matchesCronSecret } from "./_cronAuth.js";
 import { describeInitFailure, parseServiceAccountJson } from "./_serviceAccount.js";
 // Relative imports in this file's traced graph need explicit .js extensions:
 // Vercel compiles each file separately (no bundling) and the ESM loader does
@@ -40,6 +40,7 @@ import { decideExpiredForfeit, type ForfeitGameUpdate } from "../../src/services
 import { toGameDoc, type GameDoc } from "../../src/services/games.mappers.js";
 import { applyTrainingLabelPending, materializeTrainingLabels } from "../../src/services/trainingLabels.materialize.js";
 import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
+import { safeErrorCode } from "../_safeError.js";
 
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
 const FIRESTORE_DB_NAME = "skatehubba";
@@ -122,25 +123,13 @@ function getAdminFirestore(): Firestore {
 }
 
 /**
- * Constant-time bearer check against CRON_SECRET.
- *
- * Fail-closed: returns false when CRON_SECRET is unset, the header is missing,
- * or it is empty. The token comparison uses `crypto.timingSafeEqual` so a
- * network attacker cannot recover the secret byte-by-byte via response timing.
- * timingSafeEqual throws on unequal-length buffers, so we length-guard first —
- * the length check itself is not constant-time, but only leaks the secret's
- * length, not its bytes.
+ * Constant-time bearer check against CRON_SECRET, fail-closed. The comparison
+ * lives in ./_cronAuth.ts (shared by every cron); this only picks the header
+ * value off the Node request.
  */
 function isAuthorized(req: CronRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
   const header = req.headers["authorization"] ?? req.headers["Authorization"];
-  const value = Array.isArray(header) ? header[0] : header;
-  if (!value) return false;
-  const expected = Buffer.from(`Bearer ${secret}`);
-  const actual = Buffer.from(value);
-  if (actual.length !== expected.length) return false;
-  return timingSafeEqual(actual, expected);
+  return matchesCronSecret(Array.isArray(header) ? header[0] : header);
 }
 
 function isDryRun(req: CronRequest): boolean {
@@ -347,7 +336,7 @@ async function dispatchAdminPush(
       JSON.stringify({
         event: "sweep_push_failed",
         gameId,
-        message: err instanceof Error ? err.message : String(err),
+        code: safeErrorCode(err),
       }),
     );
     captureServerError("sweep_push_failed", err, { gameId }, { level: "warning" });
@@ -533,7 +522,7 @@ async function reconcileChallengeNotifications(
         JSON.stringify({
           event: "challenge_reconcile_failed",
           gameId: docSnap.id,
-          message: err instanceof Error ? err.message : String(err),
+          code: safeErrorCode(err),
         }),
       );
       captureServerError("challenge_reconcile_failed", err, { gameId: docSnap.id }, { level: "warning" });
@@ -621,7 +610,7 @@ async function remindUpcomingDeadlines(db: Firestore, nowMs: number, dryRun: boo
         JSON.stringify({
           event: "turn_reminder_failed",
           gameId: docSnap.id,
-          message: err instanceof Error ? err.message : String(err),
+          code: safeErrorCode(err),
         }),
       );
       captureServerError("turn_reminder_failed", err, { gameId: docSnap.id }, { level: "warning" });
@@ -664,7 +653,7 @@ async function runNotificationPasses(db: Firestore, summary: SweepSummary, dryRu
         JSON.stringify({
           event: "notify_pass_failed",
           pass: name,
-          message: err instanceof Error ? err.message : String(err),
+          code: safeErrorCode(err),
         }),
       );
       captureServerError("notify_pass_failed", err, { pass: name });
@@ -749,7 +738,7 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
           JSON.stringify({
             event: "sweep_game_failed",
             gameId: docSnap.id,
-            message: err instanceof Error ? err.message : String(err),
+            code: safeErrorCode(err),
           }),
         );
         captureServerError("sweep_game_failed", err, { gameId: docSnap.id }, { level: "warning" });
@@ -772,7 +761,7 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
       console.warn(
         JSON.stringify({
           event: "training_labels_failed",
-          message: err instanceof Error ? err.message : String(err),
+          code: safeErrorCode(err),
         }),
       );
       captureServerError("training_labels_failed", err, {}, { level: "warning" });
@@ -783,7 +772,7 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
   } catch (err) {
     // Query-level failure (index missing, permission, etc). Never throw to the
     // platform — return what we have plus the error so the cron logs surface it.
-    console.warn(JSON.stringify({ event: "sweep_failed", message: err instanceof Error ? err.message : String(err) }));
+    console.warn(JSON.stringify({ event: "sweep_failed", code: safeErrorCode(err) }));
     captureServerError("sweep_failed", err);
     await flushServerErrors();
     res.status(500).json({ ...summary, error: "sweep_failed" });
