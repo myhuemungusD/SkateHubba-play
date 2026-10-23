@@ -47,7 +47,10 @@ vi.mock("../../../firebase", () => ({
 // mount. These specs assert SpotMap's own open/closed wiring, not the sheet's
 // internals — those belong to AddSpotSheet.test.tsx. The stub keeps the same
 // dialog role + accessible name so the queries stay honest.
-const authState = vi.hoisted(() => ({ user: { uid: "u1" } as { uid: string } | null }));
+const authState = vi.hoisted(() => ({
+  user: { uid: "u1" } as { uid: string } | null,
+  activeProfile: { uid: "u1" } as { uid: string } | null,
+}));
 vi.mock("../../../context/AuthContext", () => ({ useAuthContext: () => authState }));
 const privateSpots = vi.hoisted(() => ({ list: vi.fn(async () => [] as unknown[]) }));
 vi.mock("../../../services/mapCheckins", () => ({ listMyPrivateSpots: privateSpots.list }));
@@ -605,5 +608,61 @@ describe("SpotMap map check-ins (Phase 1)", () => {
     unmount();
     resolve([FIXTURE]);
     await Promise.resolve();
+  });
+});
+
+// M2 regression (PR #886, seen on device): with the fixed BottomNav on a
+// notched iPhone the Add FAB sat half under the nav and the zoom control,
+// Mapbox logo and attribution were hidden under it. Mapbox pins its bottom
+// corners to bottom: 0, so the lift has to come from our CSS.
+describe("SpotMap bottom chrome clears the BottomNav (M2)", () => {
+  afterEach(() => {
+    authState.user = { uid: "u1" };
+    authState.activeProfile = { uid: "u1" };
+  });
+
+  const CLEARANCE = "--map-bottom-clearance";
+
+  it("lifts the map corners, FAB and recenter above the nav when it's shown", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <SpotMap />
+      </MemoryRouter>,
+    );
+    const root = container.firstElementChild!;
+    expect(root).toHaveClass("spot-map", "spot-map--above-nav");
+    // Both buttons stack from the same clearance, FAB above the zoom control
+    // and recenter above the FAB, so nothing overlaps.
+    expect(screen.getByLabelText("Add a spot").className).toContain(`bottom-[calc(var(${CLEARANCE})+6.75rem)]`);
+    expect(screen.getByRole("button", { name: /(Recenter to my|Following your) location/ }).className).toContain(
+      `bottom-[calc(var(${CLEARANCE})+10.5rem)]`,
+    );
+  });
+
+  it("only clears the safe-area inset when there's no nav (signed out)", () => {
+    authState.user = null;
+    authState.activeProfile = null;
+    const { container } = render(
+      <MemoryRouter>
+        <SpotMap />
+      </MemoryRouter>,
+    );
+    const root = container.firstElementChild!;
+    expect(root).toHaveClass("spot-map");
+    expect(root).not.toHaveClass("spot-map--above-nav");
+  });
+
+  it("index.css lifts both Mapbox bottom corners (logo + attribution stay visible) by the nav height plus inset", async () => {
+    const { readFileSync } = await import("node:fs");
+    const css = readFileSync(`${process.cwd()}/src/index.css`, "utf8").replace(/\s+/g, " ");
+    expect(css).toContain(`.spot-map { ${CLEARANCE}: max(env(safe-area-inset-bottom), 0.75rem); }`);
+    expect(css).toContain(
+      `.spot-map--above-nav { ${CLEARANCE}: calc(max(env(safe-area-inset-bottom), 0.75rem) + 5.5rem); }`,
+    );
+    expect(css).toContain(
+      `.spot-map .mapboxgl-ctrl-bottom-left, .spot-map .mapboxgl-ctrl-bottom-right { bottom: var(${CLEARANCE}); }`,
+    );
+    // Nothing may hide Mapbox's required logo / attribution.
+    expect(css).not.toMatch(/mapboxgl-ctrl-(logo|attrib)[^{]*\{[^}]*(display: none|visibility: hidden|opacity: 0)/);
   });
 });
