@@ -53,6 +53,8 @@ export interface SpotComment {
   id: string;
   spotId: string;
   userId: string;
+  /** Author's handle. Absent on comments posted before it was stored. */
+  username?: string;
   content: string;
   createdAt: string;
 }

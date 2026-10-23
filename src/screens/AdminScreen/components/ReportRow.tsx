@@ -21,6 +21,7 @@ export interface ReportRowProps {
   onDismiss: (report: AdminReport) => void;
   onBan: (report: AdminReport) => void;
   onHideDispute: (report: AdminReport) => void;
+  onDeleteComment: (report: AdminReport) => void;
 }
 
 /**
@@ -31,7 +32,15 @@ export interface ReportRowProps {
  * only: the reported player, game and reporter are plain text, not links —
  * navigating away mid-triage would lose the queue.
  */
-export function ReportRow({ report, acting, onResolve, onDismiss, onBan, onHideDispute }: ReportRowProps) {
+export function ReportRow({
+  report,
+  acting,
+  onResolve,
+  onDismiss,
+  onBan,
+  onHideDispute,
+  onDeleteComment,
+}: ReportRowProps) {
   return (
     <li data-testid={`report-${report.id}`} className="rounded-2xl border border-border bg-surface p-3">
       <p className="font-display text-sm text-white">@{report.reportedUsername}</p>
@@ -60,6 +69,24 @@ export function ReportRow({ report, acting, onResolve, onDismiss, onBan, onHideD
         </p>
       )}
 
+      {/* The reported comment as it read at report time. Plain text node:
+          untrusted user input. */}
+      {report.commentId && (
+        <p
+          data-testid={`report-comment-${report.id}`}
+          className="mt-2 rounded-lg border border-brand-red/30 bg-surface-alt/60 p-2 font-body text-xs leading-relaxed break-words whitespace-pre-wrap text-white/90"
+        >
+          <span className="font-display text-[10px] tracking-[0.15em] text-brand-red">COMMENT </span>
+          {report.commentText || "(text not captured)"}
+        </p>
+      )}
+
+      {report.spotId && (
+        <p data-testid={`report-spot-${report.id}`} className="mt-2 font-mono text-[11px] break-all text-subtle">
+          spot {report.spotId}
+        </p>
+      )}
+
       {report.disputeId && (
         <p data-testid={`report-dispute-${report.id}`} className="mt-2 font-mono text-[11px] break-all text-subtle">
           dispute {report.disputeId}
@@ -71,8 +98,9 @@ export function ReportRow({ report, acting, onResolve, onDismiss, onBan, onHideD
           literal null has to go and find out whether it means "no game" or
           "we lost the field". */}
       <p className="mt-1 font-body text-[11px] break-all text-faint">
-        {relativeAge(report.createdAt)} · {report.gameId ? `game ${report.gameId}` : "feed clip (no game)"} · reporter{" "}
-        {report.reporterUid}
+        {relativeAge(report.createdAt)} ·{" "}
+        {report.gameId ? `game ${report.gameId}` : report.spotId ? "spot page (no game)" : "feed clip (no game)"} ·
+        reporter {report.reporterUid}
       </p>
 
       {/* Resolution audit trail. Only a report that already carries a verdict
@@ -92,6 +120,7 @@ export function ReportRow({ report, acting, onResolve, onDismiss, onBan, onHideD
         onDismiss={onDismiss}
         onBan={onBan}
         onHideDispute={onHideDispute}
+        onDeleteComment={onDeleteComment}
       />
     </li>
   );

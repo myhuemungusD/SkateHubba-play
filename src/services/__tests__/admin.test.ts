@@ -53,6 +53,7 @@ import {
   removeLockerItem,
   fetchReports,
   hideDispute,
+  deleteReportedComment,
   resolveReport,
   type AdminLockerItemInput,
 } from "../admin";
@@ -122,6 +123,9 @@ const REPORT_FIELDS = {
   description: "He landed on his knee and still claimed it.",
   clipId: "game-9_3_set",
   disputeId: null,
+  commentId: null,
+  spotId: null,
+  commentText: "",
   status: "pending",
 };
 
@@ -503,6 +507,9 @@ describe("fetchReports — parsing", () => {
       description: "",
       clipId: null,
       disputeId: null,
+      commentId: null,
+      spotId: null,
+      commentText: "",
       status: "",
       createdAt: new Date("2026-06-01T12:00:00Z"),
       resolvedBy: "",
@@ -517,6 +524,8 @@ describe("fetchReports — parsing", () => {
 
     expect(Object.keys(report).sort()).toEqual([
       "clipId",
+      "commentId",
+      "commentText",
       "createdAt",
       "description",
       "disputeId",
@@ -528,6 +537,7 @@ describe("fetchReports — parsing", () => {
       "reporterUid",
       "resolvedAt",
       "resolvedBy",
+      "spotId",
       "status",
     ]);
   });
@@ -782,6 +792,42 @@ describe("resolveReport", () => {
     await expect(hideDispute("")).rejects.toThrow(/Invalid dispute id/);
     await expect(hideDispute("a/b")).rejects.toThrow(/Invalid dispute id/);
     expect(h.mockUpdateDoc).not.toHaveBeenCalled();
+  });
+
+  it("parses a comment report and deletes that comment", async () => {
+    stubReports([reportDoc("r1", { ...fullReport(), clipId: "uc1", commentId: "cm1", commentText: "rude" })]);
+    const [report] = await fetchReports();
+    expect(report?.commentId).toBe("cm1");
+    expect(report?.commentText).toBe("rude");
+
+    await deleteReportedComment({ kind: "clips", id: "uc1" }, "cm1");
+    expect(h.mockDeleteDoc).toHaveBeenCalledWith(expect.objectContaining({ __path: "clips/uc1/comments/cm1" }));
+  });
+
+  it("parses a spot comment report and deletes it under the spot", async () => {
+    stubReports([reportDoc("r1", { ...fullReport(), gameId: null, clipId: null, spotId: "s1", commentId: "cm2" })]);
+    const [report] = await fetchReports();
+    expect(report?.spotId).toBe("s1");
+
+    await deleteReportedComment({ kind: "spots", id: "s1" }, "cm2");
+    expect(h.mockDeleteDoc).toHaveBeenCalledWith(expect.objectContaining({ __path: "spots/s1/comments/cm2" }));
+  });
+
+  it("reads a non-comment report with empty comment fields", async () => {
+    stubReports([reportDoc("r1", fullReport())]);
+    const [report] = await fetchReports();
+    expect(report?.commentId).toBeNull();
+    expect(report?.commentText).toBe("");
+  });
+
+  it("refuses to delete a comment by a bad id and rethrows a delete failure", async () => {
+    await expect(deleteReportedComment({ kind: "clips", id: "" }, "cm1")).rejects.toThrow(/Invalid parent id/);
+    await expect(deleteReportedComment({ kind: "clips", id: "uc1" }, "a/b")).rejects.toThrow(/Invalid comment id/);
+    expect(h.mockDeleteDoc).not.toHaveBeenCalled();
+    h.mockDeleteDoc.mockRejectedValueOnce(denied());
+    await expect(deleteReportedComment({ kind: "clips", id: "uc1" }, "cm1")).rejects.toThrow(
+      /Couldn't delete that comment/,
+    );
   });
 
   it("rethrows a hide failure", async () => {

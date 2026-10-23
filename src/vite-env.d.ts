@@ -47,6 +47,9 @@ interface ImportMetaEnv {
    *  declared here so direct `import.meta.env.VITE_APPCHECK_ENABLED` reads
    *  remain typed. Keep in sync with src/lib/env.ts. */
   readonly VITE_APPCHECK_ENABLED?: string;
+  /** Web-only closet App Check: "lazy" (default) or "off". Parsed by zod in
+   *  src/lib/env.ts. Keep in sync with src/lib/env.ts. */
+  readonly VITE_APPCHECK_WEB_MODE?: string;
   /** Feature-freeze switch: "true" shows Map / Clips feed / Verified Pro.
    *  Unset (default) hides them. Read via src/lib/featureFlags.ts. */
   readonly VITE_FEATURE_EXTRAS_ENABLED?: string;

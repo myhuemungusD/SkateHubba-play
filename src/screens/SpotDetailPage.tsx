@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router";
-import { ChevronLeft, MapPin, Send } from "lucide-react";
+import { ChevronLeft, MapPin } from "lucide-react";
 import type { Spot, SpotComment } from "../types/spot";
-import { getSpot, getSpotComments, addSpotComment } from "../services/spots";
+import { getSpot, getSpotComments } from "../services/spots";
 import { useAuthContext } from "../context/AuthContext";
 import { useNavigationContext } from "../context/NavigationContext";
 import { useGoBack } from "../hooks/useGoBack";
@@ -12,22 +12,21 @@ import { SpotChat } from "../components/SpotChat/SpotChat";
 import { isMapCheckinsEnabled, isSpotChatsEnabled, isSpotPresenceEnabled } from "../lib/featureFlags";
 import { WhosSkatingHere } from "../components/presence/WhosSkatingHere";
 import { CheckInButton } from "../components/map/CheckInButton";
+import { SpotComments } from "../components/map/SpotComments";
 
 export function SpotDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { setScreen, navigateToChallengeWithSpot } = useNavigationContext();
   const backToMap = useGoBack("/map");
-  const { user } = useAuthContext();
+  const { user, activeProfile } = useAuthContext();
 
   const [spot, setSpot] = useState<Spot | null>(null);
   const [comments, setComments] = useState<SpotComment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Comment form
-  const [commentText, setCommentText] = useState("");
-  const [submittingComment, setSubmittingComment] = useState(false);
-  const [commentError, setCommentError] = useState<string | null>(null);
+  // Spot chat errors (send/report failures) surface under the chat.
+  const [chatError, setChatError] = useState<string | null>(null);
 
   // Navigating to another spot re-enters the loading state. Done during
   // render (React's "adjust state when a prop changes" pattern) rather than
@@ -72,26 +71,7 @@ export function SpotDetailPage() {
     };
   }, [id]);
 
-  const handleSubmitComment = useCallback(async () => {
-    if (!commentText.trim() || !id) return;
-    if (!user) {
-      setCommentError("You must be signed in to comment");
-      return;
-    }
-
-    setSubmittingComment(true);
-    setCommentError(null);
-
-    try {
-      const comment = await addSpotComment(id, commentText.trim(), user.uid);
-      setComments((prev) => [comment, ...prev]);
-      setCommentText("");
-    } catch (err) {
-      setCommentError(err instanceof Error ? err.message : "Failed to post comment");
-    } finally {
-      setSubmittingComment(false);
-    }
-  }, [commentText, id, user]);
+  const handlePosted = useCallback((comment: SpotComment) => setComments((prev) => [comment, ...prev]), []);
 
   // Route the user into the challenge flow with this spot pre-attached. The
   // `?spot=<uuid>` query param is the contract ChallengeScreen reads, and is
@@ -223,57 +203,22 @@ export function SpotDetailPage() {
               spotId={spot.id}
               spotName={spot.name}
               currentUserId={user?.uid ?? null}
-              onError={(msg) => setCommentError(msg)}
+              onError={(msg) => setChatError(msg)}
             />
+            {chatError && <p className="text-red-400 text-xs mt-2">{chatError}</p>}
           </div>
         )}
 
-        {/* Comments */}
-        <div>
-          <h3 className="text-sm font-semibold mb-3">Comments</h3>
-
-          {/* Add comment form */}
-          <div className="flex gap-2 mb-4">
-            <input
-              type="text"
-              maxLength={300}
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              placeholder="Add a comment…"
-              className="flex-1 bg-surface-alt border border-[#333] rounded-lg px-3 py-2 text-white text-base
-                         placeholder:text-subtle focus:outline-none focus:border-[#F97316]"
-            />
-            <button
-              type="button"
-              onClick={handleSubmitComment}
-              disabled={submittingComment || !commentText.trim()}
-              className="touch-target min-w-[44px] inline-flex items-center justify-center px-3 py-2 bg-[#F97316] text-white rounded-lg
-                         hover:bg-[#EA580C] disabled:opacity-40 disabled:cursor-not-allowed"
-              aria-label="Send comment"
-            >
-              <Send size={16} />
-            </button>
-          </div>
-
-          {commentError && <p className="text-red-400 text-xs mb-3">{commentError}</p>}
-
-          {/* Comment list */}
-          {comments.length === 0 ? (
-            <p className="text-subtle text-sm">No comments yet. Be the first!</p>
-          ) : (
-            <div className="space-y-3">
-              {comments.map((c) => (
-                <div key={c.id} className="bg-surface-alt rounded-lg p-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-muted">{c.userId.slice(0, 8)}…</span>
-                    <span className="text-xs text-subtle">{new Date(c.createdAt).toLocaleDateString()}</span>
-                  </div>
-                  <p className="text-sm text-[#CCC]">{c.content}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <SpotComments
+          spotId={spot.id}
+          comments={comments}
+          onPosted={handlePosted}
+          viewer={
+            // Only post under a handle that belongs to the signed-in account, so a
+            // mid-switch profile can't stamp the wrong name on a comment.
+            user && activeProfile?.uid === user.uid ? { uid: user.uid, username: activeProfile.username } : null
+          }
+        />
       </div>
     </div>
   );

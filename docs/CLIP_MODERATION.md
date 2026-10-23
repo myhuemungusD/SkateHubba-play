@@ -17,6 +17,8 @@ Two switches, and both start off.
 | `VITE_FEATURE_CLIP_MODERATION_ENABLED` | Vercel env, inlined at build time | unset   | New public clips are written `pending` and hidden from the feed. Anything except the literal `true` keeps today's behavior: the clip is `active` immediately.              |
 | `MODERATION_ENABLED`                   | Cloud Functions param             | `false` | When false, `moderateNewClip` and `moderateClipReport` leave the clip alone. `decideClipModeration` still works, so a review queue can be cleared after the switch is off. |
 
+Deploy the functions with the comment-report filter (`handleClipReport` ignores reports that carry a `commentId`) before anyone sets `MODERATION_ENABLED=true`. Otherwise reports on a comment would count toward hiding the clip it sits under.
+
 Turn the client flag on only after the function is deployed and `MODERATION_ENABLED` is true. If the client flag is on and the function is not deployed, new public clips stay `pending` and hidden. That is the fail-safe. Leave the production client flag unset.
 
 `SENTRY_DSN` is a functions param (default empty). An empty value skips the alert. A thrown Sentry call still sends the clip to review.

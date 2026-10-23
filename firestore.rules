@@ -7,6 +7,8 @@ service cloud.firestore {
     function fsGetAfter(c, id) { return getAfter(/databases/$(database)/documents/$(c)/$(id)); }
     function fsExists(c, id) { return exists(/databases/$(database)/documents/$(c)/$(id)); }
     function fsExistsAfter(c, id) { return existsAfter(/databases/$(database)/documents/$(c)/$(id)); }
+    // A comment under a clip or spot: kind is "clips" or "spots".
+    function commentDoc(kind, parentId, commentId) { return get(/databases/$(database)/documents/$(kind)/$(parentId)/comments/$(commentId)); }
 
 
     // ── Project bucket name (audit S5+S12, PR-B) ──
@@ -624,6 +626,8 @@ service cloud.firestore {
         && !('isVerifiedPro' in request.resource.data)
         && !('verifiedBy' in request.resource.data)
         && !('verifiedAt' in request.resource.data)
+        // QA / test-account marker: Admin SDK only (scripts/set-test-account.mjs).
+        && !('isTestAccount' in request.resource.data)
         // Pro-authored profile fields: never at creation (no one is a pro yet)
         && !('proBio' in request.resource.data)
         && !('proSignatureTricks' in request.resource.data)
@@ -686,6 +690,7 @@ service cloud.firestore {
             .hasAny(['uid', 'username', 'createdAt',
                      'banned',
                      'isVerifiedPro', 'verifiedBy', 'verifiedAt',
+                     'isTestAccount',
                      'email', 'emailVerified', 'dob', 'parentalConsent',
                      'fcmTokens',
                      'wins', 'losses', 'lastStatsGameId',
@@ -2557,14 +2562,25 @@ service cloud.firestore {
         allow create: if isSignedIn()
           && notBanned()
           && request.auth.token.email_verified == true
+          && request.resource.data.keys().hasOnly(['userId', 'content', 'createdAt', 'username'])
+          && request.resource.data.createdAt == request.time
           && request.resource.data.userId == request.auth.uid
           && request.resource.data.content is string
           && request.resource.data.content.size() >= 1
-          && request.resource.data.content.size() <= 300;
+          && request.resource.data.content.size() <= 300
+          // Optional display handle (older comments have none). When sent it
+          // must be the author's real username, same as clip comments (H1).
+          && (
+            !('username' in request.resource.data)
+            || request.resource.data.username == fsGet('users', request.auth.uid).data.username
+          );
 
-        // Comments are immutable once posted — no edits, only owner delete.
+        // Comments are immutable once posted. The author may delete their
+        // own; an admin may delete any, which is the moderation takedown for
+        // a reported spot comment (App Review 1.2).
         allow update: if false;
-        allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+        allow delete: if isSignedIn()
+          && (resource.data.userId == request.auth.uid || isAdmin());
       }
     }
 
@@ -2945,6 +2961,9 @@ service cloud.firestore {
           || (request.resource.data.gameId == null
               && request.resource.data.clipId is string
               && request.resource.data.clipId.size() > 0)
+          || (request.resource.data.gameId == null
+              && request.resource.data.spotId is string
+              && request.resource.data.spotId.size() > 0)
         )
         && request.resource.data.reason is string
         && request.resource.data.reason in ['inappropriate_video', 'inappropriate', 'abusive_behavior', 'cheating', 'spam', 'non_skate_content', 'not_skating', 'illegal_content', 'other']
@@ -2967,6 +2986,41 @@ service cloud.firestore {
           || (request.resource.data.clipId is string
               && request.resource.data.clipId.size() > 0
               && request.resource.data.clipId.size() <= 128)
+        )
+        // Optional spotId: a report about something posted on a spot page.
+        && (
+          !('spotId' in request.resource.data)
+          || (request.resource.data.spotId is string
+              && request.resource.data.spotId.size() > 0
+              && request.resource.data.spotId.size() <= 128)
+        )
+        // Optional single comment plus the text as it read when reported, so
+        // a moderator still sees it if the author deletes it later. The
+        // comment must live under exactly one parent (a clip or a spot), and
+        // its real author and text must match the report. Otherwise anyone
+        // could pin a made-up quote on another skater next to Delete and Ban.
+        && (
+          !('commentId' in request.resource.data)
+          || (request.resource.data.commentId is string
+              && request.resource.data.commentId.size() > 0
+              && request.resource.data.commentId.size() <= 128
+              && request.resource.data.get('commentText', null) is string
+              && (
+                ('clipId' in request.resource.data
+                  && !('spotId' in request.resource.data)
+                  && commentDoc('clips', request.resource.data.clipId, request.resource.data.commentId).data.userId == request.resource.data.reportedUid
+                  && commentDoc('clips', request.resource.data.clipId, request.resource.data.commentId).data.text == request.resource.data.commentText)
+                || ('spotId' in request.resource.data
+                  && !('clipId' in request.resource.data)
+                  && commentDoc('spots', request.resource.data.spotId, request.resource.data.commentId).data.userId == request.resource.data.reportedUid
+                  && commentDoc('spots', request.resource.data.spotId, request.resource.data.commentId).data.content == request.resource.data.commentText)
+              ))
+        )
+        && (
+          !('commentText' in request.resource.data)
+          || (request.resource.data.commentText is string
+              && request.resource.data.commentText.size() <= 300
+              && 'commentId' in request.resource.data)
         )
         // Optional disputeId. A community-call report names the dispute so
         // an admin can hide it. Shape only — auto-hide does not run for it.
