@@ -124,3 +124,56 @@ describe("Toast", () => {
     expect(el.style.transform).toBe("");
   });
 });
+
+describe("Toast with an action", () => {
+  const withAction = (onAction = vi.fn(), onExpire: (() => void) | undefined = vi.fn()) => ({
+    ...notification,
+    type: "error" as const,
+    title: "Couldn't verify this device",
+    message: "Check your connection and run it back.",
+    action: { label: "Retry", onAction, onExpire },
+  });
+
+  it("has no action button on a plain toast", () => {
+    render(<Toast notification={notification} onDismiss={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+  });
+
+  it("runs the action once, leaves, and does not also expire", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const onAction = vi.fn();
+    const onExpire = vi.fn();
+    const onDismiss = vi.fn();
+    render(<Toast notification={withAction(onAction, onExpire)} onDismiss={onDismiss} />);
+    const retry = screen.getByRole("button", { name: "Retry" });
+    fireEvent.pointerDown(retry);
+    fireEvent.click(retry);
+    fireEvent.click(retry);
+    fireEvent.click(screen.getByLabelText("Dismiss notification"));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onExpire).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(300);
+    expect(onDismiss).toHaveBeenCalledWith("n1");
+    vi.useRealTimers();
+  });
+
+  it("calls onExpire when dismissed without tapping the action", () => {
+    const onAction = vi.fn();
+    const onExpire = vi.fn();
+    render(<Toast notification={withAction(onAction, onExpire)} onDismiss={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText("Dismiss notification"));
+    fireEvent.click(screen.getByLabelText("Dismiss notification"));
+    expect(onExpire).toHaveBeenCalledTimes(1);
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it("dismisses fine with no onExpire", () => {
+    render(<Toast notification={withAction(vi.fn(), undefined)} onDismiss={vi.fn()} />);
+    expect(() => fireEvent.click(screen.getByLabelText("Dismiss notification"))).not.toThrow();
+  });
+
+  it("uses the longer progress bar", () => {
+    const { container } = render(<Toast notification={withAction()} onDismiss={vi.fn()} />);
+    expect(container.innerHTML).toContain("progress-shrink_8000ms");
+  });
+});

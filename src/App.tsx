@@ -15,6 +15,7 @@ import { getUidByUsername } from "./services/users";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Spinner } from "./components/ui/Spinner";
 import { ToastContainer } from "./components/ToastContainer";
+import { DeviceCheckRetryToast } from "./components/DeviceCheckRetryToast";
 import { GameNotificationWatcher } from "./components/GameNotificationWatcher";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { BottomNav, isBottomNavScreen } from "./components/BottomNav";
@@ -223,6 +224,7 @@ function AppScreens() {
       <AppEmailVerifyBanner />
       <AppRoutes />
       <ToastContainer />
+      <DeviceCheckRetryToast />
       <Suspense fallback={null}>
         <TutorialOverlay />
       </Suspense>
