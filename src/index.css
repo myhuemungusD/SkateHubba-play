@@ -189,13 +189,52 @@
     padding-right: 0.75rem;
   }
 
-  /* 9:16 clip capped so the land/miss (or record) bar can stay on screen.
-     Width tracks the height cap so the frame doesn't stretch. */
+  /* Clip frame capped so the land/miss (or record) bar can stay on screen.
+     It starts at 9:16; TrickClip sets --clip-aspect from the clip's own
+     size once metadata loads, and the width tracks the height cap. */
   .trick-frame {
-    width: min(100%, 360px, calc(55dvh * 9 / 16));
-    max-height: 55dvh;
-    aspect-ratio: 9 / 16;
+    width: min(100%, calc(min(55dvh, 640px) * var(--clip-aspect, 9 / 16)));
+    max-height: min(55dvh, 640px);
+    aspect-ratio: var(--clip-aspect, 9 / 16);
     margin-inline: auto;
+  }
+
+  /* TrickClip scrubber: a thin orange track inside a 44px hit area. */
+  .clip-scrubber {
+    appearance: none;
+    background: transparent;
+    accent-color: var(--color-brand-orange);
+    cursor: pointer;
+  }
+  .clip-scrubber::-webkit-slider-runnable-track {
+    height: 3px;
+    border-radius: 9999px;
+    background: rgb(255 255 255 / 0.35);
+  }
+  .clip-scrubber::-webkit-slider-thumb {
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    margin-top: -4.5px;
+    border-radius: 9999px;
+    background: var(--color-brand-orange);
+  }
+  .clip-scrubber::-moz-range-track {
+    height: 3px;
+    border-radius: 9999px;
+    background: rgb(255 255 255 / 0.35);
+  }
+  .clip-scrubber::-moz-range-progress {
+    height: 3px;
+    border-radius: 9999px;
+    background: var(--color-brand-orange);
+  }
+  .clip-scrubber::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border: 0;
+    border-radius: 9999px;
+    background: var(--color-brand-orange);
   }
 
   /* Phone sheet for the bell. Portaled positioning is not used: the panel

@@ -2,7 +2,7 @@ import { ProUsername } from "../../../components/ProUsername";
 import { Btn } from "../../../components/ui/Btn";
 import type { GameDoc } from "../../../services/games";
 import { isFirebaseStorageUrl } from "../../../utils/helpers";
-import { CLIP_POSTER } from "../../../lib/clipPoster";
+import { TrickClip } from "../../../components/TrickClip";
 
 interface Props {
   game: GameDoc;
@@ -32,14 +32,9 @@ export function MatcherTrickViewer({
         &apos;s TRICK
       </p>
       {game.currentTrickVideoUrl && isFirebaseStorageUrl(game.currentTrickVideoUrl) ? (
-        <video
+        <TrickClip
           src={game.currentTrickVideoUrl}
-          controls
-          playsInline
-          poster={CLIP_POSTER}
-          preload="metadata"
-          aria-label={`Video of ${game.currentTrickName || "trick"} set by ${setterUsername}`}
-          className="trick-frame rounded-2xl bg-black object-contain border border-border"
+          label={`Video of ${game.currentTrickName || "trick"} set by ${setterUsername}`}
         />
       ) : (
         <p className="font-body text-sm text-subtle text-center py-4">No video recorded — just match the trick!</p>

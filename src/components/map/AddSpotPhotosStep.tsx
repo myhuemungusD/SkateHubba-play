@@ -29,7 +29,7 @@ export function AddSpotPhotosStep({
 
       {/* Photo previews */}
       {photoUrls.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto pb-2">
+        <div data-scroll-x className="flex gap-2 overflow-x-auto pb-2">
           {photoUrls.map((url, i) => (
             <div key={i} className="relative flex-shrink-0">
               <img

@@ -122,6 +122,8 @@ export function GameReplay({ turns }: GameReplayProps) {
           <video
             ref={videoRef}
             controls
+            controlsList="nodownload noplaybackrate noremoteplayback"
+            disablePictureInPicture
             playsInline
             poster={CLIP_POSTER}
             preload="metadata"

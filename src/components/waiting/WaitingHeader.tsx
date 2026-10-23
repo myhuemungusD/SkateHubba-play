@@ -31,20 +31,22 @@ export function WaitingHeader({
 }: WaitingHeaderProps) {
   return (
     <>
-      <div className="flex justify-center gap-5 mb-4">
+      <div className="flex justify-center gap-2 sm:gap-5 mb-4">
         {isJudge ? (
           <>
             <LetterDisplay
               count={game.p1Letters}
               name={`@${game.player1Username}`}
               active={game.currentTurn === game.player1Uid}
+              turnLabel="ON THE CLOCK"
               isVerifiedPro={game.player1IsVerifiedPro}
             />
-            <div className="flex items-center font-display text-2xl text-subtle">VS</div>
+            <div className="flex shrink-0 items-center font-display text-2xl text-subtle max-[359px]:sr-only">VS</div>
             <LetterDisplay
               count={game.p2Letters}
               name={`@${game.player2Username}`}
               active={game.currentTurn === game.player2Uid}
+              turnLabel="ON THE CLOCK"
               isVerifiedPro={game.player2IsVerifiedPro}
             />
           </>
@@ -54,15 +56,15 @@ export function WaitingHeader({
               count={myLetters}
               name={`@${profile.username}`}
               testId={`letter-display-${profile.username}`}
-              active={false}
               isVerifiedPro={profile.isVerifiedPro}
             />
-            <div className="flex items-center font-display text-2xl text-subtle">VS</div>
+            <div className="flex shrink-0 items-center font-display text-2xl text-subtle max-[359px]:sr-only">VS</div>
             <LetterDisplay
               count={theirLetters}
               name={`@${opponentName}`}
               testId={`letter-display-${opponentName}`}
-              active={false}
+              active
+              turnLabel="THEIR MOVE"
               isVerifiedPro={opponentIsPro}
             />
           </>

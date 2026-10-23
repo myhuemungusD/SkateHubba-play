@@ -2,7 +2,7 @@ import type { GameDoc } from "../../services/games";
 import type { UserProfile } from "../../services/users";
 import { isFirebaseStorageUrl } from "../../utils/helpers";
 import { ClipShareButtons } from "./ClipShareButtons";
-import { CLIP_POSTER } from "../../lib/clipPoster";
+import { TrickClip } from "../TrickClip";
 
 interface WaitingClipPanelProps {
   game: GameDoc;
@@ -24,18 +24,10 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
         </div>
         {game.matchVideoUrl && isFirebaseStorageUrl(game.matchVideoUrl) && (
           <>
-            <p className="font-display text-sm tracking-wider text-brand-green mb-2">
+            <p className="font-display text-sm tracking-wider text-white mb-2">
               Your Attempt: {game.currentTrickName || "Trick"}
             </p>
-            <video
-              src={game.matchVideoUrl}
-              controls
-              playsInline
-              poster={CLIP_POSTER}
-              preload="metadata"
-              aria-label={`Your attempt at ${game.currentTrickName || "trick"}`}
-              className="trick-frame rounded-2xl bg-black object-contain border border-border"
-            />
+            <TrickClip src={game.matchVideoUrl} label={`Your attempt at ${game.currentTrickName || "trick"}`} />
             <ClipShareButtons videoUrl={game.matchVideoUrl} trickName={game.currentTrickName || "trick"} />
           </>
         )}
@@ -51,15 +43,7 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
         </p>
         {game.currentTrickVideoUrl && isFirebaseStorageUrl(game.currentTrickVideoUrl) ? (
           <>
-            <video
-              src={game.currentTrickVideoUrl}
-              controls
-              playsInline
-              poster={CLIP_POSTER}
-              preload="metadata"
-              aria-label={`Video of ${game.currentTrickName || "trick"} you set`}
-              className="trick-frame rounded-2xl bg-black object-contain border border-border"
-            />
+            <TrickClip src={game.currentTrickVideoUrl} label={`Video of ${game.currentTrickName || "trick"} you set`} />
             <ClipShareButtons videoUrl={game.currentTrickVideoUrl} trickName={game.currentTrickName || "trick"} />
           </>
         ) : (
@@ -86,15 +70,7 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
     return (
       <div className="mt-6 w-full">
         <p className="font-display text-sm tracking-wider text-brand-orange mb-2">{clipLabel}</p>
-        <video
-          src={clipUrl}
-          controls
-          playsInline
-          poster={CLIP_POSTER}
-          preload="metadata"
-          aria-label={clipLabel}
-          className="trick-frame rounded-2xl bg-black object-contain border border-border"
-        />
+        <TrickClip src={clipUrl} label={clipLabel} />
         <ClipShareButtons videoUrl={clipUrl} trickName={lastTurn.trickName} />
       </div>
     );

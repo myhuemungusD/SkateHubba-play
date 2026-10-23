@@ -49,7 +49,7 @@ export function MatcherDecisionPanel({
       )}
       {submitting && !uploadProgress && (
         <div className="text-center">
-          <span className="font-display text-lg text-brand-green tracking-wider animate-pulse">Submitting...</span>
+          <span className="font-display text-lg text-brand-orange tracking-wider animate-pulse">Submitting...</span>
         </div>
       )}
       {!submitting && error && videoRecorded && matcherLanded !== null && (

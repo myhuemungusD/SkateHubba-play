@@ -7,12 +7,17 @@ import { WaitingHeader } from "./waiting/WaitingHeader";
 import { WaitingClipPanel } from "./waiting/WaitingClipPanel";
 import { WaitingActions } from "./waiting/WaitingActions";
 import { TurnLengthChip } from "./TurnLengthChip";
+import { BackChevron } from "./ScreenHeader";
 
 export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profile: UserProfile; onBack: () => void }) {
   const state = useWaitingScreen(game, profile);
 
   return (
-    <div className="min-h-dvh bg-background/80 flex flex-col items-center px-6 py-8 overflow-y-auto">
+    <div className="min-h-dvh bg-background/80 flex flex-col items-center px-6 pt-safe pb-8 overflow-y-auto">
+      {/* Same back control as the game screen: a 44pt chevron, top left. */}
+      <div className="w-full max-w-sm py-2">
+        <BackChevron onClick={onBack} label="Back to games" />
+      </div>
       <div className="text-center w-full max-w-sm animate-scale-in">
         <WaitingHeader
           game={game}
@@ -54,7 +59,6 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
           nudgeError={state.nudgeError}
           nudgeAvailable={state.nudgeAvailable}
           onNudge={state.handleNudge}
-          onBack={onBack}
           showReportLink={!state.isJudge}
           reported={state.reported}
           onOpenReport={state.openReport}

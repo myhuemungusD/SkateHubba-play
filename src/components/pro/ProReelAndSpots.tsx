@@ -60,7 +60,7 @@ export function ProReelAndSpots({ uid, displayName, isOwn }: Props) {
               : `${displayName} hasn't pinned any clips yet.`}
           </p>
         ) : (
-          <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-1">
+          <div data-scroll-x className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-1">
             {reel.map((c) => (
               <ClipTile key={c.id} clip={c} />
             ))}
@@ -97,7 +97,7 @@ export function ProReelAndSpots({ uid, displayName, isOwn }: Props) {
                   </span>
                 </div>
                 {clips.length > 0 && (
-                  <div className="-mx-1 mt-2 flex snap-x gap-3 overflow-x-auto px-1 pb-1">
+                  <div data-scroll-x className="-mx-1 mt-2 flex snap-x gap-3 overflow-x-auto px-1 pb-1">
                     {clips.slice(0, 6).map((c) => (
                       <ClipTile key={c.id} clip={c} />
                     ))}

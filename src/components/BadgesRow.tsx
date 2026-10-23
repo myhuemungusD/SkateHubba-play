@@ -37,7 +37,7 @@ export function BadgesRow({ achievements }: Props) {
 
   return (
     <section aria-label="Badges" data-testid="badges-row" className="mb-6 animate-fade-in">
-      <ul className="flex items-start gap-4 overflow-x-auto pb-1">
+      <ul data-scroll-x className="flex items-start gap-4 overflow-x-auto pb-1">
         {earned.map(({ achievement, meta }) => {
           const { Icon, label, description } = meta;
           const earnedAt = achievement.earnedAt ? formatEarnedAt(achievement.earnedAt) : null;

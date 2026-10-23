@@ -115,7 +115,7 @@ export function ProPicks({ player }: { player: Player }) {
               {featured.length === 0 ? (
                 <p className="mb-3 font-body text-xs text-white/60">No pro picks yet.</p>
               ) : (
-                <div className="mb-3 flex snap-x gap-3 overflow-x-auto">
+                <div data-scroll-x className="mb-3 flex snap-x gap-3 overflow-x-auto">
                   {featured.map((f) => (
                     <figure key={f.clipId} className="w-36 shrink-0 snap-start">
                       {f.videoUrl && (
