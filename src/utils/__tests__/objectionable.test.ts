@@ -24,6 +24,11 @@ describe("containsObjectionableText", () => {
     for (const t of ["h17l3r", "n@z!", "n4z1", "p3d0", "ky5", "ky$"]) {
       expect(containsObjectionableText(t)).toBe(true);
     }
+    // A look-alike used more than once is swapped everywhere, not just the
+    // first time (replaceAll, not replace): "c00n" must fold to "coon".
+    expect(containsObjectionableText("c00n")).toBe(true);
+    expect(containsObjectionableText("g00k")).toBe(true);
+    expect(isObjectionableUsername("c00n")).toBe(true);
     // Digits outside the swap table stay digits, so plain numbers never match.
     expect(containsObjectionableText("kickflip 2 8 9 6")).toBe(false);
   });

@@ -56,6 +56,11 @@ export function _resetNotificationRateLimit(): void {
   lastNotificationAt.clear();
 }
 
+/** @internal Number of armed cooldown entries (for tests only: proves the prune keeps the map bounded) */
+export function _notificationRateLimitSizeForTests(): number {
+  return lastNotificationAt.size;
+}
+
 /**
  * Write a notification document to the `notifications` collection.
  * The recipient's app listens to this collection via onSnapshot and

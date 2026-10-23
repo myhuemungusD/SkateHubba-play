@@ -501,7 +501,8 @@ describe("firebase App Check (VITE_APPCHECK_ENABLED=true)", () => {
     ]);
     expect(mockInitializeAppCheck).not.toHaveBeenCalled();
 
-    // Both listeners share one start(); a key after the tap must not re-run it.
+    // Both listeners share one start(); a key after the tap must not install
+    // twice. ensureAppCheck()'s memo is what guarantees that.
     const start = warmups[0][1] as () => void;
     expect(warmups[1][1]).toBe(start);
     start();

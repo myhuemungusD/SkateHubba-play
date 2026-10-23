@@ -258,12 +258,9 @@ function scheduleAppCheckWarmup(): void {
     });
     return;
   }
-  let started = false;
-  const start = () => {
-    if (started) return;
-    started = true;
-    void ensureAppCheck();
-  };
+  // Both listeners can fire (a tap, then a key). ensureAppCheck() memoizes
+  // the install, so a second call is a no-op; no extra guard is needed.
+  const start = () => void ensureAppCheck();
   window.addEventListener("pointerdown", start, { once: true, capture: true });
   window.addEventListener("keydown", start, { once: true, capture: true });
 }

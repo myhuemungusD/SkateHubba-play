@@ -70,6 +70,7 @@ import {
   getNotificationGame,
   loadNotificationGame,
   _resetNotificationRateLimit,
+  _notificationRateLimitSizeForTests,
   markNotificationRead,
   deleteNotification,
   deleteUserNotifications,
@@ -276,6 +277,19 @@ describe("writeNotification", () => {
       // ...and its cooldown re-arms from the new write.
       await writeNotification(first);
       expect(mockBatchCommit).toHaveBeenCalledTimes(3);
+    });
+
+    it("prunes expired cooldown entries so the map stays bounded", async () => {
+      const first = yourTurnParams();
+      await writeNotification(first);
+      await writeNotification({ ...first, gameId: "game-b" });
+      expect(_notificationRateLimitSizeForTests()).toBe(2);
+
+      // Past the window, one new write sweeps both expired entries and keeps
+      // only its own, fresh one.
+      vi.advanceTimersByTime(5_001);
+      await writeNotification({ ...first, gameId: "game-c" });
+      expect(_notificationRateLimitSizeForTests()).toBe(1);
     });
   });
 
