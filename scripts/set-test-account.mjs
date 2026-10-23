@@ -23,7 +23,7 @@
  *   node scripts/set-test-account.mjs qa_tester_1 --unset --apply
  *
  * Accounts are named by username (looked up in usernames/{name}) or by uid with
- * a `uid:` prefix, e.g. `uid:8emCoonXvOV0U8bWjvs58TJjAXr1`.
+ * a `uid:` prefix, e.g. `uid:EXAMPLEuid0000000000000000`.
  *
  * Safety:
  * - Dry run unless --apply is passed.
