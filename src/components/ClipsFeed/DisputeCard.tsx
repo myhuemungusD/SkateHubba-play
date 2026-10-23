@@ -1,11 +1,12 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import { FlagIcon, GavelIcon } from "../icons";
 import { Timer } from "../Timer";
 import { isFirebaseStorageUrl } from "../../utils/helpers";
 import { landShare, totalVotes, type Dispute, type DisputeTally, type DisputeVerdict } from "../../types/dispute";
 import { ABOVE_NAV, BELOW_HEADER, FEED_SLIDE, RAIL_BTN } from "./feedLayout";
-import { CLIP_POSTER } from "../../lib/clipPoster";
+import { CLIP_PLACEHOLDER } from "../../lib/clipPoster";
 import { SpotlightVideo } from "./SpotlightVideo";
+import { FirstFrameVideo } from "../FirstFrameVideo";
 
 export interface DisputeCardProps {
   dispute: Dispute;
@@ -53,6 +54,10 @@ export const DisputeCard = memo(function DisputeCard({
   const showButtons = canVote && ownVerdict === null;
   const attemptUrl = isFirebaseStorageUrl(dispute.matchVideoUrl) ? dispute.matchVideoUrl : null;
   const setUrl = dispute.setVideoUrl && isFirebaseStorageUrl(dispute.setVideoUrl) ? dispute.setVideoUrl : null;
+  // The set clip mounts only once "Watch the set" is opened, so a lane of
+  // collapsed cards costs no network, and when it does mount it gets the
+  // same first-frame still as every other player (no WebM poster).
+  const [setOpen, setSetOpen] = useState(false);
 
   return (
     <article
@@ -72,7 +77,7 @@ export const DisputeCard = memo(function DisputeCard({
         />
       ) : (
         <img
-          src={CLIP_POSTER}
+          src={CLIP_PLACEHOLDER}
           alt=""
           width={360}
           height={640}
@@ -127,22 +132,23 @@ export const DisputeCard = memo(function DisputeCard({
               </button>
             )}
             {setUrl && (
-              <details className="mt-3">
+              <details className="mt-3" onToggle={(e) => setSetOpen(e.currentTarget.open)}>
                 <summary
                   aria-label={`Watch @${dispute.setterUsername}'s original set of ${dispute.trickName}`}
                   className="flex min-h-[44px] cursor-pointer list-none items-center font-display text-[11px] tracking-[0.15em] text-brand-orange focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
                 >
                   WATCH THE SET · @{dispute.setterUsername.toUpperCase()}
                 </summary>
-                <video
-                  src={setUrl}
-                  controls
-                  playsInline
-                  poster={CLIP_POSTER}
-                  preload="none"
-                  aria-label={`${dispute.setterUsername}'s ${dispute.trickName} set video`}
-                  className="mt-2 max-h-[240px] w-full rounded-xl border border-white/10 bg-black object-contain"
-                />
+                {setOpen && (
+                  <FirstFrameVideo
+                    src={setUrl}
+                    controls
+                    playsInline
+                    errorContext="DisputeCard.set"
+                    aria-label={`${dispute.setterUsername}'s ${dispute.trickName} set video`}
+                    className="mt-2 aspect-[9/16] max-h-[240px] w-full rounded-xl border border-white/10 bg-black object-contain"
+                  />
+                )}
               </details>
             )}
           </div>

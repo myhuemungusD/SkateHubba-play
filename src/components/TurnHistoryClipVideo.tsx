@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { isFirebaseStorageUrl } from "../utils/helpers";
 import { captureException } from "../lib/sentry";
-import { CLIP_POSTER } from "../lib/clipPoster";
+import { withFirstFrame } from "../lib/clipPoster";
 
 /** Inline clip player that degrades to a placeholder when playback fails. */
 export function ClipVideo({ url, label }: { url: string; label: string }) {
@@ -18,10 +18,9 @@ export function ClipVideo({ url, label }: { url: string; label: string }) {
 
   return (
     <video
-      src={url}
+      src={withFirstFrame(url)}
       controls
       playsInline
-      poster={CLIP_POSTER}
       preload="metadata"
       aria-label={label}
       onError={(e) => {

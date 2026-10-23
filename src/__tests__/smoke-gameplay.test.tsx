@@ -326,7 +326,8 @@ describe("Smoke: Gameplay", () => {
             (el?.textContent?.includes("TRICK") ?? false),
         ),
       ).toBeInTheDocument();
-      const video = document.querySelector(`video[src='${videoUrl}']`);
+      // Players add a #t= media fragment so iOS paints the clip's own first frame.
+      const video = document.querySelector(`video[src='${videoUrl}#t=0.1']`);
       expect(video).toBeTruthy();
     });
   });

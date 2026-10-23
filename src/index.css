@@ -615,6 +615,23 @@
 .pb-safe {
   padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
 }
+/* SpotMap bottom chrome. The BottomNav is fixed: pb-safe plus a ~76px glass
+   card (~110pt on a notched iPhone). Mapbox pins its bottom corners (zoom,
+   logo, attribution "i") to bottom: 0, under the nav, so they are lifted by
+   --map-bottom-clearance. The logo and attribution must stay visible (Mapbox
+   terms; OSM ODbL credit). The recenter button and Add FAB in SpotMap.tsx
+   stack above the zoom control (attribution 24px + zoom 58px + margins)
+   from the same variable. Signed out there is no nav, so only the inset. */
+.spot-map {
+  --map-bottom-clearance: max(env(safe-area-inset-bottom), 0.75rem);
+}
+.spot-map--above-nav {
+  --map-bottom-clearance: calc(max(env(safe-area-inset-bottom), 0.75rem) + 5.5rem);
+}
+.spot-map .mapboxgl-ctrl-bottom-left,
+.spot-map .mapboxgl-ctrl-bottom-right {
+  bottom: var(--map-bottom-clearance);
+}
 /* Pure env() without a minimum. Use on layouts that already have their own
    height (e.g. a fixed nav with h-14) so non-notched viewports are unchanged. */
 .pt-safe-inset {

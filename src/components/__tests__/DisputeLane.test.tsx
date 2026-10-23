@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DisputeLane, disputeSlideCount } from "../ClipsFeed/DisputeLane";
 import type { Dispute, DisputeTally, DisputeViewerState } from "../../types/dispute";
@@ -109,7 +109,7 @@ describe("DisputeLane", () => {
     expect(screen.getByText(/@bob says they landed @alice's trick\./i)).toBeInTheDocument();
     expect(screen.getByLabelText(/bob's attempt at Switch Heel/i)).toHaveAttribute(
       "src",
-      `${STORAGE_HOST}/match.webm?alt=media`,
+      `${STORAGE_HOST}/match.webm?alt=media#t=0.1`,
     );
     expect(screen.getByRole("button", { name: /^Land — @bob landed it$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Bail — @bob bailed$/i })).toBeInTheDocument();
@@ -152,11 +152,19 @@ describe("DisputeLane", () => {
   it("offers the setter's clip as secondary context", async () => {
     await mountLane();
 
-    expect(screen.getByLabelText(/Watch @alice's original set of Switch Heel/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/alice's Switch Heel set video/i)).toHaveAttribute(
-      "src",
-      `${STORAGE_HOST}/set.webm?alt=media`,
-    );
+    const details = screen.getByLabelText(/Watch @alice's original set of Switch Heel/i).closest("details")!;
+    // Collapsed: the set clip isn't mounted, so a lane of cards costs no network.
+    expect(screen.queryByLabelText(/alice's Switch Heel set video/i)).not.toBeInTheDocument();
+
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+
+    const video = await screen.findByLabelText(/alice's Switch Heel set video/i);
+    // Same first-frame still as every other player, and no WebM poster
+    // (WebM + poster fails to play in iOS WKWebView).
+    expect(video).toHaveAttribute("src", `${STORAGE_HOST}/set.webm?alt=media#t=0.1`);
+    expect(video).toHaveAttribute("preload", "metadata");
+    expect(video).not.toHaveAttribute("poster");
   });
 
   it("refuses to render a video URL that is not Firebase Storage", async () => {

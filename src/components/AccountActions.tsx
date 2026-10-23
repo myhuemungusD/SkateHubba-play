@@ -1,9 +1,17 @@
 import { useCallback, useState } from "react";
 import { DeleteAccountModal } from "./DeleteAccountModal";
+import type { SaveFileResult } from "../services/nativeBridge";
+
+/**
+ * Confirmation for a finished native share sheet. Web downloads get none (the
+ * browser shows its own download UI, as before) and a closed sheet saved
+ * nothing, so neither is confirmed.
+ */
+const SHARED_MESSAGE = "Your data file is ready. Find it where you saved or sent it.";
 
 interface Props {
   /** Export-my-data handler. Row is hidden when omitted. */
-  onDownloadData?: () => Promise<void>;
+  onDownloadData?: () => Promise<SaveFileResult | void>;
   /** Account deletion handler. Row (and its modal) is hidden when omitted. */
   onDeleteAccount?: () => Promise<void>;
 }
@@ -20,14 +28,17 @@ interface Props {
 export function AccountActions({ onDownloadData, onDeleteAccount }: Props): React.ReactElement {
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState("");
+  const [downloadDone, setDownloadDone] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const handleDownload = useCallback(async () => {
     if (!onDownloadData || downloading) return;
     setDownloadError("");
+    setDownloadDone("");
     setDownloading(true);
     try {
-      await onDownloadData();
+      const result = await onDownloadData();
+      if (result === "shared") setDownloadDone(SHARED_MESSAGE);
     } catch (err) {
       setDownloadError(err instanceof Error ? err.message : "Export failed — try again");
     } finally {
@@ -48,6 +59,11 @@ export function AccountActions({ onDownloadData, onDeleteAccount }: Props): Reac
           <p className="font-body text-xs text-faint mt-1">
             {downloading ? "Preparing your data…" : "Exports your profile and game history as a file you can keep."}
           </p>
+          {downloadDone && (
+            <p role="status" className="font-body text-xs text-brand-green mt-2">
+              {downloadDone}
+            </p>
+          )}
           {downloadError && (
             <p role="alert" className="font-body text-xs text-brand-red mt-2">
               {downloadError}

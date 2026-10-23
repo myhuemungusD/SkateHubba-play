@@ -3,6 +3,7 @@ import { AppCredits } from "../components/AppCredits";
 import { isClosetStudioEnabled } from "../lib/featureFlags";
 import { Link } from "react-router";
 import type { UserProfile } from "../services/users";
+import type { SaveFileResult } from "../services/nativeBridge";
 import { unblockUser } from "../services/blocking";
 import { useBlockedUsers } from "../hooks/useBlockedUsers";
 import { isHapticsEnabled, setHapticsEnabled, playHaptic } from "../services/haptics";
@@ -38,7 +39,7 @@ export function Settings({
   profile: UserProfile;
   onBack: () => void;
   /** Data-export handler. Omit to hide the row (see {@link AccountActions}). */
-  onDownloadData?: () => Promise<void>;
+  onDownloadData?: () => Promise<SaveFileResult | void>;
   /** Account-deletion handler. Omit to hide the row. */
   onDeleteAccount?: () => Promise<void>;
 }) {

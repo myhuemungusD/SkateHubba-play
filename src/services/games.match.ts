@@ -12,6 +12,7 @@ import { applyTrainingLabelPending } from "./trainingLabels.materialize";
 import { getOpponent, checkTurnActionRate, recordTurnAction } from "./games.turns";
 import { turnDurationMsFor } from "./turnDuration";
 import { decidePendingReviewExpiry } from "./dispute.resolution.shared";
+import { containsObjectionableText, OBJECTIONABLE_TEXT_MESSAGE } from "../utils/objectionable";
 
 /* ────────────────────────────────────────────
  * Set a trick (setter's turn)
@@ -34,6 +35,9 @@ export async function setTrick(
       .replace(/[\x00-\x1F\x7F]/g, "")
       .slice(0, 100);
   if (!safeTrickName) throw new Error("Trick name cannot be empty");
+  // Guideline 1.2: custom ("Other") trick names are shown to the opponent, in
+  // the feed and in replays, so they get the same filter as comments.
+  if (containsObjectionableText(safeTrickName)) throw new Error(OBJECTIONABLE_TEXT_MESSAGE);
 
   checkTurnActionRate(gameId);
   const gameRef = doc(requireDb(), "games", gameId);

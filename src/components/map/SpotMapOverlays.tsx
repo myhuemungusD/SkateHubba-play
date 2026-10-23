@@ -94,7 +94,7 @@ export function GpsErrorBanner({ message, onDismiss }: GpsErrorBannerProps) {
     <div
       role="alert"
       aria-live="polite"
-      className="absolute top-16 left-3 right-3 z-30 bg-surface-alt border border-[#333] rounded-xl px-4 py-3
+      className="absolute top-[calc(env(safe-area-inset-top)+4rem)] left-3 right-3 z-30 bg-surface-alt border border-[#333] rounded-xl px-4 py-3
                  text-sm text-[#CCC] flex items-start gap-2"
     >
       <span className="flex-1">{message}</span>
@@ -119,7 +119,7 @@ export function EmptyViewportPrompt({ onAddSpot }: EmptyViewportPromptProps) {
     <div
       role="status"
       aria-live="polite"
-      className="absolute top-16 left-1/2 -translate-x-1/2 z-20 bg-surface-alt/95 backdrop-blur border border-[#333]
+      className="absolute top-[calc(env(safe-area-inset-top)+4rem)] left-1/2 -translate-x-1/2 z-20 bg-surface-alt/95 backdrop-blur border border-[#333]
                  rounded-xl px-4 py-3 text-sm text-[#CCC] flex flex-col items-center gap-2 max-w-[86%]"
     >
       <span>No spots in view yet.</span>
@@ -135,7 +135,7 @@ export function NoFilterMatchesNotice() {
     <div
       role="status"
       aria-live="polite"
-      className="absolute top-16 left-1/2 -translate-x-1/2 z-20 bg-surface-alt/95 backdrop-blur border border-[#333]
+      className="absolute top-[calc(env(safe-area-inset-top)+4rem)] left-1/2 -translate-x-1/2 z-20 bg-surface-alt/95 backdrop-blur border border-[#333]
                  rounded-xl px-4 py-2 text-sm text-[#CCC]"
     >
       No spots match your filters.
@@ -152,7 +152,7 @@ export function MapToast({ message }: MapToastProps) {
     <div
       role="status"
       aria-live="polite"
-      className="absolute top-16 left-1/2 -translate-x-1/2 z-50 bg-surface-alt border border-[#333] rounded-xl px-4 py-2 text-sm text-white"
+      className="absolute top-[calc(env(safe-area-inset-top)+4rem)] left-1/2 -translate-x-1/2 z-50 bg-surface-alt border border-[#333] rounded-xl px-4 py-2 text-sm text-white"
     >
       {message}
     </div>

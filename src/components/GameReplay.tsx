@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import type { TurnRecord } from "../services/games";
 import { isFirebaseStorageUrl } from "../utils/helpers";
 import { useReducedMotion } from "../hooks/useReducedMotion";
-import { CLIP_POSTER } from "../lib/clipPoster";
+import { FirstFrameVideo } from "./FirstFrameVideo";
 import { Btn } from "./ui/Btn";
 import { PlayIcon, ReplayIcon } from "./icons";
 
@@ -61,8 +61,9 @@ export function GameReplay({ turns }: GameReplayProps) {
 
   // When clipIndex changes, load and play the video
   useEffect(() => {
+    // The src (with its first-frame fragment) comes from the FirstFrameVideo
+    // prop; this only restarts loading and playback for each new clip.
     if (!playing || !currentClip || !videoRef.current) return;
-    videoRef.current.src = currentClip.url;
     videoRef.current.load();
     // Respect prefers-reduced-motion: leave the clip paused and let the user
     // start it via the native controls instead of auto-playing the reel.
@@ -119,12 +120,12 @@ export function GameReplay({ turns }: GameReplayProps) {
           </div>
 
           {/* Video player */}
-          <video
+          <FirstFrameVideo
             ref={videoRef}
+            src={currentClip.url}
             controls
             playsInline
-            poster={CLIP_POSTER}
-            preload="metadata"
+            errorContext="GameReplay"
             onEnded={handleClipEnded}
             aria-label={currentClip.label}
             className="trick-frame rounded-2xl bg-black object-contain border border-border"
