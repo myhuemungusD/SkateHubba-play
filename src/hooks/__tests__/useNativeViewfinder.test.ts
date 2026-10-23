@@ -86,4 +86,51 @@ describe("useNativeViewfinder", () => {
     Object.defineProperty(v.viewfinder, "scrollIntoView", { value: undefined });
     expect(() => renderHook(() => useNativeViewfinder(v.ref, true))).not.toThrow();
   });
+
+  it("re-clamps when the layout changes while live, and stops listening on stop", () => {
+    let onResize: () => void = () => {};
+    const disconnect = vi.fn();
+    const observe = vi.fn();
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(cb: () => void) {
+          onResize = cb;
+        }
+        observe = observe;
+        disconnect = disconnect;
+      },
+    );
+    const vv = new EventTarget();
+    vi.stubGlobal("visualViewport", vv);
+    let top = 100;
+    const v = mountViewfinder(0, 0);
+    v.viewfinder.getBoundingClientRect = () => rect(top, top + 300);
+    addDock(600);
+    const view = renderHook(({ live }) => useNativeViewfinder(v.ref, live), { initialProps: { live: true } });
+    expect(observe).toHaveBeenCalledWith(document.body);
+    expect(v.scroll).not.toHaveBeenCalled();
+    top = 400; // the picker expanded and pushed the frame under the dock
+    onResize();
+    expect(v.scroll).toHaveBeenCalledTimes(1);
+    vv.dispatchEvent(new Event("resize")); // keyboard
+    expect(v.scroll).toHaveBeenCalledTimes(2);
+    view.rerender({ live: false });
+    expect(disconnect).toHaveBeenCalled();
+    vv.dispatchEvent(new Event("resize"));
+    expect(v.scroll).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("works without ResizeObserver or visualViewport", () => {
+    vi.stubGlobal("ResizeObserver", undefined);
+    vi.stubGlobal("visualViewport", undefined);
+    const v = mountViewfinder(900, 1200);
+    const view = renderHook(() => useNativeViewfinder(v.ref, true));
+    expect(v.scroll).toHaveBeenCalledTimes(1);
+    expect(() => view.unmount()).not.toThrow();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
 });

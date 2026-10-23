@@ -21,7 +21,8 @@ function dockTop(): number {
  *    budget on pages that never open the camera.
  * 2. the viewfinder is scrolled clear of the pinned action dock. The setter's
  *    scoreboard + trick picker, or the matcher's 55dvh setter clip, otherwise
- *    leave it under the fold — the camera "runs" with nothing on screen. The
+ *    leave it under the fold — the camera "runs" with nothing on screen. It
+ *    re-clamps on any layout change (body resize, visual viewport resize). The
  *    viewfinder itself never moves or resizes, so neither does the crosshair.
  */
 export function useNativeViewfinder(viewfinderRef: RefObject<HTMLElement | null>, nativeLive: boolean): void {
@@ -33,12 +34,25 @@ export function useNativeViewfinder(viewfinderRef: RefObject<HTMLElement | null>
       el.classList.add("sh-native-cam");
       marked.push(el);
     }
-    const limit = dockTop();
-    const rect = viewfinder.getBoundingClientRect();
-    if (rect.top < 0 || rect.bottom > limit - DOCK_GAP_PX) {
-      viewfinder.style.scrollMarginBottom = `${window.innerHeight - limit + DOCK_GAP_PX}px`;
-      viewfinder.scrollIntoView?.({ block: "end", behavior: "smooth" });
-    }
-    return () => marked.forEach((el) => el.classList.remove("sh-native-cam"));
+    const clamp = () => {
+      const limit = dockTop();
+      const rect = viewfinder.getBoundingClientRect();
+      if (rect.top < 0 || rect.bottom > limit - DOCK_GAP_PX) {
+        viewfinder.style.scrollMarginBottom = `${window.innerHeight - limit + DOCK_GAP_PX}px`;
+        viewfinder.scrollIntoView?.({ block: "end", behavior: "smooth" });
+      }
+    };
+    clamp();
+    // Re-clamp for as long as the camera is live: the trick picker expanding,
+    // an error banner, or the keyboard can push the frame back under the dock.
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(clamp);
+    observer?.observe(document.body);
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", clamp);
+    return () => {
+      observer?.disconnect();
+      vv?.removeEventListener("resize", clamp);
+      marked.forEach((el) => el.classList.remove("sh-native-cam"));
+    };
   }, [viewfinderRef, nativeLive]);
 }
