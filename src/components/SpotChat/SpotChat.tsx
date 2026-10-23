@@ -170,7 +170,7 @@ export function SpotChat({ spotId, spotName, currentUserId, onError }: SpotChatP
                   type="button"
                   onClick={() => setReporting(message)}
                   aria-label={handle ? `Report message by @${handle}` : "Report this message"}
-                  className={`inline-flex min-h-[44px] items-center text-[11px] tracking-[0.15em] text-slate-400 hover:text-red-400 ${FOCUS}`}
+                  className={`inline-flex min-h-[44px] items-center text-label tracking-[0.15em] text-slate-400 hover:text-red-400 ${FOCUS}`}
                 >
                   REPORT
                 </button>

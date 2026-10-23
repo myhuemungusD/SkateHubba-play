@@ -100,7 +100,7 @@ export function ReportRow({
           data-testid={`report-message-${report.id}`}
           className="mt-2 rounded-lg border border-brand-red/30 bg-surface-alt/60 p-2 font-body text-xs leading-relaxed break-words whitespace-pre-wrap text-white/90"
         >
-          <span className="font-display text-[10px] tracking-[0.15em] text-brand-red">CHAT </span>
+          <span className="font-display text-sm tracking-[0.15em] text-brand-red">CHAT </span>
           {report.messageText || "(text not captured)"}
         </p>
       )}
