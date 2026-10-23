@@ -107,6 +107,22 @@ const defaultProps = {
 };
 
 describe("AuthScreen", () => {
+  it("shows the Terms agreement under the sign-in buttons on both modes (App Review 1.2)", async () => {
+    const onNavLegal = vi.fn();
+    const { unmount } = renderWithProviders(<AuthScreen {...defaultProps} onNavLegal={onNavLegal} />);
+    expect(screen.getByTestId("terms-agreement-notice")).toHaveTextContent(
+      "By continuing you agree to our Terms and Privacy Policy.",
+    );
+    await userEvent.click(screen.getByRole("link", { name: "Terms" }));
+    expect(onNavLegal).toHaveBeenCalledWith("terms");
+    unmount();
+
+    renderWithProviders(<AuthScreen {...defaultProps} mode="signup" onNavLegal={onNavLegal} />);
+    expect(screen.getByTestId("terms-agreement-notice")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("link", { name: "Privacy Policy" }));
+    expect(onNavLegal).toHaveBeenLastCalledWith("privacy");
+  });
+
   it("hides Sign in with Apple unless the flag is the literal true", async () => {
     renderWithProviders(<AuthScreen {...defaultProps} appleLoading />);
     expect(screen.queryByRole("button", { name: "Continue with Apple" })).not.toBeInTheDocument();

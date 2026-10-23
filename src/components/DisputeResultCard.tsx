@@ -20,7 +20,7 @@ export function DisputeResultCard({ dispute }: { dispute: Dispute }) {
       aria-labelledby="dispute-result-title"
       className="w-full mb-6 rounded-2xl border border-brand-orange/30 bg-black/30 p-4 text-left"
     >
-      <p className="font-display text-[10px] tracking-[0.18em] text-brand-orange">COMMUNITY VERDICT</p>
+      <p className="font-display text-[11px] tracking-[0.18em] text-brand-orange">COMMUNITY VERDICT</p>
       <h2 id="dispute-result-title" className="mt-1 font-display text-xl text-white">
         {result?.title ?? "RESULT UNAVAILABLE"}
       </h2>

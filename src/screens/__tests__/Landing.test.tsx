@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Landing, __resetHeroEntranceForTest } from "../Landing";
 import { SOCIAL_LINKS } from "../../constants/socialLinks";
@@ -37,6 +37,24 @@ describe("Landing", () => {
     expect(screen.getByRole("button", { name: "Create account" })).toBeInTheDocument();
   });
 
+  it("shows the Terms agreement under the sign-in buttons and routes its links", async () => {
+    const onNav = vi.fn();
+    render(<Landing {...defaultProps} onNav={onNav} />);
+    const notice = screen.getByTestId("terms-agreement-notice");
+    expect(notice).toHaveTextContent("By continuing you agree to our Terms and Privacy Policy.");
+    await userEvent.click(within(notice).getByRole("link", { name: "Terms" }));
+    await userEvent.click(within(notice).getByRole("link", { name: "Privacy Policy" }));
+    expect(onNav).toHaveBeenNthCalledWith(1, "terms");
+    expect(onNav).toHaveBeenNthCalledWith(2, "privacy");
+  });
+
+  it("describes the 24h to 7-day turn clock, not a fixed 24 hours", () => {
+    render(<Landing {...defaultProps} />);
+    expect(screen.getByText("24 hours to 7 days per turn")).toBeInTheDocument();
+    expect(screen.getByText(/till the clock runs out \(24 hours to 7 days\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/They got 24 hours/)).not.toBeInTheDocument();
+  });
+
   it("calls onGo with signup when Create account is clicked", async () => {
     const onGo = vi.fn();
     render(<Landing {...defaultProps} onGo={onGo} />);
@@ -67,8 +85,9 @@ describe("Landing", () => {
 
   it("renders footer with legal links", () => {
     render(<Landing {...defaultProps} />);
-    expect(screen.getByText("Privacy")).toBeInTheDocument();
-    expect(screen.getByText("Terms")).toBeInTheDocument();
+    const legal = screen.getByRole("navigation", { name: "Legal" });
+    expect(within(legal).getByText("Privacy")).toBeInTheDocument();
+    expect(within(legal).getByText("Terms")).toBeInTheDocument();
   });
 
   it("calls onGo with signup when Start Playing is clicked", async () => {
@@ -136,7 +155,7 @@ describe("Landing", () => {
   it("calls onNav for terms link", async () => {
     const onNav = vi.fn();
     render(<Landing {...defaultProps} onNav={onNav} />);
-    await userEvent.click(screen.getByText("Terms"));
+    await userEvent.click(within(screen.getByRole("navigation", { name: "Legal" })).getByText("Terms"));
     expect(onNav).toHaveBeenCalledWith("terms");
   });
 

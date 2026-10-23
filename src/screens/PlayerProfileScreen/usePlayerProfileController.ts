@@ -4,6 +4,7 @@ import type { UserProfile } from "../../services/users";
 import { blockUser, unblockUser } from "../../services/blocking";
 import { fetchAchievements, type Achievement } from "../../services/achievements";
 import { fetchLockerItems, type LockerItem } from "../../services/locker";
+import { isClosetEnabled } from "../../lib/featureFlags";
 import { logger } from "../../services/logger";
 import { parseFirebaseError } from "../../utils/helpers";
 import { ratedWinRate } from "../../constants/stats";
@@ -196,7 +197,10 @@ export function usePlayerProfileController({
   useEffect(() => {
     if (!viewedUid || !viewerUid) return;
     let stale = false;
-    void Promise.allSettled([fetchAchievements(viewedUid), fetchLockerItems(viewedUid)]).then(([earned, gear]) => {
+    // Closet off (the iOS 1.2.0 build): skip the locker read so no Closet
+    // gear can reach the profile (App Review 2.3.1).
+    const gearRead = isClosetEnabled() ? fetchLockerItems(viewedUid) : Promise.resolve<LockerItem[]>([]);
+    void Promise.allSettled([fetchAchievements(viewedUid), gearRead]).then(([earned, gear]) => {
       if (stale) return;
       if (earned.status === "fulfilled") setAchievements(earned.value);
       else logger.warn("profile_achievements_load_failed", { error: parseFirebaseError(earned.reason) });

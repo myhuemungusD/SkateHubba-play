@@ -86,7 +86,7 @@ export function BadgeAwardPanel({ uid, username }: { uid: string; username: stri
 
   return (
     <section aria-label="Badges" className="mb-8">
-      <h2 className="mb-3 font-display text-[10px] tracking-[0.2em] text-brand-orange">BADGES</h2>
+      <h2 className="mb-3 font-display text-[11px] tracking-[0.2em] text-brand-orange">BADGES</h2>
 
       <AdminTextField
         label="Reason"
