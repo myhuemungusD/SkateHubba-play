@@ -41,7 +41,7 @@ export const FEATURE_TESTER_STORAGE_KEY = "sh_feature_tester_uid";
  * True inside the Capacitor iOS/Android shell. Capacitor's native bridge sets
  * window.Capacitor before the app loads, so no plugin import is needed here.
  */
-function isNativeShell(): boolean {
+export function isNativeShell(): boolean {
   const cap = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
   return Boolean(cap?.isNativePlatform?.());
 }
@@ -333,4 +333,9 @@ export function isHubbaIconsEnabled(): boolean {
 /** Turn-length choice on new challenges (24h / 3 days / 7 days). Literal "true" only; off by default (every game 24h); tester override turns it on. */
 export function isTurnLengthEnabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_TURN_LENGTH);
+}
+
+/** "Find me a challenger" on Home: picks a random skater client-side and opens the challenge form. Literal "true" only; off by default (button hidden); tester override turns it on. */
+export function isRandomChallengerEnabled(): boolean {
+  return flagOn(import.meta.env.VITE_FEATURE_RANDOM_CHALLENGER);
 }

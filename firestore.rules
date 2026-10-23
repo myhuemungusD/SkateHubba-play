@@ -7,6 +7,8 @@ service cloud.firestore {
     function fsGetAfter(c, id) { return getAfter(/databases/$(database)/documents/$(c)/$(id)); }
     function fsExists(c, id) { return exists(/databases/$(database)/documents/$(c)/$(id)); }
     function fsExistsAfter(c, id) { return existsAfter(/databases/$(database)/documents/$(c)/$(id)); }
+    // A comment under a clip or spot: kind is "clips" or "spots".
+    function commentDoc(kind, parentId, commentId) { return get(/databases/$(database)/documents/$(kind)/$(parentId)/comments/$(commentId)); }
 
 
     // ── Project bucket name (audit S5+S12, PR-B) ──
@@ -217,6 +219,31 @@ service cloud.firestore {
           '^https://firebasestorage\\.googleapis\\.com/v0/b/' + FIREBASE_BUCKET() +
           '/o/approvedClips%2F' + uid + '%2F[A-Za-z0-9_-]+\\.(webm|mp4)(\\?.*)?$'
         );
+    }
+
+    // ── Game-clip video pin (security audit 2026-10-21, H1) ──
+    // A game clip's video must be the attributed player's own upload for that
+    // exact game, turn and role. Storage pins every game upload to
+    // games/{gameId}/turn-{n}/{role}-{uploaderUid}.{ext}, so only the player
+    // named in the file can have written it. Without this, any participant
+    // could publish any bucket object as the opponent's clip.
+    function gameClipVideoUrlOk(d) {
+      return d.videoUrl is string
+        && d.videoUrl.size() <= 2048
+        && d.gameId.matches('^[A-Za-z0-9_-]{1,128}$')
+        && d.videoUrl.matches(
+          '^https://firebasestorage\\.googleapis\\.com/v0/b/' + FIREBASE_BUCKET() +
+          '/o/games%2F' + d.gameId + '%2Fturn-' + string(d.turnNumber) + '%2F' + d.role + '-' +
+          d.playerUid + '\\.(webm|mp4)(\\?.*)?$'
+        );
+    }
+
+    // Server-side moderation switch. config/moderation { enabled: bool } is
+    // written only by the Admin SDK. When it is on, a user clip must start
+    // pending; absent or off keeps the moderation-off direct publish.
+    function moderationOn() {
+      return fsExists('config', 'moderation')
+        && fsGet('config', 'moderation').data.get('enabled', false) == true;
     }
 
     // ── User-clip creation rate limit (30s) ──
@@ -599,6 +626,8 @@ service cloud.firestore {
         && !('isVerifiedPro' in request.resource.data)
         && !('verifiedBy' in request.resource.data)
         && !('verifiedAt' in request.resource.data)
+        // QA / test-account marker: Admin SDK only (scripts/set-test-account.mjs).
+        && !('isTestAccount' in request.resource.data)
         // Pro-authored profile fields: never at creation (no one is a pro yet)
         && !('proBio' in request.resource.data)
         && !('proSignatureTricks' in request.resource.data)
@@ -661,6 +690,7 @@ service cloud.firestore {
             .hasAny(['uid', 'username', 'createdAt',
                      'banned',
                      'isVerifiedPro', 'verifiedBy', 'verifiedAt',
+                     'isTestAccount',
                      'email', 'emailVerified', 'dob', 'parentalConsent',
                      'fcmTokens',
                      'wins', 'losses', 'lastStatsGameId',
@@ -943,6 +973,19 @@ service cloud.firestore {
             && trainingConsentStampOk('trainingConsentPromptSeenAt');
         }
 
+        // App Review 1.2 terms agreement, stamped by createProfile when the
+        // ProfileSetup checkbox is ticked. Optional so accounts created
+        // before 1.2.0 (and older clients) keep working. When written it must
+        // be the server time; once set it can't be removed or backdated.
+        function termsAcceptedAtOk() {
+          return ('termsAcceptedAt' in request.resource.data
+              && (request.resource.data.termsAcceptedAt == request.time
+                || (resource != null && 'termsAcceptedAt' in resource.data
+                    && request.resource.data.termsAcceptedAt == resource.data.termsAcceptedAt)))
+            || (!('termsAcceptedAt' in request.resource.data)
+              && (resource == null || !('termsAcceptedAt' in resource.data)));
+        }
+
         // ── Allowlist of accepted keys ──
         // Every key currently written to users/{uid}/private/profile by
         // the codebase. Keep in sync with UserPrivateProfile in
@@ -965,7 +1008,8 @@ service cloud.firestore {
             'trainingConsentRevokedAt',
             'trainingConsentPromptSeenAt',
             'tipsSeen',
-            'tipsDisabled'
+            'tipsDisabled',
+            'termsAcceptedAt'
           ]);
         }
 
@@ -977,7 +1021,8 @@ service cloud.firestore {
           && onboardingSkippedAtOk()
           && pushEnabledOk()
           && tipsOk()
-          && trainingConsentOk();
+          && trainingConsentOk()
+          && termsAcceptedAtOk();
         allow update: if isOwner(uid)
           && privateProfileKeysOk()
           && fcmTokensOk()
@@ -986,7 +1031,8 @@ service cloud.firestore {
           && onboardingSkippedAtOk()
           && pushEnabledOk()
           && tipsOk()
-          && trainingConsentOk();
+          && trainingConsentOk()
+          && termsAcceptedAtOk();
         allow delete: if isOwner(uid);
       }
 
@@ -2516,14 +2562,25 @@ service cloud.firestore {
         allow create: if isSignedIn()
           && notBanned()
           && request.auth.token.email_verified == true
+          && request.resource.data.keys().hasOnly(['userId', 'content', 'createdAt', 'username'])
+          && request.resource.data.createdAt == request.time
           && request.resource.data.userId == request.auth.uid
           && request.resource.data.content is string
           && request.resource.data.content.size() >= 1
-          && request.resource.data.content.size() <= 300;
+          && request.resource.data.content.size() <= 300
+          // Optional display handle (older comments have none). When sent it
+          // must be the author's real username, same as clip comments (H1).
+          && (
+            !('username' in request.resource.data)
+            || request.resource.data.username == fsGet('users', request.auth.uid).data.username
+          );
 
-        // Comments are immutable once posted — no edits, only owner delete.
+        // Comments are immutable once posted. The author may delete their
+        // own; an admin may delete any, which is the moderation takedown for
+        // a reported spot comment (App Review 1.2).
         allow update: if false;
-        allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+        allow delete: if isSignedIn()
+          && (resource.data.userId == request.auth.uid || isAdmin());
       }
     }
 
@@ -2904,6 +2961,9 @@ service cloud.firestore {
           || (request.resource.data.gameId == null
               && request.resource.data.clipId is string
               && request.resource.data.clipId.size() > 0)
+          || (request.resource.data.gameId == null
+              && request.resource.data.spotId is string
+              && request.resource.data.spotId.size() > 0)
         )
         && request.resource.data.reason is string
         && request.resource.data.reason in ['inappropriate_video', 'inappropriate', 'abusive_behavior', 'cheating', 'spam', 'non_skate_content', 'not_skating', 'illegal_content', 'other']
@@ -2926,6 +2986,41 @@ service cloud.firestore {
           || (request.resource.data.clipId is string
               && request.resource.data.clipId.size() > 0
               && request.resource.data.clipId.size() <= 128)
+        )
+        // Optional spotId: a report about something posted on a spot page.
+        && (
+          !('spotId' in request.resource.data)
+          || (request.resource.data.spotId is string
+              && request.resource.data.spotId.size() > 0
+              && request.resource.data.spotId.size() <= 128)
+        )
+        // Optional single comment plus the text as it read when reported, so
+        // a moderator still sees it if the author deletes it later. The
+        // comment must live under exactly one parent (a clip or a spot), and
+        // its real author and text must match the report. Otherwise anyone
+        // could pin a made-up quote on another skater next to Delete and Ban.
+        && (
+          !('commentId' in request.resource.data)
+          || (request.resource.data.commentId is string
+              && request.resource.data.commentId.size() > 0
+              && request.resource.data.commentId.size() <= 128
+              && request.resource.data.get('commentText', null) is string
+              && (
+                ('clipId' in request.resource.data
+                  && !('spotId' in request.resource.data)
+                  && commentDoc('clips', request.resource.data.clipId, request.resource.data.commentId).data.userId == request.resource.data.reportedUid
+                  && commentDoc('clips', request.resource.data.clipId, request.resource.data.commentId).data.text == request.resource.data.commentText)
+                || ('spotId' in request.resource.data
+                  && !('clipId' in request.resource.data)
+                  && commentDoc('spots', request.resource.data.spotId, request.resource.data.commentId).data.userId == request.resource.data.reportedUid
+                  && commentDoc('spots', request.resource.data.spotId, request.resource.data.commentId).data.content == request.resource.data.commentText)
+              ))
+        )
+        && (
+          !('commentText' in request.resource.data)
+          || (request.resource.data.commentText is string
+              && request.resource.data.commentText.size() <= 300
+              && 'commentId' in request.resource.data)
         )
         // Optional disputeId. A community-call report names the dispute so
         // an admin can hide it. Shape only — auto-hide does not run for it.
@@ -3191,6 +3286,7 @@ service cloud.firestore {
         // ── videoUrl bucket pin (audit P2) ──
         // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r36
         && videoUrlBucketPinned(request.resource.data.videoUrl)
+        && gameClipVideoUrlOk(request.resource.data)
         && (request.resource.data.spotId == null
             || (request.resource.data.spotId is string
                 && request.resource.data.spotId.size() <= 64))
@@ -3211,8 +3307,10 @@ service cloud.firestore {
         // playerUid must be one of the game's two players — never the judge,
         // never an arbitrary UID.
         && (
-          request.resource.data.playerUid == fsGet('games', request.resource.data.gameId).data.player1Uid
-          || request.resource.data.playerUid == fsGet('games', request.resource.data.gameId).data.player2Uid
+          (request.resource.data.playerUid == fsGet('games', request.resource.data.gameId).data.player1Uid
+            && request.resource.data.playerUsername == fsGet('games', request.resource.data.gameId).data.player1Username)
+          || (request.resource.data.playerUid == fsGet('games', request.resource.data.gameId).data.player2Uid
+            && request.resource.data.playerUsername == fsGet('games', request.resource.data.gameId).data.player2Username)
         );
 
       // ── User-uploaded clips (no backing game) ──
@@ -3233,6 +3331,9 @@ service cloud.firestore {
         && request.resource.data.playerUsername is string
         && request.resource.data.playerUsername.size() > 0
         && request.resource.data.playerUsername.size() <= 20
+        // Display name is the caller's real handle (audit H1). users/{uid}
+        // is already read by clipRateLimitOk, so this costs no extra read.
+        && request.resource.data.playerUsername == fsGet('users', request.auth.uid).data.username
         && request.resource.data.trickName is string
         && request.resource.data.trickName.size() >= 1
         && request.resource.data.trickName.size() <= 80
@@ -3241,6 +3342,7 @@ service cloud.firestore {
                 && request.resource.data.spotId.size() <= 64))
         && (
           (request.resource.data.moderationStatus == 'active'
+            && !moderationOn()
             && !('moderation' in request.resource.data)
             && (userClipVideoUrlOk(request.resource.data.videoUrl, request.auth.uid)
                 || userClipPublicUrlOk(request.resource.data.videoUrl, request.auth.uid)))
@@ -3273,9 +3375,9 @@ service cloud.firestore {
         && clipVoteDeltaOk(clipId);
 
       // The owning player (the one who actually landed the trick) can delete
-      // their own clip. This backs the account-deletion cascade in
-      // clips.ts#deleteUserClips and lets a user scrub a clip they no longer
-      // want in the feed. Strangers, the opponent, and even the judge cannot
+      // their own clip, to scrub a clip they no longer want in the feed.
+      // Account deletion runs server-side with the Admin SDK and doesn't
+      // need this rule. Strangers, the opponent, and even the judge cannot
       // delete — only the clip's author.
       allow delete: if isSignedIn()
         && request.auth.uid == resource.data.playerUid;
@@ -3297,6 +3399,8 @@ service cloud.firestore {
           && request.resource.data.username is string
           && request.resource.data.username.size() > 0
           && request.resource.data.username.size() <= 20
+          // Display name is the caller's real handle (audit H1).
+          && request.resource.data.username == fsGet('users', request.auth.uid).data.username
           && request.resource.data.text is string
           && request.resource.data.text.size() >= 1
           && request.resource.data.text.size() <= 300
@@ -3359,8 +3463,8 @@ service cloud.firestore {
         && request.auth.uid == resource.data.uid
         && (
           // Legacy/malformed vote carrying no clipId: no counter to target,
-          // so there is nothing to keep consistent (the cascade drops these
-          // bare — see deleteUserClipVotes).
+          // so there is nothing to keep consistent (the server erasure
+          // cascade drops these bare).
           !('clipId' in resource.data)
           // Orphan: the clip is already gone, and its aggregates with it.
           || !fsExists('clips', resource.data.clipId)

@@ -21,6 +21,7 @@ export type AdminAction =
   | "award_item"
   | "remove_item"
   | "hide_dispute"
+  | "delete_comment"
   | "rule_dispute"
   | "resolve_report"
   | "announce"

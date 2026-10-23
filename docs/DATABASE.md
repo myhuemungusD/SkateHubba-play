@@ -417,6 +417,8 @@ notifications/{id}.gameId ───────────────  games/{
 - **Bucket:** `sk8hub-d7806.firebasestorage.app`
 - **Game videos:** `games/{gameId}/turn-{turnNumber}/{role}-{uploaderUid}.{webm|mp4}`
 - **Avatars:** `users/{uid}/avatar.{webp|jpeg|png}` — owner-only create/delete, 1 KB – 2 MB, `update: if false`
+- **Profile banner:** `users/{uid}/banner.webp` (behind `VITE_FEATURE_PROFILE_BANNER`)
+- **Resize Images extension output:** `users/{uid}/avatar_200x200.webp`, `users/{uid}/banner_200x200.webp`. The extension is installed from the console (there is no `extensions/` manifest in this repo), and it writes next to the original. Account deletion erases the whole `users/{uid}/` folder (trailing slash included) so these thumbnails, and any future size or output subfolder, go with the account.
 - **User-posted clips:** `userClips/{uid}/{clipId}.{webm|mp4}` — feed uploads with no backing game; the uid prefix is what makes the object ownable
 
 The uid suffix on game videos is load-bearing: `storage.rules` pins the filename to `{role}-{request.auth.uid}.{ext}` so no account can pre-occupy another player's upload path. `read` and `delete` stay filename-agnostic so objects written under the pre-uid scheme (`set.webm` / `match.mp4`) remain playable and deletable.
@@ -444,13 +446,13 @@ Metadata stored per file:
 
 ## Data Lifecycle
 
-| Entity               | Deletion policy                                                                                                                                                                                                                                               |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| User accounts        | Deleted on user request via account deletion flow                                                                                                                                                                                                             |
-| Private profile docs | Deleted atomically with the public user doc in the account-deletion batch                                                                                                                                                                                     |
-| Usernames            | Deleted atomically with user profile during account deletion                                                                                                                                                                                                  |
-| Games                | Deleted during account deletion (all games where user is a player)                                                                                                                                                                                            |
-| Videos               | Deleted eagerly with non-active games during account deletion (`deleteGameVideos`). Otherwise each upload is stamped with a `retainUntil` metadata hint 90 days out (`src/services/storage.ts`), and a Storage lifecycle rule purges objects past that window |
+| Entity               | Deletion policy                                                                                                                                                                                                                                                             |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User accounts        | Deleted on user request via account deletion flow                                                                                                                                                                                                                           |
+| Private profile docs | Deleted atomically with the public user doc in the account-deletion batch                                                                                                                                                                                                   |
+| Usernames            | Deleted atomically with user profile during account deletion                                                                                                                                                                                                                |
+| Games                | On account deletion, finished games the user played are deleted; games still in progress are forfeited and anonymized; games the user only refereed are anonymized (`api/account/_userDataRegistry.ts`)                                                                     |
+| Videos               | Deleted eagerly with non-active games during account deletion (`api/account/_deleteUserData.ts`). Otherwise each upload is stamped with a `retainUntil` metadata hint 90 days out (`src/services/storage.ts`), and a Storage lifecycle rule purges objects past that window |
 
 ---
 

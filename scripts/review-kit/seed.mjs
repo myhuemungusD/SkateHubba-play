@@ -12,6 +12,8 @@
  * Application Default Credentials, like the other admin scripts. Safe to
  * re-run: deterministic doc ids, password and data are reset each time.
  * The account gets public features only (no featureTesters entry).
+ * Production gets no feed clips, map spots, passport stamps or Closet items;
+ * only --emulator seeds those, for screenshots.
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -45,7 +47,7 @@ export async function main(argv = process.argv.slice(2), env = process.env, admi
     uid = dry
       ? "(new uid)"
       : (await admin.auth.createUser({ email: cfg.email, password: cfg.password, emailVerified: true })).uid;
-    console.log("[review:seed] created reviewer account");
+    console.log(`[review:seed] ${dry ? "would create" : "created"} reviewer account`);
   }
   const videoUrl = dry ? undefined : await uploadDemoVideo(admin);
   const docs = buildSeedDocs({
@@ -55,16 +57,19 @@ export async function main(argv = process.argv.slice(2), env = process.env, admi
     appUrl: cfg.appUrl,
     tutorialVersion: tutorialVersion(),
     tipsDisabled: emulator !== null,
+    includeEmulatorOnly: emulator !== null,
   });
+  // Logs carry counts only. Doc paths embed the reviewer uid and username,
+  // and nothing derived from the REVIEW_* env (credentials) is ever printed.
   if (dry) {
-    for (const [p] of docs) console.log(`  would write ${p}`);
+    console.log(`[review:seed] dry run: would write ${docs.length} docs`);
     return 0;
   }
   const batch = admin.db.batch();
   for (const [p, data] of docs) batch.set(admin.db.doc(p), data);
   await batch.commit();
   console.log(
-    `[review:seed] wrote ${docs.length} docs for @${cfg.username}. Put the email/password in App Store Connect → App Review Information.`,
+    `[review:seed] wrote ${docs.length} docs. Put the reviewer email/password in App Store Connect → App Review Information.`,
   );
   return 0;
 }

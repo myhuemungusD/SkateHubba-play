@@ -65,16 +65,27 @@ function makeValidGame(overrides: Record<string, unknown> = {}): Record<string, 
 // override via `makeValidClip({ videoUrl: <attacker URL> })`.
 const VALID_VIDEO_URL = "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/clip.webm";
 
+// A game clip's video must be the attributed player's own upload for that
+// game, turn and role (security audit 2026-10-21, H1), so the default URL is
+// derived from the clip's own coordinates.
+function gameVideoUrl(gameId: string, turnNumber: number, role: string, playerUid: string): string {
+  return `https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/games%2F${gameId}%2Fturn-${turnNumber}%2F${role}-${playerUid}.webm?alt=media&token=t`;
+}
+
 function makeValidClip(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  const gameId = (overrides.gameId as string) ?? GAME_ID;
+  const turnNumber = (overrides.turnNumber as number) ?? TURN_NUMBER;
+  const role = (overrides.role as string) ?? "set";
+  const playerUid = (overrides.playerUid as string) ?? P1_UID;
   return {
-    gameId: GAME_ID,
-    turnNumber: TURN_NUMBER,
-    role: "set",
+    gameId,
+    turnNumber,
+    role,
     source: "game",
-    playerUid: P1_UID,
+    playerUid,
     playerUsername: "alice",
     trickName: "tre flip",
-    videoUrl: VALID_VIDEO_URL,
+    videoUrl: typeof turnNumber === "number" ? gameVideoUrl(gameId, turnNumber, role, playerUid) : VALID_VIDEO_URL,
     spotId: null,
     createdAt: serverTimestamp(),
     moderationStatus: "active",
@@ -313,8 +324,8 @@ describe("clips — create", () => {
   // `<bucket>/...` CDN form). `writeLandedClipsInTransaction` later copies
   // that value into clips.videoUrl verbatim — if this rule rejected the
   // bucket-as-host form, the resolution transaction would fail.
-  it("permits the bucket-as-host CDN form on clip videoUrl (mirrors games rule)", async () => {
-    await assertSucceeds(
+  it("rejects the bucket-as-host CDN form on a game clip (the clip pin requires the player's own upload)", async () => {
+    await assertFails(
       setDoc(
         clipRef(asP1(), deterministicId()),
         makeValidClip({ videoUrl: "https://sk8hub-d7806.firebasestorage.app/o/clip.webm" }),

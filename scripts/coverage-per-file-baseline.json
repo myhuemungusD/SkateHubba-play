@@ -142,18 +142,6 @@
       "branches": 63.63,
       "statements": 100
     },
-    "src/screens/PlayerProfileScreen/components/StatTile.tsx": {
-      "lines": 96.42,
-      "functions": 100,
-      "branches": 71.42,
-      "statements": 96.77
-    },
-    "src/screens/PrivacyPolicy.tsx": {
-      "lines": 80,
-      "functions": 66.66,
-      "branches": 100,
-      "statements": 80
-    },
     "src/screens/SpotDetailPage.tsx": {
       "lines": 96.55,
       "functions": 93.33,

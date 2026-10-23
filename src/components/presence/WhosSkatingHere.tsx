@@ -9,6 +9,7 @@ import {
   subscribeSpotSkaters,
   type SpotSkater,
 } from "../../services/spotPresence";
+import { getHideOnline } from "../../services/onlineStatus";
 import { PresenceDot } from "./PresenceDot";
 
 /**
@@ -39,7 +40,9 @@ export function WhosSkatingHere({ spot }: { spot: { id: string; name: string } }
           <Users size={14} aria-hidden="true" />
           Who&apos;s skating
         </h3>
-        <span className="text-xs text-muted">{meHere ? "You're here" : "You're not checked in here"}</span>
+        <span className="text-xs text-muted">
+          {meHere ? "You're here" : getHideOnline() ? "You're hidden" : "You're not checked in here"}
+        </span>
       </div>
 
       {skaters === null ? (

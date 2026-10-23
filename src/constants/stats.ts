@@ -34,3 +34,27 @@ export function ratedWinRate(wins: number | undefined, losses: number | undefine
   if (total < MIN_RATED_GAMES) return null;
   return Math.round(((wins ?? 0) / total) * 100);
 }
+
+/** A record rendered as two numbers, wins / games, plus the spoken form. */
+export interface FormattedRecord {
+  /** Visible text, e.g. "2 / 4". No W/L letters: people can do the math. */
+  text: string;
+  /** Screen-reader text, e.g. "2 wins out of 4 games". */
+  label: string;
+}
+
+const count = (v: number | undefined) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+
+/**
+ * The one record format used app-wide (profile opponents, Home's Recently
+ * played, leaderboard, Pro and dice records, lobby summary): wins over games.
+ * Missing or bad counters read as 0, and wins never exceed games.
+ */
+export function formatRecord(wins: number | undefined, games: number | undefined): FormattedRecord {
+  const g = count(games);
+  const w = Math.min(count(wins), g);
+  return {
+    text: `${w} / ${g}`,
+    label: `${w} ${w === 1 ? "win" : "wins"} out of ${g} ${g === 1 ? "game" : "games"}`,
+  };
+}

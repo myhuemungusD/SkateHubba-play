@@ -3,6 +3,7 @@ import { Capacitor } from "@capacitor/core";
 import { requireAuth } from "../firebase";
 import { captureException } from "../lib/sentry";
 import { parseFirebaseError } from "../utils/helpers";
+import { hashUid } from "../utils/pii";
 import { logger } from "./logger";
 import { revokeAppleTokensIfNeeded } from "./auth.appleRevoke";
 
@@ -13,12 +14,35 @@ const ACCOUNT_DELETE_PATH = "/api/account/delete";
  * Error carrying a `code`, so `getErrorCode` can branch on it exactly as it
  * does for a real Firebase Auth error.
  */
-class CodedError extends Error {
+export class CodedError extends Error {
   readonly code: string;
   constructor(code: string, message: string, cause?: unknown) {
     super(message, cause === undefined ? undefined : { cause });
     this.code = code;
   }
+}
+
+const misconfigured = () =>
+  new CodedError(
+    "account-delete/misconfigured",
+    "Account deletion is unavailable in this build. Please contact support.",
+  );
+
+/**
+ * URL of the erasure endpoint, or null when it can't be reached from this build.
+ *
+ * On the web a relative URL is correct and same-origin, so CORS never engages.
+ * On native it is not: the Capacitor webview origin is `capacitor://localhost`
+ * (iOS) / `https://localhost` (Android), so a relative path resolves to the
+ * webview itself and there is no API there. `window.location.origin` is the
+ * same dead end. The deployed origin must be supplied at build time, and if
+ * it wasn't, callers fail up front rather than fire a request that cannot
+ * succeed — this is the App-Store-required delete flow.
+ */
+export function accountDeleteUrl(): string | null {
+  const base = import.meta.env.VITE_APP_URL || "";
+  if (!base && Capacitor.isNativePlatform()) return null;
+  return `${base}${ACCOUNT_DELETE_PATH}`;
 }
 
 /**
@@ -77,26 +101,15 @@ export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean
 
   const idToken = await user.getIdToken();
 
-  // On the web a relative URL is correct and same-origin, so CORS never engages.
-  // On native it is not: the Capacitor webview origin is `capacitor://localhost`
-  // (iOS) / `https://localhost` (Android), so a relative path resolves to the
-  // webview itself and there is no API there. `window.location.origin` is the
-  // same dead end. The deployed origin must be supplied at build time, and if
-  // it wasn't, failing here is far better than firing a request that cannot
-  // succeed — this is the App-Store-required delete flow.
-  const configuredBase = import.meta.env.VITE_APP_URL || "";
-  if (!configuredBase && Capacitor.isNativePlatform()) {
+  const url = accountDeleteUrl();
+  if (!url) {
     logger.error("delete_account_missing_app_url", { uid });
-    throw new CodedError(
-      "account-delete/misconfigured",
-      "Account deletion is unavailable in this build. Please contact support.",
-    );
+    throw misconfigured();
   }
-  const base = configuredBase;
 
   let res: Response;
   try {
-    res = await fetch(`${base}${ACCOUNT_DELETE_PATH}`, {
+    res = await fetch(url, {
       method: "POST",
       headers: { Authorization: `Bearer ${idToken}` },
     });
@@ -108,19 +121,32 @@ export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean
 
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { code?: unknown; message?: unknown } | null;
-    const serverCode = typeof body?.code === "string" ? body.code : "unknown";
+    // A body without a string code is a crash or a proxy page (a function that
+    // failed to load returns Vercel's own HTML 500), not one of our handler's
+    // answers. Name it by its HTTP status so triage can tell a 500 from a 502
+    // or a 429 instead of every one of them collapsing into "unknown".
+    const serverCode = typeof body?.code === "string" ? body.code : `http-${res.status}`;
     const message =
       typeof body?.message === "string" ? body.message : "Could not delete your account. Please try again.";
     logger.error("delete_account_rejected", { uid, status: res.status, serverCode });
 
     if (serverCode === "requires_recent_login" || serverCode === "invalid_token") {
       // Re-authenticating is the remedy for both, and the caller already has a
-      // dedicated branch (plus a "Finish deletion" affordance) for this code.
+      // dedicated branch for this code (it tells the user to sign out, sign
+      // back in and delete again).
       throw new CodedError("auth/requires-recent-login", message);
     }
     captureException(new Error(`account delete failed: ${serverCode}`), {
       level: "error",
-      extra: { context: "server-side account deletion rejected", uid, status: res.status, serverCode },
+      // Sentry is a third-party processor: identify the account only by the
+      // short hashUid the server's delete logs use (api/account/delete.ts), so
+      // a client event and its server log line correlate. Never the raw uid.
+      extra: {
+        context: "server-side account deletion rejected",
+        uidHash: hashUid(uid),
+        status: res.status,
+        serverCode,
+      },
     });
     throw new CodedError(`account-delete/${serverCode}`, message);
   }
@@ -137,7 +163,7 @@ export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean
     logger.warn("delete_account_auth_survived", { uid });
     captureException(new Error("account data erased but Auth user survived"), {
       level: "warning",
-      extra: { context: "server erased all data; Auth deletion failed and needs a sweep", uid },
+      extra: { context: "server erased all data; Auth deletion failed and needs a sweep", uidHash: hashUid(uid) },
     });
   }
 

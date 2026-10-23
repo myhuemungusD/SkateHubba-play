@@ -37,8 +37,9 @@ export function DeleteAccountModal({
           Delete Account?
         </h3>
         <p className="font-body text-sm text-muted mb-4">
-          This permanently deletes your profile and sign-in credentials. Your game history is retained for your
-          opponents.
+          This permanently deletes your profile, sign-in, clips, finished games and their videos. Games still in
+          progress end as a forfeit to your opponent, with your name and videos removed. Moderation records (such as a
+          ban) and verified-pro lineage are kept by account ID.
           <strong className="text-brand-red"> This cannot be undone.</strong>
         </p>
         {deleteError && <ErrorBanner message={deleteError} onDismiss={() => setDeleteError("")} />}

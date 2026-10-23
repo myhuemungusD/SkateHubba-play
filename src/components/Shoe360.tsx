@@ -55,7 +55,7 @@ export function Shoe360({ itemDefId, imageUrl, alt }: { itemDefId: string; image
           <Shoe360Canvas skin={skin} autoRotate={!prefersReducedMotion()} active={active} />
         </Suspense>
       </Fallback>
-      <span className="pointer-events-none absolute bottom-2 right-2 rounded bg-black/50 px-1.5 py-0.5 font-display text-[9px] tracking-widest text-white/80">
+      <span className="pointer-events-none absolute bottom-2 right-2 rounded bg-black/50 px-1.5 py-0.5 font-display text-[11px] tracking-widest text-white/80">
         360°
       </span>
     </div>

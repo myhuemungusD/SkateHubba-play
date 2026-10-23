@@ -44,6 +44,31 @@ describe("hashIdentity", () => {
 });
 
 describe("redactPII", () => {
+  it("leaves values that are already hashed surrogates untouched", () => {
+    const short = hashUid("u1");
+    const wide = hashIdentity("u1");
+    const name = redactPII({ username: "sk8" })?.username as string;
+    expect(redactPII({ uid: short, ownerUid: wide, username: name })).toEqual({
+      uid: short,
+      ownerUid: wide,
+      username: name,
+    });
+    // A raw value that merely starts with the prefix is still hashed.
+    expect(redactPII({ uid: "uid_not-hex" })?.uid).toBe(hashUid("uid_not-hex"));
+  });
+
+  it("keeps a surrogate only under its own kind of key, so a look-alike username is still hashed", () => {
+    // USERNAME_RE allows "_", so a skater can pick a name shaped like a uid surrogate.
+    const lookAlike = redactPII({ username: "uid_deadbeef" })?.username as string;
+    expect(lookAlike).toMatch(/^name-[0-9a-f]{8}$/);
+    expect(lookAlike).not.toBe("uid_deadbeef");
+    expect(redactPII({ username: "name_deadbeef" })?.username).toMatch(/^name-[0-9a-f]{8}$/);
+    // A username surrogate under a uid key is hashed like any other uid value.
+    expect(redactPII({ uid: "name-deadbeef" })?.uid).toBe(hashUid("name-deadbeef"));
+    // Untouched under any other key (it is not PII-shaped there).
+    expect(redactPII({ note: "uid_deadbeef" })?.note).toBe("uid_deadbeef");
+  });
+
   it("returns undefined when data is undefined", () => {
     expect(redactPII(undefined)).toBeUndefined();
   });
@@ -77,6 +102,19 @@ describe("redactPII", () => {
     expect(out.uuid).toBe("11111111-2222-3333-4444-555555555555");
     expect(out.squid).toBe("not-a-firebase-uid");
     expect(out.druid).toBe("also-fine");
+  });
+
+  it("hashes username and camelCase *Username keys (public direct identifiers)", () => {
+    const out = redactPII({ username: "sk8r", playerUsername: "sk8r", reportedUsername: "other", empty: "" });
+    expect(out?.username).toMatch(/^name-[0-9a-f]{8}$/);
+    expect(out?.playerUsername).toBe(out?.username);
+    expect(out?.reportedUsername).not.toBe(out?.username);
+    expect(JSON.stringify(out)).not.toContain("sk8r");
+    expect(redactPII({ username: "" })?.username).toBe("");
+  });
+
+  it("does not hash keys that merely contain 'username' mid-word", () => {
+    expect(redactPII({ usernameLength: 4 })).toEqual({ usernameLength: 4 });
   });
 
   it("leaves non-PII fields untouched", () => {

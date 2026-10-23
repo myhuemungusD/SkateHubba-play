@@ -10,11 +10,13 @@ import { OnboardingProvider } from "./context/OnboardingContext";
 import { TipsProvider } from "./context/TipsContext";
 import { VerifyEmailBanner } from "./components/VerifyEmailBanner";
 import { useEmailVerifiedToast } from "./hooks/useEmailVerifiedToast";
+import { useGameDeepLink } from "./hooks/useGameDeepLink";
 import { getUidByUsername } from "./services/users";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Spinner } from "./components/ui/Spinner";
 import { ToastContainer } from "./components/ToastContainer";
-import { GameNotificationWatcher, OPEN_GAME_EVENT } from "./components/GameNotificationWatcher";
+import { DeviceCheckRetryToast } from "./components/DeviceCheckRetryToast";
+import { GameNotificationWatcher } from "./components/GameNotificationWatcher";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { BottomNav, isBottomNavScreen } from "./components/BottomNav";
 import { canGoBackInApp } from "./hooks/useGoBack";
@@ -32,6 +34,7 @@ import {
   isAdminInsightsEnabled,
   isProBlessingEnabled,
   isRunnerEnabled,
+  isClosetEnabled,
   isClosetStudioEnabled,
   isMapCheckinsEnabled,
   isTipsEnabled,
@@ -63,6 +66,8 @@ import { BootFeed } from "./boot/BootFeed";
 import { Landing } from "./screens/Landing";
 import { AuthScreen } from "./screens/AuthScreen";
 import { ProfileSetup } from "./screens/ProfileSetup";
+import { CoppaBlockedCard } from "./components/CoppaBlockedCard";
+import { useCoppaBlockedNotice } from "./utils/coppaNotice";
 import { Lobby } from "./screens/Lobby";
 // Lazy: non-critical / heavy secondary screens — code-split into separate
 // chunks so the first-paint bundle doesn't pay for Mapbox (MapPage +
@@ -92,6 +97,9 @@ const SpotDetailPage = lazy(() => import("./screens/SpotDetailPage").then((m) =>
 const Settings = lazy(() => import("./screens/Settings").then((m) => ({ default: m.Settings })));
 const MyStatsScreen = lazy(() => import("./screens/MyStatsScreen").then((m) => ({ default: m.MyStatsScreen })));
 const AdminScreen = lazy(() => import("./screens/AdminScreen").then((m) => ({ default: m.AdminScreen })));
+const PlayerClosetScreen = lazy(() =>
+  import("./screens/PlayerClosetScreen").then((m) => ({ default: m.PlayerClosetScreen })),
+);
 const ClosetStudioScreen = lazy(() =>
   import("./screens/ClosetStudio/ClosetStudioScreen").then((m) => ({ default: m.ClosetStudioScreen })),
 );
@@ -215,10 +223,12 @@ function AppScreens() {
       <OfflineBanner />
       <DeleteAccountRetryBanner />
       <GameNotificationWatcher />
-      {queueUid && <PresenceRunner uid={queueUid} />}
+      {/* No presence writes before a profile exists (COPPA: a blocked sign-up must leave nothing behind). */}
+      {queueUid && auth.hasProfile && <PresenceRunner uid={queueUid} />}
       <AppEmailVerifyBanner />
       <AppRoutes />
       <ToastContainer />
+      <DeviceCheckRetryToast />
       <Suspense fallback={null}>
         <TutorialOverlay />
       </Suspense>
@@ -250,6 +260,7 @@ function LandingRoute({
 }: LandingBridge & { authLoading: boolean; signedIn: boolean }) {
   const shellActive = useSyncExternalStore(subscribeBootShell, isBootShellActive);
   const holdShell = shellActive && !signedIn;
+  const [coppaOutcome, dismissCoppa] = useCoppaBlockedNotice();
 
   // Taps before auth resolves are queued the same way the boot landing does
   // and replayed by AppScreens.
@@ -271,6 +282,8 @@ function LandingRoute({
   }, [shellActive, signedIn]);
 
   if (holdShell) return null;
+  // An under-13 Google/Apple sign-up was just blocked and its sign-in removed (or queued for removal).
+  if (coppaOutcome && !signedIn) return <CoppaBlockedCard outcome={coppaOutcome} onBack={dismissCoppa} />;
   return (
     <Landing
       onGo={onGo}
@@ -315,6 +328,7 @@ function PlayerProfileRoute({
   onSignUp,
   onEditProfile,
   onViewMyStats,
+  onOpenCloset,
 }: {
   currentUserProfile: import("./services/users").UserProfile | null;
   ownGames: import("./services/games").GameDoc[];
@@ -328,6 +342,8 @@ function PlayerProfileRoute({
   onSignUp: () => void;
   onEditProfile: () => void;
   onViewMyStats: () => void;
+  /** Opens a skater's full Closet screen. Unset while the Closet flag is off. */
+  onOpenCloset?: (uid: string) => void;
 }) {
   const { uid } = useParams<{ uid: string }>();
   if (!uid) return <Navigate to={currentUserProfile ? "/lobby" : "/"} replace />;
@@ -351,7 +367,20 @@ function PlayerProfileRoute({
       onSignUp={onSignUp}
       onEditProfile={isOwn ? onEditProfile : undefined}
       onViewMyStats={isOwn ? onViewMyStats : undefined}
+      onOpenCloset={onOpenCloset ? () => onOpenCloset(uid) : undefined}
     />
+  );
+}
+
+/** `/player/:uid/closet`: the full Closet grid, Back returns to that profile. */
+function ClosetRoute({ ownUid }: { ownUid: string }) {
+  const { uid } = useParams<{ uid: string }>();
+  /* v8 ignore next -- the route pattern always supplies :uid */
+  if (!uid) return <Navigate to="/lobby" replace />;
+  return (
+    <Suspense fallback={<Spinner />}>
+      <PlayerClosetScreen key={uid} uid={uid} backFallback={uid === ownUid ? "/me" : `/player/${uid}`} />
+    </Suspense>
   );
 }
 
@@ -415,6 +444,9 @@ function AppRoutes() {
   // The profile "ADD A SPOT" CTA deep-links into the Map; omit it while the
   // Map is frozen so PlayerProfileScreen renders no spot entry point at all.
   const onAddSpot = extrasEnabled ? nav.navigateToMapWithAddSpot : undefined;
+  // The full Closet screen exists only while the Closet flag is on; without
+  // it the profile row shows no "See all".
+  const openCloset = isClosetEnabled() ? (uid: string) => void navigate(`/player/${uid}/closet`) : undefined;
   const directChallenge = useCallback(
     async (username: string) => {
       if (!auth.user?.emailVerified) {
@@ -442,31 +474,8 @@ function AppRoutes() {
     [auth.user?.emailVerified, nav, game, notify],
   );
 
-  // Deep-link into a game when a push notification is tapped (service worker postMessage)
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ gameId?: unknown; kind?: unknown }>).detail;
-      const gameId = detail?.gameId;
-      if (typeof gameId !== "string" || gameId.length === 0) return;
-      if (detail?.kind === "dice") {
-        navigate(`/dice/${gameId}`);
-        return;
-      }
-      if (!game.games) return;
-      const found = game.games.find((g) => g.id === gameId);
-      if (found) {
-        game.openGame(found);
-      } else {
-        // Deep-linked game isn't in the loaded list (stale push, completed
-        // game, or list not yet hydrated). Fall back to the lobby instead of
-        // silently no-op'ing so the tap always lands somewhere actionable.
-        nav.setScreen("lobby");
-      }
-    };
-    window.addEventListener(OPEN_GAME_EVENT, handler);
-    return () => window.removeEventListener(OPEN_GAME_EVENT, handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-subscribe when games list or openGame changes
-  }, [game.games, game.openGame, nav.setScreen, navigate]);
+  // Push taps and /?game=<id> links (cold load, signed out, SW, native).
+  useGameDeepLink();
 
   return (
     <>
@@ -586,6 +595,12 @@ function AppRoutes() {
                     onViewPlayer={nav.navigateToPlayer}
                     onOpenDice={(id) => navigate(`/dice/${id}`)}
                     onOpenAppeal={(path) => navigate(path)}
+                    onChallengeUser={(username) => {
+                      setChallengeTarget(username.toLowerCase().trim());
+                      nav.setScreen("challenge");
+                    }}
+                    onRematch={(uid, username) => game.startChallenge(uid, username)}
+                    blockedUids={blockedUids}
                   />
                 ) : (
                   <Navigate to="/" replace />
@@ -718,6 +733,7 @@ function AppRoutes() {
                     onEditProfile={() => navigate("/settings")}
                     onViewMyStats={() => navigate("/my-stats")}
                     onOpenProTools={() => navigate("/pro")}
+                    onOpenCloset={openCloset?.bind(null, auth.activeProfile.uid)}
                   />
                 ) : (
                   <Navigate to="/" replace />
@@ -777,9 +793,20 @@ function AppRoutes() {
                   }}
                   onEditProfile={() => navigate("/settings")}
                   onViewMyStats={() => navigate("/my-stats")}
+                  onOpenCloset={openCloset}
                 />
               }
             />
+            {/* Full Closet grid, moved off the profile. Signed-in and
+                flag-gated like the profile Closet section (isClosetEnabled). */}
+            {isClosetEnabled() && (
+              <Route
+                path="/player/:uid/closet"
+                element={
+                  auth.activeProfile ? <ClosetRoute ownUid={auth.activeProfile.uid} /> : <Navigate to="/" replace />
+                }
+              />
+            )}
 
             <Route
               path="/privacy"

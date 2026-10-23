@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { logger } from "../../services/logger";
 import {
+  logPreviewPlayError,
   AUDIO_CONSTRAINTS,
   iosVideoDeviceId,
   isIOSDevice,
@@ -707,5 +708,29 @@ describe("tuneVideoTrack", () => {
     });
     await tuneVideoTrack(zoomed);
     expect(warn).toHaveBeenCalledWith("camera_zoom_lock_failed", { error: "zoom rejected" });
+  });
+});
+
+describe("logPreviewPlayError", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("ignores AbortError from a superseded load", () => {
+    const warn = vi.spyOn(logger, "warn");
+    logPreviewPlayError(new DOMException("The play() request was interrupted", "AbortError"));
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("logs other play() failures by name", () => {
+    const warn = vi.spyOn(logger, "warn");
+    logPreviewPlayError(new DOMException("blocked", "NotAllowedError"));
+    expect(warn).toHaveBeenCalledWith("camera_preview_play_failed", { name: "NotAllowedError", error: "blocked" });
+  });
+
+  it("logs non-Error rejections as unknown", () => {
+    const warn = vi.spyOn(logger, "warn");
+    logPreviewPlayError("nope");
+    expect(warn).toHaveBeenCalledWith("camera_preview_play_failed", { name: "unknown", error: "nope" });
+    logPreviewPlayError({ name: 42 });
+    expect(warn).toHaveBeenLastCalledWith("camera_preview_play_failed", { name: "unknown", error: "[object Object]" });
   });
 });

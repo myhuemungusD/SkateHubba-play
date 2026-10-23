@@ -7,31 +7,37 @@ import * as seed from "../../scripts/review-kit/seed.mjs";
 // @ts-expect-error — plain .mjs script, no types
 import * as shots from "../../scripts/review-kit/screenshots.mjs";
 
-const ENV = { REVIEW_EMAIL: "review@example.com", REVIEW_PASSWORD: "correct-horse-1" };
+const ENV = {
+  REVIEW_EMAIL: "review@example.com",
+  REVIEW_PASSWORD: "correct-horse-1",
+  REVIEW_USERNAME: "demo_reviewer",
+};
 
 describe("plan", () => {
   it("covers every required store size at the exact pixel size", () => {
     const px = Object.fromEntries(plan.SIZES.map((s: { id: string }) => [s.id, plan.pixelSize(s)]));
     expect(px["ios-6.9"]).toEqual({ w: 1320, h: 2868 });
+    expect(px["ios-6.3"]).toEqual({ w: 1206, h: 2622 });
     expect(px["ios-6.5"]).toEqual({ w: 1284, h: 2778 });
     expect(px["ios-5.5"]).toEqual({ w: 1242, h: 2208 });
-    expect(px["ipad-13"]).toEqual({ w: 2064, h: 2752 });
+    expect(px["ipad-13"]).toBeUndefined(); // iPhone-only app: no iPad set
     expect(px["play-phone"]).toEqual({ w: 1080, h: 1920 });
     expect(plan.shotPath("/o", plan.SIZES[0], plan.SCREENS[0])).toBe("/o/ios-6.9/01-game.png");
   });
 
   it("reads env without defaults for secrets", () => {
-    expect(plan.reviewEnv({}).missing).toEqual(["REVIEW_EMAIL", "REVIEW_PASSWORD (10+ characters)"]);
+    expect(plan.reviewEnv({}).missing).toEqual(["REVIEW_EMAIL", "REVIEW_PASSWORD (10+ characters)", "REVIEW_USERNAME"]);
+    expect(plan.reviewEnv({ ...ENV, REVIEW_USERNAME: "  " }).missing).toEqual(["REVIEW_USERNAME"]);
     const ok = plan.reviewEnv({ ...ENV, REVIEW_USERNAME: "AppRev", REVIEW_BASE_URL: "http://x/" });
     expect(ok).toMatchObject({ missing: [], username: "apprev", appUrl: "http://x" });
   });
 
   it("builds deterministic, public-only seed docs", () => {
-    const docs = plan.buildSeedDocs({ uid: "U", username: "appreview", appUrl: "https://a", now: new Date(0) });
+    const docs = plan.buildSeedDocs({ uid: "U", username: ENV.REVIEW_USERNAME, appUrl: "https://a", now: new Date(0) });
     const paths = docs.map(([p]: [string]) => p);
     expect(paths).toContain("users/U");
-    expect(paths).toContain("usernames/appreview");
-    expect(paths.filter((p: string) => p.startsWith("games/"))).toHaveLength(9);
+    expect(paths).toContain(`usernames/${ENV.REVIEW_USERNAME}`);
+    expect(paths.filter((p: string) => p.startsWith("games/"))).toHaveLength(10);
     expect(paths.filter((p: string) => p.startsWith("clips/"))).toHaveLength(8);
     expect(paths.filter((p: string) => p.startsWith("spots/"))).toHaveLength(6);
     expect(paths.filter((p: string) => p.startsWith("users/U/locker/"))).toHaveLength(4);
@@ -71,6 +77,30 @@ describe("plan", () => {
     expect(locker.every((d: { brand: string }) => d.brand === "Mike White")).toBe(true);
     expect(plan.SCREENS.some((s: { path: string }) => plan.FORBIDDEN_PATHS.includes(s.path))).toBe(false);
   });
+
+  it("seeds letters, kai's stats and a 1–1 head-to-head with kai", () => {
+    const docs = plan.buildSeedDocs({ uid: "U", username: "a", appUrl: "https://a" });
+    const doc = (path: string) => docs.find(([p]: [string]) => p === path)?.[1];
+    const me = doc("users/U");
+    expect(me).toMatchObject({ lettersGiven: 88, lettersTaken: 58, currentWinStreak: 2 });
+    // At least 5 given per win and 5 taken per loss.
+    expect(me.lettersGiven).toBeGreaterThanOrEqual(me.wins * 5);
+    expect(me.lettersTaken).toBeGreaterThanOrEqual(me.losses * 5);
+    expect(me.recentResults.slice(-2)).toEqual(["W", "W"]);
+
+    const kai = doc("users/review-demo-opp-1");
+    expect(kai).toMatchObject({ username: "kickflip_kai", wins: 22, losses: 9, gamesPlayed: 31 });
+    expect(kai.wins + kai.losses).toBe(kai.gamesPlayed);
+    expect(doc("users/review-demo-opp-2").wins).toBeUndefined();
+
+    const vsKai = docs
+      .filter(([p]: [string]) => p.startsWith("games/"))
+      .map(([, g]: [string, { player2Uid: string; status: string; winner: string }]) => g)
+      .filter(
+        (g: { player2Uid: string; status: string }) => g.player2Uid === "review-demo-opp-1" && g.status === "complete",
+      );
+    expect(vsKai.map((g: { winner: string }) => g.winner).sort()).toEqual(["U", "review-demo-opp-1"]);
+  });
 });
 
 function fakeAdmin(exists: boolean) {
@@ -92,6 +122,24 @@ function fakeAdmin(exists: boolean) {
   };
   return { admin, writes };
 }
+
+describe("emulator-only demo content", () => {
+  it("drops feed clips, map spots, passport stamps and Closet items when includeEmulatorOnly is false", () => {
+    const all = plan.buildSeedDocs({ uid: "U", username: "a", appUrl: "https://a", now: new Date(0) });
+    const priv = plan.buildSeedDocs({
+      uid: "U",
+      username: "a",
+      appUrl: "https://a",
+      now: new Date(0),
+      includeEmulatorOnly: false,
+    });
+    const paths = priv.map(([p]: [string]) => p);
+    expect(paths.some((p: string) => plan.isEmulatorOnlyPath(p, "U"))).toBe(false);
+    expect(paths).toContain("users/U");
+    expect(paths).toContain("passportSettings/U");
+    expect(all.length - priv.length).toBe(8 + 6 + 3 + 4);
+  });
+});
 
 describe("seed main", () => {
   it("requires credentials from env", async () => {
@@ -116,6 +164,31 @@ describe("seed main", () => {
     expect(f.writes).toEqual([]);
     expect(await seed.main([], ENV, f.admin)).toBe(0);
     expect(f.writes).toContain("users/NEW");
+  });
+  it("never prints the reviewer credentials or username (CodeQL js/clear-text-logging #13)", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const f = fakeAdmin(false);
+    const env = { ...ENV, REVIEW_USERNAME: "reviewer_x" };
+    expect(await seed.main(["--dry-run"], env, f.admin)).toBe(0);
+    expect(await seed.main([], env, f.admin)).toBe(0);
+    const printed = JSON.stringify(log.mock.calls);
+    for (const [key, value] of Object.entries(env)) {
+      if (/EMAIL|PASSWORD|USERNAME/.test(key) && typeof value === "string" && value.length > 0) {
+        expect(printed).not.toContain(value);
+      }
+    }
+  });
+  it("keeps emulator-only demo content out of production; only --emulator seeds it", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const prod = fakeAdmin(false);
+    expect(await seed.main(["--dry-run"], ENV, prod.admin)).toBe(0);
+    expect(JSON.stringify(log.mock.calls)).toContain("would create reviewer account");
+    expect(await seed.main([], ENV, prod.admin)).toBe(0);
+    expect(prod.writes.filter((p) => plan.isEmulatorOnlyPath(p, "NEW"))).toEqual([]);
+    expect(prod.writes).toContain("games/review-demo-your-turn");
+    const emu = fakeAdmin(false);
+    expect(await seed.main(["--emulator"], ENV, emu.admin)).toBe(0);
+    expect(emu.writes.filter((p) => p.startsWith("clips/"))).toHaveLength(8);
   });
   it("rethrows unexpected auth errors and reads the tutorial version", async () => {
     const f = fakeAdmin(true);
@@ -180,5 +253,67 @@ describe("screenshots args", () => {
   it("requires credentials", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await shots.main([], {})).toBe(1);
+  });
+});
+
+describe("App Store shot list (screenshots-plan.md)", () => {
+  it("captures only the listing's promises, in store order", () => {
+    expect(plan.SCREENS.map((s: { id: string }) => s.id)).toEqual([
+      "01-game",
+      "02-record",
+      "03-vs-you",
+      "04-passport",
+      "05-lobby",
+      "06-clock",
+    ]);
+    const byId = Object.fromEntries(plan.SCREENS.map((s: { id: string }) => [s.id, s]));
+    expect(byId["03-vs-you"].path).toBe(`/player/${plan.DEMO_OPPONENTS[0].uid}`);
+    expect(byId["06-clock"]).toMatchObject({
+      path: `/challenge?to=${plan.DEMO_OPPONENTS[0].username}`,
+      optional: true,
+    });
+    expect(byId["05-lobby"].scrollTo).not.toMatch(/whos-skating/);
+    expect(shots.parseArgs(["--skip-optional"], {}).screens.map((s: { id: string }) => s.id)).not.toContain("06-clock");
+    expect(shots.parseArgs([], {}).screens).toHaveLength(6);
+    expect(shots.parseArgs(["--only", "ios-6.9,ios-6.3"], {}).sizes.map((s: { id: string }) => s.id)).toEqual([
+      "ios-6.9",
+      "ios-6.3",
+    ]);
+  });
+
+  it("blocks the map, feed, Closet and trading", () => {
+    for (const p of ["/map", "/feed", "/closet", "/closet/studio", "/trading", "/dice"]) {
+      expect(shots.isForbiddenUrl(`http://l${p}`)).toBe(true);
+    }
+    expect(shots.isForbiddenUrl("http://l/challenge?to=kai")).toBe(false);
+    expect(shots.isForbiddenUrl("http://l/feedback")).toBe(false);
+  });
+
+  it("fails a shot on error text, unpromised features or an open overlay", () => {
+    const ok = { id: "02-record", url: "http://l/me", text: "RECORD Lifetime Wins 14", overlays: 0 };
+    expect(shots.shotProblem(ok)).toBeNull();
+    expect(shots.shotProblem({ ...ok, text: "Map temporarily unavailable" })).toMatch(/temporarily unavailable/);
+    expect(shots.shotProblem({ ...ok, text: "No video recorded" })).toMatch(/No video recorded/);
+    expect(shots.shotProblem({ ...ok, text: "ROLL DICE" })).toMatch(/ROLL DICE/);
+    expect(shots.shotProblem({ ...ok, text: "Bless as pro" })).toMatch(/Bless/);
+    // Post-#812 blessing copy ("put on by @x"), in all three forms.
+    expect(shots.shotProblem({ ...ok, text: "Put someone on as pro" })).toMatch(/Put someone on/);
+    expect(shots.shotProblem({ ...ok, text: "@kai put you on" })).toMatch(/put you on/);
+    expect(shots.shotProblem({ ...ok, text: "put on by @kai" })).toMatch(/put on by/);
+    // Profile-line form, as it would render in a shot.
+    expect(shots.shotProblem({ ...ok, text: "Pro · Put on by @kai" })).toMatch(/Put on by/);
+    expect(shots.shotProblem({ ...ok, overlays: 1 })).toMatch(/overlay/);
+    expect(shots.shotProblem({ ...ok, url: "http://l/feed" })).toMatch(/must not show/);
+    expect(plan.OVERLAY_SELECTOR).toContain('[role="dialog"]');
+    expect(plan.OVERLAY_SELECTOR).toContain('[data-testid="toast"]');
+  });
+
+  it('runs the App Store set as 6.9" + 6.3" whatever else SIZES holds', () => {
+    const appStore = plan.SIZES.filter((s: { store: string }) => s.store === "App Store").map(
+      (s: { id: string }) => s.id,
+    );
+    expect(appStore).toEqual(expect.arrayContaining(["ios-6.9", "ios-6.3"]));
+    const run = shots.parseArgs(["--only", "ios-6.9,ios-6.3"], {}).sizes.map((s: { id: string }) => s.id);
+    expect(run.some((id: string) => id.startsWith("ipad"))).toBe(false);
   });
 });

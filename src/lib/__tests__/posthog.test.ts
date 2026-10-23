@@ -56,6 +56,16 @@ describe("posthog wrapper", () => {
     expect(config.api_host).toBe("https://us.i.posthog.com");
   });
 
+  it("disables PostHog GeoIP enrichment on every init (privacy label: no linked coarse location)", async () => {
+    const { initPosthog } = await import("../posthog");
+    await initPosthog({ apiKey: "phc_test" });
+    expect(posthogInstance.register).toHaveBeenCalledWith({ $geoip_disable: true });
+    // Registered right after init, before any event can be captured.
+    expect(posthogInstance.register.mock.invocationCallOrder[0]).toBeGreaterThan(
+      posthogInstance.init.mock.invocationCallOrder[0],
+    );
+  });
+
   it("registers the release as app_version super-property when provided", async () => {
     const { initPosthog } = await import("../posthog");
     await initPosthog({ apiKey: "phc_test", release: "v1.2.0" });

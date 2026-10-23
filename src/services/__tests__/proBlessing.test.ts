@@ -109,7 +109,7 @@ describe("proBlessing service", () => {
     expect(await answerBlessing("b9", true)).toBe("accepted");
     callable.mockResolvedValue({ data: null });
     await expect(answerBlessing("b9", false)).rejects.toThrow("bad response");
-    expect(blessingErrorMessage(new Error("limit_reached"))).toMatch(/blessings for now/);
+    expect(blessingErrorMessage(new Error("limit_reached"))).toMatch(/put-ons for now/);
     expect(blessingErrorMessage("x")).toBe("That didn't work. Try again.");
   });
 

@@ -1,3 +1,4 @@
+import { formatRecord } from "../../../constants/stats";
 import type { CompletedSummary } from "../useLobbyController";
 
 interface Props {
@@ -15,10 +16,11 @@ export function CompletedSummaryLine({ summary, onViewRecord }: Props) {
       <button
         type="button"
         onClick={onViewRecord}
+        aria-label={`${summary.total} finished. ${formatRecord(summary.wins, summary.wins + summary.losses).label}. View record`}
         className="min-h-[44px] inline-flex items-center gap-1.5 px-2 -mx-2 rounded-md text-muted hover:text-white transition-colors duration-300 underline underline-offset-4 decoration-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
       >
         <span className="tabular-nums">
-          {summary.total} finished · {summary.wins}–{summary.losses}
+          {summary.total} finished · {formatRecord(summary.wins, summary.wins + summary.losses).text} won
         </span>
       </button>
     </p>

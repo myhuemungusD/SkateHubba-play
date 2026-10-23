@@ -31,6 +31,9 @@ vi.mock("../../../services/clips.userWrites", async (importOriginal) => {
 vi.mock("../../../services/nativeVideo", () => ({
   isNativePlatform: () => mockIsNative(),
   recordNativeVideo: vi.fn(),
+  openNativePreview: vi.fn(() => Promise.resolve(true)),
+  closeNativePreview: vi.fn(() => Promise.resolve()),
+  isNativePreviewLive: vi.fn(() => false),
 }));
 
 vi.mock("../../../services/analytics", () => ({

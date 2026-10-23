@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { DICE_PUSH_PLATFORMS, diceEligibleTokens, isDicePush, mirrorTokens, tokenAllowsDice } from "./platforms.js";
+import {
+  testerEligibleTokens,
+  DICE_PUSH_PLATFORMS,
+  diceEligibleTokens,
+  isDicePush,
+  mirrorTokens,
+  tokenAllowsDice,
+} from "./platforms.js";
 
 describe("dice push platforms", () => {
   it("allows android and web, never ios (dice is off in the iOS build)", () => {
@@ -31,5 +38,13 @@ describe("mirrorTokens", () => {
   it("returns [] for a missing doc or a non-list", () => {
     expect(mirrorTokens(undefined)).toEqual([]);
     expect(mirrorTokens({ tokens: "t" })).toEqual([]);
+  });
+});
+
+describe("tester announcement push platforms", () => {
+  it("keeps android and web tokens, drops ios and untagged ones", () => {
+    const mirror = { platforms: { a: "android", w: "web", i: "ios" } };
+    expect(testerEligibleTokens(mirror, ["a", "w", "i", "old"])).toEqual(["a", "w"]);
+    expect(testerEligibleTokens(undefined, ["a"])).toEqual([]);
   });
 });

@@ -32,7 +32,7 @@ function ClipBadge({ clip }: { clip: ClipDoc }) {
   if (clip.source === "user") {
     return (
       <span
-        className="rounded-md border border-white/20 bg-white/10 px-2 py-0.5 font-display text-[10px] tracking-[0.2em] text-white/80"
+        className="rounded-md border border-white/20 bg-white/10 px-2 py-0.5 font-display text-[11px] tracking-[0.2em] text-white/80"
         aria-label="Clip posted straight to the feed"
       >
         CLIP
@@ -41,7 +41,7 @@ function ClipBadge({ clip }: { clip: ClipDoc }) {
   }
   return (
     <span
-      className={`rounded-md border px-2 py-0.5 font-display text-[10px] tracking-[0.2em] ${
+      className={`rounded-md border px-2 py-0.5 font-display text-[11px] tracking-[0.2em] ${
         clip.role === "set"
           ? "border-brand-orange/40 bg-brand-orange/15 text-brand-orange"
           : "border-brand-green/40 bg-brand-green/15 text-brand-green"

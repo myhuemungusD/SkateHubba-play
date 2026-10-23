@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { PlayerProfileScreen } from "../PlayerProfileScreen";
 import { buildBaseProps, fetchedState } from "./playerProfile.test-helpers";
 // Cross-directory on purpose: the locker fixture is owned by the component
@@ -65,6 +65,47 @@ const deck = buildLockerItem({ id: "d1" });
 describe("PlayerProfileScreen — Economy Phase A fetch failures", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // The Closet section only renders behind its flag (G9).
+    vi.stubEnv("VITE_FEATURE_CLOSET_ENABLED", "true");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("hides the Closet section entirely when the Closet flag is off (App Review 2.3.1)", async () => {
+    vi.stubEnv("VITE_FEATURE_CLOSET_ENABLED", "false");
+    mockFetchAchievements.mockResolvedValue([centuryBadge]);
+    mockFetchLockerItems.mockResolvedValue([deck]);
+
+    render(<PlayerProfileScreen {...ownProfileProps} />);
+
+    expect(await screen.findByTestId("badges-row")).toBeInTheDocument();
+    expect(screen.queryByTestId("closet-showcase")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("closet-empty-hint")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("closet-item-d1")).not.toBeInTheDocument();
+  });
+
+  it("skips the locker read and the equipped-avatar showcase when the Closet flag is off", async () => {
+    vi.stubEnv("VITE_FEATURE_CLOSET_ENABLED", "false");
+    mockFetchAchievements.mockResolvedValue([centuryBadge]);
+    mockFetchLockerItems.mockResolvedValue([buildLockerItem({ id: "s1", equipped: true })]);
+
+    render(<PlayerProfileScreen {...ownProfileProps} />);
+
+    expect(await screen.findByTestId("badges-row")).toBeInTheDocument();
+    expect(mockFetchLockerItems).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("profile-showcase")).not.toBeInTheDocument();
+  });
+
+  it("shows the equipped-avatar showcase when the Closet flag is on", async () => {
+    mockFetchAchievements.mockResolvedValue([]);
+    mockFetchLockerItems.mockResolvedValue([buildLockerItem({ id: "s1", equipped: true })]);
+
+    render(<PlayerProfileScreen {...ownProfileProps} />);
+
+    expect(await screen.findByTestId("profile-showcase")).toBeInTheDocument();
+    expect(mockFetchLockerItems).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the badges row when only the locker read is rejected", async () => {
@@ -88,8 +129,9 @@ describe("PlayerProfileScreen — Economy Phase A fetch failures", () => {
 
     render(<PlayerProfileScreen {...ownProfileProps} />);
 
-    expect(await screen.findByTestId("closet-item-d1")).toBeInTheDocument();
-    expect(screen.getByText("Ledge Deck")).toBeInTheDocument();
+    // The profile shows the compact Closet row; the full grid lives on its own screen.
+    expect(await screen.findByTestId("closet-thumb-d1")).toBeInTheDocument();
+    expect(screen.getByTestId("closet-count")).toHaveTextContent("1 item");
     expect(screen.queryByTestId("badges-row")).not.toBeInTheDocument();
     expect(loggerMock.warn).toHaveBeenCalledWith("profile_achievements_load_failed", { error: "backend unavailable" });
     expect(loggerMock.warn).toHaveBeenCalledTimes(1);
@@ -120,8 +162,30 @@ describe("PlayerProfileScreen — Economy Phase A fetch failures", () => {
     render(<PlayerProfileScreen {...ownProfileProps} />);
 
     expect(await screen.findByTestId("badges-row")).toBeInTheDocument();
-    expect(screen.getByTestId("closet-item-d1")).toBeInTheDocument();
+    expect(screen.getByTestId("closet-thumb-d1")).toBeInTheDocument();
     expect(loggerMock.warn).not.toHaveBeenCalled();
+  });
+
+  it("keeps the full closet grid off the profile and links to it with See all", async () => {
+    mockFetchAchievements.mockResolvedValue([]);
+    mockFetchLockerItems.mockResolvedValue([deck, buildLockerItem({ id: "d2" })]);
+    const onOpenCloset = vi.fn();
+
+    render(<PlayerProfileScreen {...ownProfileProps} onOpenCloset={onOpenCloset} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "See all 2 items in the closet" }));
+    expect(onOpenCloset).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("closet-grid")).not.toBeInTheDocument();
+  });
+
+  it("shows no See all when no Closet screen is wired (Closet flag off)", async () => {
+    mockFetchAchievements.mockResolvedValue([]);
+    mockFetchLockerItems.mockResolvedValue([deck]);
+
+    render(<PlayerProfileScreen {...ownProfileProps} />);
+
+    expect(await screen.findByTestId("closet-count")).toHaveTextContent("1 item");
+    expect(screen.queryByTestId("closet-see-all")).not.toBeInTheDocument();
   });
 
   it("drops a late resolution after unmount instead of setting state", async () => {

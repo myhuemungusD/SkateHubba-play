@@ -94,15 +94,6 @@ export const analytics = {
   /** Fires when a locked pin on the landing map teaser is clicked. */
   landingPinClicked: (spotId: string) => trackEvent("landing_pin_clicked", { spotId }),
   // ── Profile / stats / achievements rollout ────────────────────────────
-  /**
-   * Fires once per successful `deleteUserData` cascade. Not sampled —
-   * account deletions are rare and we need every one for the GDPR audit
-   * trail. `achievementsRemoved` is the count of subcollection docs the
-   * batch wiped; `avatarRemoved` is true when at least one avatar object
-   * was found and deleted from Storage.
-   */
-  accountDeleted: (uid: string, achievementsRemoved: number, avatarRemoved: boolean) =>
-    trackEvent("account_deleted", { uid: hashUid(uid), achievementsRemoved, avatarRemoved }),
   // ── Avatar upload (PR-B, plan §6.3) ────────────────────────────────────
   /** Fires when the AvatarPicker hands a blob to the upload pipeline. */
   avatarUploadStarted: (source: "camera" | "gallery" | "url", originalSizeBytes: number, nsfwScore?: number) =>
@@ -113,8 +104,6 @@ export const analytics = {
   /** Fires on every rejection — NSFW, oversize, transport, rule. */
   avatarUploadFailed: (errorCode: string, source: "camera" | "gallery" | "url", nsfwScore?: number) =>
     trackEvent("avatar_upload_failed", { errorCode, source, nsfwScore }),
-  /** Fires after `deleteAvatar` resolves. */
-  avatarDeleted: (uid: string) => trackEvent("avatar_deleted", { uid: hashUid(uid) }),
   // ── PR-C profile UX telemetry (plan §6.4 + §7.2) ──────────────────────
   /**
    * Fires once per `PlayerProfileScreen` mount. `viewerUid` is always the

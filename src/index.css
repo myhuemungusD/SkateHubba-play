@@ -217,6 +217,14 @@
     backdrop-filter: blur(16px);
     padding: 0.75rem 1.25rem max(env(safe-area-inset-bottom), 0.75rem);
   }
+
+  /* The dock inside a screen's own bottom-pinned group (the dice table's
+     tray). The group does the pinning, so the dock just sits in it. */
+  .action-dock-inline {
+    position: relative;
+    inset: auto;
+    z-index: auto;
+  }
 }
 
 /* ── Glassmorphism utilities ─────────────────────────── */
@@ -702,6 +710,91 @@ html.tour-open .lobby-root {
 
   .landing-hero > a[href="#demo"] {
     display: none;
+  }
+}
+
+/* ── Raised surfaces: shared button + card tokens ──────
+ * One look for every secondary button and tappable/stat card: a faint
+ * orange-tinted 1px edge, a soft top-down gradient and a 1px inner highlight
+ * for depth. `.btn-primary-fill` is the filled orange call to action.
+ * `.press-feedback` is the pressed state (scale 0.97 + brightness); reduced
+ * motion keeps the brightness cue and drops the scale.
+ * Contrast (WCAG AA): white/80 on #151515–#1b1b1b is about 12:1; #140a00 on
+ * #ff6b00–#ff7f24 is about 6.8:1 or better.
+ */
+@layer components {
+  .surface-raised {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0) 65%),
+      linear-gradient(180deg, #1b1b1b 0%, #141414 100%);
+    border: 1px solid rgba(255, 107, 0, 0.16);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 1px 2px rgba(0, 0, 0, 0.35),
+      0 6px 18px rgba(0, 0, 0, 0.22);
+  }
+
+  .btn-secondary {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0) 65%),
+      linear-gradient(180deg, #1b1b1b 0%, #141414 100%);
+    border: 1px solid rgba(255, 107, 0, 0.18);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.07),
+      0 1px 2px rgba(0, 0, 0, 0.35),
+      0 6px 18px rgba(0, 0, 0, 0.22);
+    color: rgba(255, 255, 255, 0.85);
+    transition:
+      border-color 0.2s ease,
+      color 0.2s ease,
+      scale 0.12s ease,
+      filter 0.12s ease;
+  }
+
+  .btn-secondary:hover {
+    border-color: rgba(255, 107, 0, 0.34);
+    color: #fff;
+  }
+
+  .btn-primary-fill {
+    background: linear-gradient(180deg, #ff7f24 0%, #ff6b00 100%);
+    border: 1px solid rgba(255, 170, 110, 0.55);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.3),
+      0 2px 10px rgba(255, 107, 0, 0.22),
+      0 1px 2px rgba(0, 0, 0, 0.3);
+    color: #140a00;
+    transition:
+      box-shadow 0.2s ease,
+      scale 0.12s ease,
+      filter 0.12s ease;
+  }
+
+  .btn-primary-fill:hover {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.34),
+      0 4px 18px rgba(255, 107, 0, 0.3),
+      0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+
+  .press-feedback:not(:disabled):active {
+    scale: 0.97;
+    filter: brightness(1.12);
+  }
+
+  /* Empty profile cover: orange to near-black with a faint diagonal grip-tape
+     texture. CSS only, no image download. */
+  .cover-empty {
+    background:
+      repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.035) 0 2px, transparent 2px 9px),
+      radial-gradient(120% 140% at 0% 0%, rgba(255, 107, 0, 0.55) 0%, rgba(255, 107, 0, 0) 60%),
+      linear-gradient(115deg, #b84d00 0%, #5a2600 34%, #1a0d05 68%, #0a0a0a 100%);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .press-feedback:not(:disabled):active {
+      scale: none;
+    }
   }
 }
 

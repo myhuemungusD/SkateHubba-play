@@ -52,7 +52,7 @@ function tenRollLabel(plan: TenPlan | null, game: DiceGameDoc): string {
     : `Roll ${plan.nextCount} ${plan.nextCount === 1 ? "die" : "dice"}`;
 }
 
-/** The bottom dock: always exactly the next thing you can do, and never a dead end. */
+/** The bottom dock: always exactly the next thing you can do, and never a dead end. TableView pins it, under the dice. */
 export function TableDock({ game, uid, name, now, online, busy, landing, plan, onAction }: TableDockProps) {
   const locked = busy !== null || !online;
   const clock = timeLeft(game.turnDeadline, now);
@@ -126,7 +126,7 @@ export function TableDock({ game, uid, name, now, online, busy, landing, plan, o
   }
 
   return (
-    <ActionDock testId="dice-actions">
+    <ActionDock testId="dice-actions" inline>
       {!online ? (
         <p role="status" className="mb-2 text-center font-body text-xs text-brand-orange">
           You're offline. Moves unlock when you reconnect.

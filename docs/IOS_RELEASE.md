@@ -155,7 +155,7 @@ Do these before any store submission. They are the same items tracked in [DSA_CO
    - Unrestricted web access: no.
    - Social media: yes. The Clips feed, public profiles and the Map are on in the store build. Under-13 sign-up is blocked by the age gate.
    - Messaging and chat: yes. Spot group chats and clip comments are on (no private DMs). Report, block and the slur filter cover both.
-   - User-Generated Content: yes. Clips, comments, bios, spot text and Closet Studio designs.
+   - User-Generated Content: yes. Clips, comments, bios, and spot text. Closet Studio is off in the store build (`VITE_FEATURE_CLOSET_ENABLED=false`), so its designs do not count here.
    - Contests: yes. XP, the level climb and leaderboards.
    - Loot Boxes: no. Buying Hubba Bucks is off in the store build (`VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED=false`).
    - Age Assurance: yes. Self-declared date of birth at sign-up (`MIN_AGE = 13`); under-13 accounts cannot be created. We do not verify the DOB against an ID.

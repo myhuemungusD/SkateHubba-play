@@ -61,7 +61,7 @@ export const FIRESTORE_ERASURE: Readonly<Record<string, ErasureEntry>> = {
   // ── Games ──
   games: {
     action: "delete",
-    why: "finished S.K.A.T.E. games and their videos (existing behavior); active games are left for the opponent",
+    why: "finished S.K.A.T.E. games and their videos are deleted; active games are forfeited to the opponent and anonymized (own uploads deleted, uid/username tombstoned); games this account judged are anonymized",
   },
   diceGames: { action: "anonymize", why: "the other player's match history; open matches are closed first" },
   diceStats: { action: "delete", why: "own dice stats" },
@@ -75,7 +75,7 @@ export const FIRESTORE_ERASURE: Readonly<Record<string, ErasureEntry>> = {
 
   // ── Clips, disputes, judging ──
   clips: { action: "delete", why: "own clips" },
-  "clips/{}/comments": { action: "delete", why: "own comments on any clip" },
+  "clips/{}/comments": { action: "delete", why: "own comments on any clip, and the whole thread under a deleted clip" },
   clipVotes: { action: "delete", why: "own upvotes, with the clip tally decremented" },
   disputes: { action: "delete", why: "disputes this user raised" },
   disputeVotes: { action: "delete", why: "own dispute votes, with the tally decremented" },
@@ -101,7 +101,7 @@ export const FIRESTORE_ERASURE: Readonly<Record<string, ErasureEntry>> = {
   onlineStatus: { action: "delete", why: "own online heartbeat" },
 
   // ── Notifications and push ──
-  notifications: { action: "delete", why: "notifications this user received" },
+  notifications: { action: "delete", why: "notifications this user received or sent" },
   notification_limits: { action: "delete", why: "own send cooldowns" },
   pushTargets: { action: "delete", why: "device tokens" },
   push_dispatch: { action: "delete", why: "queued pushes to this user's devices" },
@@ -145,7 +145,7 @@ export const FIRESTORE_ERASURE: Readonly<Record<string, ErasureEntry>> = {
 /** Storage, keyed by top-level folder (see storage.rules). */
 export const STORAGE_ERASURE: Readonly<Record<string, ErasureEntry>> = {
   games: { action: "delete", why: "videos of every game the orchestrator deletes" },
-  users: { action: "delete", why: "avatar and banner" },
+  users: { action: "delete", why: "the whole users/{uid}/ folder: avatar, banner and resize-extension thumbnails" },
   closetDesigns: { action: "delete", why: "Closet Studio artwork" },
   userClips: { action: "delete", why: "private clip uploads" },
   approvedClips: { action: "delete", why: "approved clip videos" },

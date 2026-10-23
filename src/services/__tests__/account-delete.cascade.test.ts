@@ -58,6 +58,7 @@ const EMPTY_CONTENT = {
   crewListsUpdated: 0,
   spotMessageReports: 0,
   wttVotes: 0,
+  notificationsSent: 0,
   proContent: 0,
   rateLimits: 0,
   mediaObjects: 0,
@@ -69,6 +70,9 @@ const EMPTY_CONTENT = {
  * the per-uid map docs are deleted blind (attempted, not found).
  */
 const EMPTY_NEW_PHASES = {
+  skateGamesForfeited: 0,
+  skateGamesAnonymized: 0,
+  skateGamesJudgedAnonymized: 0,
   diceGamesAnonymized: 0,
   diceGamesDeleted: 0,
   closet: { tradesSettled: 0, tradesAnonymized: 0, tradesDeleted: 0, serials: 0, dropRecords: 0 },
@@ -103,6 +107,10 @@ function fixture(): FakeStore {
       gTheirs: { player1Uid: OTHER, player2Uid: "u3", status: "completed" },
     },
     clips: { mine: { playerUid: UID, upvoteCount: 2 }, theirs: { playerUid: OTHER, upvoteCount: 4 } },
+    // Another skater's comment on MY clip goes with the clip's thread; their
+    // comment on their own clip stays.
+    "clips/mine/comments": { c1: { userId: OTHER, text: "sick" } },
+    "clips/theirs/comments": { c2: { userId: OTHER, text: "clean" } },
     disputes: {
       mine: { setterUid: UID, landVotes: 2, bailVotes: 1 },
       theirs: { setterUid: OTHER, landVotes: 1, bailVotes: 0 },
@@ -114,7 +122,14 @@ function fixture(): FakeStore {
       mine: { uid: UID, disputeId: "theirs", verdict: "land" },
       theirs: { uid: OTHER, disputeId: "theirs", verdict: "bail" },
     },
-    notifications: { mine: { recipientUid: UID }, theirs: { recipientUid: OTHER } },
+    // A sent notification carries the sender's @handle in its title and
+    // body, so it goes with the sender too.
+    notifications: {
+      mine: { recipientUid: UID },
+      theirs: { recipientUid: OTHER },
+      sent: { senderUid: UID, recipientUid: OTHER, title: "New Challenge!", body: "@me challenged you" },
+      relayed: { senderUid: OTHER, recipientUid: "u3" },
+    },
     pushTargets: { [UID]: { tokens: ["tok"] }, [OTHER]: { tokens: ["tok2"] } },
     push_dispatch: { mine: { recipientUid: UID, tokens: ["tok"] }, theirs: { recipientUid: OTHER } },
     nudges: {
@@ -150,6 +165,7 @@ describe("full cascade over a populated account", () => {
       games: 2,
       gameVideoObjects: 3,
       clips: 1,
+      clipThreadComments: 1,
       clipVotes: 1,
       disputes: 1,
       disputeVotes: 1,
@@ -173,6 +189,9 @@ describe("full cascade over a populated account", () => {
       trainingRevocations: 0,
       userSubcollectionDocs: 1,
       ...EMPTY_NEW_PHASES,
+      content: { ...EMPTY_NEW_PHASES.content, notificationsSent: 1 },
+      skateGamesForfeited: 1,
+      skateGamesAnonymized: 1,
     });
   });
 
@@ -183,10 +202,12 @@ describe("full cascade over a populated account", () => {
     expect(survivors(store)).toEqual([
       "clipVotes/theirs",
       "clips/theirs",
+      "clips/theirs/comments/c2",
       "disputeVotes/theirs",
       "disputes/theirs",
       "games/gActive",
       "games/gTheirs",
+      "notifications/relayed",
       "notifications/theirs",
       "nudges/unrelated",
       "pushTargets/u2",
@@ -235,11 +256,15 @@ describe("full cascade over a populated account", () => {
     expect(store.docs.has("nudges/both")).toBe(false);
   });
 
-  it("leaves an active game and its videos intact so the opponent is not stranded", async () => {
+  it("keeps an active game for the opponent, closed as their win, with this account tombstoned", async () => {
     const store = fixture();
     await deleteUserDataAsAdmin(store.deps, UID);
 
-    expect(store.docs.has("games/gActive")).toBe(true);
+    const game = store.docs.get("games/gActive");
+    expect(game).toMatchObject({ player1Uid: "deleted-user", player2Uid: OTHER, status: "forfeit", winner: OTHER });
+    expect(JSON.stringify(game)).not.toContain(UID);
+    // Legacy object names carry no uploader uid, so they can't be attributed
+    // and stay with the opponent's game folder.
     expect([...store.objects].sort()).toEqual([
       "games/gActive/round1.webm",
       "games/gTheirs/round1.webm",
@@ -321,6 +346,7 @@ describe("ownership fields", () => {
   const OWNERSHIP: [string, string][] = [
     ["games", "player1Uid"],
     ["games", "player2Uid"],
+    ["games", "judgeId"],
     ["diceGames", "player1Uid"],
     ["diceGames", "player2Uid"],
     ["clips", "playerUid"],
@@ -328,6 +354,7 @@ describe("ownership fields", () => {
     ["clipVotes", "uid"],
     ["disputeVotes", "uid"],
     ["notifications", "recipientUid"],
+    ["notifications", "senderUid"],
     ["push_dispatch", "recipientUid"],
     ["nudges", "senderUid"],
     ["nudges", "recipientUid"],
@@ -801,6 +828,7 @@ describe("idempotency", () => {
       games: 0,
       gameVideoObjects: 0,
       clips: 0,
+      clipThreadComments: 0,
       clipVotes: 0,
       disputes: 0,
       disputeVotes: 0,

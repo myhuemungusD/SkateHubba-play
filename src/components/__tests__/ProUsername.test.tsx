@@ -21,13 +21,13 @@ describe("ProUsername", () => {
     const { container } = render(<ProUsername username="mikewhite" isVerifiedPro={true} />);
     const proElements = container.querySelectorAll(".pro-username");
     expect(proElements.length).toBeGreaterThan(0);
-    expect(screen.getByTitle("Verified Pro")).toBeInTheDocument();
+    expect(screen.getByTitle("Pro")).toBeInTheDocument();
     expect(screen.getByText("✦")).toBeInTheDocument();
   });
 
   it("does not show badge when isVerifiedPro is false", () => {
     render(<ProUsername username="mikewhite" isVerifiedPro={false} />);
-    expect(screen.queryByTitle("Verified Pro")).toBeNull();
+    expect(screen.queryByTitle("Pro")).toBeNull();
     expect(screen.queryByText("✦")).toBeNull();
   });
 
@@ -44,6 +44,6 @@ describe("ProUsername — feature freeze (VITE_FEATURE_EXTRAS_ENABLED unset, the
     const { container } = render(<ProUsername username="mikewhite" isVerifiedPro={true} />);
     expect(screen.getByText(/@mikewhite/)).toBeInTheDocument();
     expect(container.querySelector(".pro-username")).toBeNull();
-    expect(screen.queryByTitle("Verified Pro")).toBeNull();
+    expect(screen.queryByTitle("Pro")).toBeNull();
   });
 });

@@ -3,6 +3,7 @@ import { Btn } from "./ui/Btn";
 import { ErrorBanner } from "./ui/ErrorBanner";
 import {
   submitReport,
+  COMMENT_REPORT_REASONS,
   REPORT_REASON_LABELS,
   ILLEGAL_CONTENT_MIN_EXPLANATION,
   type ReportReason,
@@ -18,6 +19,8 @@ export function ReportModal({
   gameId,
   clipId,
   disputeId,
+  spotId,
+  comment,
   onClose,
   onSubmitted,
 }: {
@@ -35,6 +38,10 @@ export function ReportModal({
   clipId?: string;
   /** Community dispute id. These reports stay in the admin queue and do not auto-hide. */
   disputeId?: string;
+  /** Spot id when reporting a spot comment. */
+  spotId?: string;
+  /** A single comment being reported (needs `clipId` or `spotId`). */
+  comment?: { id: string; text: string };
   onClose: () => void;
   onSubmitted: () => void;
 }) {
@@ -65,6 +72,8 @@ export function ReportModal({
         description,
         ...(clipId ? { clipId } : {}),
         ...(disputeId ? { disputeId } : {}),
+        ...(spotId ? { spotId } : {}),
+        ...(comment ? { comment } : {}),
       });
       setReceiptId(id);
       setSubmitting(false);
@@ -130,8 +139,20 @@ export function ReportModal({
         onClick={(e) => e.stopPropagation()}
       >
         <h3 id="report-modal-title" className="font-display text-xl text-white mb-1">
-          Report @{reportedUsername}
+          {!comment
+            ? `Report @${reportedUsername}`
+            : reportedUsername
+              ? `Report comment by @${reportedUsername}`
+              : "Report this comment"}
         </h3>
+        {comment && (
+          <blockquote
+            data-testid="report-comment-quote"
+            className="mb-3 line-clamp-3 border-l-2 border-border pl-3 font-body text-sm text-[#CCC] break-words whitespace-pre-wrap"
+          >
+            {comment.text}
+          </blockquote>
+        )}
         <p className="font-body text-sm text-muted mb-4">
           Help keep SkateHubba safe. Reports are reviewed by our team and kept confidential.
         </p>
@@ -151,7 +172,7 @@ export function ReportModal({
             <option value="" disabled>
               Select a reason...
             </option>
-            {REASONS.map((r) => (
+            {(comment ? COMMENT_REPORT_REASONS : REASONS).map((r) => (
               <option key={r} value={r}>
                 {REPORT_REASON_LABELS[r]}
               </option>

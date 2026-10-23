@@ -1,11 +1,12 @@
 import { getMessaging, getToken, isSupported, onMessage, type MessagePayload } from "firebase/messaging";
-import { doc, getDoc, setDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, arrayRemove, serverTimestamp } from "firebase/firestore";
 import app, { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { PRIVATE_PROFILE_DOC_ID, getPushEnabled } from "./users";
 import { PUSH_TARGETS_COLLECTION } from "./pushDispatch";
-import { tagFromMirror, untagToken } from "./pushPlatform";
+import { untagToken } from "./pushPlatform";
+import { storeMirrorToken, storePrivateToken } from "./pushTokenStore";
 import { claimMessagingWorker } from "../lib/swClaim";
 
 /**
@@ -99,63 +100,16 @@ export function _resetSwRegistration(): void {
 // creates require the sender to embed the recipient's tokens in the dispatch
 // doc — and the sender can't read the recipient's private doc.
 //
-// The two writes are intentionally separate setDoc calls, not a single
-// writeBatch: each path has its own rules surface, and a partial commit
-// (private write succeeds, mirror fails) self-heals on the next call while
-// still keeping the canonical list consistent. A batch with mixed-permission
-// docs would fail-all on rules rejection — worse than the current
-// best-effort write.
+// The writes and the 10-token cap live in ./pushTokenStore (storePrivateToken,
+// storeMirrorToken), shared with the native path in ./pushNotifications, so
+// there is one copy of the rule. They are intentionally separate setDoc calls,
+// not a single writeBatch: each path has its own rules surface, and a partial
+// commit (private write succeeds, mirror fails) self-heals on the next call
+// while still keeping the canonical list consistent.
 //
 // Throws on Firestore/messaging errors so callers can attach their own log
 // context. Returns null only for benign no-ops (missing vapid key, empty
 // token).
-
-/**
- * Most tokens one user may store. firestore.rules caps both
- * users/{uid}/private/profile.fcmTokens and pushTargets/{uid}.tokens at 10.
- */
-export const MAX_PUSH_TOKENS = 10;
-
-/**
- * The token list to write when adding `token`, or null when `arrayUnion` is
- * enough (the token is already there, or there is room).
- *
- * WHY: at the cap, `arrayUnion` would make an 11-entry list and the rules
- * deny the whole write, so a new browser or phone silently never gets push.
- * Instead the oldest entries drop (arrayUnion appends, so the list runs
- * oldest to newest) and the newest 9 plus this device remain. A dropped
- * token belonged to a device that has not registered since; if it is still
- * alive it re-adds itself on its next sign-in.
- */
-export function cappedTokenList(existing: unknown, token: string): string[] | null {
-  const list = Array.isArray(existing) ? existing.filter((t): t is string => typeof t === "string") : [];
-  if (list.includes(token) || list.length < MAX_PUSH_TOKENS) return null;
-  return [...list.slice(-(MAX_PUSH_TOKENS - 1)), token];
-}
-
-async function privateTokenWrite(db: ReturnType<typeof requireDb>, uid: string, token: string): Promise<void> {
-  const privateRef = doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID);
-  const snap = await getDoc(privateRef);
-  const capped = cappedTokenList(snap.data()?.fcmTokens, token);
-  await setDoc(privateRef, { fcmTokens: capped ?? arrayUnion(token) }, { merge: true });
-}
-
-async function mirrorTagWrite(db: ReturnType<typeof requireDb>, uid: string, token: string): Promise<void> {
-  const mirrorRef = doc(db, PUSH_TARGETS_COLLECTION, uid);
-  const snap = await getDoc(mirrorRef);
-  const data = snap.data();
-  const capped = cappedTokenList(data?.tokens, token);
-  await setDoc(
-    mirrorRef,
-    {
-      tokens: capped ?? arrayUnion(token),
-      // With a trimmed list, tags for the dropped tokens are deleted too.
-      ...tagFromMirror(token, capped ? { ...data, tokens: capped } : data),
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true },
-  );
-}
 
 async function acquireAndStoreToken(uid: string): Promise<string | null> {
   // Respect the Settings opt-out (src/services/pushPreferences.ts). Skipping
@@ -182,8 +136,8 @@ async function acquireAndStoreToken(uid: string): Promise<string | null> {
   // pushTargets/{uid} when composing a /push_dispatch doc; reversing this
   // order would leave a brief window where the mirror is empty and routed
   // pushes silently no-op.
-  await privateTokenWrite(db, uid, token);
-  await mirrorTagWrite(db, uid, token);
+  await storePrivateToken(db, uid, token);
+  await storeMirrorToken(db, uid, token);
 
   // Cache so sign-out can scrub exactly this device's token.
   activeFcmToken = token;

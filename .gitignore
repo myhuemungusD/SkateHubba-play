@@ -74,3 +74,6 @@ functions/.env
 functions/.env.*
 # App Store / Play screenshots from npm run review:screenshots
 store-screenshots/
+
+# Local moderation rescreen logs (scripts/moderation/rescreen-pending.mjs)
+rescreen-*.md

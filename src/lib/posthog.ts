@@ -50,6 +50,10 @@ export async function initPosthog(config: PosthogInitConfig): Promise<void> {
     ...(config.release ? { bootstrap: { featureFlags: {} } } : {}),
     ...config.extra,
   });
+  // No GeoIP: PostHog would otherwise attach city/region/country from the
+  // request IP to events and the identified person, which the App Store
+  // privacy label does not declare (Coarse Location, linked, analytics).
+  instance.register({ $geoip_disable: true });
   if (config.release) {
     instance.register({ app_version: config.release });
   }

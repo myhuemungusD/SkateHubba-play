@@ -13,7 +13,8 @@
  *   • spot-message reports, WTT votes, pro reviews, pro challenge entries,
  *     pro challenges/props/featured posts they authored, props sent to them
  *   • notification / push / nudge / report rate-limit anchors they own
- *   • Storage: closet design art, private and approved clip videos, banner
+ *   • Storage: closet design art, private and approved clip videos (the
+ *     users/{uid}/ profile folder is erased by the orchestrator's prefix phase)
  *
  * Anonymized (shared with the community):
  *   • public spots they added keep existing, because other skaters' check-ins,
@@ -38,6 +39,11 @@ export interface OwnedContentCounts {
   crewListsUpdated: number;
   spotMessageReports: number;
   wttVotes: number;
+  /**
+   * Notifications this account sent to others (challenges, referee asks).
+   * Their title and body carry this account's @handle, so they go too.
+   */
+  notificationsSent: number;
   proContent: number;
   rateLimits: number;
   mediaObjects: number;
@@ -51,6 +57,7 @@ const OWNED_BY_FIELD: readonly (readonly [string, string, keyof OwnedContentCoun
   ["privateSpots", "createdBy", "privateSpots"],
   ["spotMessageReports", "reportedBy", "spotMessageReports"],
   ["wttVotes", "uid", "wttVotes"],
+  ["notifications", "senderUid", "notificationsSent"],
   ["proReviews", "uid", "proContent"],
   ["proChallengeEntries", "uid", "proContent"],
   ["proChallenges", "proUid", "proContent"],
@@ -63,9 +70,16 @@ const OWNED_BY_FIELD: readonly (readonly [string, string, keyof OwnedContentCoun
   ["reports_limits", "reporterUid", "rateLimits"],
 ];
 
-/** Storage prefixes this account owns outright (avatars and game videos are handled by the orchestrator). */
+/**
+ * Storage prefixes this account owns outright, outside its profile folder.
+ *
+ * The `users/{uid}/` folder (avatar, banner and the resize extension's
+ * thumbnails) is not listed here: the orchestrator's prefix phase erases that
+ * whole folder, so each object has exactly one owner and is counted once (in
+ * `avatarObjects`). Game videos are handled by the orchestrator too.
+ */
 export function ownedMediaPrefixes(uid: string): string[] {
-  return [`closetDesigns/${uid}/`, `userClips/${uid}/`, `approvedClips/${uid}/`, `users/${uid}/banner.`];
+  return [`closetDesigns/${uid}/`, `userClips/${uid}/`, `approvedClips/${uid}/`];
 }
 
 async function deleteGroupWhere(db: Firestore, group: string, field: string, uid: string): Promise<number> {
@@ -87,6 +101,7 @@ export function emptyOwnedCounts(): OwnedContentCounts {
     crewListsUpdated: 0,
     spotMessageReports: 0,
     wttVotes: 0,
+    notificationsSent: 0,
     proContent: 0,
     rateLimits: 0,
     mediaObjects: 0,

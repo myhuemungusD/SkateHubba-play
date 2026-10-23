@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { AppleButton } from "../components/AppleButton";
 import { DobConsentFields } from "../components/DobConsentFields";
 import { GoogleButton } from "../components/GoogleButton";
+import { TermsAgreementNotice } from "../components/legal/TermsAgreementNotice";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { isAppleSignInEnabled } from "../lib/featureFlags";
@@ -52,7 +53,7 @@ export function BootAuth() {
         <h2 className="font-display text-fluid-3xl text-white mb-1">{isSignup ? "Create Account" : "Welcome Back"}</h2>
         <p className="font-body text-sm text-muted mb-5 sm:mb-7">
           {isSignup
-            ? "Join the crew. It's free. We collect your DOB to comply with COPPA & CCPA."
+            ? "Join the crew. It's free. We ask for your birthday to keep SkateHubba 13+."
             : "Sign in to continue your games."}
         </p>
 
@@ -75,6 +76,7 @@ export function BootAuth() {
             loading={googlePending}
             disabled={appleOn && applePending}
           />
+          <TermsAgreementNotice onNav={(doc) => navigate(doc === "privacy" ? "/privacy" : "/terms")} />
         </div>
 
         <div className="flex items-center gap-3 my-5">

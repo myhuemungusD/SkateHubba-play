@@ -83,7 +83,11 @@ vi.mock("../../services/mfa", () => ({
   isTotpHint: (h: { factorId: string }) => h.factorId === "totp",
 }));
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // An under-13 block is sticky for 24h on the device; don't let one test's block leak into the next.
+  localStorage.clear();
+});
 afterEach(() => vi.unstubAllEnvs());
 
 const defaultProps = {
@@ -103,6 +107,22 @@ const defaultProps = {
 };
 
 describe("AuthScreen", () => {
+  it("shows the Terms agreement under the sign-in buttons on both modes (App Review 1.2)", async () => {
+    const onNavLegal = vi.fn();
+    const { unmount } = renderWithProviders(<AuthScreen {...defaultProps} onNavLegal={onNavLegal} />);
+    expect(screen.getByTestId("terms-agreement-notice")).toHaveTextContent(
+      "By continuing you agree to our Terms and Privacy Policy.",
+    );
+    await userEvent.click(screen.getByRole("link", { name: "Terms" }));
+    expect(onNavLegal).toHaveBeenCalledWith("terms");
+    unmount();
+
+    renderWithProviders(<AuthScreen {...defaultProps} mode="signup" onNavLegal={onNavLegal} />);
+    expect(screen.getByTestId("terms-agreement-notice")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("link", { name: "Privacy Policy" }));
+    expect(onNavLegal).toHaveBeenLastCalledWith("privacy");
+  });
+
   it("hides Sign in with Apple unless the flag is the literal true", async () => {
     renderWithProviders(<AuthScreen {...defaultProps} appleLoading />);
     expect(screen.queryByRole("button", { name: "Continue with Apple" })).not.toBeInTheDocument();
@@ -797,6 +817,28 @@ describe("AuthScreen", () => {
       expect((screen.getByLabelText("Birth month") as HTMLInputElement).value).toBe("");
       expect((screen.getByLabelText("Birth day") as HTMLInputElement).value).toBe("");
       expect((screen.getByLabelText("Birth year") as HTMLInputElement).value).toBe("");
+    });
+
+    it("Go Back from the blocked card leaves the signup form", async () => {
+      const onBack = vi.fn();
+      renderWithProviders(<AuthScreen {...signupProps} onBack={onBack} />);
+      await fillSignupForm();
+      await fillDob("01", "01", "2020");
+      await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+      await userEvent.click(screen.getByRole("button", { name: "Go Back" }));
+      expect(onBack).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps blocking after Go Back even with an adult DOB (no back-buttoning)", async () => {
+      renderWithProviders(<AuthScreen {...signupProps} />);
+      await fillSignupForm();
+      await fillDob("01", "01", "2020");
+      await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+      await userEvent.click(screen.getByRole("button", { name: "Go Back" }));
+      await fillDob("01", "15", "2000");
+      await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+      expect(screen.getByText("Sorry!")).toBeInTheDocument();
+      expect(mockSignUp).not.toHaveBeenCalled();
     });
 
     it("requires parental consent for 13-17 year olds before submitting", async () => {

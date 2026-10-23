@@ -5,7 +5,8 @@ import PackageDescription
 // FCM registration token. It is not an npm Capacitor plugin on purpose:
 // @capacitor-firebase/messaging replaces Capacitor's notification handler
 // and would be synced into the Android project, which already gets FCM
-// tokens from @capacitor/push-notifications.
+// tokens from @capacitor/push-notifications. It also sets the App Check
+// provider, which Firebase requires before FirebaseApp.configure().
 let package = Package(
     name: "SkatehubbaFcm",
     platforms: [.iOS(.v15)],
@@ -23,7 +24,8 @@ let package = Package(
             dependencies: [
                 .product(name: "FirebaseCore", package: "firebase-ios-sdk"),
                 .product(name: "FirebaseMessaging", package: "firebase-ios-sdk"),
-                .product(name: "FirebaseAuth", package: "firebase-ios-sdk")
+                .product(name: "FirebaseAuth", package: "firebase-ios-sdk"),
+                .product(name: "FirebaseAppCheck", package: "firebase-ios-sdk")
             ],
             path: "Sources")
     ]

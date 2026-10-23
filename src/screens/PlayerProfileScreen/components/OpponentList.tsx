@@ -1,6 +1,7 @@
 import { ProUsername } from "../../../components/ProUsername";
 import { SkullIcon, TrophyIcon } from "../../../components/icons";
 import type { OpponentRecord } from "../usePlayerProfileController";
+import { RecordFigure } from "../../../components/RecordFigure";
 import { SectionHeader } from "./SectionHeader";
 
 interface Props {
@@ -45,13 +46,13 @@ export function OpponentList({ opponents, currentUserUid, isOwnProfile, onViewPl
                     isVerifiedPro={opp.isVerifiedPro}
                     className="font-display text-base text-white block leading-none truncate"
                   />
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="font-body text-[11px] text-brand-green">{opp.wins}W</span>
-                    <span className="font-body text-[11px] text-brand-red">{opp.losses}L</span>
-                    <span className="font-body text-[11px] text-subtle">
-                      {opp.totalGames} {opp.totalGames === 1 ? "game" : "games"}
-                    </span>
-                  </div>
+                  <RecordFigure
+                    wins={opp.wins}
+                    games={opp.totalGames}
+                    caption="won"
+                    className="mt-1 block font-body text-[11px] text-white/80"
+                    testId={`opponent-record-${opp.uid}`}
+                  />
                 </div>
               </div>
               <div
@@ -63,7 +64,7 @@ export function OpponentList({ opponents, currentUserUid, isOwnProfile, onViewPl
                 ) : opp.wins < opp.losses ? (
                   <SkullIcon size={16} className="text-brand-red" />
                 ) : (
-                  <span className="font-display text-[10px] tracking-wider text-subtle">EVEN</span>
+                  <span className="font-display text-[11px] tracking-wider text-subtle">EVEN</span>
                 )}
               </div>
             </Wrapper>

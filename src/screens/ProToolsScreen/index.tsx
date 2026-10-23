@@ -65,8 +65,10 @@ export function ProToolsScreen({ uid = null, reviewMode, onBack }: ScreenProps) 
         <ArrowLeft size={16} aria-hidden="true" />
         BACK
       </button>
-      <span className="pro-username font-display text-[10px] tracking-[0.3em]">✦ VERIFIED PRO</span>
-      <h1 className="mt-1 mb-2 font-display text-2xl tracking-wide text-white">Pro tools</h1>
+      <span className="pro-username font-display text-[11px] tracking-[0.3em]">✦ PRO</span>
+      <h1 data-tutorial="pro-tools" className="mt-1 mb-2 font-display text-2xl tracking-wide text-white">
+        Pro tools
+      </h1>
       <p className="mb-4 font-body text-sm text-white/70">
         Your toolkit for shaping SkateHubba. Each tool launches to testers first.
       </p>
@@ -78,7 +80,8 @@ export function ProToolsScreen({ uid = null, reviewMode, onBack }: ScreenProps) 
           Review mode: you are seeing what verified pros will see. Pros get these tools without admin access.
         </p>
       )}
-      <BlessingHero uid={uid} live={!reviewMode && isProBlessingEnabled()} />
+      {/* Flag off: no blessing card at all, not a dead preview (App Store 2.1 / 2.3.1). */}
+      {isProBlessingEnabled() && <BlessingHero uid={uid} live={!reviewMode} />}
       <div className="space-y-3">
         {PRO_TOOLS.map((t) => {
           const live = !reviewMode && uid ? liveTool(t.id, uid, username) : null;
