@@ -1,37 +1,69 @@
 #!/usr/bin/env npx tsx
 /**
- * Grant verified-pro status to a user.
+ * Seed verified-pro status from a trusted operator machine (Admin SDK).
  *
  * Usage:
- *   npx tsx scripts/grant-pro.ts <username>
- *   npx tsx scripts/grant-pro.ts mikewhite
+ *   npx tsx scripts/grant-pro.ts <username> --admin-uid <yourUid> \
+ *     --reason "Pro for Baker since 2019, two video parts" \
+ *     --company "Baker Skateboards" --url "https://bakerskateboards.com/team/x"
  *
- * Requires:
- *   - GOOGLE_APPLICATION_CREDENTIALS env var pointing to a service account key
- *     (or running on a machine with default application credentials)
- *   - The firebase-admin package: npm install -D firebase-admin
+ * Same contract as the `proSeed` callable (security audit 2026-10-21, H5),
+ * running the same code with `source: "cli"`:
+ *  - input is validated by `parseSeedInput` (reason 10-280 chars, evidence
+ *    company + a real https link);
+ *  - `seedPro` refuses self-seeds, admin targets (pros are never admins),
+ *    missing, already-pro and banned targets, and writes the badge plus an
+ *    append-only `proAudit` row in ONE transaction;
+ *  - `--admin-uid` must hold the `admin` custom claim, so the audit row names
+ *    a real admin as the actor.
  *
- * What it does:
- *   1. Looks up `usernames/<username>` to get the UID
- *   2. Updates `users/<uid>` with { isVerifiedPro: true, verifiedBy: "admin", verifiedAt: ... }
- *
- * Admin SDK bypasses Firestore security rules, so no rule changes are needed.
+ * It uses the Admin SDK directly, so it works without the deployed function.
+ * Requires GOOGLE_APPLICATION_CREDENTIALS (or default application credentials).
  */
 
 import { readFileSync } from "node:fs";
+import { parseArgs } from "node:util";
 import { initializeApp, cert, type ServiceAccount } from "firebase-admin/app";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
+import { getFirestore, FieldValue, type Firestore } from "firebase-admin/firestore";
+import { parseSeedInput, SeedInputError } from "../functions/src/pro/seedInput.js";
+import { adminClaimLookup, SeedError, seedPro } from "../functions/src/pro/seedCore.js";
+import { adminDiceDb } from "../functions/src/dice/store.js";
+// The functions package types against its own firebase-admin copy; the adapter
+// only calls standard Firestore methods, so the root instance satisfies it.
+type FunctionsFirestore = Parameters<typeof adminDiceDb>[0];
 
 const FIRESTORE_DB_ID = "skatehubba";
+const USAGE =
+  'Usage: npx tsx scripts/grant-pro.ts <username> --admin-uid <uid> --reason "..." --company "..." --url "https://..."';
+
+const MESSAGES: Record<string, string> = {
+  self_seed: "You cannot seed yourself.",
+  target_is_admin: "That account holds the admin claim. Pros are never admins.",
+  not_found: "User profile not found.",
+  already_pro: "Already a verified pro. No changes made.",
+  target_banned: "That account is banned. No changes made.",
+};
+
+function fail(message: string): never {
+  console.error(message);
+  process.exit(1);
+}
 
 async function main() {
-  const username = process.argv[2]?.toLowerCase().trim();
-  if (!username) {
-    console.error("Usage: npx tsx scripts/grant-pro.ts <username>");
-    process.exit(1);
-  }
+  const { values, positionals } = parseArgs({
+    allowPositionals: true,
+    options: {
+      "admin-uid": { type: "string" },
+      reason: { type: "string" },
+      company: { type: "string" },
+      url: { type: "string" },
+    },
+  });
+  const username = positionals[0]?.toLowerCase().trim();
+  const adminUid = values["admin-uid"]?.trim();
+  if (!username || !adminUid || adminUid.includes("/")) fail(USAGE);
 
-  // Initialize Admin SDK
   const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
   if (credPath) {
     const serviceAccount = JSON.parse(readFileSync(credPath, "utf-8")) as ServiceAccount;
@@ -39,39 +71,40 @@ async function main() {
   } else {
     initializeApp();
   }
+  const db: Firestore = getFirestore(FIRESTORE_DB_ID);
+  const isAdmin = adminClaimLookup(getAuth());
 
-  const db = getFirestore(FIRESTORE_DB_ID);
+  if (!(await isAdmin(adminUid))) fail(`--admin-uid ${adminUid} does not hold the admin claim.`);
 
-  // Step 1: Look up username → uid
   const usernameSnap = await db.collection("usernames").doc(username).get();
-  if (!usernameSnap.exists) {
-    console.error(`Username "@${username}" not found in Firestore.`);
-    process.exit(1);
-  }
-  const uid = usernameSnap.data()?.uid as string;
-  console.log(`Found @${username} → uid: ${uid}`);
+  if (!usernameSnap.exists) fail(`Username "@${username}" not found in Firestore.`);
+  const uid = usernameSnap.data()?.uid;
+  if (typeof uid !== "string") fail(`Username "@${username}" has no uid.`);
 
-  // Step 2: Verify user profile exists
-  const userSnap = await db.collection("users").doc(uid).get();
-  if (!userSnap.exists) {
-    console.error(`User profile for uid "${uid}" not found.`);
-    process.exit(1);
-  }
-
-  const current = userSnap.data();
-  if (current?.isVerifiedPro) {
-    console.log(`@${username} is already a verified pro. No changes made.`);
-    process.exit(0);
+  let input;
+  try {
+    input = parseSeedInput({
+      targetUid: uid,
+      reason: values.reason,
+      evidence: { company: values.company, url: values.url },
+    });
+  } catch (err) {
+    if (err instanceof SeedInputError) fail(`Invalid input: ${err.code}\n${USAGE}`);
+    throw err;
   }
 
-  // Step 3: Grant pro status
-  await db.collection("users").doc(uid).update({
-    isVerifiedPro: true,
-    verifiedBy: "admin",
-    verifiedAt: FieldValue.serverTimestamp(),
-  });
-
-  console.log(`✓ @${username} is now a verified pro!`);
+  try {
+    const result = await seedPro(
+      { db: adminDiceDb(db as unknown as FunctionsFirestore), isAdmin, stamp: FieldValue.serverTimestamp() },
+      adminUid,
+      input,
+      "cli",
+    );
+    console.log(`✓ @${username} is now a verified pro (audit ${result.auditId}).`);
+  } catch (err) {
+    if (err instanceof SeedError) fail(`@${username}: ${MESSAGES[err.code] ?? err.code}`);
+    throw err;
+  }
 }
 
 main().catch((err) => {
