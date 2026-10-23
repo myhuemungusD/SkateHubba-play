@@ -40,3 +40,80 @@ describe("isObjectionableUsername", () => {
     expect(usernameNote("hitler_kid", true, "")).toMatch(/isn't allowed/);
   });
 });
+
+describe("self-harm phrases and leetspeak (#886 review S4)", () => {
+  it("blocks 'kill yourself' and its common spellings", () => {
+    for (const t of [
+      "kill yourself",
+      "go kill yourself",
+      "KILL URSELF",
+      "kill ur self",
+      "kill your self",
+      "kill yourselves",
+      "neck yourself",
+      "hang yourself",
+      "k1ll urs3lf",
+      "killurself",
+      "just neckyourself lol",
+    ]) {
+      expect(containsObjectionableText(t), t).toBe(true);
+    }
+  });
+  it("doesn't block skate talk that sits near those words", () => {
+    for (const t of [
+      "skill yourself up",
+      "you killed it",
+      "kill it out there",
+      "treat yourself to a new deck",
+      "neck and neck",
+      "hang ten",
+      "kill the ledge",
+      "360 flip",
+      "540 mctwist",
+      "900 at the vert ramp",
+      "8 stair",
+      "you can do it yourself",
+    ]) {
+      expect(containsObjectionableText(t), t).toBe(false);
+    }
+  });
+  it("folds 6, 8 and 9 look-alikes", () => {
+    expect(containsObjectionableText("n1663r")).toBe(true);
+    expect(containsObjectionableText("n1993r")).toBe(true);
+    expect(containsObjectionableText("8eaner")).toBe(true);
+    expect(isObjectionableUsername("x_n1663r_x")).toBe(true);
+  });
+  it("blocks run-together self-harm taunts in usernames", () => {
+    expect(isObjectionableUsername("neck_yourself")).toBe(true);
+    expect(isObjectionableUsername("kill_urself99")).toBe(true);
+  });
+});
+
+describe("trick catalog never trips the filter", () => {
+  it("passes every string exported from src/constants", async () => {
+    const modules = import.meta.glob("../../constants/*.ts", { eager: true });
+    const strings = new Set<string>();
+    const seen = new WeakSet<object>();
+    const walk = (v: unknown): void => {
+      if (typeof v === "string") {
+        strings.add(v);
+      } else if (v && typeof v === "object") {
+        if (seen.has(v)) return;
+        seen.add(v);
+        const children = v instanceof Map || v instanceof Set ? [...v.values()] : Object.values(v);
+        for (const child of children) walk(child);
+      }
+    };
+    for (const mod of Object.values(modules)) walk(mod);
+    // Plus every quoted literal in the source, including unexported lists.
+    const sources = import.meta.glob("../../constants/*.ts", { eager: true, query: "?raw", import: "default" });
+    for (const src of Object.values(sources) as string[]) {
+      for (const m of src.matchAll(/"((?:[^"\\\n]|\\.)*)"|'((?:[^'\\\n]|\\.)*)'|`([^`$]*)`/g)) {
+        strings.add(m[1] ?? m[2] ?? m[3]);
+      }
+    }
+    expect(strings.size).toBeGreaterThan(450);
+    const hits = [...strings].filter((s) => containsObjectionableText(s));
+    expect(hits).toEqual([]);
+  });
+});
