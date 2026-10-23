@@ -8,6 +8,7 @@ const mockSubmitReport = vi.fn();
 vi.mock("../../services/reports", () => ({
   submitReport: (...args: unknown[]) => mockSubmitReport(...args),
   ILLEGAL_CONTENT_MIN_EXPLANATION: 20,
+  COMMENT_REPORT_REASONS: ["abusive_behavior", "spam", "illegal_content", "other"],
   REPORT_REASON_LABELS: {
     inappropriate_video: "Inappropriate video content",
     abusive_behavior: "Abusive or threatening behavior",
@@ -180,6 +181,19 @@ describe("ReportModal — user-clip reports", () => {
         expect.objectContaining({ clipId: "userclip1", comment: { id: "cm1", text: "rude" } }),
       ),
     );
+  });
+
+  it("quotes the comment and offers only comment reasons", () => {
+    render(<ReportModal {...baseProps} clipId="userclip1" comment={{ id: "cm1", text: "rude" }} />);
+    expect(screen.getByRole("heading", { name: "Report comment by @bob" })).toBeInTheDocument();
+    expect(screen.getByTestId("report-comment-quote")).toHaveTextContent("rude");
+    const options = screen.getAllByRole("option").map((o) => o.getAttribute("value"));
+    expect(options).toEqual(["", "abusive_behavior", "spam", "illegal_content", "other"]);
+  });
+
+  it("titles a report on a comment with no stored handle without an empty @", () => {
+    render(<ReportModal {...baseProps} reportedUsername="" spotId="s1" comment={{ id: "cm1", text: "rude" }} />);
+    expect(screen.getByRole("heading", { name: "Report this comment" })).toBeInTheDocument();
   });
 
   it("sends a null gameId when reporting a clip that belongs to no game", async () => {

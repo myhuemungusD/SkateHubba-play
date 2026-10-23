@@ -247,6 +247,9 @@ describe("submitReport (user-clip targets)", () => {
     await expect(submitReport({ ...base, gameId: "g1", comment: { id: "cm1", text: "hi" } })).rejects.toThrow(
       /not valid/,
     );
+    await expect(
+      submitReport({ ...base, clipId: "uc1", spotId: "s1", comment: { id: "cm1", text: "hi" } }),
+    ).rejects.toThrow(/not valid/);
     await expect(submitReport({ ...base, clipId: "uc1", comment: { id: "", text: "hi" } })).rejects.toThrow(
       /not valid/,
     );
