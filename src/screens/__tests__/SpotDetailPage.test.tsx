@@ -123,17 +123,23 @@ function GoToSpot({ id }: { id: string }) {
   return <button onClick={() => navigate(`/spots/${id}`)}>go to other spot</button>;
 }
 
+const OTHER_ID = "99999999-8888-7777-6666-555555555555";
+
+/** Mounts the page on the fixture spot with a control that moves to OTHER_ID. */
+function renderWithGoToSpot() {
+  return render(
+    <MemoryRouter initialEntries={[`/spots/${FIXTURE_SPOT.id}`]}>
+      <GoToSpot id={OTHER_ID} />
+      <Routes>
+        <Route path="/spots/:id" element={<SpotDetailPage />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
 describe("SpotDetailPage", () => {
   it("re-enters the loading state and fetches the new spot when the route id changes", async () => {
-    const OTHER_ID = "99999999-8888-7777-6666-555555555555";
-    render(
-      <MemoryRouter initialEntries={[`/spots/${FIXTURE_SPOT.id}`]}>
-        <GoToSpot id={OTHER_ID} />
-        <Routes>
-          <Route path="/spots/:id" element={<SpotDetailPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
+    renderWithGoToSpot();
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Test Hubba" })).toBeInTheDocument();
     });
@@ -158,21 +164,13 @@ describe("SpotDetailPage", () => {
   // Covers the stale-result guard on the error path. Without the guard, the
   // first spot's late failure would replace the second spot with its error.
   it("drops a stale load failure after the route moves to another spot", async () => {
-    const OTHER_ID = "99999999-8888-7777-6666-555555555555";
     let rejectFirst: (err: Error) => void = () => {};
     mockGetSpot.mockReturnValueOnce(
       new Promise<Spot>((_, reject) => {
         rejectFirst = reject;
       }),
     );
-    render(
-      <MemoryRouter initialEntries={[`/spots/${FIXTURE_SPOT.id}`]}>
-        <GoToSpot id={OTHER_ID} />
-        <Routes>
-          <Route path="/spots/:id" element={<SpotDetailPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
+    renderWithGoToSpot();
     mockGetSpot.mockResolvedValueOnce({ ...FIXTURE_SPOT, id: OTHER_ID, name: "Other Rail" });
     await userEvent.click(screen.getByRole("button", { name: "go to other spot" }));
     await waitFor(() => {

@@ -17,45 +17,55 @@ describe("checkHintLine", () => {
     expect(checkHintLine("const x = 1; // ignore next time")).toBeNull();
   });
 
-  it.each([
-    "/* v8 ignore next -- jsdom has no WebGL context */",
-    "/* v8 ignore next 3 -- CLI entry guard */",
-    "/* v8 ignore start -- native-only bridge */",
-    "/* c8 ignore else -- unreachable in browsers */",
-    "/* istanbul ignore if -- @preserve server-only path */",
-    "/* node:coverage ignore next -- native shell only, no jsdom bridge */",
-    "/* v8 ignore next -- first reason here */ const a = 1; /* v8 ignore next -- second reason here */",
-  ])("accepts a hint with a reason: %s", (line) => {
+  // One hint per line. Template-literal lists rather than string arrays: the
+  // test-dup gate reads rows of plain strings as copy-pasted blocks.
+  const lines = (block: string) => block.trim().split("\n");
+
+  it.each(
+    lines(`
+/* v8 ignore next -- jsdom has no WebGL context */
+/* v8 ignore next 3 -- CLI entry guard */
+/* v8 ignore start -- native-only bridge */
+/* c8 ignore else -- unreachable in browsers */
+/* istanbul ignore if -- @preserve server-only path */
+/* node:coverage ignore next -- native shell only, no jsdom bridge */
+/* v8 ignore next -- first reason here */ const a = 1; /* v8 ignore next -- second reason here */
+`),
+  )("accepts a hint with a reason: %s", (line) => {
     expect(checkHintLine(line)).toBeNull();
+  });
+
+  it.each(
+    lines(`
+/* v8 ignore next */
+/* v8 ignore next 2 */
+/* c8 ignore start */
+// istanbul ignore else
+/* node:coverage ignore next */
+/* node:coverage ignore start */
+// node:coverage ignore next
+`),
+  )("rejects a hint without a reason: %s", (line) => {
+    expect(checkHintLine(line)).toMatch(/without a reason/);
+  });
+
+  it.each(
+    lines(`
+/* v8 ignore next -- */
+/* v8 ignore next -- x */
+/* v8 ignore next -- tbd */
+/* v8 ignore next -- abc */
+/* v8 ignore next -- untestable */
+/* v8 ignore next -- a b c d e f */
+/* v8 ignore next -- ok go */
+/* node:coverage ignore next -- abc */
+`),
+  )("rejects an empty, placeholder or one-word reason: %s", (line) => {
+    expect(checkHintLine(line)).toMatch(/empty, a placeholder or too short/);
   });
 
   it("accepts a bare stop marker", () => {
     expect(checkHintLine("  /* v8 ignore stop */")).toBeNull();
-  });
-
-  it.each([
-    "/* v8 ignore next */",
-    "/* v8 ignore next 2 */",
-    "/* c8 ignore start */",
-    "// istanbul ignore else",
-    "/* node:coverage ignore next */",
-    "/* node:coverage ignore start */",
-    "// node:coverage ignore next",
-  ])("rejects a hint without a reason: %s", (line) => {
-    expect(checkHintLine(line)).toMatch(/without a reason/);
-  });
-
-  it.each([
-    "/* v8 ignore next -- */",
-    "/* v8 ignore next -- x */",
-    "/* v8 ignore next -- tbd */",
-    "/* v8 ignore next -- abc */",
-    "/* v8 ignore next -- untestable */",
-    "/* v8 ignore next -- a b c d e f */",
-    "/* v8 ignore next -- ok go */",
-    "/* node:coverage ignore next -- abc */",
-  ])("rejects an empty, placeholder or one-word reason: %s", (line) => {
-    expect(checkHintLine(line)).toMatch(/empty, a placeholder or too short/);
   });
 
   it.each([

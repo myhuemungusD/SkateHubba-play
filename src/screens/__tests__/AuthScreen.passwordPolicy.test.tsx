@@ -5,6 +5,7 @@ import { StrictMode, type ReactNode } from "react";
 import { AuthScreen } from "../AuthScreen";
 import { NotificationProvider } from "../../context/NotificationContext";
 import { MIRRORED_PASSWORD_POLICY, type SignupPasswordPolicy } from "../../utils/passwordPolicy";
+import { makeAuthScreenProps } from "./authScreen.test-helpers";
 
 /*
  * The fetched signup password policy, and the stale-result guard on it.
@@ -39,20 +40,7 @@ vi.mock("../../services/mfa", () => ({
 /** A project policy far stricter than the mirrored one: 12+ characters. */
 const STRICT: SignupPasswordPolicy = { ...MIRRORED_PASSWORD_POLICY, minLength: 12 };
 
-const props = {
-  mode: "signup" as const,
-  onDone: vi.fn(),
-  onToggle: vi.fn(),
-  onGoogle: vi.fn(),
-  googleLoading: false,
-  onApple: vi.fn(),
-  appleLoading: false,
-  googleError: "",
-  onGoogleErrorDismiss: vi.fn(),
-  mfaChallenge: null,
-  onMfaBegin: () => false,
-  onMfaCancel: vi.fn(),
-};
+const props = { ...makeAuthScreenProps(), mode: "signup" as const };
 
 function deferred(): { promise: Promise<SignupPasswordPolicy>; resolve: (p: SignupPasswordPolicy) => void } {
   let resolve: (p: SignupPasswordPolicy) => void = () => {};
