@@ -264,4 +264,24 @@ describe("useFocusTrap", () => {
     // No focusable descendants — focus remains wherever it was.
     expect(document.activeElement).toBe(outer);
   });
+
+  it("restores focus to the opener even when the modal autofocuses one of its own controls", () => {
+    const opener = document.createElement("button");
+    opener.textContent = "Opener";
+    document.body.appendChild(opener);
+    opener.focus();
+
+    const container = createContainer();
+    const inside = container.querySelector("button") as HTMLButtonElement;
+    const { unmount } = renderHook(() => {
+      const ref = useRef<HTMLDivElement>(container);
+      useFocusTrap(ref);
+      // Stands in for React's autoFocus: focus is inside before the trap effect runs.
+      if (document.activeElement === opener) inside.focus();
+    });
+    expect(document.activeElement).toBe(inside);
+
+    unmount();
+    expect(document.activeElement).toBe(opener);
+  });
 });

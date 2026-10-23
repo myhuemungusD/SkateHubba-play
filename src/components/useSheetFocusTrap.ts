@@ -4,10 +4,22 @@ import { useSwipeDownToClose } from "./useSwipeDownToClose";
 /**
  * Manual focus-trap (audit D3) for a bottom sheet: Tab loops within the
  * sheet, Escape calls `onClose`, a pull-down from the top calls `onClose`,
- * and the first control is focused on mount.
+ * and the first control is focused on mount. On unmount, focus goes back to
+ * whatever had it when the sheet opened (e.g. the ••• trigger), unless
+ * something else has already taken it.
  */
 export function useSheetFocusTrap(ref: RefObject<HTMLElement | null>, onClose: () => void): void {
   useSwipeDownToClose(ref, onClose);
+  // Mount-only, and declared before the trap below so it records the opener
+  // before focus moves into the sheet. A sheet's DOM is gone by the time this
+  // cleanup runs, so focus sitting on <body> means the sheet dropped it.
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement;
+    return () => {
+      const dropped = document.activeElement === document.body;
+      if (dropped && opener !== document.body && opener.isConnected) opener.focus();
+    };
+  }, []);
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {

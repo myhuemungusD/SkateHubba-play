@@ -41,6 +41,23 @@ describe("ReportModal", () => {
     expect(screen.getByText("Report @bob")).toBeInTheDocument();
   });
 
+  it("portals both the form and the receipt to <body>, not inside its caller (a .glass header traps position:fixed)", async () => {
+    const { container } = render(
+      <header className="glass">
+        <ReportModal {...baseProps} />
+      </header>,
+    );
+    const form = screen.getByRole("dialog");
+    expect(container.contains(form)).toBe(false);
+    expect(form.parentElement).toBe(document.body);
+    await userEvent.selectOptions(screen.getByLabelText("Reason"), "spam");
+    await userEvent.click(screen.getByText("Submit Report"));
+    await screen.findByText("We received your report");
+    const receipt = screen.getByRole("dialog");
+    expect(container.contains(receipt)).toBe(false);
+    expect(receipt.parentElement).toBe(document.body);
+  });
+
   it("disables submit button when no reason is selected", () => {
     render(<ReportModal {...baseProps} />);
     expect(screen.getByText("Submit Report")).toBeDisabled();

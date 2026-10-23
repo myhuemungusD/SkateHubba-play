@@ -1,4 +1,5 @@
 import { useState, useId, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Btn } from "./ui/Btn";
 import { FIELD_LABEL } from "./ui/Field";
 import { ErrorBanner } from "./ui/ErrorBanner";
@@ -99,8 +100,11 @@ export function ReportModal({
   const quotedNoun = comment ? "comment" : "message";
   const detailsLabel = illegal ? "EXPLANATION (REQUIRED)" : "DETAILS (OPTIONAL)";
 
+  // Both branches portal to <body>: callers such as the profile ••• menu sit
+  // in a .glass header whose backdrop-filter is the containing block for
+  // position:fixed, which would squeeze the dialog into the header box.
   if (receiptId) {
-    return (
+    return createPortal(
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-6 z-50"
         role="dialog"
@@ -129,11 +133,12 @@ export function ReportModal({
             Done
           </Btn>
         </div>
-      </div>
+      </div>,
+      document.body,
     );
   }
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-6 z-50"
       role="dialog"
@@ -234,6 +239,7 @@ export function ReportModal({
           </Btn>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
