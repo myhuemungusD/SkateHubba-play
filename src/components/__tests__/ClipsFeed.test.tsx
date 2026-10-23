@@ -983,7 +983,10 @@ describe("ClipsFeed", () => {
     expect(articles[0]?.className).toContain("snap-always");
 
     Object.defineProperty(region, "clientHeight", { configurable: true, value: 640 });
-    Object.defineProperty(region, "scrollTop", { configurable: true, value: 640 });
+    // Accessor with a no-op setter, not a read-only value: under a loaded
+    // full run the feed's reset effect can write scrollTop = 0 after this
+    // line, and a value-only property throws on that write.
+    Object.defineProperty(region, "scrollTop", { configurable: true, get: () => 640, set: () => {} });
     fireEvent.scroll(region);
 
     await waitFor(() => expect(screen.getByText("TrickB")).toBeInTheDocument());

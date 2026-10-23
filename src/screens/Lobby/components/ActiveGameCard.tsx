@@ -1,4 +1,3 @@
-import type { FocusEvent, KeyboardEvent } from "react";
 import type { GameDoc } from "../../../services/games";
 import { LobbyTimer } from "../../../components/LobbyTimer";
 import { ChevronRightIcon } from "../../../components/icons";
@@ -17,11 +16,6 @@ interface Props {
   myLetters: number;
   theirLetters: number;
   turnLabel: string;
-  cardButtonProps: {
-    onKeyDown: (e: KeyboardEvent<HTMLElement>) => void;
-    onKeyUp: (e: KeyboardEvent<HTMLElement>) => void;
-    onBlur: (e: FocusEvent<HTMLElement>) => void;
-  };
   onOpenGame: () => void;
   onViewPlayer?: (uid: string) => void;
 }
@@ -36,7 +30,6 @@ export function ActiveGameCard({
   myLetters,
   theirLetters,
   turnLabel,
-  cardButtonProps,
   onOpenGame,
   onViewPlayer,
 }: Props) {
@@ -50,8 +43,8 @@ export function ActiveGameCard({
       className={`relative flex items-center gap-3 p-4 rounded-2xl select-none transition-all duration-300 ease-smooth has-[.card-main:focus-visible]:outline-2 has-[.card-main:focus-visible]:outline-offset-2 has-[.card-main:focus-visible]:outline-brand-orange
       ${
         isMyTurn
-          ? "glass-card border-brand-orange/30 shadow-glow-sm hover:shadow-glow-md hover:-translate-y-0.5"
-          : "glass-card hover:border-white/[0.1] hover:-translate-y-0.5"
+          ? "glass-card border-brand-orange/30 shadow-glow-sm hover:shadow-glow-md"
+          : "glass-card hover:border-white/[0.1]"
       }`}
     >
       {showProfile && (
@@ -69,11 +62,10 @@ export function ActiveGameCard({
       <button
         type="button"
         onClick={onOpenGame}
-        {...cardButtonProps}
         className="card-main flex min-w-0 flex-1 items-center justify-between text-left outline-none after:absolute after:inset-0 after:rounded-2xl after:content-['']"
       >
-        <span className="block min-w-0">
-          <span className="flex items-center gap-2 mb-1">
+        <span className="block min-w-0 flex-1">
+          <span className="flex min-w-0 items-center gap-2 mb-1">
             {judgeViewer ? (
               <span className="font-display text-[1.1875rem] text-white leading-none">
                 <span className="text-amber-400 text-label tracking-wider align-middle mr-1.5">REF</span>@
@@ -92,7 +84,7 @@ export function ActiveGameCard({
               </span>
             )}
           </span>
-          <span className="flex items-center gap-2">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span
               className={`font-body text-label ${isMyTurn ? (judgeViewer ? "text-amber-400" : "text-brand-orange") : "text-brand-green"}`}
             >
@@ -107,15 +99,15 @@ export function ActiveGameCard({
             <TurnLengthChip hours={game.turnLengthHours} />
           </span>
           {judgeViewer ? (
-            <span className="flex items-center gap-3 mt-2.5">
+            <span className="mt-2.5 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
               <LetterRow label={`@${game.player1Username}`} tone="text-amber-400" count={game.p1Letters} />
-              <span className="block w-px h-3 bg-border shrink-0" aria-hidden="true" />
+              <span className="hidden sm:block w-px h-3 bg-border shrink-0" aria-hidden="true" />
               <LetterRow label={`@${game.player2Username}`} tone="text-amber-400" count={game.p2Letters} />
             </span>
           ) : (
-            <span className="flex items-center gap-3 mt-2.5">
+            <span className="mt-2.5 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
               <LetterRow label="You" tone="text-brand-orange" count={myLetters} />
-              <span className="block w-px h-3 bg-border shrink-0" aria-hidden="true" />
+              <span className="hidden sm:block w-px h-3 bg-border shrink-0" aria-hidden="true" />
               <LetterRow label="Them" tone="text-brand-orange" count={theirLetters} />
             </span>
           )}
@@ -128,8 +120,11 @@ export function ActiveGameCard({
 
 function LetterRow({ label, tone, count }: { label: string; tone: string; count: number }) {
   return (
-    <span className="flex items-center gap-1.5">
-      <span aria-hidden="true" className={`font-body text-xs ${tone} uppercase tracking-wider`}>
+    <span className="flex min-w-0 items-center gap-1.5">
+      <span
+        aria-hidden="true"
+        className={`min-w-10 max-w-[3.25rem] truncate font-body text-xs ${tone} uppercase tracking-wider sm:max-w-none`}
+      >
         {label}
       </span>
       <LetterPips count={count} label={label} />

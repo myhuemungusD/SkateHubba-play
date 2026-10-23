@@ -221,7 +221,7 @@ export function GameOverScreen({
           </div>
         )}
 
-        <div className="flex justify-center gap-5 mb-6">
+        <div className="flex justify-center gap-2 sm:gap-5 mb-6">
           <LetterDisplay
             count={myLetters}
             name={`@${profile.username}`}

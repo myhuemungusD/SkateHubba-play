@@ -35,6 +35,34 @@ describe("LetterDisplay", () => {
     expect(screen.queryByText("THEIR MOVE")).not.toBeInTheDocument();
   });
 
+  it("dims the inactive name with the text-dim token, not opacity (SF-B2)", () => {
+    render(<LetterDisplay count={1} name="@them" testId="them" />);
+    expect(screen.getByText("@them")).toHaveClass("text-dim");
+    expect(screen.getByTestId("them").className).not.toContain("opacity-70");
+  });
+
+  it("reserves the pill and clock rows on the inactive card so the height holds (SF-B3)", () => {
+    render(
+      <LetterDisplay count={1} name="@them" turnLabel="THEIR MOVE" deadline={Date.now() + 60_000} testId="them" />,
+    );
+    expect(screen.getByTestId("turn-pill-spacer")).toHaveClass("invisible");
+    expect(screen.getByTestId("turn-pill-spacer")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByTestId("timer-spacer")).toHaveClass("invisible");
+  });
+
+  it("reserves nothing when the card has no turn label or deadline", () => {
+    render(<LetterDisplay count={1} name="@them" testId="them" />);
+    expect(screen.queryByTestId("turn-pill-spacer")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("timer-spacer")).not.toBeInTheDocument();
+  });
+
+  it("lets the card shrink inside a narrow row and sizes pips to it (MF-B1)", () => {
+    render(<LetterDisplay count={1} name="@them" testId="them" />);
+    const card = screen.getByTestId("them");
+    expect(card).toHaveClass("@container", "min-w-0", "flex-1");
+    expect(screen.getByText("S")).toHaveClass("h-5", "@[8.5rem]:h-6", "@[11rem]:h-8");
+  });
+
   describe("Verified Pro shimmer (feature freeze)", () => {
     afterEach(() => vi.unstubAllEnvs());
 

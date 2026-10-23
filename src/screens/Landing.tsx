@@ -268,7 +268,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
                     <span
                       key={l}
                       className={`font-display text-xl ${
-                        i < 2 ? "text-brand-red [text-shadow:0_0_8px_rgba(255,61,0,0.4)]" : "text-[#222]"
+                        i < 2 ? "text-brand-red [text-shadow:0_0_8px_rgba(255,61,0,0.4)]" : "text-line"
                       }`}
                     >
                       {l}

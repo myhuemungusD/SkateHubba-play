@@ -5,13 +5,13 @@ describe("rootFontSizeFor", () => {
   it("keeps 16px at the iOS default body size", () => {
     expect(rootFontSizeFor(17)).toBe(16);
   });
-  it("scales with larger and smaller text sizes", () => {
+  it("scales up with larger text sizes but never below the default", () => {
     expect(rootFontSizeFor(19)).toBeCloseTo(17.88, 2);
-    expect(rootFontSizeFor(15)).toBe(14.12);
+    expect(rootFontSizeFor(15)).toBe(16);
   });
   it("clamps accessibility sizes and junk values", () => {
     expect(rootFontSizeFor(53)).toBe(24);
-    expect(rootFontSizeFor(5)).toBe(13.6);
+    expect(rootFontSizeFor(5)).toBe(16);
     expect(rootFontSizeFor(Number.NaN)).toBe(16);
     expect(rootFontSizeFor(0)).toBe(16);
   });

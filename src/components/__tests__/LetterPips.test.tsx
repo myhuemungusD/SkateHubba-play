@@ -22,4 +22,14 @@ describe("LetterPips", () => {
     const { container } = render(<LetterPips count={0} label="Them" size="lg" />);
     expect(container.querySelector("[data-earned]")).toHaveClass("h-8");
   });
+
+  it("supports the md size between sm and lg", () => {
+    const { container } = render(<LetterPips count={0} label="Them" size="md" />);
+    expect(container.querySelector("[data-earned]")).toHaveClass("h-6", "min-w-6", "text-base");
+  });
+
+  it("never shrinks its row below the five pips", () => {
+    render(<LetterPips count={1} label="You" />);
+    expect(screen.getByRole("img", { name: /^You:/ })).toHaveClass("shrink-0");
+  });
 });

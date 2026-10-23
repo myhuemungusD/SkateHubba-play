@@ -31,24 +31,42 @@ export function LetterDisplay({
   const showPro = isVerifiedPro === true && isExtrasEnabled();
   return (
     <div
-      className={`flex flex-col items-center gap-2 px-4 py-3.5 rounded-2xl border transition-all duration-300 ease-smooth min-w-[88px] backdrop-blur-sm
-        ${active ? "border-brand-orange bg-brand-orange/[0.1] shadow-glow-sm" : "border-white/[0.06] bg-surface/40 opacity-70"}`}
+      className={`@container flex min-w-0 flex-1 basis-0 flex-col items-center gap-2 px-2 py-3.5 rounded-2xl border transition-all duration-300 ease-smooth backdrop-blur-sm sm:max-w-[13rem] sm:px-4
+        ${active ? "border-brand-orange bg-brand-orange/[0.1] shadow-glow-sm" : "border-white/[0.06] bg-surface/40"}`}
       data-testid={testId ?? `letter-display-${name}`}
       data-letter-count={count}
       data-active={active ? "true" : "false"}
     >
-      {active && turnLabel && (
-        <span className="rounded-full bg-brand-orange px-2.5 py-0.5 font-display text-sm tracking-wider text-black leading-tight">
-          {turnLabel}
-        </span>
-      )}
+      {/* The pill and clock rows are reserved (invisible) on the inactive card,
+          so the scoreboard keeps one height when the turn flips (SF-B3). */}
+      {turnLabel &&
+        (active ? (
+          <span className="rounded-full bg-brand-orange px-2.5 py-0.5 font-display text-sm tracking-wider text-black leading-tight">
+            {turnLabel}
+          </span>
+        ) : (
+          <span
+            aria-hidden="true"
+            data-testid="turn-pill-spacer"
+            className="invisible rounded-full px-2.5 py-0.5 font-display text-sm leading-tight"
+          >
+            {"\u00a0"}
+          </span>
+        ))}
       <span
-        className={`font-body text-xs font-semibold tracking-wide ${showPro ? "pro-username" : active ? "text-white" : "text-muted"}`}
+        className={`max-w-full truncate font-body text-xs font-semibold tracking-wide ${showPro ? "pro-username" : active ? "text-white" : "text-dim"}`}
       >
         {name}
       </span>
-      <LetterPips count={count} label={name} size="lg" />
-      {active && deadline !== undefined && <Timer deadline={deadline} />}
+      <LetterPips count={count} label={name} size="fit" />
+      {deadline !== undefined &&
+        (active ? (
+          <Timer deadline={deadline} />
+        ) : (
+          <div aria-hidden="true" data-testid="timer-spacer" className="invisible">
+            <Timer deadline={deadline} />
+          </div>
+        ))}
     </div>
   );
 }

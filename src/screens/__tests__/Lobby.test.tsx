@@ -435,57 +435,9 @@ describe("Lobby", () => {
     expect(onOpenGame).not.toHaveBeenCalled();
   });
 
-  // A held key (auto-repeat) should not re-fire navigation — matches native
-  // <button> semantics and avoids stuttered double-navigation on the card.
-  it("active game card ignores repeated keydown from a held key", () => {
-    const onOpenGame = vi.fn();
-    renderLobby({ games: [makeGame()], onOpenGame });
-
-    const card = cardByOpponent(/vs @rival/i);
-    // Simulate auto-repeat (e.repeat === true on held key)
-    card.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, repeat: true }));
-    card.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true, repeat: true }));
-
-    expect(onOpenGame).not.toHaveBeenCalled();
-  });
-
-  // Native-button keyboard parity: Enter activates on keydown (immediate),
-  // Space arms on keydown and only activates on keyup — letting the user
-  // move focus off the card to cancel before releasing.
-  it("active game card fires Enter on keydown (native <button> parity)", () => {
-    const onOpenGame = vi.fn();
-    renderLobby({ games: [makeGame()], onOpenGame });
-
-    cardByOpponent(/vs @rival/i).dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-
-    expect(onOpenGame).toHaveBeenCalledTimes(1);
-  });
-
-  it("active game card fires Space on keyup, not on keydown alone", () => {
-    const onOpenGame = vi.fn();
-    renderLobby({ games: [makeGame()], onOpenGame });
-
-    const card = cardByOpponent(/vs @rival/i);
-    card.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
-    expect(onOpenGame).not.toHaveBeenCalled();
-
-    card.dispatchEvent(new KeyboardEvent("keyup", { key: " ", bubbles: true }));
-    expect(onOpenGame).toHaveBeenCalledTimes(1);
-  });
-
-  it("active game card cancels a primed Space when focus leaves before keyup", () => {
-    const onOpenGame = vi.fn();
-    renderLobby({ games: [makeGame()], onOpenGame });
-
-    const card = cardByOpponent(/vs @rival/i);
-    card.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
-    // User tabs away or otherwise blurs the card — native buttons abort here.
-    // React delegates onBlur via the bubbling `focusout` event at the root.
-    card.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
-    card.dispatchEvent(new KeyboardEvent("keyup", { key: " ", bubbles: true }));
-
-    expect(onOpenGame).not.toHaveBeenCalled();
-  });
+  // The card is a native <button>, so the browser owns Enter / Space
+  // activation (Enter on keydown, Space on keyup, cancel on blur). The two
+  // userEvent tests above cover it; no hand-rolled key handlers remain.
 
   it("Profile button on a game card opens the profile without opening the game", async () => {
     const onOpenGame = vi.fn();

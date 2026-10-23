@@ -9,9 +9,14 @@ export function lettersLabel(count: number): string {
   return `${earned || "no letters"}, ${count} of ${LETTERS.length}`;
 }
 
+// Row widths (5 pips + 4 gaps): sm 116px, md 136px, lg 176px.
+// "fit" picks the largest that fits its nearest @container (see LetterDisplay):
+// sm below 8.5rem, md from 8.5rem, lg from 11rem.
 const SIZE = {
   sm: "h-5 min-w-5 px-0.5 text-sm",
+  md: "h-6 min-w-6 px-0.5 text-base",
   lg: "h-8 min-w-8 px-1 text-xl",
+  fit: "h-5 min-w-5 px-0.5 text-sm @[8.5rem]:h-6 @[8.5rem]:min-w-6 @[8.5rem]:text-base @[11rem]:h-8 @[11rem]:min-w-8 @[11rem]:px-1 @[11rem]:text-xl",
 } as const;
 
 /**
@@ -21,7 +26,11 @@ const SIZE = {
  */
 export function LetterPips({ count, label, size = "sm" }: { count: number; label: string; size?: keyof typeof SIZE }) {
   return (
-    <span role="img" aria-label={`${label}: ${lettersLabel(count)}`} className="inline-flex items-center gap-1">
+    <span
+      role="img"
+      aria-label={`${label}: ${lettersLabel(count)}`}
+      className="inline-flex shrink-0 items-center gap-1"
+    >
       {LETTERS.map((l, i) => {
         const earned = i < count;
         return (
@@ -30,7 +39,7 @@ export function LetterPips({ count, label, size = "sm" }: { count: number; label
             aria-hidden="true"
             data-earned={earned ? "true" : "false"}
             className={`inline-flex items-center justify-center rounded font-display leading-none ${SIZE[size]} ${
-              earned ? "bg-brand-red text-black" : "border border-white/30 text-white/30"
+              earned ? "bg-brand-red text-black" : "border border-white/45 text-white/45"
             }`}
           >
             {l}

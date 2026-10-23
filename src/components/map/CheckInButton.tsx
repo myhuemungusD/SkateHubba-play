@@ -61,7 +61,7 @@ export function CheckInButton({
         {busy ? "Checking in…" : "Check in"}
       </button>
       {message && (
-        <p role="status" className="mt-2 text-xs text-[#CCC] text-center">
+        <p role="status" className="mt-2 text-xs text-soft text-center">
           {message}
         </p>
       )}
