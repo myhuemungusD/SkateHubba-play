@@ -8,7 +8,7 @@ vi.mock("../../lib/sentry", async (importOriginal) => ({
   captureException,
 }));
 
-import { FirstFrameVideo } from "../FirstFrameVideo";
+import { CLIP_UNPLAYABLE_MESSAGE, FirstFrameVideo } from "../FirstFrameVideo";
 import { CLIP_PLACEHOLDER, FIRST_FRAME_SECONDS } from "../../lib/clipPoster";
 
 const URL = "https://firebasestorage.googleapis.com/v0/b/x/o/clip.webm?alt=media&token=abc";
@@ -72,7 +72,9 @@ describe("FirstFrameVideo", () => {
     const fallback = screen.getByRole("img", { name: "Set clip (can't play)" });
     expect(fallback).toHaveClass("trick-frame");
     expect(fallback.querySelector("img")).toHaveAttribute("src", CLIP_PLACEHOLDER);
-    expect(screen.getByText(/can't play on this device/i)).toBeInTheDocument();
+    expect(screen.getByText(CLIP_UNPLAYABLE_MESSAGE)).toBeInTheDocument();
+    // Code 4 also covers expired or deleted clips, so the copy blames nothing.
+    expect(screen.queryByText(/iOS|device|try again/i)).toBeNull();
     expect(onError).toHaveBeenCalledOnce();
     expect(captureException).toHaveBeenCalledWith(
       expect.any(Error),
@@ -80,11 +82,12 @@ describe("FirstFrameVideo", () => {
     );
   });
 
-  it("uses a load-failure message for other errors and a generic label when unlabelled", () => {
+  it("uses the same neutral message for other errors and a generic label when unlabelled", () => {
     render(<FirstFrameVideo src={URL} errorContext="GameReplay" />);
     failWith(document.querySelector("video")!);
     expect(screen.getByRole("img", { name: "Clip can't play" })).toBeInTheDocument();
-    expect(screen.getByText(/couldn't load right now/i)).toBeInTheDocument();
+    expect(screen.getByText("This clip can't be played right now.")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).toBeNull();
     expect(captureException).toHaveBeenCalledWith(
       expect.any(Error),
       expect.objectContaining({ extra: expect.objectContaining({ context: "GameReplay" }) }),

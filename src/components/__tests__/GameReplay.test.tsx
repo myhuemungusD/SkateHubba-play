@@ -144,7 +144,7 @@ describe("GameReplay", () => {
     fireEvent.error(video);
 
     expect(screen.getByRole("img", { name: /Round 1: @alice sets Trick 1 \(can't play\)/ })).toBeInTheDocument();
-    expect(screen.getByText(/can't play on this device/i)).toBeInTheDocument();
+    expect(screen.getByText(/can't be played right now/i)).toBeInTheDocument();
 
     await userEvent.click(screen.getByText(/Skip/));
     expect(screen.getByLabelText(/Round 1: @bob misses Trick 1/).tagName).toBe("VIDEO");
