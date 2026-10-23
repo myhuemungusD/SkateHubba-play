@@ -14,7 +14,9 @@ const SRC = resolve(__dirname, "..");
 const XP_SURFACE = /<LevelChip\b|data-testid="xp-progress"|<AchievementsRibbon\b|useLevelUpMoment\(/;
 /** The hook itself takes `enabled` as an argument; its callers pass the flag. */
 const DEFINES_ONLY = new Set(["hooks/useLevelUpMoment.ts"]);
-const PLATFORM_CHECK = /Capacitor\.(isNativePlatform|getPlatform)|isNativePlatform\(|getPlatform\(/;
+/** Capacitor calls and the repo's own helpers (isNativeShell, isIosDevice, isIOSSafari, ...). */
+const PLATFORM_CHECK =
+  /Capacitor\.(isNativePlatform|getPlatform)|\b(isNative\w*|isIos\w*|isIOS\w*|isAndroid\w*|getPlatform)\(/;
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

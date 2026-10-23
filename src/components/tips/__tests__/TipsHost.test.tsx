@@ -101,6 +101,31 @@ describe("TipsHost", () => {
     expect(markSeen).toHaveBeenCalledWith("me");
   });
 
+  /**
+   * The outside tap puts the tips away AND still reaches what was tapped:
+   * swallowing it would make the first tap on the page feel dead.
+   */
+  it("lets an outside tap reach the page while it puts the set away", () => {
+    const onPageTap = vi.fn();
+    render(
+      <MemoryRouter initialEntries={["/me"]}>
+        <button type="button" onClick={onPageTap}>
+          like
+        </button>
+        <TipsHost />
+      </MemoryRouter>,
+    );
+    settle();
+    const outside = screen.getByRole("button", { name: "like" });
+    const tap = new MouseEvent("click", { bubbles: true, cancelable: true });
+    const notCancelled = fireEvent(outside, tap);
+    expect(onPageTap).toHaveBeenCalledTimes(1);
+    expect(notCancelled).toBe(true);
+    expect(tap.defaultPrevented).toBe(false);
+    expect(markSeen).toHaveBeenCalledTimes(1);
+    expect(markSeen).toHaveBeenCalledWith("me");
+  });
+
   it("does not listen for outside taps after it unmounts", () => {
     const { unmount } = renderAt("/me");
     settle();
