@@ -17,9 +17,28 @@ function pick(file: File | null = new File(["x"], "b.png", { type: "image/png" }
 beforeEach(() => mockUpload.mockReset());
 
 describe("ProfileBanner", () => {
-  it("renders nothing for a stranger's profile with no banner", () => {
-    const { container } = render(<ProfileBanner uid="u1" isOwnProfile={false} />);
-    expect(container).toBeEmptyDOMElement();
+  it("shows the short gradient cover with no button on a stranger's profile with no banner", () => {
+    render(<ProfileBanner uid="u1" isOwnProfile={false} />);
+    const banner = screen.getByTestId("profile-banner");
+    expect(banner).toHaveClass("cover-empty", "h-[68px]");
+    expect(banner).toHaveAttribute("data-empty", "true");
+    expect(banner.querySelector("img")).toBeNull();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("gives the owner an Add cover button on the empty cover", () => {
+    render(<ProfileBanner uid="u1" isOwnProfile />);
+    expect(screen.getByTestId("profile-banner")).toHaveClass("cover-empty", "h-[68px]");
+    expect(screen.getByRole("button", { name: "Add cover picture" })).toHaveTextContent("Add cover");
+  });
+
+  it("keeps the full height and no gradient once a cover exists", () => {
+    render(<ProfileBanner uid="u1" bannerImageUrl="https://x/b.webp" isOwnProfile />);
+    const banner = screen.getByTestId("profile-banner");
+    expect(banner).toHaveClass("h-28");
+    expect(banner).not.toHaveClass("cover-empty");
+    expect(banner).not.toHaveAttribute("data-empty");
+    expect(screen.getByRole("button", { name: "Change background picture" })).not.toHaveTextContent("Add cover");
   });
 
   it("shows a stranger's banner without the change icon", () => {
@@ -31,7 +50,7 @@ describe("ProfileBanner", () => {
   it("owner uploads a new banner and sees it right away", async () => {
     mockUpload.mockResolvedValueOnce("https://x/new.webp");
     render(<ProfileBanner uid="u1" isOwnProfile />);
-    fireEvent.click(screen.getByRole("button", { name: "Change background picture" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add cover picture" }));
     pick(null);
     expect(mockUpload).not.toHaveBeenCalled();
     pick();
@@ -45,6 +64,8 @@ describe("ProfileBanner", () => {
     render(<ProfileBanner uid="u1" isOwnProfile />);
     pick();
     expect(await screen.findByRole("alert")).toHaveTextContent("can't be used");
+    // The empty strip grows back to full height so the message has room.
+    expect(screen.getByTestId("profile-banner")).toHaveClass("h-28");
     mockUpload.mockRejectedValueOnce(new BannerError("unauthenticated"));
     pick();
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Couldn't save"));

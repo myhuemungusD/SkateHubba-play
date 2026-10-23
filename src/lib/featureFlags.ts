@@ -334,3 +334,8 @@ export function isHubbaIconsEnabled(): boolean {
 export function isTurnLengthEnabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_TURN_LENGTH);
 }
+
+/** "Find me a challenger" on Home: picks a random skater client-side and opens the challenge form. Literal "true" only; off by default (button hidden); tester override turns it on. */
+export function isRandomChallengerEnabled(): boolean {
+  return flagOn(import.meta.env.VITE_FEATURE_RANDOM_CHALLENGER);
+}

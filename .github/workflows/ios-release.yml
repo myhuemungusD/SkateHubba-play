@@ -178,6 +178,8 @@ jobs:
           VITE_FEATURE_RUNNER_ENABLED: "false"
           VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED: "false"
           VITE_FEATURE_SMS_2FA_ENABLED: "false"
+          # "Find me a challenger" on Home stays off (button hidden).
+          VITE_FEATURE_RANDOM_CHALLENGER: "false"
           # Tester build only: What's That Trick ("wtt" input).
           VITE_FEATURE_WTT_ENABLED: ${{ inputs.wtt && 'true' || 'false' }}
           # Map key required now that Map is public (and for testers).

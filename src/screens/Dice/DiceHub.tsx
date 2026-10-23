@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { CircleHelp } from "lucide-react";
+import { RecordFigure } from "../../components/RecordFigure";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { MatchRow } from "../../components/dice/MatchRow";
 import { Btn } from "../../components/ui/Btn";
@@ -14,7 +15,7 @@ import { rowOf, sectionOf, type HubSection } from "./hubRows";
 const TITLES: Record<HubSection, string> = { move: "Your move", wait: "Waiting on them", done: "Finished" };
 const DONE_SHOWN = 8;
 
-function Tile({ label, value, sub }: { label: string; value: string; sub: string }) {
+function Tile({ label, value, sub }: { label: string; value: ReactNode; sub: string }) {
   return (
     <div className="rounded-2xl border border-white/[0.06] bg-surface bg-grip px-3 py-3">
       <p className="font-display text-xs tracking-[0.18em] text-muted">{label}</p>
@@ -57,7 +58,7 @@ export function DiceHub() {
 
       <div className="mt-3 grid grid-cols-3 gap-2" data-testid="dice-record">
         <Tile label="Rep" value={fmt(stats.rep)} sub={`Peak ${fmt(stats.peakRep)}`} />
-        <Tile label="Record" value={`${stats.wins}–${stats.losses}`} sub={`${stats.gamesPlayed} played`} />
+        <Tile label="Record" value={<RecordFigure wins={stats.wins} games={stats.gamesPlayed} />} sub="won" />
         <Tile label="Streak" value={String(stats.streak)} sub={`Best ${stats.bestStreak}`} />
       </div>
 

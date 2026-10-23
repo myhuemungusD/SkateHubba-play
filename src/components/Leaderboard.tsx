@@ -1,3 +1,4 @@
+import { RecordFigure } from "./RecordFigure";
 import { useState, useEffect, useCallback } from "react";
 import { getLeaderboard, type UserProfile } from "../services/users";
 import { getBlockedUserIds } from "../services/blocking";
@@ -177,8 +178,7 @@ export function Leaderboard({
                     )}
                   </div>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="font-body text-xs text-brand-green">{wins}W</span>
-                    <span className="font-body text-xs text-brand-red">{losses}L</span>
+                    <RecordFigure wins={wins} games={total} className="font-body text-xs text-white/80" />
                     <span className="font-body text-xs text-bright">{winRate}%</span>
                   </div>
                 </div>

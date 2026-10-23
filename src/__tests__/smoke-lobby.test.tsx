@@ -58,7 +58,7 @@ describe("Smoke: Lobby", () => {
 
   it("pins the active game above the finished-game roll-up", async () => {
     // The lobby used to stack an ACTIVE section over a COMPLETED one. Finished
-    // games now collapse to a single "N finished · W–L" line, so the pinning
+    // games now collapse to a single "N finished · W / games won" line, so the pinning
     // this case exists for is: an actionable game is a card at the top, a
     // finished game is never a card, and the roll-up sits below the stack.
     const active1 = activeGame({ id: "g1", turnNumber: 3 });
@@ -75,7 +75,7 @@ describe("Smoke: Lobby", () => {
     expect(within(turnStack).getByRole("button", { name: /vs @rival/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /vs @loser/i })).not.toBeInTheDocument();
 
-    const summary = screen.getByRole("button", { name: /1 finished · 1–0/ });
+    const summary = screen.getByRole("button", { name: /1 finished\. 1 win out of 1 game/ });
     expect(turnStack.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
@@ -113,7 +113,7 @@ describe("Smoke: Lobby", () => {
     });
     await renderLobby([game]);
 
-    expect(await screen.findByRole("button", { name: /1 finished · 1–0/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /1 finished\. 1 win out of 1 game/ })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "YOUR TURN" })).not.toBeInTheDocument();
   });
 
@@ -144,7 +144,7 @@ describe("Smoke: Lobby", () => {
     await renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(await screen.findByRole("button", { name: /1 finished · 1–0/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /1 finished\. 1 win out of 1 game/ }));
 
     await waitFor(() => {
       expect(screen.getByRole("link", { name: "Me" })).toHaveAttribute("aria-current", "page");
