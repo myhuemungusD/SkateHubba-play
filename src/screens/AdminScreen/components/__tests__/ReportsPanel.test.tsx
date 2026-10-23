@@ -5,12 +5,14 @@ import userEvent from "@testing-library/user-event";
 const mockFetchReports = vi.fn();
 const mockResolveReport = vi.fn();
 const mockHideDispute = vi.fn();
+const mockDeleteComment = vi.fn();
 const mockBanUser = vi.fn();
 
 vi.mock("../../../../services/admin", () => ({
   fetchReports: (...args: unknown[]) => mockFetchReports(...args),
   resolveReport: (...args: unknown[]) => mockResolveReport(...args),
   hideDispute: (...args: unknown[]) => mockHideDispute(...args),
+  deleteReportedComment: (...args: unknown[]) => mockDeleteComment(...args),
 }));
 
 vi.mock("../../../../services/admin.bans", () => ({
@@ -57,6 +59,7 @@ beforeEach(() => {
   mockFetchReports.mockResolvedValue([report]);
   mockResolveReport.mockResolvedValue(undefined);
   mockHideDispute.mockResolvedValue(undefined);
+  mockDeleteComment.mockResolvedValue(undefined);
   mockBanUser.mockResolvedValue(undefined);
 });
 
@@ -85,6 +88,55 @@ describe("ReportsPanel", () => {
     await user.click(row.getByRole("button", { name: "HIDE" }));
     await waitFor(() => expect(mockHideDispute).toHaveBeenCalledWith("g1_3"));
     expect(mockResolveReport).not.toHaveBeenCalled();
+  });
+
+  it("shows a reported comment and deletes it without closing the report", async () => {
+    mockFetchReports.mockResolvedValue([{ ...report, commentId: "cm1", commentText: "<b>rude</b>" }]);
+    const user = userEvent.setup();
+    renderPanel();
+
+    const row = within(await screen.findByTestId("report-r1"));
+    expect(row.getByTestId("report-comment-r1")).toHaveTextContent("<b>rude</b>");
+    await user.click(row.getByRole("button", { name: "DELETE COMMENT" }));
+    await user.click(row.getByRole("button", { name: "DELETE" }));
+    await waitFor(() => expect(mockDeleteComment).toHaveBeenCalledWith({ kind: "clips", id: "g1_3_set" }, "cm1"));
+    expect(await screen.findByText("Comment deleted")).toBeInTheDocument();
+    expect(mockResolveReport).not.toHaveBeenCalled();
+  });
+
+  it("labels a comment report whose text was not captured, and surfaces a failed delete", async () => {
+    mockFetchReports.mockResolvedValue([{ ...report, commentId: "cm1", commentText: "" }]);
+    mockDeleteComment.mockRejectedValueOnce(new Error("Couldn't delete that comment."));
+    const user = userEvent.setup();
+    renderPanel();
+
+    const row = within(await screen.findByTestId("report-r1"));
+    expect(row.getByTestId("report-comment-r1")).toHaveTextContent("(text not captured)");
+    await user.click(row.getByRole("button", { name: "DELETE COMMENT" }));
+    await user.click(row.getByRole("button", { name: "DELETE" }));
+    expect(await screen.findByText("Delete failed")).toBeInTheDocument();
+  });
+
+  it("deletes a reported spot comment under its spot", async () => {
+    mockFetchReports.mockResolvedValue([
+      { ...report, gameId: null, clipId: null, spotId: "s1", commentId: "cm2", commentText: "rude" },
+    ]);
+    const user = userEvent.setup();
+    renderPanel();
+
+    const row = within(await screen.findByTestId("report-r1"));
+    expect(row.getByTestId("report-spot-r1")).toHaveTextContent("spot s1");
+    expect(row.getByText(/spot page \(no game\)/)).toBeInTheDocument();
+    await user.click(row.getByRole("button", { name: "DELETE COMMENT" }));
+    await user.click(row.getByRole("button", { name: "DELETE" }));
+    await waitFor(() => expect(mockDeleteComment).toHaveBeenCalledWith({ kind: "spots", id: "s1" }, "cm2"));
+  });
+
+  it("does not offer comment delete on a report without a comment", async () => {
+    renderPanel();
+    const row = within(await screen.findByTestId("report-r1"));
+    expect(row.queryByTestId("report-comment-r1")).not.toBeInTheDocument();
+    expect(row.queryByRole("button", { name: "DELETE COMMENT" })).not.toBeInTheDocument();
   });
 
   it("does not offer hide when the report is not about a dispute", async () => {

@@ -11,7 +11,7 @@ import { ClipsFeedEmpty, ClipsFeedError, ClipsFeedExhausted, ClipsFeedSkeleton }
 import { OwnClipModeration } from "./OwnClipModeration";
 import { ClipsFeedHeader } from "./ClipsFeedHeader";
 import { DisputeSlides, disputeSlideCount } from "./DisputeLane";
-import { FeedModals } from "./FeedModals";
+import { FeedModals, type CommentReportTarget } from "./FeedModals";
 import { isNearSlide } from "./feedLayout";
 import { NextClipPrefetcher } from "./NextClipPrefetcher";
 import { SpotlightCard } from "./SpotlightCard";
@@ -50,6 +50,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
   const [reportTarget, setReportTarget] = useState<ClipDoc | null>(null);
   const [disputeReport, setDisputeReport] = useState<Dispute | null>(null);
   const [commentsTarget, setCommentsTarget] = useState<ClipDoc | null>(null);
+  const [commentReport, setCommentReport] = useState<CommentReportTarget | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [moderationRefresh, setModerationRefresh] = useState(0);
 
@@ -223,6 +224,10 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
           setCommentsTarget(null);
           setReportTarget(clip);
         }}
+        onReportComment={(target) => {
+          setCommentsTarget(null);
+          setCommentReport(target);
+        }}
         uploadOpen={uploadOpen}
         onCloseUpload={() => setUploadOpen(false)}
         onPosted={() => {
@@ -238,6 +243,8 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
           clips.dismissClip(clip.id);
           setReportTarget(null);
         }}
+        commentReport={commentReport}
+        onCloseCommentReport={() => setCommentReport(null)}
       />
     </section>
   );

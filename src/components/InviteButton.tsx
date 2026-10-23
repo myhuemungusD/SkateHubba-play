@@ -33,13 +33,15 @@ export function InviteButton({ username, className = "" }: { username?: string; 
     safeTimeout(() => setStatusMsg(""), ms);
   };
 
-  const handleContacts = async () => {
-    if (!("contacts" in navigator) || !navigator.contacts) {
-      flash("Phone contacts not available in this browser. Try Chrome on Android.");
-      return;
-    }
+  // The Contact Picker API exists only in some Android browsers. Everywhere
+  // else (iPhone app, Safari, desktop) the tile is hidden rather than shown
+  // as a dead button; Share below opens the OS share sheet, which covers
+  // texting a friend there.
+  const contactPicker = "contacts" in navigator ? navigator.contacts : undefined;
+
+  const handleContacts = async (picker: NonNullable<typeof contactPicker>) => {
     try {
-      const contacts = await navigator.contacts.select(["name", "tel"], { multiple: true });
+      const contacts = await picker.select(["name", "tel"], { multiple: true });
       if (!contacts.length) return;
 
       const phones = contactPhones(contacts);
@@ -135,36 +137,38 @@ export function InviteButton({ username, className = "" }: { username?: string; 
           aria-label="Invite a friend options"
           className="mt-3 p-4 rounded-2xl bg-surface border border-border animate-fade-in space-y-4"
         >
-          {/* ── Phone Contacts ── */}
-          <div>
-            <h4 className="font-display text-[11px] tracking-[0.2em] text-subtle mb-2">TEXT A FRIEND</h4>
-            <button
-              type="button"
-              onClick={handleContacts}
-              className={`w-full flex items-center gap-3 p-3.5 text-left ${tileBase}
+          {/* ── Phone Contacts (Contact Picker browsers only) ── */}
+          {contactPicker && (
+            <div>
+              <h4 className="font-display text-[11px] tracking-[0.2em] text-subtle mb-2">TEXT A FRIEND</h4>
+              <button
+                type="button"
+                onClick={() => void handleContacts(contactPicker)}
+                className={`w-full flex items-center gap-3 p-3.5 text-left ${tileBase}
                 border-[rgba(255,107,0,0.25)] bg-[rgba(255,107,0,0.04)]`}
-            >
-              <div className="w-9 h-9 rounded-lg bg-[rgba(255,107,0,0.1)] flex items-center justify-center shrink-0">
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#FF6B00"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
-                </svg>
-              </div>
-              <div>
-                <span className="font-display text-sm tracking-wider text-white block">FROM YOUR CONTACTS</span>
-                <span className="font-body text-xs text-faint">Pick people & send via SMS</span>
-              </div>
-            </button>
-          </div>
+              >
+                <div className="w-9 h-9 rounded-lg bg-[rgba(255,107,0,0.1)] flex items-center justify-center shrink-0">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#FF6B00"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+                  </svg>
+                </div>
+                <div>
+                  <span className="font-display text-sm tracking-wider text-white block">FROM YOUR CONTACTS</span>
+                  <span className="font-body text-xs text-faint">Pick people & send via SMS</span>
+                </div>
+              </button>
+            </div>
+          )}
 
           {statusMsg && <div className="text-xs text-brand-orange font-body px-1 animate-fade-in">{statusMsg}</div>}
 

@@ -61,10 +61,25 @@ vi.mock("../UserClipUpload", () => ({
 }));
 
 vi.mock("../ClipsFeed/ClipComments", () => ({
-  ClipComments: ({ onClose, onReport }: { onClose: () => void; onReport?: () => void }) => (
+  ClipComments: ({
+    onClose,
+    onReport,
+    onReportComment,
+  }: {
+    onClose: () => void;
+    onReport?: () => void;
+    onReportComment?: (c: { id: string; clipId: string; userId: string; username: string; text: string }) => void;
+  }) => (
     <div role="dialog" aria-label="comments-sheet">
       <button onClick={onClose}>__close_comments__</button>
       {onReport && <button onClick={onReport}>__report_from_comments__</button>}
+      {onReportComment && (
+        <button
+          onClick={() => onReportComment({ id: "cm1", clipId: "x", userId: "troll", username: "troll", text: "rude" })}
+        >
+          __report_comment__
+        </button>
+      )}
     </div>
   ),
 }));
@@ -116,13 +131,24 @@ vi.mock("../ReportModal", () => ({
     onSubmitted,
     clipId,
     disputeId,
+    reportedUid,
+    comment,
   }: {
     onClose: () => void;
     onSubmitted: () => void;
     clipId?: string;
     disputeId?: string;
+    reportedUid: string;
+    comment?: { id: string; text: string };
   }) => (
-    <div role="dialog" aria-label="report-modal" data-clip={clipId ?? ""} data-dispute={disputeId ?? ""}>
+    <div
+      role="dialog"
+      aria-label="report-modal"
+      data-clip={clipId ?? ""}
+      data-dispute={disputeId ?? ""}
+      data-reported={reportedUid}
+      data-comment={comment ? `${comment.id}:${comment.text}` : ""}
+    >
       <button onClick={onSubmitted}>__submit__</button>
       <button onClick={onClose}>__close__</button>
     </div>
@@ -1192,6 +1218,21 @@ describe("ClipsFeed — user clips and comments", () => {
     expect(await screen.findByRole("dialog", { name: /report-modal/i })).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: /comments-sheet/i })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "__close__" }));
+    expect(screen.queryByRole("dialog", { name: /report-modal/i })).not.toBeInTheDocument();
+  });
+
+  it("reports a single comment against its author and closes the sheet", async () => {
+    const user = userEvent.setup();
+    await renderAndOpenComments(user);
+
+    await user.click(screen.getByRole("button", { name: "__report_comment__" }));
+
+    const modal = await screen.findByRole("dialog", { name: /report-modal/i });
+    expect(modal).toHaveAttribute("data-reported", "troll");
+    expect(modal).toHaveAttribute("data-comment", "cm1:rude");
+    expect(modal.getAttribute("data-clip")).not.toBe("");
+    expect(screen.queryByRole("dialog", { name: /comments-sheet/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "__submit__" }));
     expect(screen.queryByRole("dialog", { name: /report-modal/i })).not.toBeInTheDocument();
   });
 

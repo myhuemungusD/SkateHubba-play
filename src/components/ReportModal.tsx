@@ -18,6 +18,8 @@ export function ReportModal({
   gameId,
   clipId,
   disputeId,
+  spotId,
+  comment,
   onClose,
   onSubmitted,
 }: {
@@ -35,6 +37,10 @@ export function ReportModal({
   clipId?: string;
   /** Community dispute id. These reports stay in the admin queue and do not auto-hide. */
   disputeId?: string;
+  /** Spot id when reporting a spot comment. */
+  spotId?: string;
+  /** A single comment being reported (needs `clipId` or `spotId`). */
+  comment?: { id: string; text: string };
   onClose: () => void;
   onSubmitted: () => void;
 }) {
@@ -65,6 +71,8 @@ export function ReportModal({
         description,
         ...(clipId ? { clipId } : {}),
         ...(disputeId ? { disputeId } : {}),
+        ...(spotId ? { spotId } : {}),
+        ...(comment ? { comment } : {}),
       });
       setReceiptId(id);
       setSubmitting(false);

@@ -9,6 +9,8 @@ export interface ClipCommentRowProps {
   canDelete: boolean;
   deleting: boolean;
   onDelete: (comment: ClipComment) => void;
+  /** Report this comment. Offered on everyone's comments but your own. */
+  onReport?: (comment: ClipComment) => void;
 }
 
 /**
@@ -20,6 +22,7 @@ export const ClipCommentRow = memo(function ClipCommentRow({
   canDelete,
   deleting,
   onDelete,
+  onReport,
 }: ClipCommentRowProps) {
   return (
     <li data-testid={`comment-${comment.id}`} className="rounded-xl border border-border bg-surface/60 px-3 py-2.5">
@@ -33,6 +36,16 @@ export const ClipCommentRow = memo(function ClipCommentRow({
       <p className="mt-1 font-body text-sm leading-relaxed break-words whitespace-pre-wrap text-white/90">
         {comment.text}
       </p>
+      {!canDelete && onReport && (
+        <button
+          type="button"
+          onClick={() => onReport(comment)}
+          aria-label={`Report comment by @${comment.username}`}
+          className="mt-1.5 inline-flex min-h-[44px] items-center font-display text-[11px] tracking-[0.15em] text-faint transition-colors hover:text-brand-red focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+        >
+          REPORT
+        </button>
+      )}
       {canDelete && (
         <button
           type="button"

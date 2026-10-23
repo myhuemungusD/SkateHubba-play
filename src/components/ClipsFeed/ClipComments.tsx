@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import type { ClipComment } from "../../services/clips.comments";
 import { useSwipeDownToClose } from "../useSwipeDownToClose";
 import type { ClipDoc } from "../../services/clips";
 import { useFocusTrap } from "../../hooks/useFocusTrap";
@@ -11,10 +12,12 @@ export interface ClipCommentsProps {
   viewerUid: string;
   viewerUsername: string;
   onClose: () => void;
-  /** Opens the report flow for the clip this thread belongs to (comments
-   *  aren't independently reportable — reporting the clip is the existing,
-   *  moderator-actionable path). Omitted entirely hides the control. */
+  /** Opens the report flow for the clip this thread belongs to. Omitted
+   *  entirely hides the control. */
   onReport?: () => void;
+  /** Opens the report flow for one comment (App Review 1.2: every piece of
+   *  user text is reportable). Omitted hides the per-comment control. */
+  onReportComment?: (comment: ClipComment) => void;
   /** Uids the viewer has blocked. Their comments are filtered out of the
    *  thread, matching how the feed drops their clips. */
   blockedUids?: ReadonlySet<string>;
@@ -28,7 +31,15 @@ export interface ClipCommentsProps {
  * — off screen. Focus is trapped while it is open (`useFocusTrap`), and it
  * closes on backdrop tap or Escape, matching ReportModal.
  */
-export function ClipComments({ clip, viewerUid, viewerUsername, onClose, onReport, blockedUids }: ClipCommentsProps) {
+export function ClipComments({
+  clip,
+  viewerUid,
+  viewerUsername,
+  onClose,
+  onReport,
+  onReportComment,
+  blockedUids,
+}: ClipCommentsProps) {
   const c = useClipComments(clip.id, viewerUid, viewerUsername, blockedUids);
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(panelRef);
@@ -111,6 +122,7 @@ export function ClipComments({ clip, viewerUid, viewerUsername, onClose, onRepor
                   canDelete={comment.userId === viewerUid}
                   deleting={c.deletingId === comment.id}
                   onDelete={(target) => void c.remove(target)}
+                  onReport={onReportComment}
                 />
               ))}
             </ul>

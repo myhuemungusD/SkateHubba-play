@@ -10,6 +10,29 @@ const mockAddSpotComment = vi.fn();
 const mockUseAuthContext = vi.fn();
 const mockSetScreen = vi.fn();
 const mockNavigateToChallengeWithSpot = vi.fn();
+const mockGetBlocked = vi.fn();
+
+vi.mock("../../services/blocking", () => ({
+  getBlockedUserIds: (...args: unknown[]) => mockGetBlocked(...args),
+}));
+vi.mock("../../components/ReportModal", () => ({
+  ReportModal: (p: {
+    reportedUid: string;
+    spotId?: string;
+    gameId?: string | null;
+    comment?: { id: string; text: string };
+    onClose: () => void;
+    onSubmitted: () => void;
+  }) => (
+    <div role="dialog" aria-label="report-modal">
+      <p>
+        report {p.reportedUid} {p.spotId} {p.comment?.id}:{p.comment?.text} game={String(p.gameId)}
+      </p>
+      <button onClick={p.onSubmitted}>__submit__</button>
+      <button onClick={p.onClose}>__close__</button>
+    </div>
+  ),
+}));
 
 vi.mock("../../services/spots", () => ({
   getSpot: (...args: unknown[]) => mockGetSpot(...args),
@@ -85,7 +108,8 @@ function renderPage() {
 beforeEach(() => {
   vi.clearAllMocks();
   chatFlag.on = false;
-  mockUseAuthContext.mockReturnValue({ user: { uid: "viewer-uid" } });
+  mockUseAuthContext.mockReturnValue({ user: { uid: "viewer-uid" }, activeProfile: { username: "viewer" } });
+  mockGetBlocked.mockResolvedValue(new Set());
   mockGetSpot.mockResolvedValue(FIXTURE_SPOT);
   mockGetSpotComments.mockResolvedValue([]);
 });
@@ -176,7 +200,7 @@ describe("SpotDetailPage", () => {
     await userEvent.type(screen.getByPlaceholderText(/Add a comment/), "rad");
     await userEvent.click(screen.getByLabelText("Send comment"));
     await waitFor(() => {
-      expect(mockAddSpotComment).toHaveBeenCalledWith(FIXTURE_SPOT.id, "rad", "viewer-uid");
+      expect(mockAddSpotComment).toHaveBeenCalledWith(FIXTURE_SPOT.id, "rad", "viewer-uid", "viewer");
       expect(screen.getByText("rad")).toBeInTheDocument();
     });
   });
@@ -210,7 +234,7 @@ describe("SpotDetailPage", () => {
   });
 
   it("blocks comment submit when the user is signed out", async () => {
-    mockUseAuthContext.mockReturnValue({ user: null });
+    mockUseAuthContext.mockReturnValue({ user: null, activeProfile: null });
     renderPage();
     await waitFor(() => {
       expect(screen.getByPlaceholderText(/Add a comment/)).toBeInTheDocument();
@@ -221,6 +245,89 @@ describe("SpotDetailPage", () => {
       expect(screen.getByText(/signed in/i)).toBeInTheDocument();
     });
     expect(mockAddSpotComment).not.toHaveBeenCalled();
+  });
+
+  it("shows a post failure and keeps the draft", async () => {
+    mockAddSpotComment.mockRejectedValueOnce(new Error("Spot not found"));
+    renderPage();
+    await userEvent.type(await screen.findByPlaceholderText(/Add a comment/), "rad");
+    await userEvent.click(screen.getByLabelText("Send comment"));
+    expect(await screen.findByText("Spot not found")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Add a comment/)).toHaveValue("rad");
+  });
+
+  it("falls back to a generic message when a post fails with a non-Error", async () => {
+    mockAddSpotComment.mockRejectedValueOnce("nope");
+    renderPage();
+    await userEvent.type(await screen.findByPlaceholderText(/Add a comment/), "rad");
+    await userEvent.click(screen.getByLabelText("Send comment"));
+    expect(await screen.findByText("Failed to post comment")).toBeInTheDocument();
+  });
+
+  it("shows authors by handle, never by account id", async () => {
+    mockGetSpotComments.mockResolvedValueOnce([
+      FIXTURE_COMMENT,
+      { ...FIXTURE_COMMENT, id: "c2", username: "kickflip" },
+    ]);
+    renderPage();
+    expect(await screen.findByText("@kickflip")).toBeInTheDocument();
+    expect(screen.getByText("skater")).toBeInTheDocument();
+    expect(screen.queryByText(/commente/)).toBeNull();
+  });
+
+  it("reports someone else's comment against its author, but never your own", async () => {
+    mockGetSpotComments.mockResolvedValueOnce([
+      { ...FIXTURE_COMMENT, username: "troll" },
+      { ...FIXTURE_COMMENT, id: "mine", userId: "viewer-uid", username: "viewer", content: "mine" },
+    ]);
+    renderPage();
+    await screen.findByText("mine");
+    expect(screen.getAllByRole("button", { name: /report comment/i })).toHaveLength(1);
+
+    await userEvent.click(screen.getByRole("button", { name: "Report comment by @troll" }));
+    expect(
+      await screen.findByText(`report commenter-uid ${FIXTURE_SPOT.id} c1:good spot game=null`),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByText("__submit__"));
+    expect(screen.queryByRole("dialog", { name: "report-modal" })).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Report comment by @troll" }));
+    await userEvent.click(await screen.findByText("__close__"));
+    expect(screen.queryByRole("dialog", { name: "report-modal" })).toBeNull();
+  });
+
+  it("labels the report control for a comment with no stored handle", async () => {
+    mockGetSpotComments.mockResolvedValueOnce([FIXTURE_COMMENT]);
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Report comment by this skater" }));
+    expect(await screen.findByRole("dialog", { name: "report-modal" })).toBeInTheDocument();
+  });
+
+  it("offers no report control when signed out", async () => {
+    mockUseAuthContext.mockReturnValue({ user: null, activeProfile: null });
+    mockGetSpotComments.mockResolvedValueOnce([FIXTURE_COMMENT]);
+    renderPage();
+    await screen.findByText("good spot");
+    expect(screen.queryByRole("button", { name: /report comment/i })).toBeNull();
+    expect(mockGetBlocked).not.toHaveBeenCalled();
+  });
+
+  it("leaves out comments from players the viewer blocked", async () => {
+    mockGetBlocked.mockResolvedValueOnce(new Set(["commenter-uid"]));
+    mockGetSpotComments.mockResolvedValueOnce([FIXTURE_COMMENT]);
+    renderPage();
+    await waitFor(() => expect(mockGetBlocked).toHaveBeenCalledWith("viewer-uid"));
+    await waitFor(() => expect(screen.queryByText("good spot")).toBeNull());
+    expect(screen.getByText(/No comments yet/)).toBeInTheDocument();
+  });
+
+  it("ignores a blocked list that lands after the page unmounts", async () => {
+    let resolve: (v: Set<string>) => void = () => {};
+    mockGetBlocked.mockReturnValueOnce(new Promise<Set<string>>((r) => (resolve = r)));
+    const { unmount } = renderPage();
+    await waitFor(() => expect(mockGetBlocked).toHaveBeenCalled());
+    unmount();
+    resolve(new Set(["x"]));
   });
 
   it("shows the spot chat only when the flag is on and surfaces its errors", async () => {

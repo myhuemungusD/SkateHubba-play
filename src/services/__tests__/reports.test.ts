@@ -219,6 +219,43 @@ describe("submitReport (user-clip targets)", () => {
     expect(reportSetCall().gameId).toBe("g1");
   });
 
+  it("records a reported comment's id and a snapshot of its text", async () => {
+    await submitReport({ ...base, clipId: "uc1", comment: { id: "cm1", text: "x".repeat(400) } });
+    const data = reportSetCall();
+    expect(data.clipId).toBe("uc1");
+    expect(data.commentId).toBe("cm1");
+    expect(data.commentText).toBe("x".repeat(300));
+  });
+
+  it("reports a spot comment with no game and no clip", async () => {
+    await submitReport({ ...base, spotId: " s1 ", comment: { id: "cm1", text: "rude" } });
+    const data = reportSetCall();
+    expect(data.gameId).toBeNull();
+    expect(data.clipId).toBeUndefined();
+    expect(data.spotId).toBe("s1");
+    expect(data.commentId).toBe("cm1");
+  });
+
+  it("omits the comment fields on a clip report", async () => {
+    await submitReport({ ...base, clipId: "uc1" });
+    expect(reportSetCall().commentId).toBeUndefined();
+    expect(reportSetCall().commentText).toBeUndefined();
+  });
+
+  it("rejects a comment report without a clip or with a bad comment id", async () => {
+    await expect(submitReport({ ...base, spotId: "s/1" })).rejects.toThrow(/not valid/);
+    await expect(submitReport({ ...base, gameId: "g1", comment: { id: "cm1", text: "hi" } })).rejects.toThrow(
+      /not valid/,
+    );
+    await expect(submitReport({ ...base, clipId: "uc1", comment: { id: "", text: "hi" } })).rejects.toThrow(
+      /not valid/,
+    );
+    await expect(submitReport({ ...base, clipId: "uc1", comment: { id: "a/b", text: "hi" } })).rejects.toThrow(
+      /not valid/,
+    );
+    expect(batchSet).not.toHaveBeenCalled();
+  });
+
   it("caps an over-long clipId at 128 chars", async () => {
     await submitReport({ ...base, clipId: "c".repeat(200) });
 

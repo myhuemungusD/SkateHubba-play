@@ -28,21 +28,34 @@ describe("InviteButton", () => {
 
     await userEvent.click(screen.getByText("Invite a Friend"));
     expect(screen.getByText("Close")).toBeInTheDocument();
-    expect(screen.getByText("TEXT A FRIEND")).toBeInTheDocument();
     expect(screen.getByText("SHARE ON SOCIALS")).toBeInTheDocument();
 
     await userEvent.click(screen.getByText("Close"));
     expect(screen.getByText("Invite a Friend")).toBeInTheDocument();
   });
 
-  it("shows contacts unavailable message when contacts API not present", async () => {
+  it("hides the contacts tile when the Contact Picker API is missing (iPhone app, Safari, desktop)", async () => {
     vi.useRealTimers();
     render(<InviteButton />);
 
     await userEvent.click(screen.getByText("Invite a Friend"));
-    await userEvent.click(screen.getByText("FROM YOUR CONTACTS"));
 
-    expect(screen.getByText(/Phone contacts not available/)).toBeInTheDocument();
+    expect(screen.queryByText("TEXT A FRIEND")).not.toBeInTheDocument();
+    expect(screen.queryByText("FROM YOUR CONTACTS")).not.toBeInTheDocument();
+    // No dead button and no "try another platform" copy (App Review 2.1 / 2.3.10).
+    expect(screen.queryByText(/Android/)).not.toBeInTheDocument();
+    expect(screen.getByText("SHARE ON SOCIALS")).toBeInTheDocument();
+  });
+
+  it("shows the contacts tile when the Contact Picker API exists", async () => {
+    vi.useRealTimers();
+    (navigator as any).contacts = { select: vi.fn().mockResolvedValue([]) };
+
+    render(<InviteButton />);
+    await userEvent.click(screen.getByText("Invite a Friend"));
+
+    expect(screen.getByText("TEXT A FRIEND")).toBeInTheDocument();
+    delete (navigator as any).contacts;
   });
 
   it("handles contact selection with phones and opens SMS", async () => {

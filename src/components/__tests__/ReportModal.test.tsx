@@ -168,6 +168,20 @@ describe("ReportModal — user-clip reports", () => {
     );
   });
 
+  it("passes a reported comment through to the report", async () => {
+    const user = userEvent.setup();
+    render(<ReportModal {...baseProps} clipId="userclip1" comment={{ id: "cm1", text: "rude" }} />);
+
+    await user.selectOptions(screen.getByRole("combobox"), "abusive_behavior");
+    await user.click(screen.getByText("Submit Report"));
+
+    await waitFor(() =>
+      expect(mockSubmitReport).toHaveBeenCalledWith(
+        expect.objectContaining({ clipId: "userclip1", comment: { id: "cm1", text: "rude" } }),
+      ),
+    );
+  });
+
   it("sends a null gameId when reporting a clip that belongs to no game", async () => {
     const user = userEvent.setup();
     const { gameId: _omitted, ...noGame } = baseProps;
