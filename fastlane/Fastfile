@@ -183,6 +183,9 @@ platform :ios do
       },
     )
     UI.user_error!("Signed IPA was not produced") if ipa.to_s.empty? || !File.exist?(ipa.to_s)
+    # Fail before upload if any privacy manifest in the IPA declares tracking,
+    # and keep the full manifest list in the run summary (Privacy Report evidence).
+    sh("node", File.expand_path("../scripts/check-ios-privacy-manifests.mjs", __dir__), File.expand_path(ipa.to_s))
     # No changelog: pilot waits for the build to appear before it can save
     # "What to Test". Skipping that wait is the point of this upload.
     pilot(
