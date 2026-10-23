@@ -108,7 +108,10 @@ function renderPage() {
 beforeEach(() => {
   vi.clearAllMocks();
   chatFlag.on = false;
-  mockUseAuthContext.mockReturnValue({ user: { uid: "viewer-uid" }, activeProfile: { username: "viewer" } });
+  mockUseAuthContext.mockReturnValue({
+    user: { uid: "viewer-uid" },
+    activeProfile: { uid: "viewer-uid", username: "viewer" },
+  });
   mockGetBlocked.mockResolvedValue(new Set());
   mockGetSpot.mockResolvedValue(FIXTURE_SPOT);
   mockGetSpotComments.mockResolvedValue([]);
@@ -273,6 +276,23 @@ describe("SpotDetailPage", () => {
     expect(await screen.findByText("@kickflip")).toBeInTheDocument();
     expect(screen.getByText("skater")).toBeInTheDocument();
     expect(screen.queryByText(/commente/)).toBeNull();
+    // The handle opens the author's profile, where Block lives.
+    expect(screen.getByRole("link", { name: "@kickflip" })).toHaveAttribute("href", "/player/commenter-uid");
+  });
+
+  it("won't post under a profile that belongs to a different account", async () => {
+    mockUseAuthContext.mockReturnValue({
+      user: { uid: "viewer-uid" },
+      activeProfile: { uid: "previous-account", username: "old" },
+    });
+    mockGetSpotComments.mockResolvedValueOnce([FIXTURE_COMMENT]);
+    renderPage();
+    await screen.findByText("good spot");
+    expect(screen.queryByRole("button", { name: /report comment/i })).toBeNull();
+    await userEvent.type(screen.getByPlaceholderText(/Add a comment/), "rad");
+    await userEvent.click(screen.getByLabelText("Send comment"));
+    expect(await screen.findByText("You must be signed in to comment")).toBeInTheDocument();
+    expect(mockAddSpotComment).not.toHaveBeenCalled();
   });
 
   it("reports someone else's comment against its author, but never your own", async () => {
@@ -299,7 +319,7 @@ describe("SpotDetailPage", () => {
   it("labels the report control for a comment with no stored handle", async () => {
     mockGetSpotComments.mockResolvedValueOnce([FIXTURE_COMMENT]);
     renderPage();
-    await userEvent.click(await screen.findByRole("button", { name: "Report comment by this skater" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Report this comment" }));
     expect(await screen.findByRole("dialog", { name: "report-modal" })).toBeInTheDocument();
   });
 

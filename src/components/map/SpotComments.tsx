@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { Link } from "react-router";
 import { Send } from "lucide-react";
 import type { SpotComment } from "../../types/spot";
 import { addSpotComment } from "../../services/spots";
@@ -98,7 +99,13 @@ export function SpotComments({ spotId, comments, onPosted, viewer }: SpotComment
           {visible.map((c) => (
             <div key={c.id} data-testid={`spot-comment-${c.id}`} className="bg-surface-alt rounded-lg p-3">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-muted">{c.username ? `@${c.username}` : "skater"}</span>
+                {/* The author's profile is where Block lives, so the handle opens it. */}
+                <Link
+                  to={`/player/${encodeURIComponent(c.userId)}`}
+                  className="text-xs text-muted hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+                >
+                  {c.username ? `@${c.username}` : "skater"}
+                </Link>
                 <span className="text-xs text-subtle">{new Date(c.createdAt).toLocaleDateString()}</span>
               </div>
               {/* Untrusted user text: a plain text node, so React escapes it. */}
@@ -107,7 +114,7 @@ export function SpotComments({ spotId, comments, onPosted, viewer }: SpotComment
                 <button
                   type="button"
                   onClick={() => setReporting(c)}
-                  aria-label={`Report comment by ${c.username ? `@${c.username}` : "this skater"}`}
+                  aria-label={c.username ? `Report comment by @${c.username}` : "Report this comment"}
                   className="mt-1 inline-flex min-h-[44px] items-center font-display text-[11px] tracking-[0.15em] text-faint transition-colors hover:text-brand-red focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
                 >
                   REPORT

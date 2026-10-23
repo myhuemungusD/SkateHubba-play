@@ -2987,15 +2987,27 @@ service cloud.firestore {
               && request.resource.data.spotId.size() > 0
               && request.resource.data.spotId.size() <= 128)
         )
-        // Optional single comment (under clipId or spotId) plus the text
-        // as it read when reported, so a moderator still sees it if the
-        // author deletes it first. Bounded like a comment body.
+        // Optional single comment plus the text as it read when reported, so
+        // a moderator still sees it if the author deletes it later. The
+        // comment must live under exactly one parent (a clip or a spot), and
+        // its real author and text must match the report. Otherwise anyone
+        // could pin a made-up quote on another skater next to Delete and Ban.
         && (
           !('commentId' in request.resource.data)
           || (request.resource.data.commentId is string
               && request.resource.data.commentId.size() > 0
               && request.resource.data.commentId.size() <= 128
-              && ('clipId' in request.resource.data || 'spotId' in request.resource.data))
+              && request.resource.data.get('commentText', null) is string
+              && (
+                ('clipId' in request.resource.data
+                  && !('spotId' in request.resource.data)
+                  && get(/databases/$(database)/documents/clips/$(request.resource.data.clipId)/comments/$(request.resource.data.commentId)).data.userId == request.resource.data.reportedUid
+                  && get(/databases/$(database)/documents/clips/$(request.resource.data.clipId)/comments/$(request.resource.data.commentId)).data.text == request.resource.data.commentText)
+                || ('spotId' in request.resource.data
+                  && !('clipId' in request.resource.data)
+                  && get(/databases/$(database)/documents/spots/$(request.resource.data.spotId)/comments/$(request.resource.data.commentId)).data.userId == request.resource.data.reportedUid
+                  && get(/databases/$(database)/documents/spots/$(request.resource.data.spotId)/comments/$(request.resource.data.commentId)).data.content == request.resource.data.commentText)
+              ))
         )
         && (
           !('commentText' in request.resource.data)

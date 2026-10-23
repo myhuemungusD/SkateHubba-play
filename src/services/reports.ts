@@ -31,6 +31,15 @@ export const REPORT_REASON_LABELS: Record<ReportReason, string> = {
   other: "Other",
 };
 
+/** Reasons that make sense for one written comment (no video or gameplay reasons). */
+export const COMMENT_REPORT_REASONS: readonly ReportReason[] = [
+  "inappropriate",
+  "abusive_behavior",
+  "spam",
+  "illegal_content",
+  "other",
+];
+
 export interface SubmitReportParams {
   reporterUid: string;
   reportedUid: string;
@@ -116,7 +125,8 @@ export async function submitReport(params: SubmitReportParams): Promise<string> 
   }
   if (
     comment &&
-    ((targetClipId === null && targetSpotId === null) || comment.id.length === 0 || comment.id.includes("/"))
+    // Exactly one parent: the comment lives under a clip or a spot, never both.
+    ((targetClipId === null) === (targetSpotId === null) || comment.id.length === 0 || comment.id.includes("/"))
   ) {
     throw new Error("That report target is not valid.");
   }

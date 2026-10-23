@@ -213,7 +213,11 @@ export function SpotDetailPage() {
           spotId={spot.id}
           comments={comments}
           onPosted={handlePosted}
-          viewer={user && activeProfile ? { uid: user.uid, username: activeProfile.username } : null}
+          viewer={
+            // Only post under a handle that belongs to the signed-in account, so a
+            // mid-switch profile can't stamp the wrong name on a comment.
+            user && activeProfile?.uid === user.uid ? { uid: user.uid, username: activeProfile.username } : null
+          }
         />
       </div>
     </div>
