@@ -36,7 +36,7 @@ export function ProfileShowcase({ equippedItems, pinnedItems, isOwnProfile }: Pr
         {/* Pinned items shelf */}
         {pinnedItems.length > 0 && (
           <div className="p-4 border-t border-border">
-            <h3 className="font-display text-[10px] tracking-[0.2em] text-subtle mb-3 uppercase">Showcase</h3>
+            <h3 className="font-display text-[11px] tracking-[0.2em] text-subtle mb-3 uppercase">Showcase</h3>
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
               {pinnedItems.slice(0, 6).map((item) => (
                 <ShowcaseItemCard key={item.id} item={item} />
@@ -50,7 +50,7 @@ export function ProfileShowcase({ equippedItems, pinnedItems, isOwnProfile }: Pr
 }
 
 function SectionHeading() {
-  return <h2 className="font-display text-[10px] tracking-[0.2em] text-brand-orange mb-3">SHOWCASE</h2>;
+  return <h2 className="font-display text-[11px] tracking-[0.2em] text-brand-orange mb-3">SHOWCASE</h2>;
 }
 
 function ShowcaseItemCard({ item }: { item: LockerItem }) {

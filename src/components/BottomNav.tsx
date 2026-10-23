@@ -136,7 +136,7 @@ export function BottomNav() {
                     {badgeCount > 0 && (
                       <span
                         aria-hidden="true"
-                        className="absolute -top-1 -right-2 min-w-[15px] h-[15px] px-1 flex items-center justify-center rounded-full bg-brand-orange font-display text-[9px] text-[#1a1a1a] leading-none tabular-nums"
+                        className="absolute -top-1 -right-2 min-w-[17px] h-[17px] px-1 flex items-center justify-center rounded-full bg-brand-orange font-display text-[11px] text-[#1a1a1a] leading-none tabular-nums"
                       >
                         {badgeCount > 9 ? "9+" : badgeCount}
                       </span>
@@ -145,7 +145,7 @@ export function BottomNav() {
                   {/* Tracking is tighter than the 0.15em used elsewhere purely
                       so five labels (incl. "Challenge") fit a 320px viewport
                       without wrapping. Font size is unchanged. */}
-                  <span className="font-display text-[10px] tracking-[0.05em] leading-none uppercase">
+                  <span className="font-display text-[11px] tracking-[0.05em] leading-none uppercase">
                     {item.label}
                   </span>
                   {active && (
