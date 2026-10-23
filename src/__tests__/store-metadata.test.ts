@@ -17,11 +17,18 @@ describe("App Store listing metadata", () => {
     ["promotional_text.txt", 170],
     ["keywords.txt", 100],
     ["description.txt", 4000],
-    ["release_notes.txt", 4000],
   ])("%s fits Apple's %i-character limit", (file, max) => {
     const text = read(file);
     expect(text.length).toBeGreaterThan(0);
     expect(text.length).toBeLessThanOrEqual(max);
+  });
+
+  it("leaves release_notes.txt empty for the first App Store version", () => {
+    // 1.2.0 is SkateHubba's first App Store version, and App Store Connect
+    // rejects "What's New" on a first version, so deliver must send none.
+    // From the next version on, fill this in (max 4000 chars) and swap this
+    // test back to the length check above.
+    expect(read("release_notes.txt")).toBe("");
   });
 
   it("never describes turn-based games as real-time", () => {
