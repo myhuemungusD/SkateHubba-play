@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
@@ -29,6 +29,9 @@ beforeEach(() => {
   svc.checkIn.mockReset();
   auth.value = { user: { uid: "u1" } };
 });
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("CheckInButton", () => {
   it("sends signed-out visitors to sign in", async () => {
@@ -39,6 +42,7 @@ describe("CheckInButton", () => {
   });
 
   it("checks in and shows the result", async () => {
+    vi.stubEnv("VITE_FEATURE_XP_ENABLED", "true");
     svc.checkIn.mockResolvedValueOnce({
       queued: false,
       result: { code: "ok", xp: 50, newSpot: true, pioneer: false, badgeId: null, rewardsPaused: false },
@@ -47,6 +51,17 @@ describe("CheckInButton", () => {
     await userEvent.click(screen.getByRole("button", { name: "Check in" }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Checked in! +50 XP."));
     expect(svc.checkIn).toHaveBeenCalledWith({ id: "s1" });
+  });
+
+  it("leaves the XP out of the result when the build hides XP", async () => {
+    vi.stubEnv("VITE_FEATURE_XP_ENABLED", "false");
+    svc.checkIn.mockResolvedValueOnce({
+      queued: false,
+      result: { code: "ok", xp: 50, newSpot: true, pioneer: false, badgeId: null, rewardsPaused: false },
+    });
+    renderIt();
+    await userEvent.click(screen.getByRole("button", { name: "Check in" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/^Checked in!$/));
   });
 
   it("shows location errors as-is and other errors generically", async () => {

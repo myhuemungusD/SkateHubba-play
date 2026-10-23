@@ -8,7 +8,7 @@
  * the clip Edit tip when you have no pinned clips yet).
  */
 
-import { isRunnerEnabled } from "../../lib/featureFlags";
+import { isRunnerEnabled, isXpEnabled } from "../../lib/featureFlags";
 
 export interface Tip {
   title: string;
@@ -72,7 +72,15 @@ export const TIP_SETS: Record<string, TipSet> = {
     id: "map",
     tips: [
       { title: "the map", body: "skate spots around you. tap a pin to peep it." },
-      { title: "check in", body: "pull up to a spot and check in for xp and a passport stamp." },
+      {
+        title: "check in",
+        // Read at show time so a build with XP hidden doesn't promise it.
+        get body() {
+          return isXpEnabled()
+            ? "pull up to a spot and check in for xp and a passport stamp."
+            : "pull up to a spot and check in for a passport stamp.";
+        },
+      },
       { title: "add a spot", body: "found something new? drop it here.", anchor: "map-add-spot", requiresAnchor: true },
     ],
   },

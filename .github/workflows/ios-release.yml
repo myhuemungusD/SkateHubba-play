@@ -154,7 +154,8 @@ jobs:
           VITE_FEATURE_PRO_CALLS: "true"
           VITE_FEATURE_PRO_COMMUNITY: "true"
           VITE_FEATURE_DICE_ENABLED: "false"
-          VITE_FEATURE_XP_ENABLED: "true"
+          # XP, levels and the achievements ribbon off on iPhone for 1.2.0 (Jason, 2026-10-23).
+          VITE_FEATURE_XP_ENABLED: "false"
           VITE_FEATURE_REFEREE_ENABLED: "true"
           VITE_FEATURE_TURN_LENGTH: "true"
           VITE_FEATURE_TRICK_PICKER_ENABLED: "true"

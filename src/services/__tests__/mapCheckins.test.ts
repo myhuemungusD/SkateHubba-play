@@ -240,6 +240,21 @@ describe("isRetryable", () => {
 
 describe("describeCheckin", () => {
   const r = (over: Record<string, unknown>) => ({ queued: false as const, result: { ...OK, ...over } as never });
+  beforeEach(() => {
+    vi.stubEnv("VITE_FEATURE_XP_ENABLED", "true");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("leaves the XP out when the build hides XP", () => {
+    vi.stubEnv("VITE_FEATURE_XP_ENABLED", "false");
+    expect(svc.describeCheckin(r({}))).toBe("Checked in!");
+    expect(svc.describeCheckin(r({ xp: 5, pioneer: false, badgeId: "legend_x" }))).toBe(
+      "Checked in! Legendary badge earned.",
+    );
+  });
+
   it.each([
     [{ queued: true as const }, /No signal/],
     [r({}), /Checked in! \+55 XP \(pioneer bonus\)\./],
