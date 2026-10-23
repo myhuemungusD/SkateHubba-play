@@ -65,7 +65,7 @@ export function FeedModeToggle({
 
   return (
     <div
-      className="flex items-center justify-center gap-6 px-4 py-3 bg-black/80 backdrop-blur-sm"
+      className="flex items-center justify-center gap-4 px-4 py-0.5 bg-black/80 backdrop-blur-sm"
       onTouchStart={handleSwipe}
     >
       {modes.map((m) => {
@@ -79,15 +79,17 @@ export function FeedModeToggle({
             disabled={disabled}
             onClick={() => onChange(m)}
             className={`
-              relative font-body text-sm transition-all
+              relative inline-flex min-h-11 min-w-11 items-center justify-center px-2 font-body text-sm transition-all
               ${isActive ? "font-semibold text-white" : "text-faint"}
               ${disabled ? "opacity-50" : ""}
             `}
             aria-pressed={isActive}
           >
             {FEED_MODE_LABELS[m]}
-            {isActive && <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-brand-orange rounded-full" />}
-            {badge && !isActive && <span className="absolute -top-1 -right-1 w-2 h-2 bg-brand-orange rounded-full" />}
+            {isActive && <span className="absolute bottom-1.5 left-2 right-2 h-0.5 bg-brand-orange rounded-full" />}
+            {badge && !isActive && (
+              <span data-mode-badge className="absolute top-2 right-0.5 w-2 h-2 bg-brand-orange rounded-full" />
+            )}
           </button>
         );
       })}

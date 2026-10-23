@@ -11,7 +11,7 @@ import {
 const CARD = "rounded-2xl border border-amber-300/20 bg-surface p-4 shadow-card";
 const H3 = "mb-1 flex items-center gap-2 font-display text-sm tracking-[0.15em] text-white";
 const BTN =
-  "min-h-[36px] rounded-lg border border-white/[0.1] px-3 font-body text-xs text-white/90 hover:bg-surface-alt disabled:opacity-50";
+  "min-h-11 rounded-lg border border-white/[0.1] px-3 font-body text-xs text-white/90 hover:bg-surface-alt disabled:opacity-50";
 
 interface ListProps {
   uid: string;
