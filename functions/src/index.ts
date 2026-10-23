@@ -1,5 +1,6 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
 import { setGlobalOptions, type GlobalOptions } from "firebase-functions/v2";
 import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onCall } from "firebase-functions/v2/https";
@@ -15,6 +16,8 @@ import { sweepExpiredDiceGames } from "./dice/handlers.js";
 import { adminDiceDb } from "./dice/store.js";
 import { handleCheckinCall, handlePresenceCall } from "./map/callable.js";
 import { handleBlessingCall } from "./pro/callable.js";
+import { handleProSeedCall } from "./pro/seed.js";
+import { adminClaimLookup } from "./pro/seedCore.js";
 import { fanOutAnnouncement } from "./admin/announce.js";
 import { handleAnalyticsCall } from "./admin/analytics.js";
 import { applyProCall } from "./pro/proCalls.js";
@@ -225,6 +228,20 @@ const proBlessingTesterUids = defineString("PRO_BLESSING_TESTER_UIDS", { default
 const proBlessingLimit = defineInt("PRO_BLESSING_LIMIT", { default: 2 });
 const proBlessingWindowDays = defineInt("PRO_BLESSING_WINDOW_DAYS", { default: 30 });
 const proBlessingMinAccountDays = defineInt("PRO_BLESSING_MIN_ACCOUNT_DAYS", { default: 30 });
+
+/**
+ * Admin-only Verified-Pro seeding with required reason + evidence and an
+ * append-only `proAudit` row (security audit 2026-10-21). Refuses targets
+ * holding the admin claim (pros are never admins). Admin claim + App Check
+ * enforced. The direct client-write rules branch is removed in #813b.
+ */
+export const proSeed = onCall({ region: "us-central1", enforceAppCheck: true }, (request) =>
+  handleProSeedCall(request, {
+    db: adminDiceDb(getFirestore(DATABASE_ID)),
+    nowMs: Date.now(),
+    isAdmin: adminClaimLookup(getAuth()),
+  }),
+);
 
 export const proBlessing = onCall({ region: "us-central1", enforceAppCheck: false }, (request) =>
   handleBlessingCall(request, {

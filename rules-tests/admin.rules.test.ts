@@ -23,7 +23,7 @@
  *
  * Run via:  npm run test:rules
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { assertSucceeds, assertFails, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
 import {
   doc,
@@ -49,6 +49,8 @@ const PLAIN_UID = "plain-uid";
 /** Signed-in user whose token carries `admin: false`. */
 const FALSE_CLAIM_UID = "false-claim-uid";
 const REPORTER_UID = "reporter-uid";
+/** A verified pro (users doc isVerifiedPro: true) with NO admin claim. */
+const PRO_UID = "pro-uid";
 
 const BADGE_ID = "hundred-clips";
 const ITEM_ID = "og-deck";
@@ -66,6 +68,7 @@ const CALLERS = {
   plain: { uid: PLAIN_UID, claims: { email_verified: true } },
   adminFalse: { uid: FALSE_CLAIM_UID, claims: { email_verified: true, admin: false } },
   reporter: { uid: REPORTER_UID, claims: { email_verified: true } },
+  pro: { uid: PRO_UID, claims: { email_verified: true } },
 } as const;
 
 type CallerName = keyof typeof CALLERS;
@@ -266,6 +269,48 @@ describe("users/{uid} — admin CANNOT self-grant verified pro", () => {
 
   it("admin CANNOT self-grant by attributing it to another admin", async () => {
     await assertFails(updateDoc(ownUserDoc(), proGrant(OTHER_ADMIN_UID)));
+  });
+});
+
+describe("proAudit/{id} — append-only seed log", () => {
+  const audit = (caller: CallerName) => as(caller, "proAudit", "a1");
+  const row = {
+    action: "seed",
+    actorUid: ADMIN_UID,
+    targetUid: TARGET_UID,
+    targetUsername: "target",
+    reason: "Pro for Baker since 2019.",
+    evidenceCompany: "Baker",
+    evidenceUrl: "https://bakerskateboards.com/team",
+    source: "callable",
+    createdAt: serverTimestamp(),
+  };
+
+  beforeEach(async () => {
+    await getEnv().withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "proAudit", "a1"), row);
+      await setDoc(doc(ctx.firestore(), "users", PRO_UID), { username: "pro", isVerifiedPro: true });
+    });
+  });
+
+  it("admin CAN read the log", async () => {
+    await assertSucceeds(getDoc(audit("admin")));
+  });
+
+  it("a non-admin CANNOT read the log", async () => {
+    await assertFails(getDoc(audit("plain")));
+    await assertFails(getDoc(audit("target")));
+  });
+
+  it("a verified pro without the admin claim CANNOT read the log (pro is not admin)", async () => {
+    await assertFails(getDoc(audit("pro")));
+  });
+
+  it("nobody CAN create, edit or delete a row from a client, admins included", async () => {
+    await assertFails(setDoc(as("admin", "proAudit", "a2"), row));
+    await assertFails(setDoc(as("plain", "proAudit", "a2"), row));
+    await assertFails(updateDoc(audit("admin"), { reason: "rewritten history" }));
+    await assertFails(deleteDoc(audit("admin")));
   });
 });
 

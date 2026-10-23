@@ -102,7 +102,11 @@ export async function getBlockedUserIds(uid: string): Promise<Set<string>> {
  * Subscribe to the blocked users subcollection for real-time updates.
  * Used by the useBlockedUsers hook to keep the UI in sync.
  */
-export function subscribeToBlockedUsers(uid: string, onUpdate: (blockedUids: Set<string>) => void): Unsubscribe {
+export function subscribeToBlockedUsers(
+  uid: string,
+  onUpdate: (blockedUids: Set<string>) => void,
+  onError?: () => void,
+): Unsubscribe {
   const colRef = collection(requireDb(), "users", uid, "blocked_users");
 
   return onSnapshot(
@@ -115,6 +119,7 @@ export function subscribeToBlockedUsers(uid: string, onUpdate: (blockedUids: Set
         uid,
         error: parseFirebaseError(err),
       });
+      onError?.();
     },
   );
 }

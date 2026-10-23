@@ -31,8 +31,8 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
         <PolicySection title="1. Who We Are">
           <p>
             SkateHubba ("we", "our", "us") operates the SkateHubba S.K.A.T.E. game on the web at{" "}
-            <span className="text-brand-orange">skatehubba.com</span> and in our iPhone and Android apps. This Privacy
-            Policy covers all three and explains what personal data we collect, how we use it, and your rights.
+            <span className="text-brand-orange">skatehubba.com</span> and in our mobile app. This Privacy Policy covers
+            both and explains what personal data we collect, how we use it, and your rights.
           </p>
         </PolicySection>
 

@@ -114,6 +114,17 @@ function reportDoc(id: string, data: Record<string, unknown>) {
  * expected parse result so the mapping assertion below proves the values
  * survive the round-trip rather than restating them.
  */
+/** How every optional report target parses when the server omits it. */
+const ABSENT_TARGETS = {
+  disputeId: null,
+  commentId: null,
+  spotId: null,
+  commentText: "",
+  messageId: null,
+  messageText: "",
+  target: null,
+};
+
 const REPORT_FIELDS = {
   reporterUid: "reporter-1",
   reportedUid: TARGET,
@@ -122,10 +133,7 @@ const REPORT_FIELDS = {
   reason: "cheating",
   description: "He landed on his knee and still claimed it.",
   clipId: "game-9_3_set",
-  disputeId: null,
-  commentId: null,
-  spotId: null,
-  commentText: "",
+  ...ABSENT_TARGETS,
   status: "pending",
 };
 
@@ -506,10 +514,7 @@ describe("fetchReports — parsing", () => {
       reason: "",
       description: "",
       clipId: null,
-      disputeId: null,
-      commentId: null,
-      spotId: null,
-      commentText: "",
+      ...ABSENT_TARGETS,
       status: "",
       createdAt: new Date("2026-06-01T12:00:00Z"),
       resolvedBy: "",
@@ -531,6 +536,8 @@ describe("fetchReports — parsing", () => {
       "disputeId",
       "gameId",
       "id",
+      "messageId",
+      "messageText",
       "reason",
       "reportedUid",
       "reportedUsername",
@@ -539,6 +546,7 @@ describe("fetchReports — parsing", () => {
       "resolvedBy",
       "spotId",
       "status",
+      "target",
     ]);
   });
 
@@ -792,6 +800,23 @@ describe("resolveReport", () => {
     await expect(hideDispute("")).rejects.toThrow(/Invalid dispute id/);
     await expect(hideDispute("a/b")).rejects.toThrow(/Invalid dispute id/);
     expect(h.mockUpdateDoc).not.toHaveBeenCalled();
+  });
+
+  it("parses a spot-chat message report and a profile report", async () => {
+    stubReports([
+      reportDoc("r1", {
+        ...fullReport(),
+        gameId: null,
+        clipId: null,
+        spotId: "s1",
+        messageId: "m1",
+        messageText: "rude",
+      }),
+      reportDoc("r2", { ...fullReport(), gameId: null, clipId: null, target: "profile" }),
+    ]);
+    const [message, profile] = await fetchReports();
+    expect(message).toMatchObject({ spotId: "s1", messageId: "m1", messageText: "rude", target: null });
+    expect(profile).toMatchObject({ messageId: null, messageText: "", target: "profile" });
   });
 
   it("parses a comment report and deletes that comment", async () => {

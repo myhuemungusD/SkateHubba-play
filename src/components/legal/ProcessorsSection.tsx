@@ -11,8 +11,7 @@ export function ProcessorsSection() {
           Functions, Cloud Messaging for notifications, and App Check) — Google LLC, USA.
         </li>
         <li>
-          <strong className="text-white">Google reCAPTCHA v3</strong> (App Check on the web) and{" "}
-          <strong className="text-white">Google Play Integrity</strong> (App Check on Android) — Google LLC, USA.
+          <strong className="text-white">Google reCAPTCHA v3</strong> (App Check on the web) — Google LLC, USA.
         </li>
         <li>
           <strong className="text-white">Google Cloud Video Intelligence</strong> (automatic explicit-content and

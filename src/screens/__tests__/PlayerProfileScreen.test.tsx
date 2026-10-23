@@ -52,6 +52,7 @@ describe("PlayerProfileScreen", () => {
     expect(document.querySelector('img[src="/logonew.webp"]')).toBeInTheDocument();
     expect(screen.getByText("@viewer")).toBeInTheDocument();
     expect(screen.getByText("regular")).toBeInTheDocument();
+    expect(screen.queryByText("Report this player")).not.toBeInTheDocument();
   });
 
   it("shows 0 stats when no games", () => {
@@ -331,6 +332,8 @@ describe("PlayerProfileScreen", () => {
 
     await userEvent.click(screen.getByText("Cancel"));
     expect(screen.getByText("Block this player")).toBeInTheDocument();
+    // App Review 1.2: a player can be reported as well as blocked.
+    expect(screen.getByRole("button", { name: "Report this player" })).toBeInTheDocument();
   });
 
   it("confirms block and calls blockUser", async () => {
