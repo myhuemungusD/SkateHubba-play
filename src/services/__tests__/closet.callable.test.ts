@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { firebaseSwitchDefaults } from "./closetFirebase.test-helpers";
 
 const fns = vi.hoisted(() => {
   const invoke = vi.fn();
@@ -16,7 +17,8 @@ const ac = vi.hoisted(() => ({
   askDeviceCheckRetry: vi.fn(() => Promise.resolve(false)),
 }));
 
-vi.mock("../../firebase");
+const fb = vi.hoisted(() => ({ app: {} as unknown, emulator: false }));
+vi.mock("../../firebase", async () => (await import("./closetFirebase.test-helpers")).switchableFirebaseMock(fb));
 vi.mock("firebase/functions", () => ({
   getFunctions: fns.getFunctions,
   httpsCallable: fns.httpsCallable,
@@ -38,6 +40,7 @@ const appCheckError = Object.assign(new Error("AppCheck: ReCAPTCHA error."), { c
 
 beforeEach(() => {
   vi.clearAllMocks();
+  Object.assign(fb, firebaseSwitchDefaults());
   fns.invoke.mockResolvedValue({ data: { ok: true } });
   ac.ensureClosetAppCheck.mockResolvedValue(undefined);
   ac.usesLazyWebAppCheck.mockReturnValue(true);
@@ -68,26 +71,18 @@ describe("callCloset", () => {
   });
 
   it("connects the emulator once in emulator mode", async () => {
-    vi.doMock("../../firebase", async () => ({
-      ...(await vi.importActual<typeof import("../../__mocks__/firebase")>("../../__mocks__/firebase")),
-      isEmulatorMode: true,
-    }));
+    fb.emulator = true;
     const { callCloset } = await load();
     await callCloset("equipItem", {});
     await callCloset("equipItem", {});
     expect(fns.connectFunctionsEmulator).toHaveBeenCalledTimes(1);
-    vi.doMock("../../firebase");
   });
 
   it("throws when Firebase never initialized", async () => {
-    vi.doMock("../../firebase", async () => ({
-      ...(await vi.importActual<typeof import("../../__mocks__/firebase")>("../../__mocks__/firebase")),
-      default: null,
-    }));
+    fb.app = null;
     const { callCloset } = await load();
     await expect(callCloset("equipItem", {})).rejects.toThrow("Firebase not initialized");
     expect(ac.askDeviceCheckRetry).not.toHaveBeenCalled();
-    vi.doMock("../../firebase");
   });
 
   it("passes server errors straight through without the retry prompt", async () => {

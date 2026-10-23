@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { firebaseSwitchDefaults } from "./closetFirebase.test-helpers";
 
 const h = vi.hoisted(() => ({
   env: {
@@ -15,7 +16,8 @@ const h = vi.hoisted(() => ({
   captureMessage: vi.fn(),
 }));
 
-vi.mock("../../firebase");
+const fb = vi.hoisted(() => ({ app: {} as unknown, emulator: false }));
+vi.mock("../../firebase", async () => (await import("./closetFirebase.test-helpers")).switchableFirebaseMock(fb));
 vi.mock("../../lib/env", () => ({
   get env() {
     return h.env;
@@ -57,6 +59,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  Object.assign(fb, firebaseSwitchDefaults());
   h.env = { VITE_APPCHECK_ENABLED: false, VITE_APPCHECK_WEB_MODE: "lazy", VITE_RECAPTCHA_SITE_KEY: "site-key" };
   h.native.mockReturnValue(false);
   delete (window as unknown as Record<string, unknown>).grecaptcha;
@@ -133,25 +136,17 @@ describe("ensureClosetAppCheck", () => {
   });
 
   it("sets the debug token only in emulator mode", async () => {
-    vi.doMock("../../firebase", async () => ({
-      ...(await vi.importActual<typeof import("../../__mocks__/firebase")>("../../__mocks__/firebase")),
-      isEmulatorMode: true,
-    }));
+    fb.emulator = true;
     (window as unknown as Record<string, unknown>).grecaptcha = {};
     const m = await load();
     await m.ensureClosetAppCheck();
     expect((self as unknown as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN).toBe(true);
-    vi.doMock("../../firebase");
   });
 
   it("throws when Firebase never initialized", async () => {
-    vi.doMock("../../firebase", async () => ({
-      ...(await vi.importActual<typeof import("../../__mocks__/firebase")>("../../__mocks__/firebase")),
-      default: null,
-    }));
+    fb.app = null;
     const m = await load();
     await expect(m.ensureClosetAppCheck()).rejects.toThrow("Firebase not initialized");
-    vi.doMock("../../firebase");
   });
 
   it("fails as a device check, and reports it, when the site key is missing", async () => {
