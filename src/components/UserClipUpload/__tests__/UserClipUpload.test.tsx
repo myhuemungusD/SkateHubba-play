@@ -289,6 +289,8 @@ describe("UserClipUploadModal", () => {
     await user.click(screen.getByRole("button", { name: /film it/i }));
     await user.click(screen.getByText("__take__"));
     await user.click(await screen.findByRole("button", { name: /edit clip/i }));
+    // Full-screen, so it lives on <body>, not inside this blurred, animated panel.
+    expect((await screen.findByTestId("clip-editor")).parentElement).toBe(document.body);
     await user.click(await screen.findByText("__editor_cancel__"));
     expect(screen.queryByTestId("clip-editor")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /edit clip/i }));

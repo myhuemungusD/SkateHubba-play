@@ -75,6 +75,17 @@ async function pickFileAndOpenPreview(): Promise<void> {
 }
 
 describe("AvatarPicker — initial render", () => {
+  it("portals to <body> so an animated profile card cannot become its containing block", () => {
+    const { container } = render(
+      <div className="animate-fade-in">
+        <AvatarPicker uid="user-1" onUploaded={vi.fn()} onClose={vi.fn()} />
+      </div>,
+    );
+    const dialog = screen.getByRole("dialog", { name: "Choose profile picture" });
+    expect(container.contains(dialog)).toBe(false);
+    expect(dialog.parentElement).toBe(document.body);
+  });
+
   it("renders as a dialog with the three source buttons", () => {
     renderPicker();
     expect(screen.getByRole("dialog")).toBeInTheDocument();

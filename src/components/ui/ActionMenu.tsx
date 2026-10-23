@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type Ref } from "react";
 import { createPortal } from "react-dom";
 import { MoreHorizontal } from "lucide-react";
 import { useSheetFocusTrap } from "../useSheetFocusTrap";
@@ -16,6 +16,8 @@ interface ActionMenuProps {
   label: string;
   items: ActionMenuItem[];
   className?: string;
+  /** The ••• button, for callers that hand focus back to it after a follow-up sheet. */
+  triggerRef?: Ref<HTMLButtonElement>;
 }
 
 /**
@@ -23,11 +25,12 @@ interface ActionMenuProps {
  * live here (Instagram / TikTok pattern): one tap away, out of the way of the
  * primary action, and never a bare text line under a CTA.
  */
-export function ActionMenu({ label, items, className = "" }: ActionMenuProps) {
+export function ActionMenu({ label, items, className = "", triggerRef }: ActionMenuProps) {
   const [open, setOpen] = useState(false);
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(true)}
         aria-label={label}

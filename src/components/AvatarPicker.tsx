@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Capacitor } from "@capacitor/core";
 import {
   AvatarBorderlineError,
@@ -185,7 +186,10 @@ export function AvatarPicker({ uid, onUploaded, onClose }: Props) {
     onClose();
   }, [onClose, pending, releasePending]);
 
-  return (
+  // Portalled: the profile opens this from a card whose forwards
+  // animate-fade-in leaves a transform on it, which would make that card the
+  // containing block for `fixed` and squeeze the picker into it.
+  return createPortal(
     <div role="dialog" aria-modal="true" aria-label="Choose profile picture" className="fixed inset-0 z-50">
       <button
         type="button"
@@ -259,6 +263,7 @@ export function AvatarPicker({ uid, onUploaded, onClose }: Props) {
           />
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

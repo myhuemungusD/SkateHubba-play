@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { isClipEditorEnabled } from "../../lib/featureFlags";
 import { USER_CLIP_MAX_DURATION_SECONDS } from "../../constants/video";
 import { isNativePlatform } from "../../services/nativeVideo";
@@ -137,18 +138,23 @@ export function UserClipUploadModal({
           />
         )}
 
-        {editing && c.blob && (
-          <Suspense fallback={null}>
-            <ClipEditor
-              blob={c.blob}
-              onCancel={() => setEditing(false)}
-              onDone={(edited) => {
-                setEditing(false);
-                c.handleRecorded(edited);
-              }}
-            />
-          </Suspense>
-        )}
+        {/* To <body>: this blurred, animated panel is the containing block for
+            `fixed`, so the full-screen editor would be clipped to it. */}
+        {editing &&
+          c.blob &&
+          createPortal(
+            <Suspense fallback={null}>
+              <ClipEditor
+                blob={c.blob}
+                onCancel={() => setEditing(false)}
+                onDone={(edited) => {
+                  setEditing(false);
+                  c.handleRecorded(edited);
+                }}
+              />
+            </Suspense>,
+            document.body,
+          )}
 
         {/* Kept mounted across steps so the ref is always live. `hidden`
             rather than conditional rendering: a remount would clear the
