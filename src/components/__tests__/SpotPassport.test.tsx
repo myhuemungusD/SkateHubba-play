@@ -47,20 +47,20 @@ describe("SpotPassport", () => {
     render(<SpotPassport uid="u1" isOwner />);
     await waitFor(() => expect(screen.getByText(/first stamp/)).toBeInTheDocument());
     expect(screen.getByText(/0 spots/)).toBeInTheDocument();
-    const box = screen.getByRole("checkbox");
+    const box = screen.getByRole("switch", { name: "Public" });
     await userEvent.click(box);
     expect(svc.setPublic).toHaveBeenCalledWith("u1", true);
-    expect(box).toBeChecked();
+    expect(box).toHaveAttribute("aria-checked", "true");
     svc.setPublic.mockRejectedValueOnce(new Error("no"));
     await userEvent.click(box);
-    await waitFor(() => expect(box).toBeChecked());
+    await waitFor(() => expect(box).toHaveAttribute("aria-checked", "true"));
   });
 
   it("shows one public stamp to a visitor without a toggle", async () => {
     svc.list.mockResolvedValueOnce([stamp({})]);
     render(<SpotPassport uid="u2" isOwner={false} />);
     await waitFor(() => expect(screen.getByText(/1 spot$/)).toBeInTheDocument());
-    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByRole("switch")).toBeNull();
     expect(svc.getPublic).not.toHaveBeenCalled();
   });
 

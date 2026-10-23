@@ -43,7 +43,7 @@ function ChallengeRow({ c, player, clips }: { c: ProChallenge; player: Player; c
             aria-label={`Your clip for ${c.trickName}`}
             value={clipId}
             onChange={(e) => setClipId(e.target.value)}
-            className="min-h-[36px] flex-1 rounded-lg bg-black/60 px-2 font-body text-xs text-white"
+            className="min-h-11 flex-1 rounded-lg bg-black/60 px-2 font-body text-xs text-white"
           >
             <option value="">Pick your clip</option>
             {clips.map((cl) => (
@@ -56,7 +56,7 @@ function ChallengeRow({ c, player, clips }: { c: ProChallenge; player: Player; c
             type="button"
             disabled={!clipId}
             onClick={() => void enter()}
-            className="min-h-[36px] rounded-lg bg-brand-orange px-3 font-display text-sm text-black disabled:opacity-50"
+            className="min-h-11 rounded-lg bg-brand-orange px-3 font-display text-sm text-black disabled:opacity-50"
           >
             ENTER
           </button>
@@ -98,7 +98,7 @@ export function ProPicks({ player }: { player: Player }) {
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="pointer-events-auto mt-2 flex min-h-[36px] items-center gap-1.5 rounded-full border border-amber-300/40 bg-black/70 px-3 font-display text-sm tracking-[0.15em] text-amber-100"
+        className="pointer-events-auto mt-2 flex min-h-11 items-center gap-1.5 rounded-full border border-amber-300/40 bg-black/70 px-3 font-display text-sm tracking-[0.15em] text-amber-100"
       >
         <Sparkles size={12} aria-hidden="true" /> PRO PICKS
       </button>

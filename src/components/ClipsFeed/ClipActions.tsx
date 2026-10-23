@@ -24,7 +24,9 @@ export interface ClipActionsProps {
  *
  * Both thumbs are one persisted vote: tapping the thumb you already gave
  * withdraws it (`aria-pressed`), tapping the other flips it. Neither hides
- * the clip. On your own clip the thumbs stay visible and disabled.
+ * the clip. On your own clip the thumbs stay visible and disabled. Only the
+ * thumbs-up count is public; the thumbs-down count is kept private, as on
+ * TikTok and Shorts, so dislikes can't pile on (audit #24).
  */
 export const ClipActions = memo(function ClipActions({
   clip,
@@ -67,15 +69,14 @@ export const ClipActions = memo(function ClipActions({
           aria-pressed={downPressed}
           aria-label={
             isOwnClip
-              ? `Thumbs down · ${vote.downvoteCount} — you can't vote on your own clip`
+              ? "Thumbs down — you can't vote on your own clip"
               : downPressed
-                ? `Remove your thumbs down on @${clip.playerUsername}'s clip · ${vote.downvoteCount}`
-                : `Thumbs down clip by @${clip.playerUsername} · current count ${vote.downvoteCount}`
+                ? `Remove your thumbs down on @${clip.playerUsername}'s clip`
+                : `Thumbs down clip by @${clip.playerUsername}`
           }
           className={`${RAIL_BTN} ${downPressed ? "border-brand-red/60 bg-brand-red/30 text-brand-red" : ""}`}
         >
           <ThumbsDownIcon size={18} />
-          <span className="font-display text-sm leading-none tabular-nums">{vote.downvoteCount}</span>
         </button>
       </div>
 
@@ -89,14 +90,20 @@ export const ClipActions = memo(function ClipActions({
       </button>
 
       {!isOwnClip && (
-        <button
-          type="button"
-          onClick={() => onChallenge(clip.playerUsername)}
-          aria-label={`Challenge @${clip.playerUsername}`}
-          className={RAIL_BTN}
-        >
-          <SkateboardIcon size={18} />
-        </button>
+        <div className="flex flex-col items-center gap-1">
+          <button
+            type="button"
+            onClick={() => onChallenge(clip.playerUsername)}
+            aria-label={`Challenge @${clip.playerUsername}`}
+            className={RAIL_BTN}
+          >
+            <SkateboardIcon size={18} />
+          </button>
+          {/* The skateboard alone reads as "skate"; the caption says what it does (audit #27). */}
+          <span aria-hidden="true" className="font-body text-caption font-semibold text-white drop-shadow">
+            Challenge
+          </span>
+        </div>
       )}
 
       <button

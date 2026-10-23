@@ -73,7 +73,7 @@ export function DisputeSlides({
   if (state.error) {
     return (
       <div data-feed-slide className={`${FEED_SLIDE} flex items-center justify-center px-6`}>
-        <div className="glass-card w-full max-w-sm rounded-2xl border border-brand-red/30 p-4">
+        <div className="w-full max-w-sm rounded-2xl border border-brand-red/30 bg-surface p-4">
           <p className="mb-3 font-body text-sm text-white/80">{state.error}</p>
           <Btn onClick={state.reload} variant="secondary">
             Try again

@@ -68,6 +68,15 @@ describe("ChallengeScreen", () => {
     };
   }
 
+  it("focuses the handle field on first open, but not when tabbing back from Leaderboard", async () => {
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
+    expect(screen.getByPlaceholderText("their_handle")).toHaveFocus();
+
+    await userEvent.click(screen.getByRole("tab", { name: "Leaderboard" }));
+    await userEvent.click(screen.getByRole("tab", { name: "Challenge" }));
+    expect(screen.getByPlaceholderText("their_handle")).not.toHaveFocus();
+  });
+
   it("rejects short username on submit", async () => {
     renderWithRouter(<ChallengeScreen {...defaultProps} />);
 
@@ -638,5 +647,27 @@ describe("ChallengeScreen", () => {
       await userEvent.click(screen.getByText(/Send Challenge/));
       await waitFor(() => expect(onSend).toHaveBeenCalledWith("u2", "rival", sendOptions({ turnLengthHours: 168 })));
     });
+  });
+});
+
+describe("ChallengeScreen leaderboard tab", () => {
+  const props = { profile, onSend: vi.fn(), onBack: vi.fn() };
+
+  it("switches between the challenge form and the leaderboard", async () => {
+    renderWithRouter(<ChallengeScreen {...props} />);
+    const tabs = screen.getByRole("tablist", { name: "Challenge or leaderboard" });
+    expect(tabs).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Challenge" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("heading", { name: "Leaderboard" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("tab", { name: "Leaderboard" }));
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", "challenge-view-tab-leaderboard");
+    expect(await screen.findByText("No ranked skaters yet")).toBeInTheDocument();
+  });
+
+  it("opens straight on the leaderboard from ?view=leaderboard", async () => {
+    renderWithRouter(<ChallengeScreen {...props} />, { initialEntries: ["/challenge?view=leaderboard"] });
+    expect(screen.getByRole("tab", { name: "Leaderboard" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByText("No ranked skaters yet")).toBeInTheDocument();
   });
 });

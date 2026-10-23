@@ -107,13 +107,31 @@ describe("SpotlightVideo playback failure", () => {
     load.mockRestore();
   });
 
-  it("offers retry without a next-trick control — moving on is a swipe", () => {
+  it("offers retry, and no skip when the clip is not inside the feed", () => {
     const { container } = render(<SpotlightVideo src="clip.webm" />);
     const video = container.querySelector("video") as HTMLVideoElement;
     fireEvent.error(video);
     expect(screen.getByRole("button", { name: /retry clip/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /next trick/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /skip to next/i })).not.toBeInTheDocument();
     expect(video.loop).toBe(true);
+  });
+
+  it("skips to the next feed page when the clip fails", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <div>
+        <article data-feed-slide>
+          <SpotlightVideo src="clip.webm" />
+        </article>
+        <article data-feed-slide data-testid="next" />
+      </div>,
+    );
+    const next = screen.getByTestId("next");
+    const scrollIntoView = vi.fn();
+    next.scrollIntoView = scrollIntoView;
+    fireEvent.error(container.querySelector("video") as HTMLVideoElement);
+    await user.click(screen.getByRole("button", { name: "Skip to next" }));
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "start", behavior: "smooth" });
   });
 
   it("toggles mute from its own control and pauses when the video is tapped", async () => {

@@ -289,6 +289,8 @@ describe("UserClipUploadModal", () => {
     await user.click(screen.getByRole("button", { name: /film it/i }));
     await user.click(screen.getByText("__take__"));
     await user.click(await screen.findByRole("button", { name: /edit clip/i }));
+    // Full-screen, so it lives on <body>, not inside this blurred, animated panel.
+    expect((await screen.findByTestId("clip-editor")).parentElement).toBe(document.body);
     await user.click(await screen.findByText("__editor_cancel__"));
     expect(screen.queryByTestId("clip-editor")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /edit clip/i }));
@@ -318,5 +320,52 @@ describe("UserClipUploadModal", () => {
     await user.click(screen.getByText("__take__"));
     await screen.findByLabelText("TRICK");
     expect(screen.queryByTestId("clip-editor")).not.toBeInTheDocument();
+  });
+});
+
+describe("UserClipUploadModal — dismissal and edge inputs", () => {
+  it("closes on a scrim tap or Escape while idle, but not while a file is being checked", async () => {
+    const { onClose } = renderModal();
+    const scrim = screen.getByRole("dialog");
+    fireEvent.keyDown(scrim, { key: "Enter" });
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(scrim);
+    fireEvent.keyDown(scrim, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(2);
+
+    mockProbe.mockReturnValue(new Promise(() => {}));
+    fireEvent.change(screen.getByTestId("user-clip-file-input"), { target: { files: [goodFile()] } });
+    expect(await screen.findByText("Checking...")).toBeInTheDocument();
+    fireEvent.click(scrim);
+    fireEvent.keyDown(scrim, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("opens the hidden picker from Upload a File, and shrugs off a change with no file", () => {
+    renderModal();
+    const input = screen.getByTestId("user-clip-file-input") as HTMLInputElement;
+    const pick = vi.spyOn(input, "click").mockImplementation(() => {});
+    fireEvent.click(screen.getByRole("button", { name: /upload a file/i }));
+    expect(pick).toHaveBeenCalledTimes(1);
+    fireEvent.change(input, { target: { files: [] } });
+    expect(mockProbe).not.toHaveBeenCalled();
+  });
+
+  it("shows a load error for a posted clip it couldn't fetch, and its dismiss closes the sheet", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    const onClose = vi.fn();
+    render(
+      <UserClipUploadModal
+        uid="me"
+        username="viewer"
+        onClose={onClose}
+        onPosted={vi.fn()}
+        initialClip={{ videoUrl: "https://cdn/x.mp4", trickName: "kickflip" }}
+      />,
+    );
+    expect(await screen.findByText(/couldn't load that clip/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /dismiss error/i }));
+    expect(onClose).toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });

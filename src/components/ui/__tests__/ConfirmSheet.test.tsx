@@ -21,6 +21,17 @@ function renderSheet(busy?: boolean) {
 }
 
 describe("ConfirmSheet", () => {
+  it("renders into <body>, not inside its caller (a .glass header would trap position:fixed)", () => {
+    const { container } = render(
+      <header className="glass">
+        <ConfirmSheet title="t" body="b" confirmLabel="Block" onConfirm={vi.fn()} onCancel={vi.fn()} />
+      </header>,
+    );
+    const sheet = screen.getByRole("alertdialog");
+    expect(container.contains(sheet)).toBe(false);
+    expect(sheet.parentElement).toBe(document.body);
+  });
+
   it("fires confirm and cancel, with focus rings on both buttons", async () => {
     const { onConfirm, onCancel } = renderSheet();
     const confirm = screen.getByRole("button", { name: "Block" });

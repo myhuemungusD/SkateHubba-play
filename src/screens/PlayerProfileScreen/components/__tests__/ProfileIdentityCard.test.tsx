@@ -90,9 +90,11 @@ describe("ProfileIdentityCard", () => {
     expect(screen.getByText("140 / 216 XP")).toBeInTheDocument();
   });
 
-  it("renders the first-letter initial when no profileImageUrl is provided", () => {
+  it("shows Mike White's default avatar art, credited, when there is no photo", () => {
     render(<ProfileIdentityCard username="rider" isVerifiedPro={false} stance="regular" />);
-    expect(screen.getByText("R")).toBeInTheDocument();
+    expect(document.querySelector('img[src="/fallback.svg"]')).toBeInTheDocument();
+    expect(screen.getByText("Avatar art · Designed by Mike White")).toBeInTheDocument();
+    expect(screen.queryByText("R")).not.toBeInTheDocument();
   });
 
   it("renders the custom avatar img when profileImageUrl is set", () => {
@@ -103,13 +105,6 @@ describe("ProfileIdentityCard", () => {
     expect(img).toHaveAttribute("sizes", "80px");
     expect(img).toHaveAttribute("srcset", "https://example.com/me.webp 400w");
     expect(img).toHaveAttribute("decoding", "async");
-  });
-
-  it("falls back to the SVG asset when username is empty", () => {
-    render(<ProfileIdentityCard username="" isVerifiedPro={false} stance="regular" />);
-    // The fallback img has src that ends with default-skater.svg via getAvatarFallbackUrl.
-    const imgs = document.querySelectorAll("img");
-    expect(imgs.length).toBeGreaterThan(0);
   });
 
   it("does NOT render the pencil-edit button on opponent profile", () => {
@@ -162,6 +157,6 @@ describe("ProfileIdentityCard", () => {
 
     await userEvent.click(screen.getByText("close"));
     expect(screen.queryByTestId("avatar-picker")).not.toBeInTheDocument();
-    expect(screen.getByText("R")).toBeInTheDocument();
+    expect(document.querySelector('img[src="/fallback.svg"]')).toBeInTheDocument();
   });
 });

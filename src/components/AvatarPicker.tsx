@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Capacitor } from "@capacitor/core";
 import {
   AvatarBorderlineError,
@@ -106,38 +107,37 @@ export function AvatarPicker({ uid, onUploaded, onClose }: Props) {
   );
 
   const doUpload = useCallback(
-    async (acceptBorderlineNsfw: boolean) => {
-      if (!pending) return;
+    async (staged: Pending, acceptBorderlineNsfw: boolean) => {
       setBusy(true);
       setErrorMsg(null);
       const start = Date.now();
-      analytics.avatarUploadStarted(pending.source, pending.originalSizeBytes);
+      analytics.avatarUploadStarted(staged.source, staged.originalSizeBytes);
       try {
-        const url = await uploadAvatar(uid, pending.blob, { acceptBorderlineNsfw });
+        const url = await uploadAvatar(uid, staged.blob, { acceptBorderlineNsfw });
         await setProfileImageUrl(uid, url);
-        analytics.avatarUploadCompleted(uid, pending.blob.size, Date.now() - start);
-        releasePending(pending);
+        analytics.avatarUploadCompleted(uid, staged.blob.size, Date.now() - start);
+        releasePending(staged);
         onUploaded(url);
       } catch (err) {
         if (err instanceof AvatarBorderlineError) {
           setBorderline({ score: err.score });
-          analytics.avatarUploadFailed("borderline", pending.source, err.score);
+          analytics.avatarUploadFailed("borderline", staged.source, err.score);
         } else if (err instanceof AvatarRejectedError) {
           setErrorMsg("Image not allowed.");
-          analytics.avatarUploadFailed("nsfw", pending.source, err.score);
+          analytics.avatarUploadFailed("nsfw", staged.source, err.score);
         } else if (err instanceof AvatarTooLargeError) {
           setErrorMsg("Image too large after compression. Try a different photo.");
-          analytics.avatarUploadFailed("too_large", pending.source);
+          analytics.avatarUploadFailed("too_large", staged.source);
         } else if (err instanceof AvatarTooSmallError) {
           setErrorMsg("Image too small. Try a different photo.");
-          analytics.avatarUploadFailed("too_small", pending.source);
+          analytics.avatarUploadFailed("too_small", staged.source);
         } else {
           logger.warn("avatar_upload_failed", {
             uid,
-            source: pending.source,
+            source: staged.source,
             error: err instanceof Error ? err.message : String(err),
           });
-          analytics.avatarUploadFailed("transport", pending.source);
+          analytics.avatarUploadFailed("transport", staged.source);
           setErrorMsg("Upload failed. Check your connection and try again.");
           // uploadAvatar deletes the previous object before writing the new
           // one. A transport failure here leaves profileImageUrl pointing at a
@@ -156,7 +156,7 @@ export function AvatarPicker({ uid, onUploaded, onClose }: Props) {
         setBusy(false);
       }
     },
-    [pending, uid, onUploaded, releasePending],
+    [uid, onUploaded, releasePending],
   );
 
   const handleUrlSubmit = useCallback(async () => {
@@ -185,7 +185,10 @@ export function AvatarPicker({ uid, onUploaded, onClose }: Props) {
     onClose();
   }, [onClose, pending, releasePending]);
 
-  return (
+  // Portalled: the profile opens this from a card whose forwards
+  // animate-fade-in leaves a transform on it, which would make that card the
+  // containing block for `fixed` and squeeze the picker into it.
+  return createPortal(
     <div role="dialog" aria-modal="true" aria-label="Choose profile picture" className="fixed inset-0 z-50">
       <button
         type="button"
@@ -255,10 +258,11 @@ export function AvatarPicker({ uid, onUploaded, onClose }: Props) {
             errorMsg={errorMsg}
             busy={busy}
             onBack={() => setScreen("menu")}
-            onUpload={(acceptBorderline) => void doUpload(acceptBorderline)}
+            onUpload={(acceptBorderline) => void doUpload(pending, acceptBorderline)}
           />
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

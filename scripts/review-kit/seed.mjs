@@ -19,7 +19,14 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
-import { DEMO_VIDEO_PATH, buildSeedDocs, reviewEnv, storageDownloadUrl } from "./plan.mjs";
+import {
+  DEMO_BANNER_SOURCE,
+  DEMO_VIDEO_PATH,
+  buildSeedDocs,
+  demoBannerPath,
+  reviewEnv,
+  storageDownloadUrl,
+} from "./plan.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -50,9 +57,11 @@ export async function main(argv = process.argv.slice(2), env = process.env, admi
     console.log(`[review:seed] ${dry ? "would create" : "created"} reviewer account`);
   }
   const videoUrl = dry ? undefined : await uploadDemoVideo(admin);
+  const bannerUrl = dry ? undefined : await uploadDemoBanner(admin, uid);
   const docs = buildSeedDocs({
     uid,
     videoUrl,
+    bannerUrl,
     username: cfg.username,
     appUrl: cfg.appUrl,
     tutorialVersion: tutorialVersion(),
@@ -74,6 +83,16 @@ export async function main(argv = process.argv.slice(2), env = process.env, admi
   return 0;
 }
 
+/** Uploads one repo file to Storage with a download token; returns its URL. */
+async function uploadWithToken(bucket, path, source, contentType, root) {
+  const token = randomUUID();
+  await bucket.file(path).save(readFileSync(resolve(root, source)), {
+    contentType,
+    metadata: { metadata: { firebaseStorageDownloadTokens: token } },
+  });
+  return storageDownloadUrl(bucket.name, path, token);
+}
+
 /**
  * Uploads the demo clip to Storage and returns its download URL, or undefined
  * (falls back to the hosted copy) when no bucket is configured.
@@ -83,12 +102,13 @@ export async function uploadDemoVideo(admin, root = ROOT) {
     console.warn('[review:seed] no REVIEW_STORAGE_BUCKET; game screens will show "No video recorded"');
     return undefined;
   }
-  const token = randomUUID();
-  await admin.bucket.file(DEMO_VIDEO_PATH).save(readFileSync(resolve(root, "public/sh-video-edit.mp4")), {
-    contentType: "video/mp4",
-    metadata: { metadata: { firebaseStorageDownloadTokens: token } },
-  });
-  return storageDownloadUrl(admin.bucket.name, DEMO_VIDEO_PATH, token);
+  return uploadWithToken(admin.bucket, DEMO_VIDEO_PATH, "public/sh-video-edit.mp4", "video/mp4", root);
+}
+
+/** Uploads the reviewer's cover picture, or undefined (no cover) without a bucket. */
+export async function uploadDemoBanner(admin, uid, root = ROOT) {
+  if (!admin.bucket) return undefined;
+  return uploadWithToken(admin.bucket, demoBannerPath(uid), DEMO_BANNER_SOURCE, "image/webp", root);
 }
 
 /**

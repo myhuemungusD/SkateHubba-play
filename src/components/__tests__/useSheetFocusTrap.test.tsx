@@ -51,4 +51,55 @@ describe("useSheetFocusTrap", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  describe("returns focus to the opener on close", () => {
+    function Host({ open, onClose = vi.fn() }: { open: boolean; onClose?: () => void }) {
+      return (
+        <>
+          <button type="button">opener</button>
+          <button type="button">elsewhere</button>
+          {open && <Sheet onClose={onClose} />}
+        </>
+      );
+    }
+
+    it("refocuses the button that opened the sheet", () => {
+      const { getByText, rerender } = render(<Host open={false} />);
+      getByText("opener").focus();
+      rerender(<Host open />);
+      expect(document.activeElement).toBe(getByText("first"));
+      rerender(<Host open={false} />);
+      expect(document.activeElement).toBe(getByText("opener"));
+    });
+
+    it("leaves focus alone when something else already took it", () => {
+      const { getByText, rerender } = render(<Host open={false} />);
+      getByText("opener").focus();
+      rerender(<Host open />);
+      getByText("elsewhere").focus();
+      rerender(<Host open={false} />);
+      expect(document.activeElement).toBe(getByText("elsewhere"));
+    });
+
+    it("does nothing when nothing was focused, or the opener is gone", () => {
+      const first = render(<Host open />);
+      first.rerender(<Host open={false} />);
+      expect(document.activeElement).toBe(document.body);
+      first.unmount();
+
+      function Gone({ open, withOpener }: { open: boolean; withOpener: boolean }) {
+        return (
+          <>
+            {withOpener && <button type="button">gone</button>}
+            {open && <Sheet onClose={vi.fn()} />}
+          </>
+        );
+      }
+      const second = render(<Gone open={false} withOpener />);
+      second.getByText("gone").focus();
+      second.rerender(<Gone open withOpener />);
+      second.rerender(<Gone open={false} withOpener={false} />);
+      expect(document.activeElement).toBe(document.body);
+    });
+  });
 });

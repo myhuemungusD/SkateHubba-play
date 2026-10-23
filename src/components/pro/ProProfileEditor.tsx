@@ -21,7 +21,7 @@ interface Props {
 const LABEL = "mb-1 block font-display text-sm tracking-[0.2em] text-brand-orange";
 const INPUT =
   "mb-3 min-h-[44px] w-full rounded-xl border border-white/[0.08] bg-surface-alt px-3 font-body text-sm text-white";
-const CHIP = "min-h-[36px] rounded-lg border px-2.5 font-body text-xs transition-colors";
+const CHIP = "min-h-11 rounded-lg border px-2.5 font-body text-xs transition-colors";
 
 /** A verified pro writes their own tagline, hometown, sponsors and bio, and picks up to three signature tricks. */
 export function ProProfileEditor({ uid, initial, onSaved, onCancel }: Props) {

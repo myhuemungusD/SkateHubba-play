@@ -7,6 +7,7 @@ import { LevelChip } from "../../../components/LevelChip";
 import { xpProgress } from "../../../constants/xp";
 import { isXpEnabled } from "../../../lib/featureFlags";
 import { getAvatarFallbackUrl } from "../../../services/avatars";
+import { MIKE_WHITE_CREDIT } from "../../../lib/closet/mikeWhiteCollection";
 
 const BAR_WIDTH = [
   "w-0",
@@ -40,8 +41,9 @@ const BAR_WIDTH = [
  *     Its frame is a neutral hairline, not an orange ring: the username is the
  *     strongest element after the image, and an orange ring competed with it.
  *   - Pencil-edit overlay (PR-B) preserved; only renders on own profile.
- *   - Fallback chain (PR-B) preserved: `profileImageUrl` → first-letter
- *     circle → `getAvatarFallbackUrl()` SVG.
+ *   - Fallback: `profileImageUrl`, else Mike White's default avatar art
+ *     (`getAvatarFallbackUrl()`) with his "Designed by Mike White" credit
+ *     under the stance line. It replaced a first-letter circle.
  *
  * The pencil button uses the same focus-visible / contrast tokens as the
  * pre-PR-C version so existing accessibility coverage (audit D5) still holds.
@@ -83,14 +85,7 @@ export function ProfileIdentityCard({
   const [optimisticUrl, setOptimisticUrl] = useState<string | null>(null);
   const effectiveUrl = optimisticUrl ?? profileImageUrl ?? null;
 
-  // Fallback chain: profileImageUrl → first-letter circle → SVG fallback.
-  // We prefer the initial-circle as the second tier because it's universal
-  // and sets up brand recognition; the SVG only fires when the circle
-  // can't render (e.g. empty username, which the rules already prevent).
-  const initial = username[0]?.toUpperCase() ?? "";
   const showCustom = typeof effectiveUrl === "string" && effectiveUrl.length > 0;
-  const showInitial = !showCustom && initial !== "";
-  const showFallbackSvg = !showCustom && !showInitial;
 
   const showXp = isXpEnabled();
   const progress = xpProgress(xp);
@@ -101,16 +96,13 @@ export function ProfileIdentityCard({
       <div className="flex items-center gap-4">
         <div className="relative">
           <div className="w-20 h-20 rounded-full bg-surface-alt border border-white/[0.06] flex items-center justify-center shrink-0 shadow-card overflow-hidden">
-            {showCustom && (
-              // Hero avatar is above-the-fold — `loading="lazy"` (audit
-              // C-ISSUE-1) would defer the request unnecessarily and
-              // delay paint on the most prominent element. 80px is the w-20 slot.
+            {/* Hero avatar is above-the-fold — `loading="lazy"` (audit
+                C-ISSUE-1) would defer the request unnecessarily and delay
+                paint on the most prominent element. 80px is the w-20 slot. */}
+            {showCustom ? (
               <AvatarImage src={effectiveUrl as string} size={80} className="w-full h-full object-cover" />
-            )}
-            {showInitial && <span className="font-display text-3xl text-white/80 leading-none">{initial}</span>}
-            {showFallbackSvg && (
-              // Hero fallback also above-the-fold (audit C-ISSUE-1).
-              <AvatarImage src={getAvatarFallbackUrl()} size={80} className="w-full h-full object-cover" />
+            ) : (
+              <AvatarImage src={getAvatarFallbackUrl()} size={80} className="w-full h-full object-cover scale-125" />
             )}
           </div>
           {uid && <PresenceDot uid={uid} className="absolute bottom-1 left-1 w-3.5 h-3.5" />}
@@ -152,6 +144,7 @@ export function ProfileIdentityCard({
             {showXp && <LevelChip level={progress.level} />}
           </div>
           <p className="font-body text-xs text-muted mt-1.5 capitalize">{stance}</p>
+          {!showCustom && <p className="font-body text-label text-subtle mt-1">Avatar art · {MIKE_WHITE_CREDIT}</p>}
         </div>
         {pickerOpen && uid && (
           <AvatarPicker

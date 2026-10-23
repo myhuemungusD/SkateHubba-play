@@ -107,7 +107,7 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
 
   it("emits profile_stat_tile_tapped with the tapped tile name and viewed uid", async () => {
     render(<PlayerProfileScreen {...props} />);
-    await userEvent.click(screen.getByRole("button", { name: /lifetime wins/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^wins/i }));
     expect(analyticsMock.profileStatTileTapped).toHaveBeenCalledWith("wins", "me");
   });
 
@@ -138,7 +138,7 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
       expect(trackEventMock).toHaveBeenCalledWith("profile_share_my_profile_tapped", { uid: hashUid("me") });
     });
 
-    it("copies the link and surfaces LINK COPIED when Web Share is unavailable", async () => {
+    it("copies the link and surfaces COPIED when Web Share is unavailable", async () => {
       Object.defineProperty(navigator, "share", { value: undefined, writable: true, configurable: true });
       const writeText = vi.fn().mockResolvedValue(undefined);
       Object.assign(navigator, { clipboard: { writeText } });
@@ -147,7 +147,7 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
       await userEvent.click(screen.getByTestId("share-my-profile-button"));
 
       await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/player/me`));
-      expect(await screen.findByText("LINK COPIED")).toBeInTheDocument();
+      expect(await screen.findByText("COPIED")).toBeInTheDocument();
     });
 
     it("does not render the share-my-profile button on another player's profile", () => {
@@ -249,27 +249,28 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
     // The viewer fixture has no wins/losses at all. Showing "0%" here would
     // assert something untrue about a player who has simply never played.
     render(<PlayerProfileScreen {...props} />);
-    expect(screen.getByLabelText(/win rate: not enough games yet/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^win % not enough games yet/i })).toBeInTheDocument();
   });
 
   it("shows a real win rate once the profile clears the floor", () => {
     // Opponent fixture is 10-3 → 13 games, comfortably rated. 10/13 ≈ 77%.
     withOpponentFetch();
     render(<PlayerProfileScreen {...props} viewedUid="u2" isOwnProfile={false} />);
-    expect(screen.getByLabelText("Win rate: 77 percent")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Win % 77 percent" })).toBeInTheDocument();
   });
 
-  // ── Win-streak banner ───────────────────────────────
+  // ── Win streak (headline Streak tile) ───────────────
 
-  it("shows the win-streak banner once a run reaches two games", () => {
+  it("calls out a win streak in the headline stats once a run reaches two games", () => {
     render(<PlayerProfileScreen {...props} currentUserProfile={{ ...viewerProfile, currentWinStreak: 3 }} />);
-    expect(screen.getByRole("status", { name: "3 game win streak" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Streak 3 game win streak" })).toBeInTheDocument();
   });
 
-  it("hides the win-streak banner for a single win", () => {
-    // A "1 win streak" is just a win — the banner marks a run, not a result.
+  it("reads a single win as a plain number, not a streak", () => {
+    // A "1 win streak" is just a win — the flame marks a run, not a result.
     render(<PlayerProfileScreen {...props} currentUserProfile={{ ...viewerProfile, currentWinStreak: 1 }} />);
-    expect(screen.queryByRole("status", { name: /win streak/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Streak 1" })).toBeInTheDocument();
+    expect(screen.queryByText(/win streak/i)).not.toBeInTheDocument();
   });
 
   // ── Avatar rendering ────────────────────────────────
@@ -281,9 +282,11 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
     expect(document.querySelector(`img[src="${url}"]`)).toBeInTheDocument();
   });
 
-  it("renders the username initial when the viewer has no custom avatar", () => {
+  it("renders Mike White's credited default avatar when the viewer has no custom avatar", () => {
     render(<PlayerProfileScreen {...props} currentUserProfile={{ ...viewerProfile, profileImageUrl: null }} />);
-    // Fallback chain: no profileImageUrl → first-letter circle ("V" for viewer).
-    expect(screen.getByText("V")).toBeInTheDocument();
+    expect(
+      document.querySelector('img[src="/assets/closet/mike-white/mike-white-creamsicle.webp"]'),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Avatar art · Designed by Mike White")).toBeInTheDocument();
   });
 });

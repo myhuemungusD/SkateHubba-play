@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { PlayerProfileScreen } from "../PlayerProfileScreen";
 import { buildBaseProps, fetchedState } from "./playerProfile.test-helpers";
 // Cross-directory on purpose: the locker fixture is owned by the component
@@ -142,12 +143,13 @@ describe("PlayerProfileScreen — Economy Phase A fetch failures", () => {
     mockFetchLockerItems.mockRejectedValue(new Error("also nope"));
 
     render(<PlayerProfileScreen {...ownProfileProps} />);
+    await userEvent.click(screen.getByRole("button", { name: "All stats" }));
 
     // The record and stats are what the screen exists for — they paint even
     // though both cosmetics reads failed, and no error state is shown.
     expect(screen.getByText("@viewer")).toBeInTheDocument();
-    expect(screen.getByText("Lifetime Wins")).toBeInTheDocument();
-    expect(screen.getByLabelText("Best win streak: 0")).toBeInTheDocument();
+    expect(screen.getByText("Wins")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Best Streak 0" })).toBeInTheDocument();
     expect(screen.queryByText("Player not found")).not.toBeInTheDocument();
 
     await waitFor(() => expect(loggerMock.warn).toHaveBeenCalledTimes(2));
