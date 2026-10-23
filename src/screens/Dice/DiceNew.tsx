@@ -7,6 +7,7 @@ import { ScreenHeader } from "../../components/ScreenHeader";
 import { Btn } from "../../components/ui/Btn";
 import { Die } from "../../components/dice/Die";
 import { useAuthContext } from "../../context/AuthContext";
+import { useNavigationContext } from "../../context/NavigationContext";
 import {
   DICE_MODES,
   DICE_TARGETS,
@@ -45,6 +46,7 @@ export function DiceNew() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuthContext();
+  const { navigateToPlayer } = useNavigationContext();
   const preset = presetFrom(location.state);
   const [mode, setMode] = useState<DiceMode>("clo");
   const [target, setTarget] = useState<number>(DICE_TARGETS.clo[0]);
@@ -185,6 +187,7 @@ export function DiceNew() {
             collapsed={busy}
             waitSeconds={retryAt !== null ? Math.max(1, Math.ceil(waitMs / 1000)) : null}
             onSelect={(username) => void send({ username })}
+            onViewPlayer={navigateToPlayer}
           />
         )}
       </section>
