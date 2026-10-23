@@ -13,6 +13,7 @@ vi.mock("../../../services/haptics", () => ({ playHaptic: vi.fn() }));
 
 import { TipsHost, TIP_SETTLE_MS } from "../TipsHost";
 import { enterTipZone, resetTipSignals, setCameraLive } from "../../../lib/tipSignals";
+import { NotFound } from "../../../screens/NotFound";
 
 const markSeen = vi.fn();
 function setTips(over: Partial<TipsContextValue> = {}) {
@@ -74,6 +75,9 @@ describe("TipsHost", () => {
   });
 
   it("closes with the x and with Escape", () => {
+    const el = document.createElement("h1");
+    el.setAttribute("data-tutorial", "pro-tools");
+    document.body.appendChild(el);
     renderAt("/pro");
     settle();
     fireEvent.click(screen.getByRole("button", { name: "close tips" }));
@@ -81,6 +85,20 @@ describe("TipsHost", () => {
     fireEvent.keyDown(window, { key: "Enter" });
     fireEvent.keyDown(window, { key: "Escape" });
     expect(markSeen).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows no Pro tools tip over the not-found page a non-pro gets on /pro", () => {
+    render(
+      <MemoryRouter initialEntries={["/pro"]}>
+        <NotFound onBack={() => {}} />
+        <TipsHost />
+      </MemoryRouter>,
+    );
+    settle();
+    expect(screen.getByText("BAIL!")).toBeInTheDocument();
+    expect(screen.queryByTestId("tips-host")).toBeNull();
+    // Not marked seen, so the tip still shows if this account later turns pro.
+    expect(markSeen).not.toHaveBeenCalled();
   });
 
   it("drops anchor-only tips when the hook is missing", () => {

@@ -151,9 +151,9 @@ export function dedupe(seeds, existing) {
 
 // Overpass etiquette asks for a contact in the User-Agent. Set
 // OVERPASS_CONTACT (an email or URL) when running the seed; the public repo
-// only ships the project URL.
+// only ships the published support address.
 function overpassUserAgent() {
-  const contact = process.env.OVERPASS_CONTACT?.trim() || "+https://skatehubba.com";
+  const contact = process.env.OVERPASS_CONTACT?.trim() || "support@skatehubba.com";
   return `SkateHubba-seed/1.0 (${contact})`;
 }
 
