@@ -31,6 +31,15 @@ export const REPORT_REASON_LABELS: Record<ReportReason, string> = {
   other: "Other",
 };
 
+/** Reasons that make sense for one written comment (no video or gameplay reasons). */
+export const COMMENT_REPORT_REASONS: readonly ReportReason[] = [
+  "inappropriate",
+  "abusive_behavior",
+  "spam",
+  "illegal_content",
+  "other",
+];
+
 export interface SubmitReportParams {
   reporterUid: string;
   reportedUid: string;
@@ -58,9 +67,20 @@ export interface SubmitReportParams {
    * up until a person takes them down.
    */
   disputeId?: string;
+  /** Spot a reported spot comment belongs to (no game, no clip). */
+  spotId?: string;
+  /**
+   * A single comment under `clipId` or `spotId` (clips/{clipId}/comments/{id}). The text
+   * is snapshotted so the moderator still sees what was said if the author
+   * deletes it before review. Requires `clipId` or `spotId`.
+   */
+  comment?: { id: string; text: string };
 }
 
-function optionalDisputeId(value: string | undefined): string | null {
+/** Same bound as a comment body (firestore.rules clip comments: 1–300 chars). */
+const COMMENT_TEXT_MAX = 300;
+
+function optionalTargetId(value: string | undefined): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (trimmed.length === 0) return null;
@@ -79,7 +99,18 @@ function optionalDisputeId(value: string | undefined): string | null {
  * was more than 1 hour ago. No client-query bypass possible.
  */
 export async function submitReport(params: SubmitReportParams): Promise<string> {
-  const { reporterUid, reportedUid, reportedUsername, gameId, reason, description, clipId, disputeId } = params;
+  const {
+    reporterUid,
+    reportedUid,
+    reportedUsername,
+    gameId,
+    reason,
+    description,
+    clipId,
+    disputeId,
+    spotId,
+    comment,
+  } = params;
 
   if (!reason) throw new Error("Please select a reason for your report.");
   if (reporterUid === reportedUid) throw new Error("You cannot report yourself.");
@@ -87,9 +118,17 @@ export async function submitReport(params: SubmitReportParams): Promise<string> 
   // nothing to look at.
   const targetGameId = typeof gameId === "string" && gameId.length > 0 ? gameId : null;
   const targetClipId = typeof clipId === "string" && clipId.length > 0 ? clipId.slice(0, 128) : null;
-  const targetDisputeId = optionalDisputeId(disputeId);
-  if (targetGameId === null && targetClipId === null) {
-    throw new Error("Nothing to report — no game or clip was identified.");
+  const targetDisputeId = optionalTargetId(disputeId);
+  const targetSpotId = optionalTargetId(spotId);
+  if (targetGameId === null && targetClipId === null && targetSpotId === null) {
+    throw new Error("Nothing to report — no game, clip or spot was identified.");
+  }
+  if (
+    comment &&
+    // Exactly one parent: the comment lives under a clip or a spot, never both.
+    ((targetClipId === null) === (targetSpotId === null) || comment.id.length === 0 || comment.id.includes("/"))
+  ) {
+    throw new Error("That report target is not valid.");
   }
   const trimmedDescription = description.trim().slice(0, 500);
   if (reason === "illegal_content" && trimmedDescription.length < ILLEGAL_CONTENT_MIN_EXPLANATION) {
@@ -116,6 +155,13 @@ export async function submitReport(params: SubmitReportParams): Promise<string> 
     }
     if (targetDisputeId !== null) {
       payload.disputeId = targetDisputeId;
+    }
+    if (targetSpotId !== null) {
+      payload.spotId = targetSpotId;
+    }
+    if (comment) {
+      payload.commentId = comment.id.slice(0, 128);
+      payload.commentText = comment.text.slice(0, COMMENT_TEXT_MAX);
     }
 
     // Atomic batch: report + companion cooldown anchor. The rule requires

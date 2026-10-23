@@ -1,12 +1,26 @@
 import { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import { fetchReports, hideDispute, resolveReport, type AdminReport } from "../../../services/admin";
+import {
+  deleteReportedComment,
+  fetchReports,
+  hideDispute,
+  resolveReport,
+  type AdminReport,
+  type CommentParent,
+} from "../../../services/admin";
 import { banUser } from "../../../services/admin.bans";
 import { useNotifications } from "../../../context/NotificationContext";
 import { errorMessage } from "../utils";
 import { ReportRow } from "./ReportRow";
 
 type Verdict = "resolved" | "dismissed";
+
+/** A spot comment report names its spot; a clip comment report its clip. */
+function commentParent(report: AdminReport): CommentParent | null {
+  if (report.spotId) return { kind: "spots", id: report.spotId };
+  if (report.clipId) return { kind: "clips", id: report.clipId };
+  return null;
+}
 
 /**
  * Queue views. `pending` is the triage queue; `resolved` is the read-only
@@ -104,6 +118,20 @@ export function ReportsPanel({ adminUid }: { adminUid: string }) {
     }
   };
 
+  const removeComment = async (report: AdminReport): Promise<void> => {
+    const parent = commentParent(report);
+    if (!parent || !report.commentId) return;
+    setActing(report.id);
+    try {
+      await deleteReportedComment(parent, report.commentId);
+      notify({ type: "success", title: "Comment deleted", message: `@${report.reportedUsername}` });
+    } catch (err: unknown) {
+      notify({ type: "error", title: "Delete failed", message: errorMessage(err) });
+    } finally {
+      setActing(null);
+    }
+  };
+
   const ban = async (report: AdminReport): Promise<void> => {
     setActing(report.id);
     try {
@@ -187,6 +215,7 @@ export function ReportsPanel({ adminUid }: { adminUid: string }) {
               onDismiss={(r) => void decide(r, "dismissed")}
               onBan={(r) => void ban(r)}
               onHideDispute={(r) => void hide(r)}
+              onDeleteComment={(r) => void removeComment(r)}
             />
           ))}
         </ul>
