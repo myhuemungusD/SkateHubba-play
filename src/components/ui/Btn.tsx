@@ -26,7 +26,7 @@ export function Btn({
     "w-full rounded-2xl font-display tracking-wider text-center transition-all duration-300 ease-smooth disabled:opacity-40 disabled:cursor-not-allowed press-feedback focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
   const variants: Record<string, string> = {
     primary:
-      "bg-gradient-to-r from-brand-orange via-[#FF7A1A] to-brand-orange-hover text-surface-alt py-4 text-xl shadow-[0_2px_12px_rgba(255,107,0,0.2),0_1px_2px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_28px_rgba(255,107,0,0.28),0_2px_6px_rgba(0,0,0,0.12)] hover:-translate-y-0.5 ring-1 ring-white/[0.08]",
+      "bg-gradient-to-r from-brand-orange via-brand-orange-mid to-brand-orange-hover text-on-brand py-4 text-xl shadow-[0_2px_12px_rgba(255,107,0,0.2),0_1px_2px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_28px_rgba(255,107,0,0.28),0_2px_6px_rgba(0,0,0,0.12)] hover:-translate-y-0.5 ring-1 ring-white/[0.08]",
     secondary: "btn-secondary text-white py-3.5 text-lg",
     success:
       "bg-gradient-to-r from-brand-green via-[#00D96E] to-[#00C864] text-black py-4 text-xl font-bold shadow-[0_2px_12px_rgba(0,230,118,0.2)] hover:shadow-[0_6px_28px_rgba(0,230,118,0.25)] hover:-translate-y-0.5 ring-1 ring-white/[0.08]",

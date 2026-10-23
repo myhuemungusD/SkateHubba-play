@@ -136,7 +136,7 @@ export function GameReplay({ turns }: GameReplayProps) {
               <div
                 key={i}
                 className={`h-1 rounded-full transition-all duration-300 ${
-                  i === clipIndex ? "w-6 bg-purple-500" : i < clipIndex ? "w-3 bg-purple-500/40" : "w-3 bg-[#333]"
+                  i === clipIndex ? "w-6 bg-purple-500" : i < clipIndex ? "w-3 bg-purple-500/40" : "w-3 bg-line-strong"
                 }`}
               />
             ))}

@@ -106,7 +106,7 @@ function Section({
 }) {
   return (
     <section className="mt-4 pb-2" aria-label={title} data-testid={testId}>
-      <h3 className="font-body text-xs font-semibold uppercase tracking-wider text-[#CCC]">
+      <h3 className="font-body text-xs font-semibold uppercase tracking-wider text-soft">
         {title}
         {rows.length > 0 && <span className="ml-1.5 text-muted">{rows.length}</span>}
       </h3>

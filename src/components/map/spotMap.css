@@ -70,11 +70,11 @@
 }
 .mapboxgl-ctrl-group:not(:empty) {
   background: var(--color-surface-alt);
-  border: 1px solid #333;
+  border: 1px solid var(--color-line-strong);
   box-shadow: none;
 }
 .mapboxgl-ctrl-group button + button {
-  border-top-color: #333;
+  border-top-color: var(--color-line-strong);
 }
 .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon {
   filter: invert(1);

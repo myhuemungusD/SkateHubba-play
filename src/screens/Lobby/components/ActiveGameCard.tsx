@@ -50,8 +50,8 @@ export function ActiveGameCard({
       className={`relative flex items-center gap-3 p-4 rounded-2xl select-none transition-all duration-300 ease-smooth has-[.card-main:focus-visible]:outline-2 has-[.card-main:focus-visible]:outline-offset-2 has-[.card-main:focus-visible]:outline-brand-orange
       ${
         isMyTurn
-          ? "glass-card border-brand-orange/30 shadow-glow-sm hover:shadow-glow-md hover:-translate-y-0.5"
-          : "glass-card hover:border-white/[0.1] hover:-translate-y-0.5"
+          ? "glass-card border-brand-orange/30 shadow-glow-sm hover:shadow-glow-md"
+          : "glass-card hover:border-white/[0.1]"
       }`}
     >
       {showProfile && (

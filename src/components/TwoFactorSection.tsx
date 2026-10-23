@@ -226,7 +226,7 @@ export function TwoFactorSection() {
             type="button"
             onClick={() => void finishEnroll()}
             disabled={busy}
-            className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-brand-orange px-4 font-display text-sm tracking-wider text-surface-alt disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-brand-orange px-4 font-display text-sm tracking-wider text-on-brand disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
             Verify code
           </button>
@@ -253,7 +253,7 @@ export function TwoFactorSection() {
               type="button"
               onClick={() => void confirmRecent()}
               disabled={busy}
-              className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-brand-orange px-4 font-display text-sm tracking-wider text-surface-alt disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-brand-orange px-4 font-display text-sm tracking-wider text-on-brand disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
               {method === "google"
                 ? "Confirm with Google"

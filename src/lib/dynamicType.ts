@@ -16,7 +16,8 @@ import { Capacitor } from "@capacitor/core";
 export const IOS_DEFAULT_BODY_PX = 17;
 /** Keep huge Accessibility sizes from breaking fixed-height chrome. */
 export const MAX_SCALE = 1.5;
-export const MIN_SCALE = 0.85;
+/** Never shrink below the default: smaller iOS Text Size would push 12px labels under the type floor. */
+export const MIN_SCALE = 1;
 
 /** Root font-size (px) for a measured `-apple-system-body` size. */
 export function rootFontSizeFor(bodyPx: number): number {

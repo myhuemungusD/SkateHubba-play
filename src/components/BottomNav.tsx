@@ -115,7 +115,7 @@ export function BottomNav() {
                         ? // Raised filled disc: Challenge is the only creation
                           // action in the app, so it carries the visual weight
                           // of a FAB while staying a plain tab <Link>.
-                          "relative inline-flex items-center justify-center -mt-5 w-11 h-11 rounded-full bg-brand-orange text-surface-alt shadow-glow-sm ring-4 ring-background/80"
+                          "relative inline-flex items-center justify-center -mt-5 w-11 h-11 rounded-full bg-brand-orange text-on-brand shadow-glow-sm ring-4 ring-background/80"
                         : "relative inline-flex"
                     }
                   >
@@ -136,15 +136,15 @@ export function BottomNav() {
                     {badgeCount > 0 && (
                       <span
                         aria-hidden="true"
-                        className="absolute -top-1 -right-2 min-w-[17px] h-[17px] px-1 flex items-center justify-center rounded-full bg-brand-orange font-display text-sm text-surface-alt leading-none tabular-nums"
+                        className="absolute -top-1 -right-2 min-w-[17px] h-[17px] px-1 flex items-center justify-center rounded-full bg-brand-orange font-display text-sm text-on-brand leading-none tabular-nums"
                       >
                         {badgeCount > 9 ? "9+" : badgeCount}
                       </span>
                     )}
                   </span>
-                  {/* Tracking is tighter than the 0.15em used elsewhere purely
-                      so five labels (incl. "Challenge") fit a 320px viewport
-                      without wrapping. Font size is unchanged. */}
+                  {/* Tracking is tighter than the 0.15em used elsewhere so the
+                      14px labels (incl. "Challenge") fit five ~73px tabs at a
+                      320px viewport without wrapping. */}
                   <span className="font-display text-sm tracking-[0.05em] leading-none uppercase">{item.label}</span>
                   {active && (
                     <span

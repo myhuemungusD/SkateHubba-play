@@ -46,12 +46,20 @@
   --color-border: #2a2a2a;
   --color-border-hover: #3a3a3a;
   --color-border-glow: rgba(255, 107, 0, 0.25);
+  /* Hairlines and chips (replaces arbitrary #222 / #333). */
+  --color-line: #222;
+  --color-line-strong: #333;
+  /* Text/icons sitting on brand orange (7.4:1+). */
+  --color-on-brand: #1a1a1a;
+  /* Gradient midpoint between brand-orange and brand-orange-hover. */
+  --color-brand-orange-mid: #ff7a1a;
 
   --color-dim: #999;
   --color-muted: #888;
   --color-faint: #8f8f8f;
   --color-subtle: #8f8f8f;
   --color-bright: #bbb;
+  --color-soft: #ccc;
 
   /* ── Font families ───────────────────────────────── */
   --font-display: "Bebas Neue", sans-serif;

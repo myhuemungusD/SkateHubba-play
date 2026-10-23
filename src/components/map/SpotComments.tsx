@@ -75,7 +75,7 @@ export function SpotComments({ spotId, comments, onPosted, viewer }: SpotComment
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Add a comment…"
-          className="flex-1 bg-surface-alt border border-[#333] rounded-lg px-3 py-2 text-white text-base
+          className="flex-1 bg-surface-alt border border-line-strong rounded-lg px-3 py-2 text-white text-base
                      placeholder:text-subtle focus:outline-none focus:border-brand-orange"
         />
         <button
@@ -109,7 +109,7 @@ export function SpotComments({ spotId, comments, onPosted, viewer }: SpotComment
                 <span className="text-xs text-subtle">{new Date(c.createdAt).toLocaleDateString()}</span>
               </div>
               {/* Untrusted user text: a plain text node, so React escapes it. */}
-              <p className="text-sm text-[#CCC] break-words whitespace-pre-wrap">{c.content}</p>
+              <p className="text-sm text-soft break-words whitespace-pre-wrap">{c.content}</p>
               {viewer && c.userId !== viewer.uid && (
                 <button
                   type="button"

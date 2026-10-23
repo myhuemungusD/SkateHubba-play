@@ -161,7 +161,7 @@ export function ReportModal({
         {quoted && (
           <blockquote
             data-testid="report-comment-quote"
-            className="mb-3 line-clamp-3 border-l-2 border-border pl-3 font-body text-sm text-[#CCC] break-words whitespace-pre-wrap"
+            className="mb-3 line-clamp-3 border-l-2 border-border pl-3 font-body text-sm text-soft break-words whitespace-pre-wrap"
           >
             {quoted.text}
           </blockquote>

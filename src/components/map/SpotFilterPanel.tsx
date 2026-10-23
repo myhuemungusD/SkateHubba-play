@@ -19,7 +19,7 @@ export function SpotFilterPanel({ filters, onChange, active, toggleObstacle, res
       id="spot-filter-panel"
       role="region"
       aria-label="Spot filters"
-      className="mt-2 pointer-events-auto bg-surface-alt/95 backdrop-blur border border-[#333] rounded-xl p-3
+      className="mt-2 pointer-events-auto bg-surface-alt/95 backdrop-blur border border-line-strong rounded-xl p-3
                  max-h-[55dvh] overflow-y-auto shadow-2xl"
     >
       {/* Obstacles */}
@@ -76,7 +76,7 @@ export function SpotFilterPanel({ filters, onChange, active, toggleObstacle, res
       <div className="mt-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <BadgeCheck size={16} className="text-[#22C55E]" aria-hidden="true" />
-          <span className="text-sm text-[#CCC]">Verified spots only</span>
+          <span className="text-sm text-soft">Verified spots only</span>
         </div>
         <button
           type="button"
@@ -84,7 +84,7 @@ export function SpotFilterPanel({ filters, onChange, active, toggleObstacle, res
           aria-checked={filters.verifiedOnly}
           onClick={() => onChange({ ...filters, verifiedOnly: !filters.verifiedOnly })}
           className={`relative w-10 h-6 rounded-full transition-colors ${
-            filters.verifiedOnly ? "bg-brand-orange" : "bg-[#333]"
+            filters.verifiedOnly ? "bg-brand-orange" : "bg-line-strong"
           }`}
         >
           <span
