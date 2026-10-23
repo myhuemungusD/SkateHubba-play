@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { mirrorTokens, MAX_TOKENS_PER_DISPATCH } from "../../../api/cron/_pushPlatforms";
+import { mirrorTokens, MAX_TOKENS_PER_DISPATCH, testerEligibleTokens } from "../../../api/cron/_pushPlatforms";
 
 const read = (rel: string) => readFileSync(resolve(__dirname, "../../..", rel), "utf8");
 /** Everything from the first export on: the code, without the header comment. */
@@ -22,5 +22,10 @@ describe("push platform helpers drift", () => {
   it("the Vercel copy caps at the pushTargets limit", () => {
     expect(MAX_TOKENS_PER_DISPATCH).toBe(10);
     expect(mirrorTokens({ tokens: ["a", "a", "b"] })).toEqual(["a", "b"]);
+  });
+
+  it("the Vercel copy keeps the tester filter in step (android and web only)", () => {
+    const mirror = { platforms: { a: "android", w: "web", i: "ios" } };
+    expect(testerEligibleTokens(mirror, ["a", "w", "i", "old"])).toEqual(["a", "w"]);
   });
 });
