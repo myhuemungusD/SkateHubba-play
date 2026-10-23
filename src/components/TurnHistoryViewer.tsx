@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, memo } from "react";
+import { Capacitor } from "@capacitor/core";
 import type { TurnRecord } from "../services/games";
 import { isFirebaseStorageUrl } from "../utils/helpers";
 import { trackEvent } from "../services/analytics";
@@ -26,6 +27,9 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
   showShare = false,
 }: TurnHistoryViewerProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  // No downloads in the iOS app: its web view cancels <a download>, so the
+  // button would say "Saved!" and save nothing. Share still works there.
+  const canDownload = showDownload && !Capacitor.isNativePlatform();
 
   if (turns.length === 0) return null;
 
@@ -73,7 +77,7 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
                       @{turn.setterUsername}'s trick
                     </p>
                     <ClipVideo url={turn.setVideoUrl || ""} label={`${turn.trickName} set by ${turn.setterUsername}`} />
-                    {showDownload && turn.setVideoUrl && isFirebaseStorageUrl(turn.setVideoUrl) && (
+                    {canDownload && turn.setVideoUrl && isFirebaseStorageUrl(turn.setVideoUrl) && (
                       <DownloadBtn url={turn.setVideoUrl} baseName={`skatehubba-round${turn.turnNumber}-set`} />
                     )}
                     {showShare && turn.setVideoUrl && isFirebaseStorageUrl(turn.setVideoUrl) && (
@@ -90,7 +94,7 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
                       url={turn.matchVideoUrl || ""}
                       label={`${turn.trickName} attempted by ${turn.matcherUsername}`}
                     />
-                    {showDownload && turn.matchVideoUrl && isFirebaseStorageUrl(turn.matchVideoUrl) && (
+                    {canDownload && turn.matchVideoUrl && isFirebaseStorageUrl(turn.matchVideoUrl) && (
                       <DownloadBtn url={turn.matchVideoUrl} baseName={`skatehubba-round${turn.turnNumber}-match`} />
                     )}
                     {showShare && turn.matchVideoUrl && isFirebaseStorageUrl(turn.matchVideoUrl) && (

@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TurnHistoryViewer } from "../TurnHistoryViewer";
 import type { TurnRecord } from "../../services/games";
+import { Capacitor } from "@capacitor/core";
 
 vi.mock("../../utils/helpers", () => ({
   isFirebaseStorageUrl: (url: string) => url.startsWith("https://firebasestorage.googleapis.com/"),
@@ -141,6 +142,14 @@ describe("TurnHistoryViewer", () => {
     render(<TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showDownload />);
     const saveButtons = screen.getAllByText("Save clip");
     expect(saveButtons.length).toBe(2); // one for set, one for match
+  });
+
+  it("hides download buttons in the iOS app but keeps share", () => {
+    const spy = vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(true);
+    render(<TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showDownload showShare />);
+    expect(screen.queryByText("Save clip")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Share clip")).toHaveLength(2);
+    spy.mockRestore();
   });
 
   it("shows share buttons when showShare is true", () => {

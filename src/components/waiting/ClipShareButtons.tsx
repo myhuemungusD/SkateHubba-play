@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { trackEvent } from "../../services/analytics";
 import { shareText } from "../../services/nativeBridge";
 import { captureException } from "../../lib/sentry";
@@ -80,37 +81,44 @@ export function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; tr
     shareStatus
   ];
 
+  // The iOS app's web view has no download handler: the <a download> click is
+  // cancelled, so "Saved!" would be a lie. Share still works there. A real
+  // save-to-Photos is tracked for 1.2.1.
+  const canSave = !Capacitor.isNativePlatform();
+
   return (
     <div className="flex gap-2 mt-3 w-full max-w-[360px] mx-auto">
-      <button
-        type="button"
-        onClick={handleSave}
-        disabled={saveStatus === "saving"}
-        className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border font-display text-xs tracking-wider transition-colors disabled:opacity-50 ${
-          saveStatus === "saved"
-            ? "border-brand-green text-brand-green"
-            : saveStatus === "failed"
-              ? "border-brand-red text-brand-red"
-              : "border-border text-muted hover:text-white hover:border-border-hover"
-        }`}
-      >
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
+      {canSave && (
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saveStatus === "saving"}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border font-display text-xs tracking-wider transition-colors disabled:opacity-50 ${
+            saveStatus === "saved"
+              ? "border-brand-green text-brand-green"
+              : saveStatus === "failed"
+                ? "border-brand-red text-brand-red"
+                : "border-border text-muted hover:text-white hover:border-border-hover"
+          }`}
         >
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-          <polyline points="7 10 12 15 17 10" />
-          <line x1="12" y1="15" x2="12" y2="3" />
-        </svg>
-        {saveLabel}
-      </button>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          {saveLabel}
+        </button>
+      )}
       <button
         type="button"
         onClick={handleShare}
