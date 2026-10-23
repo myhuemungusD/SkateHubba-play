@@ -64,10 +64,8 @@ export function ReportModal({
   useFocusTrap(panelRef);
 
   const handleSubmit = async () => {
-    if (!reason) {
-      setError("Please select a reason.");
-      return;
-    }
+    // Submit is disabled until a reason is picked, and submitReport rejects an
+    // empty one itself, so no separate guard is needed here.
     setSubmitting(true);
     setError("");
     try {
@@ -76,7 +74,7 @@ export function ReportModal({
         reportedUid,
         reportedUsername,
         gameId: gameId ?? null,
-        reason,
+        reason: reason as ReportReason,
         description,
         ...(clipId ? { clipId } : {}),
         ...(disputeId ? { disputeId } : {}),

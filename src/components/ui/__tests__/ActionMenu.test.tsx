@@ -81,4 +81,12 @@ describe("ActionMenu", () => {
     document.removeEventListener("keydown", underneath);
     expect(underneath).toHaveBeenCalledTimes(1);
   });
+
+  it("lets keys other than Escape through without closing the sheet", async () => {
+    const user = userEvent.setup();
+    renderMenu();
+    await user.click(screen.getByRole("button", { name: "More options for @sk8r" }));
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
 });

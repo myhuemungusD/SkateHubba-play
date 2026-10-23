@@ -250,3 +250,41 @@ describe("ReportModal — user-clip reports", () => {
     );
   });
 });
+
+describe("ReportModal — edge paths", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function pickSpamAndSend() {
+    await userEvent.selectOptions(screen.getByLabelText("Reason"), "spam");
+    await userEvent.click(screen.getByText("Submit Report"));
+  }
+
+  it("passes a dispute id through and keeps the receipt open on keys other than Escape", async () => {
+    mockSubmitReport.mockResolvedValue("r9");
+    render(<ReportModal {...baseProps} disputeId="d7" />);
+    await pickSpamAndSend();
+    const receipt = await screen.findByRole("dialog");
+    receipt.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+    expect(baseProps.onSubmitted).not.toHaveBeenCalled();
+    expect(mockSubmitReport).toHaveBeenCalledWith(expect.objectContaining({ disputeId: "d7" }));
+  });
+
+  it("falls back to a generic message for a non-Error rejection, and the banner can be dismissed", async () => {
+    mockSubmitReport.mockRejectedValue("offline");
+    render(<ReportModal {...baseProps} />);
+    await pickSpamAndSend();
+    expect(await screen.findByText("Failed to submit report")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /dismiss/i }));
+    expect(screen.queryByText("Failed to submit report")).not.toBeInTheDocument();
+  });
+
+  it("ignores a scrim tap while the report is sending", async () => {
+    mockSubmitReport.mockReturnValue(new Promise(() => {}));
+    render(<ReportModal {...baseProps} />);
+    await pickSpamAndSend();
+    await userEvent.click(screen.getByRole("dialog"));
+    expect(baseProps.onClose).not.toHaveBeenCalled();
+  });
+});

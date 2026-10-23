@@ -398,3 +398,63 @@ describe("isPickerCancel", () => {
     expect(isPickerCancel(new Error("Photos permission denied"))).toBe(false);
   });
 });
+
+describe("AvatarPicker — web inputs, preview Back, and non-Error rejections", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("opens the matching hidden input on the web, and ignores a change with no file", () => {
+    const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {});
+    renderPicker();
+    const [cameraInput, galleryInput] = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="file"]'));
+    fireEvent.click(screen.getByText("Take Photo"));
+    fireEvent.click(screen.getByText("Choose From Gallery"));
+    expect(click.mock.contexts).toEqual([cameraInput, galleryInput]);
+    fireEvent.change(galleryInput, { target: { files: [] } });
+    expect(screen.getByText("Take Photo")).toBeInTheDocument();
+  });
+
+  it("goes back from the preview to the source menu", async () => {
+    renderPicker();
+    await pickFileAndOpenPreview();
+    await userEvent.click(screen.getByText("Back"));
+    expect(screen.getByText("Choose From Gallery")).toBeInTheDocument();
+  });
+
+  it("still shows the transport message when the upload and the pointer clear reject with bare strings", async () => {
+    mockUploadAvatar.mockRejectedValueOnce("socket hang up");
+    mockSetProfileImageUrl.mockRejectedValueOnce("still offline");
+    renderPicker();
+    await pickFileAndOpenPreview();
+    await userEvent.click(screen.getByText("Confirm"));
+    await waitFor(() => expect(mockSetProfileImageUrl).toHaveBeenCalledWith("user-1", null));
+    expect(await screen.findByText("Upload failed. Check your connection and try again.")).toBeInTheDocument();
+  });
+
+  it("shows the URL fetch message for a bare-string rejection", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue("dns");
+    renderPicker();
+    await userEvent.click(screen.getByText("Paste Image URL"));
+    await userEvent.type(screen.getByPlaceholderText("https://…/avatar.png"), "https://example.com/b.png");
+    await userEvent.click(screen.getByText("Continue"));
+    expect(await screen.findByText("Couldn't fetch that URL. Try a different image.")).toBeInTheDocument();
+  });
+
+  it("treats a bare-string native denial as a denial", async () => {
+    const { Capacitor } = await import("@capacitor/core");
+    vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(true);
+    vi.doMock("@capacitor/camera", () => ({
+      Camera: { getPhoto: vi.fn().mockRejectedValue("denied") },
+      CameraResultType: { Base64: "base64" },
+      CameraSource: { Camera: "CAMERA", Photos: "PHOTOS" },
+    }));
+    try {
+      renderPicker();
+      await userEvent.click(screen.getByText("Take Photo"));
+      expect(await screen.findByText("Camera access denied. Check your device settings.")).toBeInTheDocument();
+    } finally {
+      vi.doUnmock("@capacitor/camera");
+    }
+  });
+});
