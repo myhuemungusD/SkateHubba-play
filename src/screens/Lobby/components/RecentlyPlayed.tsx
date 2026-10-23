@@ -56,7 +56,9 @@ export function RecentlyPlayed({ opponents, onRematch, onOpenGame, onViewPlayer 
         {opponents.map((o) => {
           const rec = formatRecord(o.wins, o.decided);
           const inProgressOnly = o.decided === 0 && !!o.activeGame;
-          const summary = inProgressOnly ? "first game in progress" : rec.label;
+          // Only declined/expired/no-winner games: no record worth showing ("0 / 0").
+          const noRecord = o.decided === 0 && !o.activeGame;
+          const summary = inProgressOnly ? "first game in progress" : noRecord ? null : rec.label;
           const busy = pending === o.uid;
           return (
             <li
@@ -67,7 +69,7 @@ export function RecentlyPlayed({ opponents, onRematch, onOpenGame, onViewPlayer 
                 type="button"
                 onClick={() => onViewPlayer?.(o.uid)}
                 className="flex min-h-11 min-w-0 flex-1 items-center gap-3 text-left hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-                aria-label={`@${o.username}, ${summary}. View profile`}
+                aria-label={summary ? `@${o.username}, ${summary}. View profile` : `@${o.username}. View profile`}
               >
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/[0.06] bg-surface-alt font-display text-sm leading-none text-white/80">
                   {o.username[0].toUpperCase()}
@@ -78,7 +80,9 @@ export function RecentlyPlayed({ opponents, onRematch, onOpenGame, onViewPlayer 
                     isVerifiedPro={o.isVerifiedPro}
                     className="block truncate font-display text-base leading-none text-white"
                   />
-                  {!inProgressOnly ? (
+                  {inProgressOnly ? (
+                    <span className="mt-1 block font-body text-xs text-muted">In progress</span>
+                  ) : noRecord ? null : (
                     <RecordFigure
                       wins={o.wins}
                       games={o.decided}
@@ -86,8 +90,6 @@ export function RecentlyPlayed({ opponents, onRematch, onOpenGame, onViewPlayer 
                       className="mt-1 block font-body text-xs text-muted"
                       testId={`recent-record-${o.uid}`}
                     />
-                  ) : (
-                    <span className="mt-1 block font-body text-xs text-muted">In progress</span>
                   )}
                 </span>
               </button>

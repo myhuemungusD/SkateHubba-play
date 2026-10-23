@@ -37,10 +37,12 @@ describe("RecentlyPlayed", () => {
     expect(screen.getByTestId("recently-played")).not.toHaveTextContent(/\dW|\dL|games played/);
   });
 
-  it("still shows the record (0 / 0) when their only finished game had no winner", () => {
+  it("shows no record (never 0 / 0) when no game against them was decided", () => {
     render(<RecentlyPlayed opponents={[opp({ games: 1, decided: 0, wins: 0 })]} onOpenGame={vi.fn()} />);
-    expect(screen.getByTestId("recent-record-u2")).toHaveTextContent("0 / 0 won");
+    expect(screen.queryByTestId("recent-record-u2")).toBeNull();
+    expect(screen.getByTestId("recently-played")).not.toHaveTextContent("0 / 0");
     expect(screen.queryByText("In progress")).toBeNull();
+    expect(screen.getByRole("button", { name: "@rival. View profile" })).toBeInTheDocument();
   });
 
   it("says In progress when the only game against them is still going", () => {
