@@ -981,21 +981,11 @@ describe("ClipsFeed", () => {
     expect(articles[0]?.className).toContain("snap-start");
     expect(articles[0]?.className).toContain("snap-always");
 
-    // The slides can paint before the feed's passive effects run, and one of
-    // them (reset after loading) writes scrollTop = 0. Back scrollTop with a
-    // writable value and flush those effects first, so the reset can't land
-    // on the scroll below (on a loaded box it threw on a read-only value).
-    let scrollTop = 0;
     Object.defineProperty(region, "clientHeight", { configurable: true, value: 640 });
-    Object.defineProperty(region, "scrollTop", {
-      configurable: true,
-      get: () => scrollTop,
-      set: (v: number) => {
-        scrollTop = v;
-      },
-    });
-    await act(async () => {});
-    scrollTop = 640;
+    // Accessor with a no-op setter, not a read-only value: under a loaded
+    // full run the feed's reset effect can write scrollTop = 0 after this
+    // line, and a value-only property throws on that write.
+    Object.defineProperty(region, "scrollTop", { configurable: true, get: () => 640, set: () => {} });
     fireEvent.scroll(region);
 
     await waitFor(() => expect(screen.getByText("TrickB")).toBeInTheDocument());

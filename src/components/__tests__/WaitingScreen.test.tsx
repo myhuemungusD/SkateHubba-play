@@ -91,7 +91,7 @@ describe("WaitingScreen", () => {
   it("shows trick video in matching phase", () => {
     render(<WaitingScreen game={makeGame()} profile={profile} onBack={onBack} />);
     expect(screen.getByText("Your Trick: Kickflip")).toBeInTheDocument();
-    expect(screen.getByLabelText("Video of Kickflip you set")).toBeInTheDocument();
+    expect(screen.getByLabelText("Video of Kickflip you set", { selector: "video" })).toBeInTheDocument();
   });
 
   it("shows 'No video recorded' when no trick video URL", () => {
@@ -101,7 +101,7 @@ describe("WaitingScreen", () => {
 
   it("calls onBack when back button is clicked", async () => {
     render(<WaitingScreen game={makeGame()} profile={profile} onBack={onBack} />);
-    await userEvent.click(screen.getByText("← Back to Games"));
+    await userEvent.click(screen.getByRole("button", { name: "Back to games" }));
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 

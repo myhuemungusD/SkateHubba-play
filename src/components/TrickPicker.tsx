@@ -88,7 +88,7 @@ export function TrickPicker({ selection, onChange, disabled, trickCategory, cust
           </button>
         ))}
       </div>
-      <div className="mt-2 flex gap-1 overflow-x-auto pb-1" role="group" aria-label="Obstacle">
+      <div data-scroll-x className="mt-2 flex gap-1 overflow-x-auto pb-1" role="group" aria-label="Obstacle">
         <button
           type="button"
           disabled={disabled}

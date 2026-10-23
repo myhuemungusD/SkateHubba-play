@@ -11,10 +11,16 @@
  * Signed-out /feed is not in this list: App replaces that URL with /, so a
  * check here would be another landing-page test. Lighthouse CI has the same
  * limit — its /feed run scores the landing page, not the clips feed.
+ *
+ * The signed-in block runs at 320 (iPhone SE 1st gen / zoomed display) and
+ * 390 (iPhone 12-15): Lobby game cards, the game scoreboard and the profile
+ * game history all carry two LetterPips rows, which used to push the page
+ * sideways at 320.
  */
 import { test, expect, type Page } from "@playwright/test";
-import { clearAll, createProfile, createUser } from "./helpers/emulator";
+import { clearAll, createGame, createProfile, createUser } from "./helpers/emulator";
 import { signInViaUI } from "./helpers/auth-flow";
+import { dismissBottomOverlays, openActiveGameFromLobby } from "./helpers/lobby-nav";
 
 const PHONES = [
   { name: "iphone se", width: 375, height: 667, dpr: 2 },
@@ -133,4 +139,173 @@ test.describe("bottom nav at 320 with the largest text", () => {
     expect(bar.right).toBeLessThanOrEqual(321);
     expect(bar.scrollWidth).toBeLessThanOrEqual(bar.clientWidth);
   });
+});
+
+const NARROW_PHONES = [
+  { name: "320", width: 320, height: 640 },
+  { name: "390", width: 390, height: 844 },
+] as const;
+
+/** Optional: SHOTS_DIR=/some/dir writes one screenshot per screen and width. */
+async function shot(page: Page, name: string): Promise<void> {
+  const dir = process.env.SHOTS_DIR;
+  if (!dir) return;
+  await page.screenshot({ path: `${dir}/${name}.png`, fullPage: false });
+}
+
+async function expectNoSidewaysScroll(page: Page, where: string): Promise<void> {
+  // One frame for layout to settle after data lands.
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+  const widths = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    innerWidth: window.innerWidth,
+  }));
+  expect(widths.scrollWidth, `${where} scrolls sideways`).toBeLessThanOrEqual(widths.innerWidth);
+
+  // The document is not the only scroller. overflow-y:auto forces overflow-x
+  // to auto (CSS Overflow 3), so a too-wide child of a screen root such as the
+  // profile's is clipped and dragged sideways *inside* that div while the
+  // document stays phone-wide. Any element that scrolls on x must fit, unless
+  // it is a rail built to scroll sideways and says so with data-scroll-x.
+  const offenders = await page.evaluate(() => {
+    const out: string[] = [];
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>("body *"))) {
+      if (el.hasAttribute("data-scroll-x")) continue;
+      const { overflowX } = getComputedStyle(el);
+      if (overflowX !== "auto" && overflowX !== "scroll") continue;
+      if (el.scrollWidth <= el.clientWidth + 1) continue;
+      const cls = typeof el.className === "string" ? el.className.slice(0, 120) : "";
+      out.push(
+        `<${el.tagName.toLowerCase()} class="${cls}"> scrollWidth ${el.scrollWidth} > clientWidth ${el.clientWidth}`,
+      );
+    }
+    return out;
+  });
+  expect(offenders, `${where} has an element that scrolls sideways`).toEqual([]);
+}
+
+/**
+ * A letter row can also be lost without any scrolling: a card with
+ * overflow:hidden (GameHistoryCard, the scoreboard cards) just clips the
+ * pips. Every LetterPips row must sit inside the viewport and inside each
+ * ancestor that clips.
+ */
+async function expectLetterRowsUnclipped(page: Page, where: string): Promise<void> {
+  const clipped = await page.evaluate(() => {
+    const out: string[] = [];
+    const rows = Array.from(document.querySelectorAll<HTMLElement>('[role="img"]')).filter((el) =>
+      el.querySelector("[data-earned]"),
+    );
+    for (const row of rows) {
+      const r = row.getBoundingClientRect();
+      const label = row.getAttribute("aria-label") ?? "";
+      if (r.left < -1 || r.right > window.innerWidth + 1) {
+        out.push(`${label}: ${Math.round(r.left)}..${Math.round(r.right)} outside the ${window.innerWidth}px viewport`);
+        continue;
+      }
+      for (let a = row.parentElement; a && a !== document.body; a = a.parentElement) {
+        if (getComputedStyle(a).overflowX === "visible") continue;
+        const b = a.getBoundingClientRect();
+        if (r.left < b.left - 1 || r.right > b.right + 1) {
+          out.push(
+            `${label}: ${Math.round(r.left)}..${Math.round(r.right)} clipped by <${a.tagName.toLowerCase()}> ${Math.round(b.left)}..${Math.round(b.right)}`,
+          );
+          break;
+        }
+      }
+    }
+    return { rows: rows.length, out };
+  });
+  expect(clipped.rows, `${where} shows letter rows`).toBeGreaterThan(0);
+  expect(clipped.out, `${where} clips a letter row`).toEqual([]);
+}
+
+/** Longest handles the username rules allow, so truncation and wrapping are exercised. */
+async function seedLetterRows(): Promise<{ rivalUid: string }> {
+  const me = await createUser("fit-me@test.com", "password123");
+  const rival = await createUser("fit-rival@test.com", "password123");
+  const other = await createUser("fit-other@test.com", "password123");
+  await createProfile(me.uid, "fitcheckskater", me.email, true, false);
+  await createProfile(rival.uid, "longhandleskater20", rival.email, true, false);
+  await createProfile(other.uid, "anotherlonghandle1", other.email, true, false);
+
+  // My turn, both sides carrying letters: the widest Lobby card.
+  await createGame("fit-mine", me.uid, "fitcheckskater", rival.uid, "longhandleskater20", {
+    p1Letters: 3,
+    p2Letters: 4,
+  });
+  // Their turn, so the "waiting on them" group is populated too.
+  await createGame("fit-theirs", other.uid, "anotherlonghandle1", me.uid, "fitcheckskater", {
+    currentTurn: other.uid,
+    currentSetter: other.uid,
+    p1Letters: 2,
+    p2Letters: 1,
+  });
+  // A finished game for the profile history row.
+  await createGame("fit-done", me.uid, "fitcheckskater", rival.uid, "longhandleskater20", {
+    status: "complete",
+    winner: me.uid,
+    p1Letters: 4,
+    p2Letters: 5,
+  });
+  return { rivalUid: rival.uid };
+}
+
+async function signInToLobby(page: Page, width: number, height: number): Promise<void> {
+  await page.setViewportSize({ width, height });
+  await signInViaUI(page, "fit-me@test.com", "password123");
+  await dismissBottomOverlays(page);
+  await expect(page.getByText("@longhandleskater20").first()).toBeVisible({ timeout: 15_000 });
+}
+
+// One test per screen, so each screen's check fails on its own instead of
+// hiding behind the first failure.
+test.describe("signed-in letter rows", () => {
+  let rivalUid = "";
+  test.beforeEach(async () => {
+    await clearAll();
+    ({ rivalUid } = await seedLetterRows());
+  });
+
+  for (const phone of NARROW_PHONES) {
+    test(`lobby fits at ${phone.name}`, async ({ page }) => {
+      test.setTimeout(90_000);
+      await signInToLobby(page, phone.width, phone.height);
+      await expectNoSidewaysScroll(page, "Lobby");
+      await expectLetterRowsUnclipped(page, "Lobby");
+      await shot(page, `lobby-${phone.name}`);
+    });
+
+    test(`game fits at ${phone.name}`, async ({ page }) => {
+      test.setTimeout(90_000);
+      await signInToLobby(page, phone.width, phone.height);
+      await openActiveGameFromLobby(page, "longhandleskater20");
+      await expect(page).toHaveURL(/\/game/, { timeout: 15_000 });
+      await expect(page.getByText("YOUR MOVE")).toBeVisible({ timeout: 15_000 });
+      await expectNoSidewaysScroll(page, "Game");
+      await expectLetterRowsUnclipped(page, "Game");
+      await shot(page, `game-${phone.name}`);
+    });
+
+    test(`profile fits at ${phone.name}`, async ({ page }) => {
+      test.setTimeout(90_000);
+      await signInToLobby(page, phone.width, phone.height);
+      await page.goto(`/player/${rivalUid}`);
+      await expect(page.getByRole("heading", { level: 1, name: /longhandleskater20/ })).toBeVisible({
+        timeout: 15_000,
+      });
+      await dismissBottomOverlays(page);
+      await expectNoSidewaysScroll(page, "Profile");
+      await shot(page, `profile-${phone.name}`);
+
+      // The history row carries the second pair of pip rows (MF-B1); bring
+      // it on screen so the shot shows it and the check runs with it laid out.
+      const historyRow = page.locator("button[aria-expanded]", { hasText: "fitcheckskater" }).first();
+      await historyRow.scrollIntoViewIfNeeded();
+      await expect(page.getByRole("img", { name: /^You: / }).first()).toBeVisible({ timeout: 15_000 });
+      await expectNoSidewaysScroll(page, "Profile history");
+      await expectLetterRowsUnclipped(page, "Profile history");
+      await shot(page, `profile-history-${phone.name}`);
+    });
+  }
 });
