@@ -6,6 +6,7 @@ import { AuthScreen } from "../AuthScreen";
 import type { MfaChallenge } from "../../services/mfa";
 import { NotificationProvider } from "../../context/NotificationContext";
 import { ToastContainer } from "../../components/ToastContainer";
+import { makeAuthScreenProps } from "./authScreen.test-helpers";
 
 function Wrapper({ children }: { children: ReactNode }) {
   return (
@@ -90,21 +91,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 
-const defaultProps = {
-  mode: "signin" as const,
-  onDone: vi.fn(),
-  onToggle: vi.fn(),
-  onGoogle: vi.fn(),
-  googleLoading: false,
-  onApple: vi.fn(),
-  appleLoading: false,
-  googleError: "",
-  onGoogleErrorDismiss: vi.fn(),
-  // Default: no pending second factor, and every error is a normal error.
-  mfaChallenge: null,
-  onMfaBegin: () => false,
-  onMfaCancel: vi.fn(),
-};
+const defaultProps = makeAuthScreenProps();
 
 describe("AuthScreen", () => {
   it("shows the Terms agreement under the sign-in buttons on both modes (App Review 1.2)", async () => {

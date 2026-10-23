@@ -387,6 +387,31 @@ describe("ProfileSetup", () => {
     expect(mockGetUserProfile).toHaveBeenCalledWith("u1");
   });
 
+  // Before these, the `cancelled` guards were only hit when some other test
+  // happened to unmount mid-lookup, so the branch flipped between runs.
+  it("ignores an existing-profile lookup that resolves after unmount", async () => {
+    const onDone = vi.fn();
+    let resolveLookup: (p: unknown) => void = () => {};
+    mockGetUserProfile.mockReturnValue(new Promise((r) => (resolveLookup = r)));
+
+    const { unmount } = render(<ProfileSetup {...defaultProps} onDone={onDone} />);
+    unmount();
+    await act(async () => resolveLookup({ uid: "u1", username: "existinguser", stance: "Goofy" }));
+
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it("ignores an existing-profile lookup that rejects after unmount", async () => {
+    let rejectLookup: (e: unknown) => void = () => {};
+    mockGetUserProfile.mockReturnValue(new Promise((_, r) => (rejectLookup = r)));
+
+    const { unmount } = render(<ProfileSetup {...defaultProps} />);
+    unmount();
+    await act(async () => rejectLookup(new Error("late failure")));
+
+    expect(screen.queryByText(/Couldn't load your profile/)).not.toBeInTheDocument();
+  });
+
   it("shows a retry screen (not the form) when the existing-profile lookup fails", async () => {
     // Returning users whose profile fetch errors transiently must NOT see the
     // create-profile form — that would invite them to re-register over their

@@ -19,6 +19,20 @@ describe("containsObjectionableText", () => {
     expect(containsObjectionableText("N1GG3RS")).toBe(true);
     expect(containsObjectionableText("just kys")).toBe(true);
   });
+  it("folds every look-alike swap back to its letter", () => {
+    // 1/7/3 -> i/t/e, @/! -> a/i, 4/1 -> a/i, 3/0 -> e/o, 5 and $ -> s
+    for (const t of ["h17l3r", "n@z!", "n4z1", "p3d0", "ky5", "ky$"]) {
+      expect(containsObjectionableText(t)).toBe(true);
+    }
+    // A look-alike used more than once is swapped everywhere, not just the
+    // first time (replaceAll, not replace): "c00n" must fold to "coon".
+    expect(containsObjectionableText("c00n")).toBe(true);
+    expect(containsObjectionableText("g00k")).toBe(true);
+    expect(isObjectionableUsername("c00n")).toBe(true);
+    // Digits outside the swap table stay digits, so plain numbers never match.
+    expect(containsObjectionableText("kickflip 2 8 9 6")).toBe(false);
+  });
+
   it("blocks letters split up to dodge the filter", () => {
     expect(containsObjectionableText("k y s")).toBe(true);
     expect(containsObjectionableText("a b c")).toBe(false);

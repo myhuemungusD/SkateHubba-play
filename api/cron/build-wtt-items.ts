@@ -56,8 +56,9 @@ export async function buildWttItems(req: Request): Promise<Response> {
     //        retired: false,
     //        createdAt: serverTimestamp()
     //      }
-    // 3. Check for gold-standard clips (uploaded by WTT_GOLD_PROS):
-    //    - If clip.playerUid in WTT_GOLD_PROS:
+    // 3. Check for gold-standard clips (uploaded by a curated set of pro
+    //    accounts, to be defined server-side when this cron is built):
+    //    - If clip.playerUid is one of those gold-standard pros:
     //      - Create wttGold/{clipId} document instead of wttItems
     //      - These are used to calculate voter reliability scores
     // 4. Batch write all new items (max 500 per run to avoid timeouts)

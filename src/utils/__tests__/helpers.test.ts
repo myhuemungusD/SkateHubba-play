@@ -157,6 +157,27 @@ describe("newGameShell", () => {
     expect(shell.customRules).toBeNull();
   });
 
+  it("marks a judged game's review as pending and leaves an unjudged one null", () => {
+    const judged = newGameShell("g1", "u1", "sk8r", "u2", "rival", null, "j1", "judge");
+    expect(judged.judgeId).toBe("j1");
+    expect(judged.judgeUsername).toBe("judge");
+    expect(judged.judgeStatus).toBe("pending");
+    expect(newGameShell("g1", "u1", "sk8r", "u2", "rival").judgeStatus).toBeNull();
+  });
+
+  it("carries a chosen turn length into the field and the first deadline", () => {
+    const before = Date.now();
+    const shell = newGameShell("g1", "u1", "sk8r", "u2", "rival", null, null, null, null, null, 72);
+    expect(shell.turnLengthHours).toBe(72);
+    const deadlineMs = shell.turnDeadline.toMillis();
+    expect(deadlineMs).toBeGreaterThanOrEqual(before + 72 * 3_600_000);
+    expect(deadlineMs).toBeLessThanOrEqual(Date.now() + 72 * 3_600_000);
+  });
+
+  it("omits turnLengthHours when none is chosen", () => {
+    expect(newGameShell("g1", "u1", "sk8r", "u2", "rival")).not.toHaveProperty("turnLengthHours");
+  });
+
   it("carries sanitized customRules for a custom game", () => {
     const shell = newGameShell("g1", "u1", "sk8r", "u2", "rival", null, null, null, "custom", "  no pushing  ");
     expect(shell.trickCategory).toBe("custom");

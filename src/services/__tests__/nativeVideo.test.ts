@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll, type MockInstance } from "vitest";
 
 /* ── mock @capacitor/core ──────────────────────────────────── */
 
@@ -49,20 +49,15 @@ vi.mock("@capacitor-community/video-recorder", () => ({
   },
 }));
 
-/* ── mock global fetch ─────────────────────────────────────── */
+/* ── mock global fetch / performance.now ───────────────────── */
 
+// Both are installed per test and restored afterwards. The old module-level
+// vi.stubGlobal("performance", …) swapped out the whole global for the life of
+// the worker, which vitest's own timing and V8 coverage collection share; it
+// was the likely trigger of the corrupted (negative) nativeVideo.ts branch
+// counts in 878-hesher.md. Spying on now() alone leaves the real object intact.
 const mockFetch = vi.fn();
-vi.stubGlobal("fetch", mockFetch);
-
-/* ── mock performance.now ──────────────────────────────────── */
-
-const mockPerformanceNow = vi.fn(() => 0);
-const mockPerformance = {
-  now: mockPerformanceNow,
-  timeOrigin: 0,
-  toJSON: () => ({}),
-};
-vi.stubGlobal("performance", mockPerformance);
+let mockPerformanceNow: MockInstance<() => number>;
 
 /* ── mock sentry breadcrumb ─────────────────────────────── */
 
@@ -85,6 +80,8 @@ import { MAX_VIDEO_DURATION_MS } from "../../constants/video";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubGlobal("fetch", mockFetch);
+  mockPerformanceNow = vi.spyOn(performance, "now").mockReturnValue(0);
   mockIsNativePlatform.mockReturnValue(false);
   mockInitialize.mockResolvedValue(undefined);
   mockDestroy.mockResolvedValue(undefined);
@@ -94,6 +91,11 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  mockPerformanceNow.mockRestore();
+});
+
+afterAll(() => {
+  vi.unstubAllGlobals();
 });
 
 /**
@@ -660,36 +662,38 @@ describe("native pro-capture extras", () => {
     const originalSetPreRoll = vr.setPreRoll;
     const originalSetNativeFisheye = vr.setNativeFisheye;
 
-    // Temporarily remove the methods
-    delete vr.setZoom;
-    delete vr.focusAt;
-    delete vr.setQuality;
-    delete vr.getQualityModes;
-    delete vr.setPreRoll;
-    delete vr.setNativeFisheye;
+    try {
+      // Temporarily remove the methods
+      delete vr.setZoom;
+      delete vr.focusAt;
+      delete vr.setQuality;
+      delete vr.getQualityModes;
+      delete vr.setPreRoll;
+      delete vr.setNativeFisheye;
 
-    const {
-      setNativeLens,
-      focusNativeAt,
-      setNativeQuality,
-      getNativeQualityModes,
-      setNativePreRoll,
-      setNativeFisheye,
-    } = await import("../nativeVideo");
-    expect(await setNativeLens(1)).toBe(false);
-    expect(await focusNativeAt(0.5, 0.5, false)).toBe(false);
-    expect(await setNativeQuality("pro4k60")).toBe(false);
-    expect(await getNativeQualityModes()).toEqual({ modes: ["standard1080p60"], current: "standard1080p60" });
-    expect(await setNativePreRoll(true)).toBe(false);
-    expect(await setNativeFisheye(true)).toBe(false);
-
-    // Restore the methods
-    vr.setZoom = originalSetZoom;
-    vr.focusAt = originalFocusAt;
-    vr.setQuality = originalSetQuality;
-    vr.getQualityModes = originalGetQualityModes;
-    vr.setPreRoll = originalSetPreRoll;
-    vr.setNativeFisheye = originalSetNativeFisheye;
+      const {
+        setNativeLens,
+        focusNativeAt,
+        setNativeQuality,
+        getNativeQualityModes,
+        setNativePreRoll,
+        setNativeFisheye,
+      } = await import("../nativeVideo");
+      expect(await setNativeLens(1)).toBe(false);
+      expect(await focusNativeAt(0.5, 0.5, false)).toBe(false);
+      expect(await setNativeQuality("pro4k60")).toBe(false);
+      expect(await getNativeQualityModes()).toEqual({ modes: ["standard1080p60"], current: "standard1080p60" });
+      expect(await setNativePreRoll(true)).toBe(false);
+      expect(await setNativeFisheye(true)).toBe(false);
+    } finally {
+      // Restore the methods
+      vr.setZoom = originalSetZoom;
+      vr.focusAt = originalFocusAt;
+      vr.setQuality = originalSetQuality;
+      vr.getQualityModes = originalGetQualityModes;
+      vr.setPreRoll = originalSetPreRoll;
+      vr.setNativeFisheye = originalSetNativeFisheye;
+    }
   });
 });
 
@@ -780,6 +784,14 @@ describe("native live preview", () => {
     await expect(closeNativePreview()).resolves.toBeUndefined();
     expect(mockAddBreadcrumb).toHaveBeenCalledWith(
       expect.objectContaining({ message: "video_recorder_destroy_failed", data: { error: "teardown" } }),
+    );
+  });
+
+  it("stringifies a non-Error teardown rejection in the breadcrumb", async () => {
+    mockDestroy.mockRejectedValueOnce("plugin gone");
+    await expect(closeNativePreview()).resolves.toBeUndefined();
+    expect(mockAddBreadcrumb).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "video_recorder_destroy_failed", data: { error: "plugin gone" } }),
     );
   });
 });

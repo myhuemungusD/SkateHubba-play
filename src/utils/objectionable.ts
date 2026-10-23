@@ -50,11 +50,14 @@ const LOOKALIKES: Record<string, string> = {
 };
 
 function fold(text: string): string {
-  return text
+  let folded = text
     .toLowerCase()
     .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[01!34@5$7]/g, (c) => LOOKALIKES[c] ?? c);
+    .replace(/[\u0300-\u036f]/g, "");
+  // Every swap maps to a plain letter, never to another look-alike, so the
+  // order of replacements cannot chain.
+  for (const [lookalike, letter] of Object.entries(LOOKALIKES)) folded = folded.replaceAll(lookalike, letter);
+  return folded;
 }
 
 /** True when free text (a comment) contains a blocked term as a word. */

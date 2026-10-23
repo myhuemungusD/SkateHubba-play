@@ -547,11 +547,7 @@ export async function getLeaderboard(): Promise<UserProfile[]> {
  * default-emulator bucket and prod can pin `sk8hub-d7806.firebasestorage.app`.
  */
 function buildAvatarUrlRegex(uid: string): RegExp {
-  // Build env reads as a string; the `?? ""` fallback only fires in
-  // misconfigured envs where the entire `import.meta.env` is missing,
-  // which the env zod schema guards against at boot. Coverage-skip the
-  // fallback because the schema prevents the path in production.
-  /* v8 ignore next */
+  // No bucket configured -> "" so the pattern can match no real URL (fail closed).
   const bucket = (import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string | undefined) ?? "";
   // Escape regex metachars in the bucket name (dots most importantly —
   // `sk8hub-d7806.firebasestorage.app` has them and an unescaped dot would

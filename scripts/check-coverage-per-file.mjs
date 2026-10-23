@@ -48,8 +48,9 @@ const BASELINE_PATH = resolve(REPO_ROOT, "scripts/coverage-per-file-baseline.jso
 const METRICS = ["lines", "functions", "branches", "statements"];
 
 /**
- * Per-file floors. Keep in sync with the glob thresholds in vite.config.ts —
- * this script is the per-file half of the same contract.
+ * Per-file minimum for UI files. The vite.config.ts glob thresholds are
+ * separate aggregate ratchets and sit deliberately higher; this floor only
+ * stops a single file from hiding behind a well-covered glob.
  */
 const FLOORS = [
   { prefix: "src/components/", floor: { lines: 80, functions: 80, branches: 75, statements: 80 } },

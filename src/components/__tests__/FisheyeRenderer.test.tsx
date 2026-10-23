@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { FisheyeRenderer } from "../FisheyeRenderer";
 
@@ -6,9 +6,22 @@ vi.mock("../../services/logger", () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
 }));
 
-describe("FisheyeRenderer", () => {
-  beforeEach(() => vi.clearAllMocks());
+// Every test runs on a manual frame queue. With jsdom's real ~16ms rAF the
+// first render() frame sometimes fired before unmount and sometimes did not,
+// so initGL's lines and branches flipped in coverage from run to run.
+let frames: FrameRequestCallback[] = [];
+beforeEach(() => {
+  vi.clearAllMocks();
+  frames = [];
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+    frames.push(cb);
+    return frames.length;
+  });
+  vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+});
+afterEach(() => vi.restoreAllMocks());
 
+describe("FisheyeRenderer", () => {
   it("returns null when not active", () => {
     const { container } = render(<FisheyeRenderer videoEl={null} active={false} />);
     expect(container.firstChild).toBeNull();
@@ -39,9 +52,96 @@ describe("FisheyeRenderer", () => {
     expect(onCanvas).toHaveBeenCalledWith(null);
   });
 
+  it("sizes the canvas to 720x1280 by default and retries next frame when WebGL is unavailable", () => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    render(<FisheyeRenderer videoEl={document.createElement("video")} active={true} />);
+    expect(frames).toHaveLength(1);
+    frames.shift()?.(0);
+    const canvas = screen.getByLabelText("Fisheye camera preview") as HTMLCanvasElement;
+    expect(canvas.width).toBe(720);
+    expect(canvas.height).toBe(1280);
+    expect(frames).toHaveLength(1);
+  });
+
+  it("sizes the canvas to the video's own dimensions when known", () => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    const video = document.createElement("video");
+    Object.defineProperty(video, "videoWidth", { value: 640 });
+    Object.defineProperty(video, "videoHeight", { value: 480 });
+    render(<FisheyeRenderer videoEl={video} active={true} />);
+    frames.shift()?.(0);
+    const canvas = screen.getByLabelText("Fisheye camera preview") as HTMLCanvasElement;
+    expect(canvas.width).toBe(640);
+    expect(canvas.height).toBe(480);
+  });
+
   it("calls onCanvas with null when not active", () => {
     const onCanvas = vi.fn();
     render(<FisheyeRenderer videoEl={null} active={false} onCanvas={onCanvas} />);
     expect(onCanvas).toHaveBeenCalledWith(null);
+  });
+});
+
+/**
+ * A minimal WebGL stand-in: enough of the context for compile/link to run,
+ * with the status queries switchable so the driver-error paths can be hit.
+ */
+function fakeGL(opts: { compileOk: boolean; linkOk: boolean }) {
+  return {
+    VERTEX_SHADER: 1,
+    FRAGMENT_SHADER: 2,
+    COMPILE_STATUS: 3,
+    LINK_STATUS: 4,
+    createShader: vi.fn(() => ({})),
+    shaderSource: vi.fn(),
+    compileShader: vi.fn(),
+    getShaderParameter: vi.fn(() => opts.compileOk),
+    getShaderInfoLog: vi.fn(() => "ERROR: 0:1: syntax error"),
+    deleteShader: vi.fn(),
+    createProgram: vi.fn(() => ({})),
+    attachShader: vi.fn(),
+    linkProgram: vi.fn(),
+    getProgramParameter: vi.fn(() => opts.linkOk),
+    getProgramInfoLog: vi.fn(() => "link: varying mismatch"),
+    deleteProgram: vi.fn(),
+    useProgram: vi.fn(),
+  };
+}
+
+describe("FisheyeRenderer shader errors", () => {
+  function mountWith(gl: ReturnType<typeof fakeGL>) {
+    // getContext is overloaded per context type; the spy is typed against the
+    // last overload (WebGPU), so the fake WebGL context needs an untyped cast.
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(gl as never);
+    render(<FisheyeRenderer videoEl={document.createElement("video")} active={true} />);
+    const first = frames.shift();
+    first?.(0);
+  }
+
+  it("logs the compile error once, frees the shader and stops instead of retrying every frame", async () => {
+    const { logger } = await import("../../services/logger");
+    const gl = fakeGL({ compileOk: false, linkOk: true });
+    mountWith(gl);
+
+    expect(logger.warn).toHaveBeenCalledWith("shader_compile_error", { info: "ERROR: 0:1: syntax error" });
+    expect(gl.deleteShader).toHaveBeenCalled();
+    expect(gl.createProgram).not.toHaveBeenCalled();
+    expect(gl.useProgram).not.toHaveBeenCalled();
+    // A compile error is deterministic: no next frame, so the warning is not
+    // repeated every frame. One warning per shader (vertex + fragment), once.
+    expect(frames).toHaveLength(0);
+    expect(logger.warn).toHaveBeenCalledTimes(2);
+  });
+
+  it("logs the link error once, frees the program and stops instead of retrying every frame", async () => {
+    const { logger } = await import("../../services/logger");
+    const gl = fakeGL({ compileOk: true, linkOk: false });
+    mountWith(gl);
+
+    expect(logger.warn).toHaveBeenCalledWith("program_link_error", { info: "link: varying mismatch" });
+    expect(gl.deleteProgram).toHaveBeenCalledTimes(1);
+    expect(gl.useProgram).not.toHaveBeenCalled();
+    expect(frames).toHaveLength(0);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
   });
 });

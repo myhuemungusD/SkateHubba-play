@@ -156,6 +156,10 @@ export default defineConfig({
     setupFiles: "./src/__tests__/setup.ts",
     include: ["src/**/*.test.{ts,tsx}"],
     css: false,
+    // Undo vi.stubEnv / vi.stubGlobal after every test so a stub can never
+    // leak into the next test (see 878-hesher.md, nativeVideo flake).
+    unstubEnvs: true,
+    unstubGlobals: true,
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],
@@ -164,7 +168,10 @@ export default defineConfig({
         "src/__tests__/**",
         // Shared test helpers — not production code, never imported outside tests
         "src/**/__tests__/**/*test-helpers*.ts",
-        "src/vite-env.d.ts",
+        // Type declarations and manual module mocks carry no runtime code
+        // of their own to cover.
+        "src/**/*.d.ts",
+        "src/**/__mocks__/**",
         // Entry point — not unit-testable in isolation
         "src/main.tsx",
       ],
@@ -172,19 +179,46 @@ export default defineConfig({
       // half of the UI floors below (the globs are aggregate-only).
       reporter: ["text", "lcov", "json-summary"],
       thresholds: {
-        // Services and hooks have complete unit test coverage
+        // Whole-repo floor. Every number below is a ratchet, set by one rule:
+        // floor = the minimum over at least 5 full coverage runs, truncated to
+        // one decimal. Coverage must be deterministic run to run (fake timers
+        // and manual rAF queues, never real-time races), so the min is stable.
+        // Truncating leaves a few items of slack in the big globs, so this is
+        // a ratchet, not a strict no-drop gate; the per-file gate
+        // (scripts/check-coverage-per-file.mjs) backs it up. Raise them as
+        // coverage climbs; never lower one to make a PR pass. Goal: 100
+        // everywhere.
+        //
+        // Known swing: in about 1 full run in 10, coverage-v8 attributes
+        // src/components/onboarding/TutorialOverlay.tsx's counts to the wrong
+        // functions (negative branch counts in coverage-final.json), always
+        // the same way: 8 fewer branches. That is a tooling fault, not test
+        // timing, so the global and components branch floors include it.
+        lines: 91.4,
+        functions: 91.7,
+        branches: 91.4,
+        statements: 90.4,
+        // Fully covered: keep it that way.
         "src/services/**": { lines: 100, functions: 100, branches: 100, statements: 100 },
         "src/hooks/**": { lines: 100, functions: 100, branches: 100, statements: 100 },
-        // firebase.ts: App Check branches depend on runtime env vars (VITE_RECAPTCHA_SITE_KEY)
-        // that cannot be set in Vitest's test environment — ~2 lines are legitimately untestable.
-        "src/firebase.ts": { lines: 93, functions: 100, branches: 80, statements: 93 },
-        // UI coverage floors — enforces that component/screen coverage doesn't regress.
-        // These are AGGREGATE floors: a single file can sit at 0% and still pass.
-        // The per-file rule lives in scripts/check-coverage-per-file.mjs (run by
+        "src/types/**": { lines: 100, functions: 100, branches: 100, statements: 100 },
+        "src/utils/**": { lines: 100, functions: 100, branches: 100, statements: 100 },
+        "src/firebase.ts": { lines: 100, functions: 100, branches: 100, statements: 100 },
+        // Ratchet floors for everything not at 100 yet. These are AGGREGATE
+        // floors: a single file can sit at 0% and still pass. The per-file
+        // rule lives in scripts/check-coverage-per-file.mjs (run by
         // `npm run test:coverage`), because vitest's `perFile` is global and
         // would trip on every pre-existing under-covered file at once.
-        "src/components/**": { lines: 80, functions: 80, branches: 75, statements: 80 },
-        "src/screens/**": { lines: 80, functions: 80, branches: 75, statements: 80 },
+        "src/App.tsx": { lines: 74.4, functions: 59.8, branches: 77.3, statements: 72.5 },
+        "src/boot/**": { lines: 88.8, functions: 85.7, branches: 85.8, statements: 88.4 },
+        "src/components/**": { lines: 97.4, functions: 96, branches: 92.1, statements: 95.6 },
+        "src/constants/**": { lines: 97.8, functions: 98.3, branches: 90.4, statements: 96 },
+        "src/context/**": { lines: 93.6, functions: 89.9, branches: 93.7, statements: 93.2 },
+        "src/lib/**": { lines: 85.4, functions: 89.1, branches: 84, statements: 85.4 },
+        "src/runner/**": { lines: 49.5, functions: 41.6, branches: 56.8, statements: 48 },
+        "src/screens/**": { lines: 98.2, functions: 97.1, branches: 94.3, statements: 97 },
+        // src/closet360 (one 3D viewer file) measures 0 today, so a floor would
+        // be a no-op; it is the first target of the coverage plan instead.
       },
     },
   },

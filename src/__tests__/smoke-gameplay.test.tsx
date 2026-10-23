@@ -29,6 +29,11 @@ vi.mock("../services/onboarding", () => onboarding.module);
  * screen until the chunk resolves. On a loaded CI runner that took ~1.9s,
  * past waitFor's 1s default, so the first case failed with the lobby still
  * showing. Same allowance smoke-deeplink uses for this label.
+ *
+ * It is applied to the first wait after every open, not just the setter
+ * helpers, so the file stays green whichever case runs first (a `-t` filter,
+ * a retry, a reorder). Later waits on an already-mounted screen keep the
+ * default, so a genuinely slow render still fails fast.
  */
 const GAME_SCREEN_LOAD = { timeout: 10_000 };
 
@@ -175,7 +180,7 @@ async function matcherOpensAndLands(overrides: Partial<GameDoc> = {}): Promise<v
 
   await openGameFromLobby();
 
-  await waitFor(() => screen.getByRole("button", { name: /open camera/i }));
+  await waitFor(() => screen.getByRole("button", { name: /open camera/i }), GAME_SCREEN_LOAD);
   await userEvent.click(screen.getByRole("button", { name: /open camera/i }));
   await waitFor(() => screen.getByRole("button", { name: /record/i }));
   await userEvent.click(screen.getByRole("button", { name: /record/i }));
@@ -234,7 +239,7 @@ describe("Smoke: Gameplay", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Waiting on @rival/)).toBeInTheDocument();
-    });
+    }, GAME_SCREEN_LOAD);
   });
 
   it("gameplay screen shows matcher UI when it's your turn to match", async () => {
@@ -251,7 +256,7 @@ describe("Smoke: Gameplay", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Match.*Tre Flip/)).toBeInTheDocument();
-    });
+    }, GAME_SCREEN_LOAD);
   });
 
   it("checks for expired turn when opening a game", async () => {
@@ -260,7 +265,7 @@ describe("Smoke: Gameplay", () => {
 
     await waitFor(() => {
       expect(games.refs.forfeitExpiredTurn).toHaveBeenCalledWith("game1", "u1");
-    });
+    }, GAME_SCREEN_LOAD);
   });
 
   it("game screen back button returns to lobby", async () => {
@@ -285,7 +290,7 @@ describe("Smoke: Gameplay", () => {
     await waitFor(() => {
       // Timer shows hours/minutes/seconds format
       expect(screen.getByText(/\d+h \d+m \d+s/)).toBeInTheDocument();
-    });
+    }, GAME_SCREEN_LOAD);
   });
 
   it("waiting screen shows setting context when opponent is setting", async () => {
@@ -297,7 +302,7 @@ describe("Smoke: Gameplay", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/setting a trick for you/)).toBeInTheDocument();
-    });
+    }, GAME_SCREEN_LOAD);
   });
 
   it("waiting screen shows matching context when opponent is matching", async () => {
@@ -309,7 +314,7 @@ describe("Smoke: Gameplay", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/attempting to match your trick/)).toBeInTheDocument();
-    });
+    }, GAME_SCREEN_LOAD);
   });
 
   it("matcher sees setter's trick video", async () => {
@@ -337,7 +342,7 @@ describe("Smoke: Gameplay", () => {
       ).toBeInTheDocument();
       const video = document.querySelector(`video[src='${videoUrl}']`);
       expect(video).toBeTruthy();
-    });
+    }, GAME_SCREEN_LOAD);
   });
 
   it("gameplay screen shows letter scores for both players", async () => {
@@ -357,7 +362,7 @@ describe("Smoke: Gameplay", () => {
       expect(screen.getByText("VS")).toBeInTheDocument();
       expect(screen.getByText(/@sk8r/)).toBeInTheDocument();
       expect(screen.getByText(/@rival/)).toBeInTheDocument();
-    });
+    }, GAME_SCREEN_LOAD);
   });
 
   it("setter's trick is submitted after recording and clicking Landed", async () => {
@@ -444,7 +449,7 @@ describe("Smoke: Gameplay", () => {
     // The camera never opens unprompted here, so a tap is required
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /open camera/i })).toBeInTheDocument();
-    });
+    }, GAME_SCREEN_LOAD);
     await userEvent.click(screen.getByRole("button", { name: /open camera/i }));
 
     // Camera rejected → preview state
@@ -563,7 +568,7 @@ describe("Smoke: Gameplay", () => {
     // navigation. Neither should retry on subsequent re-renders.
     await waitFor(() => {
       expect(games.refs.forfeitExpiredTurn).toHaveBeenCalledTimes(2);
-    });
+    }, GAME_SCREEN_LOAD);
   });
 
   it("forfeit check error does not crash", async () => {
@@ -573,7 +578,7 @@ describe("Smoke: Gameplay", () => {
     // No crash — waiting screen shows
     await waitFor(() => {
       expect(screen.getByText(/Waiting on @rival/)).toBeInTheDocument();
-    });
+    }, GAME_SCREEN_LOAD);
   });
 
   it("recovers to the lobby when the open game was deleted", async () => {
@@ -585,6 +590,6 @@ describe("Smoke: Gameplay", () => {
     await renderLobby([game]);
 
     await openGameFromLobby();
-    await waitFor(() => expect(screen.getByText("Game no longer available")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Game no longer available")).toBeInTheDocument(), GAME_SCREEN_LOAD);
   });
 });

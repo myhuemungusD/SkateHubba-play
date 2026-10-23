@@ -122,7 +122,7 @@ export function main(env = process.env, run = spawnSync, log = console.log) {
   return build ? 1 : 0;
 }
 
-/* c8 ignore next 3 */
+/* c8 ignore next 3 -- CLI entry guard; main() is unit-tested directly */
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   process.exit(main());
 }

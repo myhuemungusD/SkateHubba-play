@@ -145,13 +145,13 @@ if (env) {
     (globalThis as Record<string, unknown>).__e2eFirebaseAuth = auth;
   }
 } else {
-  const isVercel = typeof import.meta.env.VERCEL !== "undefined";
-  /* v8 ignore start */
+  // vite.config defines VERCEL as "" off Vercel, so test the value, not typeof
+  // (a typeof check is always true and sent local devs to the Vercel dashboard).
+  const isVercel = Boolean(import.meta.env.VERCEL);
   const message = isVercel
     ? "Firebase config missing. Add VITE_FIREBASE_* environment variables in Vercel Dashboard → Project Settings → Environment Variables (scope: Preview and/or Production)."
     : "Firebase config missing. Copy .env.example to .env.local and fill in your Firebase project values.";
   logger.error("firebase_config_missing", { message });
-  /* v8 ignore stop */
 }
 
 function requireDb(): Firestore {
@@ -177,23 +177,16 @@ function requireStorage(): FirebaseStorage {
  * or Firebase itself failed to init — callers still proceed, and
  * `isAppCheckInitialized()` stays false so a later permission-denied can be
  * told apart from a rules failure.
- *
- * The enabled path is ignored by coverage: it depends on VITE_APPCHECK_ENABLED
- * plus a reCAPTCHA site key, same as the previous synchronous init.
  */
 let appCheckPromise: Promise<void> | null = null;
 
 export function ensureAppCheck(): Promise<void> {
   if (!env?.VITE_APPCHECK_ENABLED || !app) return Promise.resolve();
-  /* v8 ignore start -- App Check branches depend on runtime env vars not available in tests */
-  appCheckPromise ??= installAppCheck();
+  appCheckPromise ??= installAppCheck(app, env.VITE_RECAPTCHA_SITE_KEY);
   return appCheckPromise;
-  /* v8 ignore stop */
 }
 
-/* v8 ignore start -- App Check branches depend on runtime env vars not available in tests */
-async function installAppCheck(): Promise<void> {
-  if (!env || !app) return;
+async function installAppCheck(firebaseApp: FirebaseApp, recaptchaSiteKey: string | undefined): Promise<void> {
   if (useEmulators) {
     // Expose debug token so the App Check debug provider works locally.
     // Firebase App Check reads this off the global scope at init time.
@@ -209,7 +202,7 @@ async function installAppCheck(): Promise<void> {
     const useDebug = useEmulators || import.meta.env.DEV;
     try {
       const { installNativeAppCheck } = await import("./lib/nativeAppCheck");
-      await installNativeAppCheck(app, useDebug);
+      await installNativeAppCheck(firebaseApp, useDebug);
       appCheckInitialized = true;
       addBreadcrumb({
         category: "lifecycle",
@@ -228,11 +221,11 @@ async function installAppCheck(): Promise<void> {
     }
     return;
   }
-  if (env.VITE_RECAPTCHA_SITE_KEY) {
+  if (recaptchaSiteKey) {
     try {
       const { initializeAppCheck, ReCaptchaV3Provider } = await import("firebase/app-check");
-      initializeAppCheck(app, {
-        provider: new ReCaptchaV3Provider(env.VITE_RECAPTCHA_SITE_KEY),
+      initializeAppCheck(firebaseApp, {
+        provider: new ReCaptchaV3Provider(recaptchaSiteKey),
         isTokenAutoRefreshEnabled: true,
       });
       appCheckInitialized = true;
@@ -249,7 +242,6 @@ async function installAppCheck(): Promise<void> {
     hint: "VITE_APPCHECK_ENABLED=true requires VITE_RECAPTCHA_SITE_KEY",
   });
   captureMessage("App Check opt-in is set but VITE_RECAPTCHA_SITE_KEY is missing — init skipped", "error");
-  /* v8 ignore stop */
 }
 
 /**
@@ -266,16 +258,11 @@ function scheduleAppCheckWarmup(): void {
     });
     return;
   }
-  /* v8 ignore start -- App Check branches depend on runtime env vars not available in tests */
-  let started = false;
-  const start = () => {
-    if (started) return;
-    started = true;
-    void ensureAppCheck();
-  };
+  // Both listeners can fire (a tap, then a key). ensureAppCheck() memoizes
+  // the install, so a second call is a no-op; no extra guard is needed.
+  const start = () => void ensureAppCheck();
   window.addEventListener("pointerdown", start, { once: true, capture: true });
   window.addEventListener("keydown", start, { once: true, capture: true });
-  /* v8 ignore stop */
 }
 
 let storagePromise: Promise<FirebaseStorage | null> | null = null;

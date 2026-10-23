@@ -53,6 +53,15 @@ describe("getAuthErrorMessage", () => {
     expect(getAuthErrorMessage("auth/timeout")).toMatch(/network/i);
   });
 
+  it("maps disabled email sign-in and empty fields to copy that says what to do", () => {
+    expect(getAuthErrorMessage("auth/operation-not-allowed")).toBe(
+      "Email sign-in is temporarily disabled. Try Continue with Google above.",
+    );
+    const missing = "Please fill in both email and password.";
+    expect(getAuthErrorMessage("auth/missing-password")).toBe(missing);
+    expect(getAuthErrorMessage("auth/missing-email")).toBe(missing);
+  });
+
   it("maps rate-limit codes to the same wait message", () => {
     const tooMany = getAuthErrorMessage("auth/too-many-requests");
     expect(tooMany).toMatch(/wait/i);

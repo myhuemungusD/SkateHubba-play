@@ -56,6 +56,11 @@ export function _resetNotificationRateLimit(): void {
   lastNotificationAt.clear();
 }
 
+/** @internal Number of armed cooldown entries (for tests only: proves the prune keeps the map bounded) */
+export function _notificationRateLimitSizeForTests(): number {
+  return lastNotificationAt.size;
+}
+
 /**
  * Write a notification document to the `notifications` collection.
  * The recipient's app listens to this collection via onSnapshot and
@@ -148,11 +153,8 @@ export async function writeNotification(
   lastNotificationAt.set(key, now);
 
   // Drop entries past the cooldown window so the map stays bounded.
-  // The deletion has no observable effect beyond memory hygiene, so the
-  // expired branch can't be asserted — ignore for coverage.
   const cutoff = now - NOTIFICATION_COOLDOWN_MS;
   for (const [k, ts] of lastNotificationAt) {
-    /* v8 ignore next */
     if (ts < cutoff) lastNotificationAt.delete(k);
   }
 

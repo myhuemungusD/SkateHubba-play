@@ -16,6 +16,9 @@ const mockMemoryLocalCache = vi.fn((..._: unknown[]) => ({ __cache: "memory" }))
 const mockPersistentLocalCache = vi.fn((..._: unknown[]) => ({ __cache: "persistent" }));
 const mockPersistentMultipleTabManager = vi.fn((..._: unknown[]) => ({}));
 const mockAddBreadcrumb = vi.fn((..._: unknown[]) => undefined);
+const mockCaptureMessage = vi.fn((..._: unknown[]) => undefined);
+const mockInitializeAppCheck = vi.fn((..._: unknown[]) => ({ name: "test-appcheck" }));
+const mockInstallNativeAppCheck = vi.fn(async (..._: unknown[]) => undefined);
 
 const capacitorState = vi.hoisted(() => ({ platform: "web" }));
 vi.mock("@capacitor/core", () => ({
@@ -27,7 +30,7 @@ vi.mock("@capacitor/core", () => ({
 
 vi.mock("../lib/sentry", () => ({
   addBreadcrumb: (...args: unknown[]) => mockAddBreadcrumb(...args),
-  captureMessage: vi.fn(),
+  captureMessage: (...args: unknown[]) => mockCaptureMessage(...args),
   captureException: vi.fn(),
   initSentry: vi.fn(),
   setUser: vi.fn(),
@@ -57,6 +60,17 @@ vi.mock("firebase/storage", () => ({
   connectStorageEmulator: (...args: unknown[]) => mockConnectStorageEmulator(...args),
 }));
 
+vi.mock("firebase/app-check", () => ({
+  initializeAppCheck: (...args: unknown[]) => mockInitializeAppCheck(...args),
+  ReCaptchaV3Provider: class {
+    constructor(readonly siteKey: string) {}
+  },
+}));
+
+vi.mock("../lib/nativeAppCheck", () => ({
+  installNativeAppCheck: (...args: unknown[]) => mockInstallNativeAppCheck(...args),
+}));
+
 /** Stub every VITE_FIREBASE_* var required by the Zod env schema. */
 function stubFirebaseEnv(): void {
   vi.stubEnv("VITE_FIREBASE_API_KEY", "test-api-key");
@@ -76,6 +90,7 @@ describe("firebase module", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
 
   it("does not initialize Firebase when VITE_FIREBASE_API_KEY is missing", async () => {
@@ -88,11 +103,10 @@ describe("firebase module", () => {
     expect(mod.auth).toBeNull();
     expect(mod.storage).toBeNull();
     expect(mockInitializeApp).not.toHaveBeenCalled();
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      "[ERROR]",
-      "firebase_config_missing",
-      expect.objectContaining({ message: expect.stringContaining("Firebase config missing") }),
-    );
+    // Off Vercel, vite.config defines VERCEL as "": point at .env.local, not the dashboard.
+    expect(consoleErrorSpy).toHaveBeenCalledWith("[ERROR]", "firebase_config_missing", {
+      message: expect.stringContaining("Copy .env.example to .env.local"),
+    });
 
     consoleErrorSpy.mockRestore();
   });
@@ -314,5 +328,187 @@ describe("firebase module", () => {
     // App Check init is gated on VITE_APPCHECK_ENABLED which is unset in the
     // Vitest env, so the probe must report false on this happy-path init.
     expect(mod.isAppCheckInitialized()).toBe(false);
+  });
+
+  it("names the Vercel dashboard in the missing-config error when built on Vercel", async () => {
+    vi.stubEnv("VITE_FIREBASE_API_KEY", "");
+    vi.stubEnv("VERCEL", "1");
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await import("../firebase");
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "[ERROR]",
+      "firebase_config_missing",
+      expect.objectContaining({ message: expect.stringContaining("Vercel Dashboard") }),
+    );
+  });
+
+  it("logs a non-Error persistent-cache failure as a string before falling back", async () => {
+    stubFirebaseEnv();
+    vi.stubEnv("VITE_USE_EMULATORS", "false");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockInitializeFirestore.mockImplementationOnce(() => {
+      throw "quota exceeded";
+    });
+
+    const mod = await import("../firebase");
+    expect(mod.firestoreCacheMode).toBe("memory");
+    expect(warnSpy).toHaveBeenCalledWith("[WARN]", "firestore_persistent_cache_failed", {
+      message: "quota exceeded",
+    });
+  });
+});
+
+describe("firebase App Check (VITE_APPCHECK_ENABLED=true)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+    capacitorState.platform = "web";
+    stubFirebaseEnv();
+    vi.stubEnv("VITE_USE_EMULATORS", "false");
+    vi.stubEnv("VITE_APPCHECK_ENABLED", "true");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+    delete (self as unknown as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN;
+  });
+
+  it("installs the reCAPTCHA v3 provider once, however many callers wait on it", async () => {
+    vi.stubEnv("VITE_RECAPTCHA_SITE_KEY", "site-key-123");
+
+    const mod = await import("../firebase");
+    expect(mockInitializeAppCheck).not.toHaveBeenCalled();
+    await Promise.all([mod.ensureAppCheck(), mod.ensureAppCheck()]);
+    await mod.ensureStorage();
+
+    expect(mockInitializeAppCheck).toHaveBeenCalledTimes(1);
+    expect(mockInitializeAppCheck).toHaveBeenCalledWith(
+      { name: "test-app" },
+      { provider: expect.objectContaining({ siteKey: "site-key-123" }), isTokenAutoRefreshEnabled: true },
+    );
+    expect(mod.isAppCheckInitialized()).toBe(true);
+    expect(mockInstallNativeAppCheck).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["an Error", new Error("recaptcha blocked"), "recaptcha blocked"],
+    ["a non-Error value", "boom", "boom"],
+  ])("reports %s thrown by initializeAppCheck and leaves the probe false", async (_label, thrown, text) => {
+    vi.stubEnv("VITE_RECAPTCHA_SITE_KEY", "site-key-123");
+    mockInitializeAppCheck.mockImplementationOnce(() => {
+      throw thrown;
+    });
+
+    const mod = await import("../firebase");
+    await mod.ensureAppCheck();
+
+    expect(mod.isAppCheckInitialized()).toBe(false);
+    expect(console.error).toHaveBeenCalledWith("[ERROR]", "appcheck_init_failed", { message: text });
+    expect(mockCaptureMessage).toHaveBeenCalledWith(
+      `App Check init failed — Auth/Firestore requests may be rejected: ${text}`,
+      "error",
+    );
+  });
+
+  it("skips init and raises an error when the opt-in is set without a site key", async () => {
+    vi.stubEnv("VITE_RECAPTCHA_SITE_KEY", "");
+
+    const mod = await import("../firebase");
+    await mod.ensureAppCheck();
+
+    expect(mockInitializeAppCheck).not.toHaveBeenCalled();
+    expect(mod.isAppCheckInitialized()).toBe(false);
+    expect(console.error).toHaveBeenCalledWith("[ERROR]", "appcheck_enabled_but_no_site_key", {
+      hint: "VITE_APPCHECK_ENABLED=true requires VITE_RECAPTCHA_SITE_KEY",
+    });
+    expect(mockCaptureMessage).toHaveBeenCalledWith(
+      "App Check opt-in is set but VITE_RECAPTCHA_SITE_KEY is missing — init skipped",
+      "error",
+    );
+  });
+
+  it("bridges the native plugin on the iOS/Android shell instead of reCAPTCHA", async () => {
+    capacitorState.platform = "ios";
+    vi.stubEnv("VITE_RECAPTCHA_SITE_KEY", "site-key-123");
+
+    const mod = await import("../firebase");
+    await mod.ensureAppCheck();
+
+    // import.meta.env.DEV is true under Vitest, so the native debug provider is requested.
+    expect(mockInstallNativeAppCheck).toHaveBeenCalledWith({ name: "test-app" }, true);
+    expect(mockInitializeAppCheck).not.toHaveBeenCalled();
+    expect(mod.isAppCheckInitialized()).toBe(true);
+    expect(mockAddBreadcrumb).toHaveBeenCalledWith({
+      category: "lifecycle",
+      message: "appcheck_native_initialized",
+      data: { debug: true },
+    });
+  });
+
+  it.each([
+    ["an Error", new Error("attest unavailable"), "attest unavailable"],
+    ["a non-Error value", 42, "42"],
+  ])("reports %s from the native bridge without throwing to callers", async (_label, thrown, text) => {
+    capacitorState.platform = "android";
+    mockInstallNativeAppCheck.mockRejectedValueOnce(thrown);
+
+    const mod = await import("../firebase");
+    await expect(mod.ensureAppCheck()).resolves.toBeUndefined();
+
+    expect(mod.isAppCheckInitialized()).toBe(false);
+    expect(console.error).toHaveBeenCalledWith("[ERROR]", "appcheck_native_init_failed", { message: text });
+    expect(mockAddBreadcrumb).toHaveBeenCalledWith({
+      category: "lifecycle",
+      message: "appcheck_native_init_failed",
+      data: { error: text },
+    });
+    expect(mockCaptureMessage).toHaveBeenCalledWith(
+      `Native App Check init failed — Auth/Firestore requests may be rejected: ${text}`,
+      "error",
+    );
+  });
+
+  it("sets the debug token only when talking to the local emulators", async () => {
+    vi.stubEnv("VITE_USE_EMULATORS", "true");
+    vi.stubEnv("VITE_RECAPTCHA_SITE_KEY", "site-key-123");
+
+    const mod = await import("../firebase");
+    expect((self as unknown as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN).toBeUndefined();
+    await mod.ensureAppCheck();
+    expect((self as unknown as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN).toBe(true);
+  });
+
+  it("does not set the debug token against production Firebase", async () => {
+    vi.stubEnv("VITE_RECAPTCHA_SITE_KEY", "site-key-123");
+
+    const mod = await import("../firebase");
+    await mod.ensureAppCheck();
+    expect((self as unknown as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN).toBeUndefined();
+  });
+
+  it("starts App Check on the first tap or key, once, and not before", async () => {
+    vi.stubEnv("VITE_RECAPTCHA_SITE_KEY", "site-key-123");
+    const addSpy = vi.spyOn(window, "addEventListener");
+
+    const mod = await import("../firebase");
+    const warmups = addSpy.mock.calls.filter(([type]) => type === "pointerdown" || type === "keydown");
+    expect(warmups.map(([type, , opts]) => [type, opts])).toEqual([
+      ["pointerdown", { once: true, capture: true }],
+      ["keydown", { once: true, capture: true }],
+    ]);
+    expect(mockInitializeAppCheck).not.toHaveBeenCalled();
+
+    // Both listeners share one start(); a key after the tap must not install
+    // twice. ensureAppCheck()'s memo is what guarantees that.
+    const start = warmups[0][1] as () => void;
+    expect(warmups[1][1]).toBe(start);
+    start();
+    start();
+    await mod.ensureAppCheck();
+    expect(mockInitializeAppCheck).toHaveBeenCalledTimes(1);
+    expect(mod.isAppCheckInitialized()).toBe(true);
   });
 });
