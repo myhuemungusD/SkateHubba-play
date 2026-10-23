@@ -7,7 +7,11 @@ import * as seed from "../../scripts/review-kit/seed.mjs";
 // @ts-expect-error — plain .mjs script, no types
 import * as shots from "../../scripts/review-kit/screenshots.mjs";
 
-const ENV = { REVIEW_EMAIL: "review@example.com", REVIEW_PASSWORD: "correct-horse-1" };
+const ENV = {
+  REVIEW_EMAIL: "review@example.com",
+  REVIEW_PASSWORD: "correct-horse-1",
+  REVIEW_USERNAME: "demo_reviewer",
+};
 
 describe("plan", () => {
   it("covers every required store size at the exact pixel size", () => {
@@ -22,16 +26,17 @@ describe("plan", () => {
   });
 
   it("reads env without defaults for secrets", () => {
-    expect(plan.reviewEnv({}).missing).toEqual(["REVIEW_EMAIL", "REVIEW_PASSWORD (10+ characters)"]);
+    expect(plan.reviewEnv({}).missing).toEqual(["REVIEW_EMAIL", "REVIEW_PASSWORD (10+ characters)", "REVIEW_USERNAME"]);
+    expect(plan.reviewEnv({ ...ENV, REVIEW_USERNAME: "  " }).missing).toEqual(["REVIEW_USERNAME"]);
     const ok = plan.reviewEnv({ ...ENV, REVIEW_USERNAME: "AppRev", REVIEW_BASE_URL: "http://x/" });
     expect(ok).toMatchObject({ missing: [], username: "apprev", appUrl: "http://x" });
   });
 
   it("builds deterministic, public-only seed docs", () => {
-    const docs = plan.buildSeedDocs({ uid: "U", username: "appreview", appUrl: "https://a", now: new Date(0) });
+    const docs = plan.buildSeedDocs({ uid: "U", username: ENV.REVIEW_USERNAME, appUrl: "https://a", now: new Date(0) });
     const paths = docs.map(([p]: [string]) => p);
     expect(paths).toContain("users/U");
-    expect(paths).toContain("usernames/appreview");
+    expect(paths).toContain(`usernames/${ENV.REVIEW_USERNAME}`);
     expect(paths.filter((p: string) => p.startsWith("games/"))).toHaveLength(10);
     expect(paths.filter((p: string) => p.startsWith("clips/"))).toHaveLength(8);
     expect(paths.filter((p: string) => p.startsWith("spots/"))).toHaveLength(6);
@@ -118,6 +123,24 @@ function fakeAdmin(exists: boolean) {
   return { admin, writes };
 }
 
+describe("emulator-only demo content", () => {
+  it("drops feed clips, map spots, passport stamps and Closet items when includeEmulatorOnly is false", () => {
+    const all = plan.buildSeedDocs({ uid: "U", username: "a", appUrl: "https://a", now: new Date(0) });
+    const priv = plan.buildSeedDocs({
+      uid: "U",
+      username: "a",
+      appUrl: "https://a",
+      now: new Date(0),
+      includeEmulatorOnly: false,
+    });
+    const paths = priv.map(([p]: [string]) => p);
+    expect(paths.some((p: string) => plan.isEmulatorOnlyPath(p, "U"))).toBe(false);
+    expect(paths).toContain("users/U");
+    expect(paths).toContain("passportSettings/U");
+    expect(all.length - priv.length).toBe(8 + 6 + 3 + 4);
+  });
+});
+
 describe("seed main", () => {
   it("requires credentials from env", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -154,6 +177,18 @@ describe("seed main", () => {
         expect(printed).not.toContain(value);
       }
     }
+  });
+  it("keeps emulator-only demo content out of production; only --emulator seeds it", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const prod = fakeAdmin(false);
+    expect(await seed.main(["--dry-run"], ENV, prod.admin)).toBe(0);
+    expect(JSON.stringify(log.mock.calls)).toContain("would create reviewer account");
+    expect(await seed.main([], ENV, prod.admin)).toBe(0);
+    expect(prod.writes.filter((p) => plan.isEmulatorOnlyPath(p, "NEW"))).toEqual([]);
+    expect(prod.writes).toContain("games/review-demo-your-turn");
+    const emu = fakeAdmin(false);
+    expect(await seed.main(["--emulator"], ENV, emu.admin)).toBe(0);
+    expect(emu.writes.filter((p) => p.startsWith("clips/"))).toHaveLength(8);
   });
   it("rethrows unexpected auth errors and reads the tutorial version", async () => {
     const f = fakeAdmin(true);
