@@ -6,7 +6,7 @@ import { TargetIcon, FilmIcon, ClockIcon, XCircleIcon, SkullIcon, type IconProps
 const RULES: { Icon: (props: IconProps) => React.ReactNode; text: string; color: string }[] = [
   { Icon: TargetIcon, text: "You set the first trick", color: "text-brand-orange" },
   { Icon: FilmIcon, text: "One-take video only — no retries", color: "text-brand-orange" },
-  { Icon: ClockIcon, text: "24 hours per turn or forfeit", color: "text-brand-orange" },
+  { Icon: ClockIcon, text: "Beat the turn clock (24 hours to 7 days) or forfeit", color: "text-brand-orange" },
   { Icon: XCircleIcon, text: "Miss a match = earn a letter", color: "text-brand-red" },
   { Icon: SkullIcon, text: "Spell S.K.A.T.E. = you lose", color: "text-brand-red" },
 ];

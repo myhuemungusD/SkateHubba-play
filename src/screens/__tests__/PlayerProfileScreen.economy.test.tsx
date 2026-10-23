@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { PlayerProfileScreen } from "../PlayerProfileScreen";
 import { buildBaseProps, fetchedState } from "./playerProfile.test-helpers";
@@ -65,6 +65,25 @@ const deck = buildLockerItem({ id: "d1" });
 describe("PlayerProfileScreen — Economy Phase A fetch failures", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // The Closet section only renders behind its flag (G9).
+    vi.stubEnv("VITE_FEATURE_CLOSET_ENABLED", "true");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("hides the Closet section entirely when the Closet flag is off (App Review 2.3.1)", async () => {
+    vi.stubEnv("VITE_FEATURE_CLOSET_ENABLED", "false");
+    mockFetchAchievements.mockResolvedValue([centuryBadge]);
+    mockFetchLockerItems.mockResolvedValue([deck]);
+
+    render(<PlayerProfileScreen {...ownProfileProps} />);
+
+    expect(await screen.findByTestId("badges-row")).toBeInTheDocument();
+    expect(screen.queryByTestId("closet-showcase")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("closet-empty-hint")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("closet-item-d1")).not.toBeInTheDocument();
   });
 
   it("keeps the badges row when only the locker read is rejected", async () => {

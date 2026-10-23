@@ -11,7 +11,7 @@ describe("RulesSheet", () => {
     expect(screen.getByRole("heading", { name: /^RULES$/ })).toBeInTheDocument();
     expect(screen.getByText("You set the first trick")).toBeInTheDocument();
     expect(screen.getByText("One-take video only — no retries")).toBeInTheDocument();
-    expect(screen.getByText("24 hours per turn or forfeit")).toBeInTheDocument();
+    expect(screen.getByText("Beat the turn clock (24 hours to 7 days) or forfeit")).toBeInTheDocument();
     expect(screen.getByText("Miss a match = earn a letter")).toBeInTheDocument();
     expect(screen.getByText("Spell S.K.A.T.E. = you lose")).toBeInTheDocument();
   });

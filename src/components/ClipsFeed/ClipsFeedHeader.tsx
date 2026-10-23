@@ -34,7 +34,7 @@ export const ClipsFeedHeader = memo(function ClipsFeedHeader({
       <div className="pointer-events-auto flex items-center gap-2">
         <h2 className="font-display text-[11px] tracking-[0.2em] text-white drop-shadow">CLIPS</h2>
         {position && (
-          <span className="rounded bg-black/50 px-1.5 py-0.5 font-display text-[10px] leading-none tabular-nums text-white/80">
+          <span className="rounded bg-black/50 px-1.5 py-0.5 font-display text-[11px] leading-none tabular-nums text-white/80">
             {position.index + 1}/{position.total}
           </span>
         )}

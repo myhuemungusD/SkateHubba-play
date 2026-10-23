@@ -21,7 +21,7 @@ export function AddedSpotsPlaceholder({ onAddSpot }: Props) {
       data-testid="added-spots-placeholder"
       className="mb-8 px-4 py-6 rounded-2xl border border-dashed border-border bg-surface/40 text-center animate-fade-in"
     >
-      <h2 className="font-display text-[10px] tracking-[0.2em] text-brand-orange mb-2">SPOTS YOU&apos;VE ADDED</h2>
+      <h2 className="font-display text-[11px] tracking-[0.2em] text-brand-orange mb-2">SPOTS YOU&apos;VE ADDED</h2>
       <p className="font-body text-sm text-muted mb-3">Add spots to see them here.</p>
       <button
         type="button"

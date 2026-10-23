@@ -524,6 +524,15 @@ export async function resolveGoogleRedirect(): Promise<User | null> {
     logger.warn("resolve_google_redirect_no_auth");
     return null;
   }
+  // Native (Capacitor) Google sign-in goes through the plugin and never
+  // redirects. firebase.ts registers no popupRedirectResolver on native, so
+  // getRedirectResult throws auth/argument-error on launch (Sentry, iOS
+  // 1.2.0 + 1.1.0), which surfaced as "Google sign-in failed" and a jump to
+  // the sign-in screen without the user tapping anything.
+  if (Capacitor.isNativePlatform()) {
+    logger.debug("resolve_google_redirect_skip_native");
+    return null;
+  }
   // Skip getRedirectResult when running against emulators — Google redirects
   // never happen in emulator mode and getRedirectResult can hang in CI.
   if (isEmulatorMode) {
