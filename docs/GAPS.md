@@ -158,6 +158,7 @@ _As originally filed:_ when a matcher claimed a land on the honor path, `games.m
 - **Art. 17 statement of reasons** — **CLOSED**. Resolving a report writes `moderationStatements/{reportId}` in the same batch; the subject can read it and cannot read the report. An account restriction uses `bans/{uid}`, which the subject can already get. A blank ban reason shows a short fallback in Settings.
 - **Art. 20 appeal** — **CLOSED**. `appeals/{statement|ban}_{id}` is one appeal per target. The button sits on each statement and on an account restriction. A ban does not block the appeal, and email verification is not required. Admin close-out moves `pending` to `upheld` or `rejected`.
 - ~~**Clip comments not reportable**~~ — **CLOSED** in #578: `ClipComments` takes an `onReport` prop wired to the clip's existing report flow.
+  Each comment is now also reportable on its own (`onReportComment`: the report carries `commentId` plus a text snapshot), and the admin queue can delete the reported comment.
 
 ### P1-6 · Unhandled rejection on Rematch → silent dead-end
 

@@ -9,6 +9,7 @@ export interface ReportRowActionsProps {
   onDismiss: (report: AdminReport) => void;
   onBan: (report: AdminReport) => void;
   onHideDispute: (report: AdminReport) => void;
+  onDeleteComment: (report: AdminReport) => void;
 }
 
 const VERDICT_BTN =
@@ -36,6 +37,7 @@ export function ReportRowActions({
   onDismiss,
   onBan,
   onHideDispute,
+  onDeleteComment,
 }: ReportRowActionsProps) {
   const [drafting, setDrafting] = useState(false);
   const [explanation, setExplanation] = useState("");
@@ -111,6 +113,16 @@ export function ReportRowActions({
             tone="danger"
             loading={acting}
             onConfirm={() => onHideDispute(report)}
+          />
+        )}
+        {report.commentId && (report.clipId || report.spotId) && (
+          <ConfirmButton
+            label="Delete comment"
+            question={`Delete this comment by @${report.reportedUsername}?`}
+            confirmLabel="Delete"
+            tone="danger"
+            loading={acting}
+            onConfirm={() => onDeleteComment(report)}
           />
         )}
         <ConfirmButton

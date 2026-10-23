@@ -96,3 +96,31 @@ describe("reports — user-clip reason + nullable gameId", () => {
     await assertFails(submitReport({ gameId: 42 }));
   });
 });
+
+describe("reports — single comments and spot targets", () => {
+  it("accepts a clip comment report with its text snapshot", async () => {
+    await assertSucceeds(submitReport({ commentId: "cm1", commentText: "rude" }));
+  });
+
+  it("accepts a spot comment report with no game and no clip", async () => {
+    await assertSucceeds(submitReport({ spotId: "spot-1", commentId: "cm1", commentText: "rude" }, true));
+  });
+
+  it("rejects a null-game report with an empty spot id and no clip", async () => {
+    await assertFails(submitReport({ spotId: "" }, true));
+  });
+
+  it("rejects a comment id with no clip or spot to find it under", async () => {
+    await assertFails(submitReport({ gameId: "g-1", commentId: "cm1" }, true));
+  });
+
+  it("rejects comment text without a comment id, or longer than a comment", async () => {
+    await assertFails(submitReport({ commentText: "rude" }));
+    await assertFails(submitReport({ commentId: "cm1", commentText: "x".repeat(301) }));
+  });
+
+  it("rejects an over-long spot id or comment id", async () => {
+    await assertFails(submitReport({ spotId: "s".repeat(129) }, true));
+    await assertFails(submitReport({ commentId: "c".repeat(129) }));
+  });
+});

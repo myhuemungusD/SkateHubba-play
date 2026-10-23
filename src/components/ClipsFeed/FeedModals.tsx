@@ -1,6 +1,13 @@
 import { lazy, Suspense } from "react";
 import type { ClipDoc } from "../../services/clips";
+import type { ClipComment } from "../../services/clips.comments";
 import type { Dispute } from "../../types/dispute";
+
+/** One clip comment picked for a report from the comments sheet. */
+export interface CommentReportTarget {
+  clip: ClipDoc;
+  comment: ClipComment;
+}
 
 const ReportModal = lazy(() => import("../ReportModal").then((m) => ({ default: m.ReportModal })));
 const UserClipUploadModal = lazy(() => import("../UserClipUpload").then((m) => ({ default: m.UserClipUploadModal })));
@@ -14,6 +21,7 @@ interface FeedModalsProps {
   commentsTarget: ClipDoc | null;
   onCloseComments: () => void;
   onReportFromComments: (clip: ClipDoc) => void;
+  onReportComment: (target: CommentReportTarget) => void;
   // Upload
   uploadOpen: boolean;
   onCloseUpload: () => void;
@@ -25,6 +33,9 @@ interface FeedModalsProps {
   reportTarget: ClipDoc | null;
   onCloseClipReport: () => void;
   onClipReportSubmitted: (clip: ClipDoc) => void;
+  // Report (single comment)
+  commentReport: CommentReportTarget | null;
+  onCloseCommentReport: () => void;
 }
 
 /**
@@ -38,6 +49,7 @@ export function FeedModals({
   commentsTarget,
   onCloseComments,
   onReportFromComments,
+  onReportComment,
   uploadOpen,
   onCloseUpload,
   onPosted,
@@ -46,6 +58,8 @@ export function FeedModals({
   reportTarget,
   onCloseClipReport,
   onClipReportSubmitted,
+  commentReport,
+  onCloseCommentReport,
 }: FeedModalsProps) {
   return (
     <>
@@ -59,6 +73,7 @@ export function FeedModals({
             blockedUids={blockedUids}
             onClose={onCloseComments}
             onReport={() => onReportFromComments(commentsTarget)}
+            onReportComment={(comment) => onReportComment({ clip: commentsTarget, comment })}
           />
         </Suspense>
       )}
@@ -93,6 +108,20 @@ export function FeedModals({
             clipId={reportTarget.id}
             onClose={onCloseClipReport}
             onSubmitted={() => onClipReportSubmitted(reportTarget)}
+          />
+        </Suspense>
+      )}
+      {commentReport && (
+        <Suspense fallback={null}>
+          <ReportModal
+            reporterUid={uid}
+            reportedUid={commentReport.comment.userId}
+            reportedUsername={commentReport.comment.username}
+            gameId={commentReport.clip.gameId}
+            clipId={commentReport.clip.id}
+            comment={{ id: commentReport.comment.id, text: commentReport.comment.text }}
+            onClose={onCloseCommentReport}
+            onSubmitted={onCloseCommentReport}
           />
         </Suspense>
       )}

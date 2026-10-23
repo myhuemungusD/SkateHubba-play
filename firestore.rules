@@ -2560,11 +2560,20 @@ service cloud.firestore {
           && request.resource.data.userId == request.auth.uid
           && request.resource.data.content is string
           && request.resource.data.content.size() >= 1
-          && request.resource.data.content.size() <= 300;
+          && request.resource.data.content.size() <= 300
+          // Optional display handle (older comments have none). When sent it
+          // must be the author's real username, same as clip comments (H1).
+          && (
+            !('username' in request.resource.data)
+            || request.resource.data.username == fsGet('users', request.auth.uid).data.username
+          );
 
-        // Comments are immutable once posted — no edits, only owner delete.
+        // Comments are immutable once posted. The author may delete their
+        // own; an admin may delete any, which is the moderation takedown for
+        // a reported spot comment (App Review 1.2).
         allow update: if false;
-        allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+        allow delete: if isSignedIn()
+          && (resource.data.userId == request.auth.uid || isAdmin());
       }
     }
 
@@ -2945,6 +2954,9 @@ service cloud.firestore {
           || (request.resource.data.gameId == null
               && request.resource.data.clipId is string
               && request.resource.data.clipId.size() > 0)
+          || (request.resource.data.gameId == null
+              && request.resource.data.spotId is string
+              && request.resource.data.spotId.size() > 0)
         )
         && request.resource.data.reason is string
         && request.resource.data.reason in ['inappropriate_video', 'inappropriate', 'abusive_behavior', 'cheating', 'spam', 'non_skate_content', 'not_skating', 'illegal_content', 'other']
@@ -2967,6 +2979,29 @@ service cloud.firestore {
           || (request.resource.data.clipId is string
               && request.resource.data.clipId.size() > 0
               && request.resource.data.clipId.size() <= 128)
+        )
+        // Optional spotId: a report about something posted on a spot page.
+        && (
+          !('spotId' in request.resource.data)
+          || (request.resource.data.spotId is string
+              && request.resource.data.spotId.size() > 0
+              && request.resource.data.spotId.size() <= 128)
+        )
+        // Optional single comment (under clipId or spotId) plus the text
+        // as it read when reported, so a moderator still sees it if the
+        // author deletes it first. Bounded like a comment body.
+        && (
+          !('commentId' in request.resource.data)
+          || (request.resource.data.commentId is string
+              && request.resource.data.commentId.size() > 0
+              && request.resource.data.commentId.size() <= 128
+              && ('clipId' in request.resource.data || 'spotId' in request.resource.data))
+        )
+        && (
+          !('commentText' in request.resource.data)
+          || (request.resource.data.commentText is string
+              && request.resource.data.commentText.size() <= 300
+              && 'commentId' in request.resource.data)
         )
         // Optional disputeId. A community-call report names the dispute so
         // an admin can hide it. Shape only — auto-hide does not run for it.

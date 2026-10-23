@@ -446,4 +446,21 @@ describe("spots/{id}/comments", () => {
     });
     await assertFails(deleteDoc(doc(asOtherVerified().firestore(), "spots", SPOT_ID, "comments", "c1")));
   });
+
+  it("an admin can delete anyone's comment (moderation takedown)", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "spots", SPOT_ID, "comments", "c1"), makeValidComment(OWNER_UID));
+    });
+    const admin = testEnv.authenticatedContext("admin-uid", { email_verified: true, admin: true });
+    await assertSucceeds(deleteDoc(doc(admin.firestore(), "spots", SPOT_ID, "comments", "c1")));
+  });
+
+  it("accepts the author's real handle and rejects a borrowed one", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "users", OTHER_UID), { uid: OTHER_UID, username: "stranger" });
+    });
+    const col = collection(asOtherVerified().firestore(), "spots", SPOT_ID, "comments");
+    await assertSucceeds(addDoc(col, makeValidComment(OTHER_UID, { username: "stranger" })));
+    await assertFails(addDoc(col, makeValidComment(OTHER_UID, { username: "owner" })));
+  });
 });

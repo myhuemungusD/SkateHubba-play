@@ -14,9 +14,21 @@ const { fetch: mockFetch, create: mockCreate, remove: mockDelete } = clipComment
 
 const clip = makeGameClip({ id: "c1", videoUrl: "https://cdn/x.webm" });
 
-function renderSheet(viewerUid = "me", onClose = vi.fn(), onReport?: () => void) {
+function renderSheet(
+  viewerUid = "me",
+  onClose = vi.fn(),
+  onReport?: () => void,
+  onReportComment?: (c: ReturnType<typeof comment>) => void,
+) {
   render(
-    <ClipComments clip={clip} viewerUid={viewerUid} viewerUsername="viewer" onClose={onClose} onReport={onReport} />,
+    <ClipComments
+      clip={clip}
+      viewerUid={viewerUid}
+      viewerUsername="viewer"
+      onClose={onClose}
+      onReport={onReport}
+      onReportComment={onReportComment}
+    />,
   );
   return { onClose };
 }
@@ -148,6 +160,30 @@ describe("ClipComments", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/couldn't delete/i);
     expect(screen.getByText("Mine.")).toBeInTheDocument();
+  });
+
+  it("offers report on everyone's comments except the viewer's own", async () => {
+    const user = userEvent.setup();
+    const other = comment();
+    mockFetch.mockResolvedValueOnce({
+      comments: [comment({ id: "mine", userId: "me", username: "viewer", text: "Mine." }), other],
+      cursor: null,
+    });
+    const onReportComment = vi.fn();
+    renderSheet("me", vi.fn(), undefined, onReportComment);
+    await screen.findByText("Mine.");
+
+    const buttons = screen.getAllByRole("button", { name: /report comment by @/i });
+    expect(buttons).toHaveLength(1);
+    await user.click(buttons[0]!);
+    expect(onReportComment).toHaveBeenCalledWith(other);
+  });
+
+  it("shows no per-comment report without a handler", async () => {
+    mockFetch.mockResolvedValueOnce({ comments: [comment()], cursor: null });
+    renderSheet();
+    await screen.findByTestId(`comment-${comment().id}`);
+    expect(screen.queryByRole("button", { name: /report comment by @/i })).not.toBeInTheDocument();
   });
 
   it("hides the report control when no onReport handler is given", async () => {

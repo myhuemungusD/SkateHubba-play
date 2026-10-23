@@ -19,6 +19,7 @@ const ACTION_LABELS: Record<string, string> = {
   award_item: "Awarded item to",
   remove_item: "Removed item from",
   hide_dispute: "Hid dispute",
+  delete_comment: "Deleted comment",
   rule_dispute: "Ruled on dispute",
   resolve_report: "Closed report",
   announce: "Announced",
