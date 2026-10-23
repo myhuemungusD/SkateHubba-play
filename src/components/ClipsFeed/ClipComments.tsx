@@ -6,6 +6,7 @@ import { useFocusTrap } from "../../hooks/useFocusTrap";
 import { ClipCommentComposer } from "./ClipCommentComposer";
 import { ClipCommentRow } from "./ClipCommentRow";
 import { useClipComments } from "./useClipComments";
+import { ActionMenu } from "../ui/ActionMenu";
 
 export interface ClipCommentsProps {
   clip: ClipDoc;
@@ -26,7 +27,9 @@ export interface ClipCommentsProps {
 }
 
 /**
- * Comment thread for one clip, as a bottom sheet over the feed.
+ * Comment thread for one clip, as an iOS-style bottom sheet over the feed:
+ * full width on phones with a grabber, swipe down or Done to dismiss, clip
+ * Report in the ••• menu, and the composer clear of the home indicator.
  *
  * A sheet rather than an expanding section: the thread can run long, and
  * growing the spotlight card would push the video — the thing being discussed
@@ -61,31 +64,27 @@ export function ClipComments({
     >
       <div
         ref={panelRef}
-        className="glass-card flex max-h-[85vh] w-full max-w-sm animate-scale-in flex-col rounded-t-2xl p-5 sm:rounded-2xl"
+        className="glass-card flex max-h-[85vh] w-full animate-scale-in flex-col rounded-t-3xl px-5 pt-2 pb-[max(env(safe-area-inset-bottom),1.25rem)] sm:max-w-sm sm:rounded-2xl sm:pt-5"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-3 flex items-center justify-between gap-2">
+        <div aria-hidden="true" className="mx-auto mb-2 h-[5px] w-9 shrink-0 rounded-full bg-white/25 sm:hidden" />
+        <div className="mb-1 flex items-center justify-between gap-2">
           <h3 id="clip-comments-title" className="font-display text-lg text-white">
             Comments
           </h3>
-          <div className="flex items-center gap-2">
+          <div className="-mr-2 flex items-center">
             {onReport && (
-              <button
-                type="button"
-                onClick={onReport}
-                aria-label="Report this clip"
-                className="inline-flex min-h-[44px] items-center rounded-xl border border-border px-2 font-display text-sm tracking-[0.15em] text-muted transition-colors hover:text-brand-red focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-              >
-                REPORT
-              </button>
+              <ActionMenu
+                label="More options for this clip"
+                items={[{ label: "Report clip", destructive: true, onSelect: onReport }]}
+              />
             )}
             <button
               type="button"
               onClick={onClose}
-              aria-label="Close comments"
-              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-border font-display text-sm tracking-[0.15em] text-muted transition-colors hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl px-2 font-body text-base font-semibold text-brand-orange focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
-              CLOSE
+              Done
             </button>
           </div>
         </div>
