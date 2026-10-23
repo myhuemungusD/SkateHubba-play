@@ -17,6 +17,8 @@ export interface GamePlayController {
   setTrickSelection: (selection: TrickSelection | null) => void;
   trimmedTrickName: string;
   showRecorder: boolean;
+  /** Setter's preview is up but no trick is picked yet — Record waits. */
+  recordBlocked: boolean;
 
   videoBlob: Blob | null;
   videoRecorded: boolean;
