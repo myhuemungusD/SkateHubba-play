@@ -11,10 +11,16 @@
  * Signed-out /feed is not in this list: App replaces that URL with /, so a
  * check here would be another landing-page test. Lighthouse CI has the same
  * limit — its /feed run scores the landing page, not the clips feed.
+ *
+ * The signed-in block runs at 320 (iPhone SE 1st gen / zoomed display) and
+ * 390 (iPhone 12-15): Lobby game cards, the game scoreboard and the profile
+ * game history all carry two LetterPips rows, which used to push the page
+ * sideways at 320.
  */
 import { test, expect, type Page } from "@playwright/test";
-import { clearAll, createProfile, createUser } from "./helpers/emulator";
+import { clearAll, createGame, createProfile, createUser } from "./helpers/emulator";
 import { signInViaUI } from "./helpers/auth-flow";
+import { dismissBottomOverlays, openActiveGameFromLobby } from "./helpers/lobby-nav";
 
 const PHONES = [
   { name: "iphone se", width: 375, height: 667, dpr: 2 },
@@ -133,4 +139,86 @@ test.describe("bottom nav at 320 with the largest text", () => {
     expect(bar.right).toBeLessThanOrEqual(321);
     expect(bar.scrollWidth).toBeLessThanOrEqual(bar.clientWidth);
   });
+});
+
+const NARROW_PHONES = [
+  { name: "320", width: 320, height: 640 },
+  { name: "390", width: 390, height: 844 },
+] as const;
+
+/** Optional: SHOTS_DIR=/some/dir writes one screenshot per screen and width. */
+async function shot(page: Page, name: string): Promise<void> {
+  const dir = process.env.SHOTS_DIR;
+  if (!dir) return;
+  await page.screenshot({ path: `${dir}/${name}.png`, fullPage: false });
+}
+
+async function expectNoSidewaysScroll(page: Page, where: string): Promise<void> {
+  // One frame for layout to settle after data lands.
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+  const widths = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    innerWidth: window.innerWidth,
+  }));
+  expect(widths.scrollWidth, `${where} scrolls sideways`).toBeLessThanOrEqual(widths.innerWidth);
+}
+
+test.describe("signed-in letter rows", () => {
+  test.beforeEach(async () => {
+    await clearAll();
+  });
+
+  for (const phone of NARROW_PHONES) {
+    test(`lobby, game and profile fit at ${phone.name}`, async ({ page }) => {
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: phone.width, height: phone.height });
+
+      const me = await createUser("fit-me@test.com", "password123");
+      const rival = await createUser("fit-rival@test.com", "password123");
+      const other = await createUser("fit-other@test.com", "password123");
+      // Longest handles the username rules allow, so truncation is exercised.
+      await createProfile(me.uid, "fitcheckskater", me.email, true, false);
+      await createProfile(rival.uid, "longhandleskater20", rival.email, true, false);
+      await createProfile(other.uid, "anotherlonghandle1", other.email, true, false);
+
+      // My turn, both sides carrying letters: the widest Lobby card.
+      await createGame("fit-mine", me.uid, "fitcheckskater", rival.uid, "longhandleskater20", {
+        p1Letters: 3,
+        p2Letters: 4,
+      });
+      // Their turn, so the "waiting on them" group is populated too.
+      await createGame("fit-theirs", other.uid, "anotherlonghandle1", me.uid, "fitcheckskater", {
+        currentTurn: other.uid,
+        currentSetter: other.uid,
+        p1Letters: 2,
+        p2Letters: 1,
+      });
+      // A finished game for the profile history row.
+      await createGame("fit-done", me.uid, "fitcheckskater", rival.uid, "longhandleskater20", {
+        status: "complete",
+        winner: me.uid,
+        p1Letters: 4,
+        p2Letters: 5,
+      });
+
+      await signInViaUI(page, "fit-me@test.com", "password123");
+      await dismissBottomOverlays(page);
+      await expect(page.getByText("@longhandleskater20").first()).toBeVisible({ timeout: 15_000 });
+      await expectNoSidewaysScroll(page, "Lobby");
+      await shot(page, `lobby-${phone.name}`);
+
+      await openActiveGameFromLobby(page, "longhandleskater20");
+      await expect(page).toHaveURL(/\/game/, { timeout: 15_000 });
+      await expect(page.getByText("YOUR MOVE")).toBeVisible({ timeout: 15_000 });
+      await expectNoSidewaysScroll(page, "Game");
+      await shot(page, `game-${phone.name}`);
+
+      await page.goto(`/player/${rival.uid}`);
+      await expect(page.getByText("longhandleskater20").first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole("img", { name: /^You: / }).first()).toBeVisible({ timeout: 15_000 });
+      await dismissBottomOverlays(page);
+      await expectNoSidewaysScroll(page, "Profile");
+      await shot(page, `profile-${phone.name}`);
+    });
+  }
 });

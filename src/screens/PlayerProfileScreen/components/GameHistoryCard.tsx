@@ -101,7 +101,7 @@ export function GameHistoryCard({ game, profileUid, expanded, onToggle, onOpenGa
         aria-expanded={expanded}
         className="w-full text-left p-4 flex items-center justify-between transition-colors hover:bg-[rgba(255,255,255,0.02)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand-orange"
       >
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-1.5">
             <span className="font-display text-[1.0625rem] text-white leading-none truncate">
               vs @{opponentName(game, profileUid)}
@@ -115,17 +115,15 @@ export function GameHistoryCard({ game, profileUid, expanded, onToggle, onOpenGa
             </span>
             {game.status === "forfeit" && <span className="font-body text-label text-subtle shrink-0">forfeit</span>}
           </div>
-          <div className="flex items-center gap-3">
+          {/* Wraps instead of overflowing: at 320 the second row drops under the first. */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
             <LetterPips count={playerLetterCount(game, profileUid)} label="You" />
-            <span className="font-body text-label text-faint">vs</span>
-            <LetterPips count={opponentLetterCount(game, profileUid)} label="Them" />
+            <span className="inline-flex shrink-0 items-center gap-2">
+              <span className="font-body text-label text-faint">vs</span>
+              <LetterPips count={opponentLetterCount(game, profileUid)} label="Them" />
+            </span>
             {game.updatedAt && (
-              <>
-                <span className="text-[#2E2E2E]" aria-hidden="true">
-                  ·
-                </span>
-                <span className="font-body text-label text-subtle">{formatDate(game.updatedAt)}</span>
-              </>
+              <span className="font-body text-label text-subtle shrink-0">{formatDate(game.updatedAt)}</span>
             )}
           </div>
         </div>
