@@ -7,7 +7,7 @@ import { TurnHistoryViewer } from "../../../components/TurnHistoryViewer";
 import { GameReplay } from "../../../components/GameReplay";
 import { Btn } from "../../../components/ui/Btn";
 import { ChevronRightIcon } from "../../../components/icons";
-import { LetterScore } from "./LetterScore";
+import { LetterPips } from "../../../components/LetterPips";
 
 function formatDate(ts: { toMillis?: () => number } | null | undefined): string {
   if (!ts || typeof ts.toMillis !== "function") return "";
@@ -116,9 +116,9 @@ export function GameHistoryCard({ game, profileUid, expanded, onToggle, onOpenGa
             {game.status === "forfeit" && <span className="font-body text-label text-subtle shrink-0">forfeit</span>}
           </div>
           <div className="flex items-center gap-3">
-            <LetterScore count={playerLetterCount(game, profileUid)} label="You" />
+            <LetterPips count={playerLetterCount(game, profileUid)} label="You" />
             <span className="font-body text-label text-faint">vs</span>
-            <LetterScore count={opponentLetterCount(game, profileUid)} label="Them" />
+            <LetterPips count={opponentLetterCount(game, profileUid)} label="Them" />
             {game.updatedAt && (
               <>
                 <span className="text-[#2E2E2E]" aria-hidden="true">

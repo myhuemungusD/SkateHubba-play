@@ -181,12 +181,13 @@
     padding-right: 0.75rem;
   }
 
-  /* 9:16 clip capped so the land/miss (or record) bar can stay on screen.
-     Width tracks the height cap so the frame doesn't stretch. */
+  /* Clip frame capped so the land/miss (or record) bar can stay on screen.
+     It starts at 9:16; TrickClip sets --clip-aspect from the clip's own
+     size once metadata loads, and the width tracks the height cap. */
   .trick-frame {
-    width: min(100%, 360px, calc(55dvh * 9 / 16));
-    max-height: 55dvh;
-    aspect-ratio: 9 / 16;
+    width: min(100%, calc(min(55dvh, 640px) * var(--clip-aspect, 9 / 16)));
+    max-height: min(55dvh, 640px);
+    aspect-ratio: var(--clip-aspect, 9 / 16);
     margin-inline: auto;
   }
 

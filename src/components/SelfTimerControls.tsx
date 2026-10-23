@@ -21,9 +21,8 @@ export function SelfTimerToggle({
       onClick={onToggle}
       disabled={disabled}
       aria-pressed={enabled}
-      aria-label={
-        enabled ? `Self-timer on (${SELF_TIMER_SECONDS}s) — turn off` : `Turn on ${SELF_TIMER_SECONDS}s self-timer`
-      }
+      // Name starts with the visible text so Voice Control's "tap Timer off" works.
+      aria-label={`Timer ${enabled ? `${SELF_TIMER_SECONDS}s` : "off"}, ${SELF_TIMER_SECONDS} second self-timer`}
       className={`absolute top-4 left-4 h-11 px-3 inline-flex items-center gap-1 rounded-full font-display text-sm tracking-wider text-white transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:opacity-60 ${
         enabled ? "bg-brand-orange/90 shadow-[0_0_12px_rgba(255,107,0,0.4)]" : "bg-black/60 backdrop-blur-sm"
       }`}

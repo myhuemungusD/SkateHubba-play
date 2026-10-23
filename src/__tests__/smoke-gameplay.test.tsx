@@ -268,7 +268,7 @@ describe("Smoke: Gameplay", () => {
 
     // Re-setup lobby for return
     withGames([game]);
-    await userEvent.click(screen.getByText("← Games"));
+    await userEvent.click(screen.getByRole("button", { name: "Back to games" }));
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Your turn" })).toBeInTheDocument();

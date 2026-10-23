@@ -7,7 +7,6 @@ interface WaitingActionsProps {
   nudgeError: string;
   nudgeAvailable: boolean;
   onNudge: () => void | Promise<void>;
-  onBack: () => void;
   showReportLink: boolean;
   reported: boolean;
   onOpenReport: () => void;
@@ -19,7 +18,6 @@ export function WaitingActions({
   nudgeError,
   nudgeAvailable,
   onNudge,
-  onBack,
   showReportLink,
   reported,
   onOpenReport,
@@ -41,11 +39,8 @@ export function WaitingActions({
         </div>
       )}
 
-      <div className="mt-8 flex flex-col items-center gap-2">
-        <Btn onClick={onBack} variant="ghost">
-          ← Back to Games
-        </Btn>
-        {showReportLink && (
+      {showReportLink && (
+        <div className="mt-8 flex flex-col items-center">
           <button
             type="button"
             onClick={onOpenReport}
@@ -54,8 +49,8 @@ export function WaitingActions({
           >
             {reported ? "Reported" : "Report opponent"}
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </>
   );
 }

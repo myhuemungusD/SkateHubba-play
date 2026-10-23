@@ -1,11 +1,11 @@
 import type { FocusEvent, KeyboardEvent } from "react";
 import type { GameDoc } from "../../../services/games";
-import { LETTERS } from "../../../utils/helpers";
 import { LobbyTimer } from "../../../components/LobbyTimer";
 import { ChevronRightIcon } from "../../../components/icons";
 import { ProUsername } from "../../../components/ProUsername";
 import { trickCategoryLabel } from "../../../constants/trickCategories";
 import { TurnLengthChip } from "../../../components/TurnLengthChip";
+import { LetterPips } from "../../../components/LetterPips";
 
 interface Props {
   game: GameDoc;
@@ -128,16 +128,11 @@ export function ActiveGameCard({
 
 function LetterRow({ label, tone, count }: { label: string; tone: string; count: number }) {
   return (
-    <span className="flex items-center gap-1">
-      <span className={`font-body text-xs ${tone} uppercase tracking-wider mr-0.5`}>{label}</span>
-      {LETTERS.map((l, i) => (
-        <span
-          key={i}
-          className={`font-display text-sm leading-none tracking-wide ${i < count ? "text-brand-red" : "text-faint"}`}
-        >
-          {l}
-        </span>
-      ))}
+    <span className="flex items-center gap-1.5">
+      <span aria-hidden="true" className={`font-body text-xs ${tone} uppercase tracking-wider`}>
+        {label}
+      </span>
+      <LetterPips count={count} label={label} />
     </span>
   );
 }

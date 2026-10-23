@@ -18,12 +18,14 @@ export function MatcherInstructionBanner({
 }: Props) {
   const headline = trickCategoryHeadline(trickCategory, customRules);
   return (
-    <div className="text-center py-3 px-5 mb-5 rounded-2xl border bg-brand-green/[0.06] backdrop-blur-sm border-brand-green/30 shadow-[0_0_20px_rgba(0,230,118,0.06)]">
-      <span className="font-display text-xl tracking-wider text-brand-green">
+    // One tint: the brand orange carries "your move"; green is kept for
+    // landed / win results only.
+    <div className="text-center py-3 px-5 mb-5 rounded-2xl border bg-surface border-brand-orange/40">
+      <span className="font-display text-xl tracking-wider text-white">
         Match <ProUsername username={setterUsername} isVerifiedPro={setterIsPro} />
         &apos;s {currentTrickName || "trick"}
       </span>
-      {headline && <p className="font-body text-xs text-brand-green/80 mt-1">{headline}</p>}
+      {headline && <p className="font-body text-xs text-brand-orange mt-1">{headline}</p>}
     </div>
   );
 }

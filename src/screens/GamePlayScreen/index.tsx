@@ -42,8 +42,12 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
     c.isSetTrickReviewer ||
     c.isPendingReviewSetter;
   // The body already shows the countdown on review screens. A second pill in
-  // the header crowds "Games" and "Flag" on a 375px phone.
+  // the header crowds Back and Report on a 375px phone.
   const timerInBody = c.isPendingReviewSetter || c.isPendingReviewMatcher || c.isCommunityReview;
+  // The lit score card says whose move it is. On a set or match turn the
+  // clock rides on the viewer's card, so the header doesn't repeat it.
+  const viewerActs = c.isSetter || c.isMatcher || c.isPendingReviewSetter;
+  const clockOnCard = c.isSetter || c.isMatcher;
 
   return (
     <div
@@ -53,7 +57,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         deadline={c.deadline}
         isPlayer={c.isPlayer}
         reported={c.reported}
-        showTimer={!timerInBody}
+        showTimer={!timerInBody && !clockOnCard}
         onBack={onBack}
         onReport={c.openReport}
       />
@@ -70,8 +74,8 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
           theirLetters={c.theirLetters}
           opponentName={c.opponentName}
           opponentIsPro={c.opponentIsPro}
-          isSetter={c.isSetter}
-          isMatcher={c.isMatcher}
+          acting={viewerActs ? "me" : c.isPendingReviewMatcher ? "them" : null}
+          deadline={clockOnCard ? c.deadline : undefined}
         />
 
         {!c.isJudge && c.isSetter && c.trickPickerEnabled && (

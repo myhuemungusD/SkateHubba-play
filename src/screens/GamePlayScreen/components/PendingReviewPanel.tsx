@@ -3,7 +3,7 @@ import { Btn } from "../../../components/ui/Btn";
 import { Timer } from "../../../components/Timer";
 import type { GameDoc } from "../../../services/games";
 import { isFirebaseStorageUrl } from "../../../utils/helpers";
-import { CLIP_POSTER } from "../../../lib/clipPoster";
+import { TrickClip } from "../../../components/TrickClip";
 
 interface Props {
   game: GameDoc;
@@ -60,18 +60,10 @@ export function PendingReviewPanel({
 
       {attemptUrl ? (
         <div className="mb-5">
-          <p className="font-display text-sm tracking-wider text-brand-green mb-2">
+          <p className="font-display text-sm tracking-wider text-white mb-2">
             @{matcherUsername.toUpperCase()}&apos;S ATTEMPT
           </p>
-          <video
-            src={attemptUrl}
-            controls
-            playsInline
-            poster={CLIP_POSTER}
-            preload="metadata"
-            aria-label={`${matcherUsername}'s match attempt video`}
-            className="trick-frame rounded-2xl bg-black object-contain border border-border"
-          />
+          <TrickClip src={attemptUrl} label={`${matcherUsername}'s match attempt video`} />
         </div>
       ) : (
         <p className="font-body text-sm text-subtle text-center py-4 mb-4">No match video was recorded.</p>

@@ -11,14 +11,28 @@ describe("LetterDisplay", () => {
   });
 
   it("includes letter sequence in aria-label", () => {
-    const { container } = render(<LetterDisplay count={2} name="sk8r" />);
-    const el = container.firstElementChild!;
-    expect(el.getAttribute("aria-label")).toContain("S.K.");
+    render(<LetterDisplay count={2} name="sk8r" />);
+    expect(screen.getByRole("img", { name: "sk8r: S K, 2 of 5" })).toBeInTheDocument();
   });
 
   it("shows no letters label when count is 0", () => {
-    const { container } = render(<LetterDisplay count={0} name="sk8r" />);
-    expect(container.firstElementChild!.getAttribute("aria-label")).toContain("no letters");
+    render(<LetterDisplay count={0} name="sk8r" />);
+    expect(screen.getByRole("img", { name: "sk8r: no letters, 0 of 5" })).toBeInTheDocument();
+  });
+
+  it("lights the active card with its turn label and clock", () => {
+    render(
+      <LetterDisplay count={1} name="@me" active turnLabel="YOUR MOVE" deadline={Date.now() + 60_000} testId="me" />,
+    );
+    expect(screen.getByTestId("me")).toHaveAttribute("data-active", "true");
+    expect(screen.getByText("YOUR MOVE")).toBeInTheDocument();
+    expect(screen.getByText("@me")).toHaveClass("text-white");
+  });
+
+  it("keeps the inactive card quiet with no label", () => {
+    render(<LetterDisplay count={1} name="@them" turnLabel="THEIR MOVE" testId="them" />);
+    expect(screen.getByTestId("them")).toHaveAttribute("data-active", "false");
+    expect(screen.queryByText("THEIR MOVE")).not.toBeInTheDocument();
   });
 
   describe("Verified Pro shimmer (feature freeze)", () => {

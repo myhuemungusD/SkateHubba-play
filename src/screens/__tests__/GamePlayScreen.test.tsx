@@ -175,7 +175,7 @@ describe("GamePlayScreen", () => {
     const game = makeGame({ currentTurn: "u2", currentSetter: "u2" });
     render(<GamePlayScreen game={game} profile={profile} onBack={onBack} />);
 
-    await userEvent.click(screen.getByText("← Back to Games"));
+    await userEvent.click(screen.getByRole("button", { name: "Back to games" }));
     expect(onBack).toHaveBeenCalled();
   });
 
@@ -184,7 +184,7 @@ describe("GamePlayScreen", () => {
     const game = makeGame();
     render(<GamePlayScreen game={game} profile={profile} onBack={onBack} />);
 
-    await userEvent.click(screen.getByText("← Games"));
+    await userEvent.click(screen.getByRole("button", { name: "Back to games" }));
     expect(onBack).toHaveBeenCalled();
   });
 
@@ -276,7 +276,7 @@ describe("GamePlayScreen", () => {
     });
     render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
 
-    expect(screen.getByLabelText(/Video of Kickflip/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Video of Kickflip/, { selector: "video" })).toBeInTheDocument();
   });
 
   it("deadline fallback fires when turnDeadline is null", () => {
@@ -324,7 +324,7 @@ describe("GamePlayScreen", () => {
       currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/video.mp4",
     });
     render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
-    expect(screen.getByLabelText(/Video of trick set by rival/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Video of trick set by rival/, { selector: "video" })).toBeInTheDocument();
   });
 
   it("shows player2 perspective correctly", () => {
@@ -672,7 +672,7 @@ describe("GamePlayScreen", () => {
     render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
 
     expect(screen.getByText(/Your Trick: Heelflip/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Video of Heelflip you set/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Video of Heelflip you set/, { selector: "video" })).toBeInTheDocument();
   });
 
   it("waiting screen does not show trick video in setting phase", () => {
@@ -723,7 +723,7 @@ describe("GamePlayScreen", () => {
     });
     render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
 
-    expect(screen.queryByLabelText(/Video of Kickflip you set/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Video of Kickflip you set/, { selector: "video" })).not.toBeInTheDocument();
   });
 
   it("waiting screen shows 'Trick' fallback when currentTrickName is null", () => {
@@ -737,7 +737,7 @@ describe("GamePlayScreen", () => {
     render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
 
     expect(screen.getByText(/Your Trick: Trick/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Video of trick you set/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Video of trick you set/, { selector: "video" })).toBeInTheDocument();
   });
 
   it("waiting screen does not show Game Clips when turnHistory is undefined", () => {
@@ -834,8 +834,8 @@ describe("GamePlayScreen", () => {
     });
     render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
 
-    expect(screen.getByLabelText(/sk8r's Kickflip video/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/rival's match attempt video/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/sk8r's Kickflip video/, { selector: "video" })).toBeInTheDocument();
+    expect(screen.getByLabelText(/rival's match attempt video/, { selector: "video" })).toBeInTheDocument();
   });
 
   it("calls resolveDispute(true) when judge clicks Landed", async () => {
@@ -1213,7 +1213,7 @@ describe("GamePlayScreen", () => {
 
     expect(screen.getByText("THEY CLAIM THEY LANDED")).toBeInTheDocument();
     expect(screen.getByText(/@rival says they matched your Kickflip/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/rival's match attempt video/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/rival's match attempt video/, { selector: "video" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Accept the landed claim or dispute it" })).toBeInTheDocument();
     expect(screen.getByText("Accept")).toBeInTheDocument();
     expect(screen.getByText("Dispute")).toBeInTheDocument();
