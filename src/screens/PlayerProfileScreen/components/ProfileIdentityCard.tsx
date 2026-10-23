@@ -47,7 +47,9 @@ const BAR_WIDTH = [
  * pre-PR-C version so existing accessibility coverage (audit D5) still holds.
  *
  * The level chip and the XP bar render only when VITE_FEATURE_XP_ENABLED is
- * the literal "true". Off, this card looks the way it does today.
+ * the literal "true". Off, this card looks the way it does today. The bar also
+ * waits for the first XP: an empty "0 / 24 XP" bar on a player with games on
+ * the board reads as broken, so a 0-XP card shows just the level chip.
  */
 interface Props {
   username: string;
@@ -93,6 +95,7 @@ export function ProfileIdentityCard({
   const showFallbackSvg = !showCustom && !showInitial;
 
   const showXp = isXpEnabled();
+  const showXpBar = showXp && (xp ?? 0) > 0;
   const progress = xpProgress(xp);
   const barClass = BAR_WIDTH[Math.min(20, Math.max(0, Math.round(progress.fraction * 20)))];
 
@@ -165,7 +168,7 @@ export function ProfileIdentityCard({
           />
         )}
       </div>
-      {showXp && (
+      {showXpBar && (
         <div className="mt-3" data-testid="xp-progress">
           <div className="h-1.5 rounded-full bg-white/10 overflow-hidden" aria-hidden="true">
             <div className={`h-full bg-brand-orange ${barClass}`} />

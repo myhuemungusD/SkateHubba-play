@@ -325,9 +325,21 @@ describe.each([
 
   it("shows the level chip and the XP bar while the XP flag is on", async () => {
     vi.stubEnv("VITE_FEATURE_XP_ENABLED", "true");
-    render(<PlayerProfileScreen {...props} {...over} />);
+    // Own page reads the signed-in profile; another player's page reads the fetch.
+    const withXp = { ...profile, xp: 10 };
+    fetchedProfile.mockReturnValue(fetchedState({ profile: withXp }));
+    const own = !("isOwnProfile" in over);
+    render(<PlayerProfileScreen {...props} {...over} {...(own ? { currentUserProfile: withXp } : {})} />);
     expect(await screen.findByTestId("xp-progress")).toBeInTheDocument();
-    expect(screen.getByText("0 / 24 XP")).toBeInTheDocument();
+    expect(screen.getByText("10 / 24 XP")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Level 1" })).toBeInTheDocument();
+  });
+
+  it("keeps the level chip but drops the empty 0 / 24 XP bar at 0 XP", async () => {
+    vi.stubEnv("VITE_FEATURE_XP_ENABLED", "true");
+    render(<PlayerProfileScreen {...props} {...over} />);
+    expect(await screen.findByRole("img", { name: "Level 1" })).toBeInTheDocument();
+    expect(screen.queryByTestId("xp-progress")).toBeNull();
+    expect(screen.queryByText("0 / 24 XP")).toBeNull();
   });
 });

@@ -83,6 +83,17 @@ describe("ProfileIdentityCard", () => {
     expect(screen.getByText("140 / 216 XP")).toBeInTheDocument();
   });
 
+  it.each([
+    ["0 XP", 0],
+    ["no XP field yet", undefined],
+  ])("keeps the level chip but hides the empty XP bar at %s", (_label, xp) => {
+    vi.stubEnv("VITE_FEATURE_XP_ENABLED", "true");
+    render(<ProfileIdentityCard username="rider" isVerifiedPro={false} stance="regular" xp={xp} />);
+    expect(screen.getByRole("img", { name: "Level 1" })).toBeInTheDocument();
+    expect(screen.queryByTestId("xp-progress")).not.toBeInTheDocument();
+    expect(screen.queryByText(/\/ \d+ XP$/)).not.toBeInTheDocument();
+  });
+
   it("renders the first-letter initial when no profileImageUrl is provided", () => {
     render(<ProfileIdentityCard username="rider" isVerifiedPro={false} stance="regular" />);
     expect(screen.getByText("R")).toBeInTheDocument();
