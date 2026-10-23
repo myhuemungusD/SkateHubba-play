@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Crown, Stamp } from "lucide-react";
 import { getPassportPublic, listPassport, setPassportPublic, type PassportStamp } from "../services/mapCheckins";
+import { Switch } from "./ui/Switch";
 
 interface Props {
   uid: string;
@@ -63,10 +64,12 @@ export function SpotPassport({ uid, isOwner }: Props) {
           </span>
         </h2>
         {isOwner && (
-          <label className="flex items-center gap-1.5 text-xs text-subtle">
-            <input type="checkbox" checked={isPublic} onChange={togglePublic} />
-            Public
-          </label>
+          <div className="-mr-2 flex items-center">
+            <span aria-hidden="true" className="font-body text-xs text-subtle">
+              Public
+            </span>
+            <Switch checked={isPublic} onChange={togglePublic} label="Public" />
+          </div>
         )}
       </div>
       {stamps.length === 0 ? (
