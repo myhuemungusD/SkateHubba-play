@@ -95,7 +95,8 @@ export function MascotBubble({
   // `'unsafe-inline'`.
   const gripFillRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
-    if (gripFillRef.current) gripFillRef.current.style.width = `${wornPct}%`;
+    // The strip always renders, so the ref is set by the time this runs.
+    gripFillRef.current?.style.setProperty("width", `${wornPct}%`);
   }, [wornPct]);
 
   return (

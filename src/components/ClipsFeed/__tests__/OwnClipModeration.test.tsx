@@ -63,6 +63,25 @@ describe("OwnClipModeration", () => {
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
 
+  it("ignores a failure that arrives after the strip unmounts", async () => {
+    vi.stubEnv("VITE_FEATURE_CLIP_MODERATION_ENABLED", "true");
+    let rejectRows: (err: Error) => void = () => {};
+    fetchOwn.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectRows = reject;
+      }),
+    );
+    const errSpy = vi.spyOn(console, "error");
+    const { unmount } = renderStrip();
+    unmount();
+    rejectRows(new Error("offline"));
+    await waitFor(() => expect(fetchOwn).toHaveBeenCalled());
+    await Promise.resolve();
+    // No state update on an unmounted component.
+    expect(errSpy).not.toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+
   it("clears the list when the read fails", async () => {
     vi.stubEnv("VITE_FEATURE_CLIP_MODERATION_ENABLED", "true");
     fetchOwn.mockRejectedValue(new Error("offline"));

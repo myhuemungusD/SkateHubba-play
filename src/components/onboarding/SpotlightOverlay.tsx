@@ -170,8 +170,9 @@ export function SpotlightOverlay({
     // a rAF so layout has a chance to commit before falling through to the
     // timeout-based watchdog.
     if (!tryObserve()) {
+      // Nothing is observed before this frame, so nothing can have
+      // intersected yet: just try again.
       const raf = requestAnimationFrame(() => {
-        if (intersected) return;
         tryObserve();
       });
       const earlyCleanup = () => cancelAnimationFrame(raf);
@@ -213,14 +214,12 @@ export function SpotlightOverlay({
   // the conditional render commits the elements, so the refs are populated when
   // a rect exists and null when it's cleared.
   useLayoutEffect(() => {
-    for (const el of [cutoutRef.current, ringRef.current]) {
-      if (!el) continue;
-      if (effectiveRect) {
-        el.style.top = `${effectiveRect.top}px`;
-        el.style.left = `${effectiveRect.left}px`;
-        el.style.width = `${effectiveRect.width}px`;
-        el.style.height = `${effectiveRect.height}px`;
-      }
+    if (!effectiveRect) return;
+    for (const el of [cutoutRef.current, ringRef.current].filter((n): n is HTMLDivElement => n !== null)) {
+      el.style.top = `${effectiveRect.top}px`;
+      el.style.left = `${effectiveRect.left}px`;
+      el.style.width = `${effectiveRect.width}px`;
+      el.style.height = `${effectiveRect.height}px`;
     }
   }, [effectiveRect]);
 

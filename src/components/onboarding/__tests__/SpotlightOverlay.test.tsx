@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import { logger } from "../../../services/logger";
 import { SpotlightOverlay, readSafeTop, resolvePlacement, SPOTLIGHT_CLIP_CLASS } from "../SpotlightOverlay";
 
 /**
@@ -80,10 +81,26 @@ describe("SpotlightOverlay", () => {
     expect(cutout.style.height).toBe("76px");
   });
 
-  it("does NOT paint a highlight when the selector matches an element with zero size", () => {
-    mountTarget("ghost", { top: 0, left: 0, width: 0, height: 0 });
+  it("does NOT paint a highlight when the selector matches an element with zero size", async () => {
+    const el = mountTarget("ghost", { top: 0, left: 0, width: 0, height: 0 });
     renderOverlay({ targetSelector: '[data-tutorial="ghost"]' });
+    // Wait for the deferred rAF measurement so the zero-size check really runs.
+    await waitFor(() => expect(el.getBoundingClientRect).toHaveBeenCalled());
     expect(screen.queryByTestId("spotlight-cutout")).toBeNull();
+  });
+
+  it("coalesces several resize/scroll events in one frame into a single measurement", async () => {
+    const el = mountTarget("busy", { top: 100, left: 0, width: 10, height: 10 });
+    renderOverlay({ targetSelector: '[data-tutorial="busy"]' });
+    await screen.findByTestId("spotlight-cutout");
+    const before = vi.mocked(el.getBoundingClientRect).mock.calls.length;
+    window.dispatchEvent(new Event("resize"));
+    window.dispatchEvent(new Event("scroll"));
+    window.dispatchEvent(new Event("resize"));
+    await waitFor(() => expect(vi.mocked(el.getBoundingClientRect).mock.calls.length).toBe(before + 1));
+    // No second frame was queued by the extra events.
+    await new Promise((r) => requestAnimationFrame(() => r(undefined)));
+    expect(vi.mocked(el.getBoundingClientRect).mock.calls.length).toBe(before + 1);
   });
 
   it("does NOT paint a highlight when selector matches nothing", () => {
@@ -175,6 +192,69 @@ describe("SpotlightOverlay", () => {
   });
 });
 
+describe("SpotlightOverlay anchor watchdog (late-mounting targets)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("keeps scanning entries until one intersects", () => {
+    vi.useFakeTimers();
+    mountTarget("second", { top: 0, left: 0, width: 10, height: 10 });
+    installIO((cb) => ({
+      observe: (el) => {
+        cb(
+          [
+            { isIntersecting: false, target: el },
+            { isIntersecting: true, target: el },
+          ] as unknown as IntersectionObserverEntry[],
+          {} as IntersectionObserver,
+        );
+      },
+      unobserve: () => undefined,
+      disconnect: () => undefined,
+    }));
+    const onAnchorMissing = vi.fn();
+    renderOverlay({ targetSelector: '[data-tutorial="second"]', onAnchorMissing });
+    vi.advanceTimersByTime(2000);
+    expect(onAnchorMissing).not.toHaveBeenCalled();
+  });
+
+  it("observes a target that mounts one frame late and stays quiet once it intersects", () => {
+    vi.useFakeTimers();
+    const observed: Element[] = [];
+    installIO((cb) => ({
+      observe: (el) => {
+        observed.push(el);
+        cb([{ isIntersecting: true, target: el } as unknown as IntersectionObserverEntry], {} as IntersectionObserver);
+      },
+      unobserve: () => undefined,
+      disconnect: () => undefined,
+    }));
+    const onAnchorMissing = vi.fn();
+    renderOverlay({ targetSelector: '[data-tutorial="late"]', onAnchorMissing });
+    const el = mountTarget("late", { top: 0, left: 0, width: 10, height: 10 });
+    vi.advanceTimersByTime(20); // the retry frame
+    expect(observed).toEqual([el]);
+    vi.advanceTimersByTime(2000);
+    expect(onAnchorMissing).not.toHaveBeenCalled();
+  });
+
+  it("reports no-intersect (not no-element) when a late target mounts but never shows", () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    const onAnchorMissing = vi.fn();
+    renderOverlay({ targetSelector: '[data-tutorial="hidden-late"]', onAnchorMissing });
+    mountTarget("hidden-late", { top: 0, left: 0, width: 10, height: 10 });
+    vi.advanceTimersByTime(1500);
+    expect(onAnchorMissing).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith("tutorial_step_anchor_missing", {
+      reason: "no-intersect",
+      selector: '[data-tutorial="hidden-late"]',
+    });
+    warn.mockRestore();
+  });
+});
+
 describe("SpotlightOverlay placement", () => {
   it("pins the bubble to the top when asked", () => {
     const { getByText } = render(
@@ -192,16 +272,24 @@ describe("SpotlightOverlay placement", () => {
  * as a stray orange arc. The ring is clamped and clipped to the safe area.
  */
 describe("SpotlightOverlay safe area", () => {
-  function stubSafeTop(px: number) {
+  function stubSafeTop(px: number | string) {
     const real = window.getComputedStyle;
     return vi.spyOn(window, "getComputedStyle").mockImplementation((el: Element, pseudo?: string | null) => {
       const style = real(el, pseudo);
       if (el.classList.contains("pt-safe-inset")) {
-        return { ...style, paddingTop: `${px}px` } as CSSStyleDeclaration;
+        return { ...style, paddingTop: typeof px === "number" ? `${px}px` : px } as CSSStyleDeclaration;
       }
       return style;
     });
   }
+
+  it("falls back to 0 when the probe's padding does not resolve to a length", () => {
+    // An engine that cannot resolve env() leaves the computed padding empty.
+    const spy = stubSafeTop("");
+    expect(readSafeTop()).toBe(0);
+    expect(document.querySelector(".pt-safe-inset")).toBeNull();
+    spy.mockRestore();
+  });
 
   it("reads the top inset through the pt-safe-inset probe and leaves no probe behind", () => {
     const spy = stubSafeTop(62);

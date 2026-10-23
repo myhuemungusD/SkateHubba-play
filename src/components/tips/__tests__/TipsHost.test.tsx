@@ -122,6 +122,25 @@ describe("TipsHost", () => {
     renderAt("/closet/studio");
     settle();
     expect(screen.getByText("tip 1 of 2", { selector: "p" })).toBeInTheDocument();
+    // Step 2 is the anchored "tools" tip: the ring targets its hook.
+    el.getBoundingClientRect = () =>
+      ({
+        top: 300,
+        left: 20,
+        width: 100,
+        height: 40,
+        bottom: 340,
+        right: 120,
+        x: 20,
+        y: 300,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    fireEvent.click(screen.getByRole("button", { name: "next" }));
+    expect(screen.getByText("tools")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(20);
+    });
+    expect(screen.getByTestId("spotlight-cutout")).toBeInTheDocument();
   });
 
   it("prefers an open zone over the route", () => {
