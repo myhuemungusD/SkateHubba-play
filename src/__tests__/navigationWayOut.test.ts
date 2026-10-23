@@ -27,6 +27,7 @@ const WAY_OUT: Record<string, string[]> = {
   "/game": ["screens/GamePlayScreen/index.tsx"],
   "/gameover": ["screens/GameOverScreen.tsx"],
   "/player/:uid": ["screens/PlayerProfileScreen/index.tsx"],
+  "/player/:uid/closet": ["screens/PlayerClosetScreen.tsx"],
   "/spots/:id": ["screens/SpotDetailPage.tsx"],
   "/closet/studio": ["screens/ClosetStudio/ClosetStudioScreen.tsx"],
   "/play/runner": ["screens/Runner/RunnerHud.tsx"],

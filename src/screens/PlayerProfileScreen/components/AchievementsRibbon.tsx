@@ -102,8 +102,8 @@ function Tile({ def, lit }: { def: AchievementDef; lit: boolean }) {
       aria-label={label}
       className={
         lit
-          ? "aspect-square rounded-2xl bg-brand-orange/[0.12] border border-brand-orange/40 flex flex-col items-center justify-center gap-1 px-1"
-          : "aspect-square rounded-2xl bg-surface/60 border border-border flex flex-col items-center justify-center gap-1 px-1 grayscale select-none"
+          ? "aspect-square rounded-2xl bg-brand-orange/[0.12] border border-brand-orange/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] flex flex-col items-center justify-center gap-1 px-1"
+          : "aspect-square rounded-2xl surface-raised flex flex-col items-center justify-center gap-1 px-1 select-none"
       }
     >
       {!lit && <LockSilhouette />}

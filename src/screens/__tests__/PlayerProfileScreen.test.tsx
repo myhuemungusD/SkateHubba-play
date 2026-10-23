@@ -368,9 +368,13 @@ describe("PlayerProfileScreen", () => {
     const games = [buildCompletedGame()];
     render(<PlayerProfileScreen {...baseProps} ownGames={games} onViewPlayer={onViewPlayer} />);
     // The OPPONENTS list renders sk8rboi as a tappable button — find it via
-    // the unique "1 game" sibling text and walk up to the enclosing button.
-    const h2hRow = screen.getByText("1 game").closest("button");
+    // its wins / games record (spoken form) and walk up to the enclosing button.
+    const h2hRow = screen.getByText(/ out of 1 game$/).closest("button");
     expect(h2hRow).not.toBeNull();
+    // Record shows as two numbers only — no W/L letters, no "games" word.
+    const rec = screen.getByTestId("opponent-record-u2");
+    expect(rec).toHaveTextContent(/^[01] \/ 1/);
+    expect(rec.querySelector("[aria-hidden]")).not.toHaveTextContent(/W|L|game/);
     await userEvent.click(h2hRow!);
     expect(onViewPlayer).toHaveBeenCalledWith("u2");
   });

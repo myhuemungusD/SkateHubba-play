@@ -1,7 +1,13 @@
 import { useCameraLiveSignal } from "../lib/tipSignals";
 import { useState, useRef, useCallback, useEffect, useLayoutEffect } from "react";
 import { MAX_VIDEO_DURATION_SECONDS, MIN_UPLOAD_BYTES, VIDEO_BITS_PER_SECOND } from "../constants/video";
-import { isNativePlatform, recordNativeVideo } from "../services/nativeVideo";
+import {
+  closeNativePreview,
+  isNativePlatform,
+  isNativePreviewLive,
+  openNativePreview,
+  recordNativeVideo,
+} from "../services/nativeVideo";
 import { logger } from "../services/logger";
 import { parseFirebaseError } from "../utils/helpers";
 import {
@@ -230,6 +236,13 @@ export interface MediaRecorderController {
   stopRec: () => void;
   startNativeRec: () => Promise<void>;
   stopNativeRec: () => void;
+  /** Native: bring the live preview up (idle → preview) so the shot can be framed before recording. */
+  openNativeCamera: () => Promise<void>;
+  /**
+   * Let go of the camera (screen hidden / app backgrounded). A live preview
+   * drops back to idle; a take in progress is stopped and kept.
+   */
+  releaseCamera: () => void;
 }
 
 /**
@@ -680,6 +693,49 @@ export function useMediaRecorder(
     nativeAbortRef.current?.abort();
   }, []);
 
+  /**
+   * Native live preview, opened on screen entry. The plugin draws the camera
+   * behind the web view; a take started from `preview` records on this same
+   * session (recordNativeVideo skips the second initialize).
+   */
+  const openNativeCamera = useCallback(async (): Promise<void> => {
+    setCameraError(null);
+    try {
+      const live = await openNativePreview();
+      // Unmounted, or backgrounded while the session came up: let it go.
+      if (!mountedRef.current || document.visibilityState === "hidden") {
+        void closeNativePreview();
+        return;
+      }
+      if (live) setState((s) => (s === "idle" ? "preview" : s));
+    } catch (err) {
+      /* v8 ignore next -- unmount-during-native-open race; no native shell in JSDOM */
+      if (!mountedRef.current) return;
+      const msg = parseFirebaseError(err);
+      setState("idle");
+      setCameraError(`Native camera error: ${msg}`);
+      logger.warn("native_preview_failed", { error: msg });
+    }
+  }, [setCameraError]);
+
+  const stateRef = useRef(state);
+  useLayoutEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  const releaseCamera = useCallback(() => {
+    const current = stateRef.current;
+    if (current === "recording") {
+      if (isNative) stopNativeRec();
+      else stopRec();
+      return;
+    }
+    if (current !== "preview") return;
+    if (isNative) void closeNativePreview();
+    else stopTracks();
+    setState("idle");
+  }, [isNative, stopNativeRec, stopRec, stopTracks]);
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -687,6 +743,8 @@ export function useMediaRecorder(
       // Abort an in-flight native capture so a backgrounded recording doesn't
       // keep the device camera alive after we're gone.
       nativeAbortRef.current?.abort();
+      // A preview that never became a take still holds the camera.
+      if (isNativePreviewLive()) void closeNativePreview();
       // Detaches handlers before stopping, so a mid-recording unmount can't
       // fire onstop post-unmount and setState-warn.
       discardRecorder();
@@ -714,5 +772,7 @@ export function useMediaRecorder(
     stopRec,
     startNativeRec,
     stopNativeRec,
+    openNativeCamera,
+    releaseCamera,
   };
 }

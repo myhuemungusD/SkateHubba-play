@@ -1,3 +1,4 @@
+import { RecordFigure } from "../../../components/RecordFigure";
 import { useCallback, useEffect, useState } from "react";
 import { Ban, Flag, Users } from "lucide-react";
 import {
@@ -164,7 +165,7 @@ export function UserSearchSection() {
           <dd>@{summary.username}</dd>
           <dt className="text-white/60">Record</dt>
           <dd>
-            {summary.wins}W · {summary.losses}L
+            <RecordFigure wins={summary.wins} games={summary.wins + summary.losses} caption="won" />
           </dd>
           <dt className="text-white/60">Reports against</dt>
           <dd>

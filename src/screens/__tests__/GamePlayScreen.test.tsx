@@ -425,6 +425,11 @@ describe("GamePlayScreen", () => {
     render(<GamePlayScreen game={makeGame({ trickCategory: "flip" })} profile={profile} onBack={vi.fn()} />);
 
     expect(screen.queryByLabelText("TRICK NAME")).not.toBeInTheDocument();
+    // The picker starts folded into one row so the live preview leads, and
+    // Record waits for a trick.
+    expect(screen.getByText("Flip Tricks only")).toBeInTheDocument();
+    expect(screen.getByTestId("trick-viewfinder")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Pick a trick" }));
     expect(await screen.findByText("Flip Tricks only")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Switch" }));
     await userEvent.click(screen.getByRole("button", { name: "Ledge" }));
@@ -443,6 +448,26 @@ describe("GamePlayScreen", () => {
     expect(localStorage.getItem("skatehubba.recentTrickIds")).toContain("kickflip");
   });
 
+  it("shows the setter's camera before a trick is picked, with Record held until one is", async () => {
+    vi.stubEnv("VITE_FEATURE_TRICK_PICKER_ENABLED", "true");
+    (globalThis as unknown as Record<string, unknown>).MediaRecorder = DataProducingMR;
+
+    render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
+
+    await userEvent.click(await screen.findByText(/Open Camera/));
+    const blocked = await screen.findByRole("button", { name: /Pick a trick to record/ });
+    expect(blocked).toBeDisabled();
+    expect(screen.getByTestId("camera-crosshair")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Pick a trick" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Kickflip" }));
+    // A list pick folds the picker back into its one-row summary.
+    expect(screen.queryByRole("listbox", { name: "Tricks" })).not.toBeInTheDocument();
+    expect(screen.getByText("Set your Kickflip")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Change" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Record — Land Your Trick/ })).toBeEnabled();
+  });
+
   it("keeps a custom Other trick out of the recent list", async () => {
     vi.stubEnv("VITE_FEATURE_TRICK_PICKER_ENABLED", "true");
     localStorage.removeItem("skatehubba.recentTrickIds");
@@ -450,6 +475,7 @@ describe("GamePlayScreen", () => {
     mockSetTrick.mockResolvedValueOnce(undefined);
 
     render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Pick a trick" }));
     await userEvent.click(await screen.findByRole("option", { name: "Other" }));
     await userEvent.type(screen.getByLabelText("Custom trick name"), "Casper");
     expect(screen.getByText("Set your Casper")).toBeInTheDocument();

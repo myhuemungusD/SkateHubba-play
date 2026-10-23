@@ -86,7 +86,8 @@ describe("DiceHub", () => {
     env.hub.stats = stats({ rep: 1040, peakRep: 1060, wins: 3, losses: 1, gamesPlayed: 4, streak: 2, bestStreak: 3 });
     renderAt("/dice");
     expect(screen.getByTestId("dice-record")).toHaveTextContent("1,040");
-    expect(screen.getByTestId("dice-record")).toHaveTextContent("3–1");
+    expect(screen.getByTestId("dice-record")).toHaveTextContent("3 / 4");
+    expect(screen.getByText("3 wins out of 4 games")).toBeInTheDocument();
     expect(screen.getByTestId("dice-record")).toHaveTextContent("Best 3");
     expect(screen.getByTestId("dice-hub-empty")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "How the games work" }));

@@ -1,24 +1,12 @@
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { ClosetShowcase } from "../ClosetShowcase";
+import { CLOSET_PREVIEW_COUNT, ClosetShowcase } from "../ClosetShowcase";
+import { closetItem as item } from "./closetFixtures.test-helpers";
 
-function item(overrides?: Partial<Parameters<typeof ClosetShowcase>[0]["items"][0]>) {
-  return {
-    id: "d1",
-    type: "deck",
-    brand: "Test Brand",
-    name: "Test Deck",
-    imageUrl: null,
-    rarity: "common",
-    acquiredAt: new Date(),
-    provenanceReason: null,
-    equipped: false,
-    itemDefId: null as string | null,
-    ...overrides,
-  };
-}
+const many = (n: number) =>
+  Array.from({ length: n }, (_, i) => item({ id: `i${i}`, acquiredAt: new Date(2026, 0, i + 1) }));
 
-describe("ClosetShowcase", () => {
+describe("ClosetShowcase (profile row)", () => {
   it("renders nothing for another player's empty closet", () => {
     const { container } = render(<ClosetShowcase items={[]} isOwnProfile={false} />);
     expect(container).toBeEmptyDOMElement();
@@ -26,85 +14,59 @@ describe("ClosetShowcase", () => {
 
   it("shows an empty-state hint for the owner's empty closet", () => {
     render(<ClosetShowcase items={[]} isOwnProfile />);
-    expect(document.querySelector("[data-testid=closet-empty-hint]")).toBeInTheDocument();
+    expect(screen.getByTestId("closet-empty-hint")).toBeInTheDocument();
+    expect(screen.queryByTestId("closet-see-all")).toBeNull();
   });
 
-  it("shows the closet grid when items exist", () => {
-    const items = [item({ id: "d1" }), item({ id: "w1", type: "wheels" }), item({ id: "s1", type: "shoes" })];
-    render(<ClosetShowcase items={items} isOwnProfile />);
-    expect(document.querySelectorAll("[data-testid^=closet-item-]")).toHaveLength(3);
+  it("no longer renders the full grid on the profile", () => {
+    render(<ClosetShowcase items={many(9)} isOwnProfile onSeeAll={() => {}} />);
+    expect(document.querySelectorAll("[data-testid^=closet-item-]")).toHaveLength(0);
+    expect(screen.queryByTestId("closet-grid")).toBeNull();
   });
 
-  it("renders an image when imageUrl is present", () => {
-    render(<ClosetShowcase items={[item({ imageUrl: "https://cdn.example.com/deck.png" })]} isOwnProfile />);
-    expect(document.querySelector("[data-testid=closet-image-d1]")).toBeInTheDocument();
+  it("previews at most one row of thumbnails, newest first", () => {
+    render(<ClosetShowcase items={many(9)} isOwnProfile />);
+    const thumbs = screen.getByTestId("closet-preview").querySelectorAll("[data-testid^=closet-thumb-]");
+    expect(thumbs).toHaveLength(CLOSET_PREVIEW_COUNT);
+    expect(thumbs[0]).toHaveAttribute("data-testid", "closet-thumb-i8");
   });
 
-  it("renders a fallback icon when imageUrl is missing", () => {
-    render(<ClosetShowcase items={[item()]} isOwnProfile />);
-    expect(document.querySelector("[data-testid=closet-icon-d1]")).toBeInTheDocument();
+  it("shows every item when there are fewer than a row", () => {
+    render(<ClosetShowcase items={many(2)} isOwnProfile={false} />);
+    expect(screen.getByTestId("closet-preview").children).toHaveLength(2);
   });
 
-  it("applies rarity-specific styling", () => {
-    render(<ClosetShowcase items={[item({ id: "r1", rarity: "rare" })]} isOwnProfile />);
-    expect(document.querySelector("[data-testid=closet-item-r1]")?.className).toMatch(/border-blue-500/);
+  it("shows the item count, singular and plural", () => {
+    const { rerender } = render(<ClosetShowcase items={many(1)} isOwnProfile />);
+    expect(screen.getByTestId("closet-count")).toHaveTextContent("1 item");
+    rerender(<ClosetShowcase items={many(7)} isOwnProfile />);
+    expect(screen.getByTestId("closet-count")).toHaveTextContent("7 items");
   });
 
-  it("falls back to common styling for unknown rarities", () => {
-    render(<ClosetShowcase items={[item({ id: "x1", rarity: "mythic" })]} isOwnProfile />);
-    expect(document.querySelector("[data-testid=closet-item-x1]")?.className).toMatch(/border-zinc-700/);
-  });
-
-  it("falls back to a generic icon for unknown types", () => {
-    render(<ClosetShowcase items={[item({ id: "t1", type: "hoverboard" })]} isOwnProfile />);
-    expect(document.querySelector("[data-testid=closet-icon-t1]")).toBeInTheDocument();
-  });
-
-  it("shows provenance in the title attribute", () => {
-    render(<ClosetShowcase items={[item({ provenanceReason: "Won the 2026 opener" })]} isOwnProfile />);
-    expect(document.querySelector("[data-testid=closet-item-d1]")?.getAttribute("title")).toBe("Won the 2026 opener");
-  });
-
-  it("renders the brand when present", () => {
-    render(<ClosetShowcase items={[item()]} isOwnProfile />);
-    const card = document.querySelector("[data-testid=closet-item-d1]");
-    expect(card?.textContent).toContain("Test Brand");
-  });
-
-  it("omits the brand line when brand is empty", () => {
-    render(<ClosetShowcase items={[item({ brand: "" })]} isOwnProfile />);
-    const card = document.querySelector("[data-testid=closet-item-d1]");
-    expect(card?.textContent).not.toMatch(/TEST BRAND/);
-  });
-
-  it("sorts items by acquisition date (newest first)", () => {
-    const old = item({ id: "old", acquiredAt: new Date("2026-01-01") });
-    const newer = item({ id: "newer", acquiredAt: new Date("2026-06-01") });
-    render(<ClosetShowcase items={[old, newer]} isOwnProfile />);
-    const cards = document.querySelectorAll("[data-testid^=closet-item-]");
-    expect(cards[0]).toHaveAttribute("data-testid", "closet-item-newer");
-    expect(cards[1]).toHaveAttribute("data-testid", "closet-item-old");
-  });
-
-  it("credits Mike White with his signature and collection on his designs", () => {
+  it("thumbnails show the image when there is one, else the type icon", () => {
     render(
       <ClosetShowcase
-        items={[
-          item({ id: "m1", type: "shoes", brand: "Mike White", name: "Teeth", itemDefId: "mike_white_teeth_fire" }),
-        ]}
+        items={[item({ id: "a", imageUrl: "https://cdn.example.com/deck.png" }), item({ id: "b", type: "hoverboard" })]}
         isOwnProfile
       />,
     );
-    const card = document.querySelector("[data-testid=closet-item-m1]") as HTMLElement;
-    expect(card).toHaveTextContent("Designed by Mike White");
-    expect(card).toHaveTextContent("Mike White Signature collection");
-    expect(card.querySelector("img[alt='Mike White signature']")).toBeInTheDocument();
-    expect(card.getAttribute("aria-label")).toContain("Designed by Mike White");
+    expect(screen.getByTestId("closet-thumb-a").querySelector("img")).toBeInTheDocument();
+    expect(screen.getByTestId("closet-thumb-b").querySelector("svg")).toBeInTheDocument();
   });
 
-  it("shows no designer credit on uncredited gear", () => {
-    render(<ClosetShowcase items={[item()]} isOwnProfile />);
-    expect(document.querySelector("[data-testid=designer-credit]")).not.toBeInTheDocument();
+  it("See all opens the Closet screen, on own and other profiles", () => {
+    const onSeeAll = vi.fn();
+    const { rerender } = render(<ClosetShowcase items={many(5)} isOwnProfile onSeeAll={onSeeAll} />);
+    fireEvent.click(screen.getByRole("button", { name: "See all 5 items in the closet" }));
+    rerender(<ClosetShowcase items={many(5)} isOwnProfile={false} onSeeAll={onSeeAll} />);
+    fireEvent.click(screen.getByTestId("closet-see-all"));
+    expect(onSeeAll).toHaveBeenCalledTimes(2);
+  });
+
+  it("has no See all link when no Closet screen is wired", () => {
+    render(<ClosetShowcase items={many(5)} isOwnProfile />);
+    expect(screen.queryByTestId("closet-see-all")).toBeNull();
+    expect(screen.getByTestId("closet-count")).toHaveTextContent("5 items");
   });
 
   it("links the owner to Closet Studio only when the studio flag is on", () => {
@@ -119,31 +81,5 @@ describe("ClosetShowcase", () => {
     } finally {
       vi.unstubAllEnvs();
     }
-  });
-});
-
-describe("ClosetShowcase signature detail", () => {
-  it("shows the polished card and opens the detail sheet for a credited shoe", () => {
-    render(
-      <ClosetShowcase
-        items={[
-          item({ id: "m1", type: "shoes", name: "Teeth", imageUrl: "/old.webp", itemDefId: "mike_white_teeth_fire" }),
-        ]}
-        isOwnProfile
-      />,
-    );
-    expect(document.querySelector("[data-testid=closet-image-m1]")).toHaveAttribute(
-      "src",
-      "/assets/closet/mike-white/card/teeth-fire.webp",
-    );
-    fireEvent.click(document.querySelector("[data-testid=closet-view-m1]")!);
-    expect(document.querySelector("[data-testid=shoe-detail]")).toHaveTextContent("Designed by Mike White");
-    fireEvent.click(document.querySelector("[aria-label=Close]")!);
-    expect(document.querySelector("[data-testid=shoe-detail]")).toBeNull();
-  });
-
-  it("has no detail button for uncredited items", () => {
-    render(<ClosetShowcase items={[item()]} isOwnProfile />);
-    expect(document.querySelector("[data-testid=closet-view-d1]")).toBeNull();
   });
 });

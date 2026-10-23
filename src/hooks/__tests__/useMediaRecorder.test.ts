@@ -2,7 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useMediaRecorder, type MediaRecorderController } from "../useMediaRecorder";
 import { AUDIO_CONSTRAINTS, videoConstraints } from "../cameraCapture";
-import { isNativePlatform, recordNativeVideo, type NativeVideoResult } from "../../services/nativeVideo";
+import {
+  closeNativePreview,
+  isNativePlatform,
+  isNativePreviewLive,
+  openNativePreview,
+  recordNativeVideo,
+  type NativeVideoResult,
+} from "../../services/nativeVideo";
 import { MAX_VIDEO_DURATION_SECONDS, VIDEO_BITS_PER_SECOND } from "../../constants/video";
 
 /* ────────────────────────────────────────────
@@ -18,10 +25,16 @@ import { MAX_VIDEO_DURATION_SECONDS, VIDEO_BITS_PER_SECOND } from "../../constan
 vi.mock("../../services/nativeVideo", () => ({
   isNativePlatform: vi.fn(() => false),
   recordNativeVideo: vi.fn(),
+  openNativePreview: vi.fn(() => Promise.resolve(true)),
+  closeNativePreview: vi.fn(() => Promise.resolve()),
+  isNativePreviewLive: vi.fn(() => false),
 }));
 
 const mockIsNativePlatform = vi.mocked(isNativePlatform);
 const mockRecordNativeVideo = vi.mocked(recordNativeVideo);
+const mockOpenNativePreview = vi.mocked(openNativePreview);
+const mockCloseNativePreview = vi.mocked(closeNativePreview);
+const mockIsNativePreviewLive = vi.mocked(isNativePreviewLive);
 const mockGetUserMedia = vi.fn();
 
 /**
@@ -852,6 +865,149 @@ describe("useMediaRecorder", () => {
       expect(view.onRecorded).not.toHaveBeenCalled();
     });
   }
+
+  describe("native live preview (frame the shot before recording)", () => {
+    beforeEach(() => {
+      mockIsNativePlatform.mockReturnValue(true);
+      mockOpenNativePreview.mockResolvedValue(true);
+      mockIsNativePreviewLive.mockReturnValue(false);
+    });
+
+    it("opens the preview, then records on it", async () => {
+      mockRecordNativeVideo.mockImplementation(() => new Promise<NativeVideoResult>(() => undefined));
+      const view = mountRecorder();
+      await act(async () => {
+        await view.result.current.openNativeCamera();
+      });
+      expect(view.result.current.state).toBe("preview");
+      act(() => {
+        void view.result.current.startNativeRec();
+      });
+      expect(view.result.current.state).toBe("recording");
+    });
+
+    it("a second open while recording leaves the take alone", async () => {
+      mockRecordNativeVideo.mockImplementation(() => new Promise<NativeVideoResult>(() => undefined));
+      const view = mountRecorder();
+      act(() => {
+        void view.result.current.startNativeRec();
+      });
+      await act(async () => {
+        await view.result.current.openNativeCamera();
+      });
+      expect(view.result.current.state).toBe("recording");
+    });
+
+    it("stays idle when a close superseded the open", async () => {
+      mockOpenNativePreview.mockResolvedValue(false);
+      const view = mountRecorder();
+      await act(async () => {
+        await view.result.current.openNativeCamera();
+      });
+      expect(view.result.current.state).toBe("idle");
+    });
+
+    it("surfaces a failed open as a native camera error", async () => {
+      mockOpenNativePreview.mockRejectedValue(new Error("camera in use"));
+      const view = mountRecorder();
+      await act(async () => {
+        await view.result.current.openNativeCamera();
+      });
+      expect(view.result.current.state).toBe("idle");
+      expect(view.result.current.cameraError).toBe("Native camera error: camera in use");
+    });
+
+    it("lets go of a preview that came up after unmount", async () => {
+      let resolveOpen: (live: boolean) => void = () => undefined;
+      mockOpenNativePreview.mockReturnValue(new Promise<boolean>((r) => (resolveOpen = r)));
+      const view = mountRecorder();
+      let opening: Promise<void> = Promise.resolve();
+      act(() => {
+        opening = view.result.current.openNativeCamera();
+      });
+      view.unmount();
+      mockCloseNativePreview.mockClear();
+      resolveOpen(true);
+      await opening;
+      expect(mockCloseNativePreview).toHaveBeenCalledTimes(1);
+    });
+
+    it("lets go of a preview that came up while the app was backgrounded", async () => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      try {
+        const view = mountRecorder();
+        await act(async () => {
+          await view.result.current.openNativeCamera();
+        });
+        expect(view.result.current.state).toBe("idle");
+        expect(mockCloseNativePreview).toHaveBeenCalledTimes(1);
+      } finally {
+        Reflect.deleteProperty(document, "visibilityState");
+      }
+    });
+
+    it("releases the camera on unmount while the preview is live", () => {
+      mockIsNativePreviewLive.mockReturnValue(true);
+      const view = mountRecorder();
+      view.unmount();
+      expect(mockCloseNativePreview).toHaveBeenCalledTimes(1);
+    });
+
+    it("releaseCamera drops a live preview back to idle", async () => {
+      const view = mountRecorder();
+      await act(async () => {
+        await view.result.current.openNativeCamera();
+      });
+      act(() => view.result.current.releaseCamera());
+      expect(mockCloseNativePreview).toHaveBeenCalledTimes(1);
+      expect(view.result.current.state).toBe("idle");
+    });
+
+    it("releaseCamera stops a native take and keeps it", () => {
+      let signal: AbortSignal | undefined;
+      mockRecordNativeVideo.mockImplementation((s) => {
+        signal = s;
+        return new Promise<NativeVideoResult>(() => undefined);
+      });
+      const view = mountRecorder();
+      act(() => {
+        void view.result.current.startNativeRec();
+      });
+      act(() => view.result.current.releaseCamera());
+      expect(signal?.aborted).toBe(true);
+    });
+
+    it("releaseCamera does nothing while idle", () => {
+      const view = mountRecorder();
+      act(() => view.result.current.releaseCamera());
+      expect(mockCloseNativePreview).not.toHaveBeenCalled();
+      expect(view.result.current.state).toBe("idle");
+    });
+  });
+
+  describe("releaseCamera on the web", () => {
+    it("stops the preview stream and returns to idle", async () => {
+      const video = fakeTrack("video");
+      mockGetUserMedia.mockResolvedValue(fakeStream([video]));
+      const view = mountRecorder();
+      await openCamera(view);
+      expect(view.result.current.state).toBe("preview");
+      act(() => view.result.current.releaseCamera());
+      expect(video.stop).toHaveBeenCalled();
+      expect(view.result.current.state).toBe("idle");
+    });
+
+    it("stops a running take so it is kept", async () => {
+      mockGetUserMedia.mockResolvedValue(fakeStream([fakeTrack("video")]));
+      const view = mountRecorder();
+      await openCamera(view);
+      act(() => view.result.current.startRec());
+      expect(view.result.current.state).toBe("recording");
+      const mr = latestRecorder();
+      act(() => view.result.current.releaseCamera());
+      expect(mr.stopCount).toBe(1);
+    });
+  });
 
   describe("concurrent acquisition", () => {
     /**

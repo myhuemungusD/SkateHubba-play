@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { useNavigationContext, screenToPath, type Screen } from "../context/NavigationContext";
 import { useNotifications } from "../context/NotificationContext";
-import { FilmIcon, HomeIcon, MapPinIcon, SkateboardIcon, UserIcon } from "./icons";
+import { CrownIcon, FilmIcon, HomeIcon, MapPinIcon, UserIcon } from "./icons";
 import { HubbaIcon, type GlyphName } from "./hubbaIcons";
 import { isExtrasEnabled, isHubbaIconsEnabled } from "../lib/featureFlags";
 
@@ -55,7 +55,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   {
     screen: "challenge",
     label: "Challenge",
-    Icon: SkateboardIcon,
+    Icon: CrownIcon,
     icon: "challenge",
     primary: true,
     tutorialId: "challenge-cta",
@@ -123,7 +123,7 @@ export function BottomNav() {
                       <HubbaIcon
                         name={item.icon}
                         // The raised Challenge disc is always solid, so its
-                        // deck always uses the filled form for contrast.
+                        // crown always uses the filled form for contrast.
                         active={active || item.primary === true}
                         size={item.primary ? 24 : 22}
                       />
@@ -136,7 +136,7 @@ export function BottomNav() {
                     {badgeCount > 0 && (
                       <span
                         aria-hidden="true"
-                        className="absolute -top-1 -right-2 min-w-[15px] h-[15px] px-1 flex items-center justify-center rounded-full bg-brand-orange font-display text-[9px] text-[#1a1a1a] leading-none tabular-nums"
+                        className="absolute -top-1 -right-2 min-w-[17px] h-[17px] px-1 flex items-center justify-center rounded-full bg-brand-orange font-display text-[11px] text-[#1a1a1a] leading-none tabular-nums"
                       >
                         {badgeCount > 9 ? "9+" : badgeCount}
                       </span>
@@ -145,7 +145,7 @@ export function BottomNav() {
                   {/* Tracking is tighter than the 0.15em used elsewhere purely
                       so five labels (incl. "Challenge") fit a 320px viewport
                       without wrapping. Font size is unchanged. */}
-                  <span className="font-display text-[10px] tracking-[0.05em] leading-none uppercase">
+                  <span className="font-display text-[11px] tracking-[0.05em] leading-none uppercase">
                     {item.label}
                   </span>
                   {active && (

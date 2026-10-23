@@ -108,6 +108,8 @@ interface Props {
   onViewMyStats?: () => void;
   /** Opens the pro-only Pro tools screen. Shown on a verified pro's own profile. */
   onOpenProTools?: () => void;
+  /** Opens the full Closet screen from the Closet row's "See all". Omit and the row has no link. */
+  onOpenCloset?: () => void;
 }
 
 /**
@@ -159,6 +161,7 @@ export function PlayerProfileScreen({
   onEditProfile,
   onViewMyStats,
   onOpenProTools,
+  onOpenCloset,
 }: Props) {
   const c = usePlayerProfileController({
     viewedUid,
@@ -389,7 +392,7 @@ export function PlayerProfileScreen({
                       pinnedItems={c.pinnedItems}
                       isOwnProfile={isOwnProfile}
                     />
-                    <ClosetShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} />
+                    <ClosetShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} onSeeAll={onOpenCloset} />
                   </>
                 )}
                 {id === "crew" && hasViewer && (
@@ -427,7 +430,9 @@ export function PlayerProfileScreen({
               onTileTap={handleTileTap}
             />
 
-            {isClosetEnabled() && <ClosetShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} />}
+            {isClosetEnabled() && (
+              <ClosetShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} onSeeAll={onOpenCloset} />
+            )}
 
             {/* Owner-only: advertising an unbuilt feature on someone else's public
               profile is noise to every visitor but the owner. */}
