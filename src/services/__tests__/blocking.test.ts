@@ -178,7 +178,10 @@ describe("subscribeToBlockedUsers", () => {
       return vi.fn();
     });
 
+    const onError = vi.fn();
     subscribeToBlockedUsers("u1", callback);
+    subscribeToBlockedUsers("u1", callback, onError);
     expect(callback).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(1);
   });
 });

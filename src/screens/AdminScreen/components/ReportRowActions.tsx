@@ -10,6 +10,7 @@ export interface ReportRowActionsProps {
   onBan: (report: AdminReport) => void;
   onHideDispute: (report: AdminReport) => void;
   onDeleteComment: (report: AdminReport) => void;
+  onHideMessage: (report: AdminReport) => void;
 }
 
 const VERDICT_BTN =
@@ -38,6 +39,7 @@ export function ReportRowActions({
   onBan,
   onHideDispute,
   onDeleteComment,
+  onHideMessage,
 }: ReportRowActionsProps) {
   const [drafting, setDrafting] = useState(false);
   const [explanation, setExplanation] = useState("");
@@ -123,6 +125,16 @@ export function ReportRowActions({
             tone="danger"
             loading={acting}
             onConfirm={() => onDeleteComment(report)}
+          />
+        )}
+        {report.messageId && report.spotId && (
+          <ConfirmButton
+            label="Hide chat message"
+            question={`Hide this chat message by @${report.reportedUsername} from everyone?`}
+            confirmLabel="Hide"
+            tone="danger"
+            loading={acting}
+            onConfirm={() => onHideMessage(report)}
           />
         )}
         <ConfirmButton

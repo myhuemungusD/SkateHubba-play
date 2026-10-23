@@ -154,3 +154,53 @@ describe("reports — single comments and spot targets", () => {
     await assertFails(submitReport({ commentId: "c".repeat(129), commentText: "rude" }));
   });
 });
+
+describe("reports — player profiles and spot-chat messages", () => {
+  const SPOT = "spot-1";
+
+  beforeEach(async () => {
+    await getEnv().withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, "spots", SPOT, "messages", "m1"), {
+        userId: REPORTED,
+        content: "rude msg",
+        isHidden: false,
+      });
+      await setDoc(doc(db, "spots", SPOT, "messages", "theirs"), { userId: "someone-else", content: "rude msg" });
+    });
+  });
+
+  it("accepts a profile report with no game, clip or spot", async () => {
+    await assertSucceeds(submitReport({ target: "profile", reason: "abusive_behavior" }, true));
+  });
+
+  it("rejects an unknown target, and a null-game report with no target at all", async () => {
+    await assertFails(submitReport({ target: "everyone" }, true));
+    await assertFails(submitReport({ target: "everyone" }));
+    await assertFails(submitReport({}, true));
+  });
+
+  it("accepts a chat message report whose quote matches the real message", async () => {
+    await assertSucceeds(submitReport({ spotId: SPOT, messageId: "m1", messageText: "rude msg" }, true));
+  });
+
+  it("rejects a made-up quote, the wrong author, or a missing message", async () => {
+    await assertFails(submitReport({ spotId: SPOT, messageId: "m1", messageText: "never said" }, true));
+    await assertFails(submitReport({ spotId: SPOT, messageId: "theirs", messageText: "rude msg" }, true));
+    await assertFails(submitReport({ spotId: SPOT, messageId: "ghost", messageText: "rude msg" }, true));
+  });
+
+  it("rejects a message report without its spot, with a clip, or mixed with a comment", async () => {
+    await assertFails(submitReport({ gameId: "g-1", messageId: "m1", messageText: "rude msg" }, true));
+    await assertFails(submitReport({ spotId: SPOT, messageId: "m1", messageText: "rude msg" }));
+    await assertFails(
+      submitReport({ spotId: SPOT, messageId: "m1", messageText: "rude msg", commentId: "m1", commentText: "x" }, true),
+    );
+  });
+
+  it("rejects message text without an id, an id without text, or over-long fields", async () => {
+    await assertFails(submitReport({ spotId: SPOT, messageText: "rude msg" }, true));
+    await assertFails(submitReport({ spotId: SPOT, messageId: "m1" }, true));
+    await assertFails(submitReport({ spotId: SPOT, messageId: "m".repeat(129), messageText: "rude msg" }, true));
+  });
+});
