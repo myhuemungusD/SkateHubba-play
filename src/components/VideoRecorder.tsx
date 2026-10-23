@@ -1,11 +1,16 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { ActionDock } from "./ActionDock";
 import { Btn } from "./ui/Btn";
-import { FilmIcon, FisheyeIcon, FlipCameraIcon } from "./icons";
+import { FilmIcon } from "./icons";
+import { CameraChromeToggles } from "./CameraChromeToggles";
 import { RecorderControls } from "./RecorderControls";
 import { hasGrantedCameraAndMic } from "./mediaPermissions";
 import { FisheyeRenderer } from "./FisheyeRenderer";
 import { useMediaRecorder, isIOSSafari } from "../hooks/useMediaRecorder";
+import { useSelfTimer } from "../hooks/useSelfTimer";
+import { SelfTimerCountdown, SelfTimerToggle } from "./SelfTimerControls";
+import { useCameraRelease } from "../hooks/useCameraRelease";
+import { useNativeViewfinder } from "../hooks/useNativeViewfinder";
 import { MAX_VIDEO_DURATION_SECONDS } from "../constants/video";
 import { CLIP_POSTER } from "../lib/clipPoster";
 
@@ -21,16 +26,13 @@ const NativeCameraControls = lazy(() =>
  */
 const FRAME_FIT = "w-full h-full object-contain";
 
-/** Shared classes for the viewfinder chrome toggles — 44px touch target. */
-const CHROME_BTN =
-  "w-11 h-11 inline-flex items-center justify-center rounded-full transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
-
 export function VideoRecorder({
   onRecorded,
   label,
   doneLabel = "Recorded",
   maxDurationSeconds = MAX_VIDEO_DURATION_SECONDS,
   pinControls = false,
+  recordBlockedLabel,
 }: {
   onRecorded: (blob: Blob | null) => void;
   label: string;
@@ -49,6 +51,11 @@ export function VideoRecorder({
    * so the two can never disagree about when the take ends.
    */
   maxDurationSeconds?: number;
+  /**
+   * When set, the live preview stays up but Record is disabled and shows this
+   * instead — the setter can frame the shot before a trick is picked.
+   */
+  recordBlockedLabel?: string;
 }) {
   const {
     state,
@@ -69,6 +76,8 @@ export function VideoRecorder({
     stopRec,
     startNativeRec,
     stopNativeRec,
+    openNativeCamera,
+    releaseCamera,
   } = useMediaRecorder(onRecorded, maxDurationSeconds);
 
   const [permissionGranted, setPermissionGranted] = useState(false);
@@ -92,8 +101,15 @@ export function VideoRecorder({
     // (prompt/denied/unknown, and iOS is always "unknown" because WebKit ships
     // no permissions.query for camera) waits for the user to tap Open Camera.
     // openCamera is async (it awaits getUserMedia before any setState), so this
-    // is not a synchronous set-state-in-effect. Native has its own entry point.
-    if (isNative) return;
+    // is not a synchronous set-state-in-effect.
+    //
+    // Native asks through the app's own permission prompt, so the live
+    // preview comes up on screen entry — a skater filming alone props the
+    // phone up and frames the shot before tapping Record.
+    if (isNative) {
+      void openNativeCamera();
+      return;
+    }
     let cancelled = false;
     void hasGrantedCameraAndMic().then((granted) => {
       if (cancelled || !granted) return;
@@ -103,7 +119,19 @@ export function VideoRecorder({
     return () => {
       cancelled = true;
     };
-  }, [openCamera, isNative]);
+  }, [openCamera, openNativeCamera, isNative]);
+
+  const timer = useSelfTimer();
+  const { cancel: cancelTimer } = timer;
+  // A countdown only makes sense over a live preview.
+  useEffect(() => {
+    if (state !== "preview") cancelTimer();
+  }, [state, cancelTimer]);
+  // Battery + privacy: let go of the camera when the app is backgrounded,
+  // bring the preview back when it returns.
+  useCameraRelease({ state, isNative, releaseCamera, openNativeCamera, openCamera, cancelTimer });
+  const reopen = isNative ? openNativeCamera : openCamera;
+  const beginTake = () => timer.start(isNative ? startNativeRec : startRec);
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
@@ -119,21 +147,27 @@ export function VideoRecorder({
   const secondsLeft = maxDurationSeconds - seconds;
   // Native capture draws the camera BEHIND the web view, so the viewfinder and
   // every ancestor must be see-through while it runs (see .sh-native-cam).
-  const nativeLive = isNative && state === "recording";
-  // Mark the viewfinder's ancestors directly instead of using a global
-  // `:has()` selector — a stylesheet-wide `*:has(...)` rule forces Chrome to
-  // re-check ancestors on every DOM mutation, which blew the Lighthouse TBT
-  // budget on pages that never open the camera.
+  // Live from the first preview frame, not just once recording starts —
+  // otherwise the page covers the camera while the shot is being framed.
+  const nativeLive = isNative && (state === "preview" || state === "recording");
   const viewfinderRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!nativeLive) return;
-    const marked: Element[] = [];
-    for (let el = viewfinderRef.current?.parentElement ?? null; el; el = el.parentElement) {
-      el.classList.add("sh-native-cam");
-      marked.push(el);
-    }
-    return () => marked.forEach((el) => el.classList.remove("sh-native-cam"));
-  }, [nativeLive]);
+  useNativeViewfinder(viewfinderRef, nativeLive);
+
+  const controls = {
+    state,
+    cameraError,
+    label,
+    seconds,
+    secondsLeft,
+    maxDurationSeconds,
+    countdown: timer.countdown,
+    recordBlockedLabel,
+    onOpen: reopen,
+    onStart: beginTake,
+    onCancelCountdown: cancelTimer,
+    onStop: isNative ? stopNativeRec : stopRec,
+    onRetry: reopen,
+  };
 
   return (
     <div className="w-full flex flex-col items-center gap-4">
@@ -199,6 +233,11 @@ export function VideoRecorder({
           </p>
         )}
 
+        {state === "preview" && (
+          <SelfTimerToggle enabled={timer.enabled} onToggle={timer.toggle} disabled={timer.countdown !== null} />
+        )}
+        {timer.countdown !== null && <SelfTimerCountdown seconds={timer.countdown} />}
+
         {state === "recording" && (
           <div className="absolute top-4 left-4 flex items-center gap-2 bg-black/70 px-3 py-1.5 rounded-full">
             <div className="w-2.5 h-2.5 rounded-full bg-brand-red animate-rec-pulse" />
@@ -221,40 +260,18 @@ export function VideoRecorder({
         )}
 
         <Suspense fallback={null}>
-          <NativeCameraControls active={nativeLive} />
+          <NativeCameraControls active={isNative && state === "recording"} />
         </Suspense>
 
         {state !== "done" && (
           <div className="absolute top-4 right-4 flex items-center gap-2">
-            {showChromeToggles && (
-              <>
-                <button
-                  type="button"
-                  onClick={flipCamera}
-                  aria-label={facingMode === "environment" ? "Switch to front camera" : "Switch to rear camera"}
-                  aria-pressed={facingMode === "user"}
-                  className={`${CHROME_BTN} ${
-                    facingMode === "user"
-                      ? "bg-brand-orange/90 shadow-[0_0_12px_rgba(255,107,0,0.4)]"
-                      : "bg-black/60 hover:bg-black/80 backdrop-blur-sm"
-                  }`}
-                >
-                  <FlipCameraIcon size={18} className="text-white" />
-                </button>
-                <button
-                  type="button"
-                  onClick={toggleFisheye}
-                  aria-label={fisheyeOn ? "Disable fisheye" : "Enable fisheye"}
-                  aria-pressed={fisheyeOn}
-                  className={`${CHROME_BTN} ${
-                    fisheyeOn
-                      ? "bg-purple-500/90 shadow-[0_0_12px_rgba(147,51,234,0.4)]"
-                      : "bg-black/60 hover:bg-black/80 backdrop-blur-sm"
-                  }`}
-                >
-                  <FisheyeIcon size={18} className="text-white" />
-                </button>
-              </>
+            {showChromeToggles && !isNative && (
+              <CameraChromeToggles
+                facingMode={facingMode}
+                fisheyeOn={fisheyeOn}
+                onFlip={flipCamera}
+                onToggleFisheye={toggleFisheye}
+              />
             )}
             <div className="bg-brand-orange/90 px-2.5 py-1 rounded-md">
               <span className="font-display text-[11px] text-white tracking-[0.1em]">ONE TAKE</span>
@@ -272,7 +289,7 @@ export function VideoRecorder({
               permission or a policy blocked the API outright. */}
           {cameraErrorDetail && <p className="font-body text-xs text-bright mb-2">{cameraErrorDetail}</p>}
           {!pinControls && (
-            <Btn onClick={openCamera} variant="secondary">
+            <Btn onClick={reopen} variant="secondary">
               Retry Camera
             </Btn>
           )}
@@ -283,35 +300,10 @@ export function VideoRecorder({
           without scrolling past the preview. */}
       {pinControls && state !== "done" ? (
         <ActionDock testId="recorder-actions">
-          <RecorderControls
-            state={state}
-            cameraError={cameraError}
-            isNative={isNative}
-            label={label}
-            seconds={seconds}
-            secondsLeft={secondsLeft}
-            maxDurationSeconds={maxDurationSeconds}
-            onOpen={isNative ? startNativeRec : openCamera}
-            onStart={startRec}
-            onStop={isNative ? stopNativeRec : stopRec}
-            onRetry={openCamera}
-          />
+          <RecorderControls {...controls} />
         </ActionDock>
       ) : (
-        <RecorderControls
-          state={state}
-          cameraError={cameraError}
-          isNative={isNative}
-          label={label}
-          seconds={seconds}
-          secondsLeft={secondsLeft}
-          maxDurationSeconds={maxDurationSeconds}
-          onOpen={isNative ? startNativeRec : openCamera}
-          onStart={startRec}
-          onStop={isNative ? stopNativeRec : stopRec}
-          onRetry={openCamera}
-          doneLabel={doneLabel}
-        />
+        <RecorderControls {...controls} doneLabel={doneLabel} />
       )}
     </div>
   );

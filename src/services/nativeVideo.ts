@@ -53,6 +53,109 @@ const PREVIEW_FRAME: VideoRecorderPreviewFrame = {
   borderRadius: 0,
 };
 
+/** Options for `initialize()`. Shared by the live preview and a cold take. */
+function initializeOptions() {
+  return {
+    camera: VideoRecorderCamera.BACK,
+    // 1080p preset. The web path asks for 1080×1920 in portrait and
+    // 1920×1080 in landscape (src/hooks/cameraCapture.ts); this plugin
+    // only exposes a quality enum, not a lens or a frame rate.
+    quality: VideoRecorderQuality.MAX_1080P,
+    // Left unset, the plugin encodes at a 3 Mbps default hardcoded in its
+    // native sources — well below what the web path asks for, so the same
+    // trick came out visibly softer on native. Pass the shared constant so
+    // neither platform has a quality advantage. See the ceiling arithmetic
+    // in src/constants/video.ts.
+    videoBitrate: VIDEO_BITS_PER_SECOND,
+    autoShow: true,
+    previewFrames: [PREVIEW_FRAME],
+  };
+}
+
+/**
+ * Live-preview session. The record screen opens the camera on entry so a
+ * skater filming alone can prop the phone up and frame the shot BEFORE
+ * tapping record; `recordNativeVideo` then captures on that same session.
+ *
+ * Load-bearing: the plugin's `initialize()` does nothing — and never settles
+ * its promise — when a capture session is already running, so a take must
+ * not call it a second time over a live preview.
+ */
+let previewLive = false;
+/** Bumped by every open/close so an open that resolves after a close tears itself down. */
+let previewGeneration = 0;
+/** The open in flight, so concurrent callers queue instead of double-initializing. */
+let previewOpening: Promise<boolean> | null = null;
+
+/** True while `openNativePreview()` has a camera session up and no take has consumed it. */
+export function isNativePreviewLive(): boolean {
+  return previewLive;
+}
+
+/** Release the plugin, swallowing (and breadcrumbing) a failed teardown. */
+async function destroyQuietly(): Promise<void> {
+  try {
+    await VideoRecorder.destroy();
+  } catch (destroyErr) {
+    // Non-Error teardown rejections are effectively unreachable — the
+    // plugin rejects with real Error objects. The `String(…)` fallback
+    // is a defensive safety net and not worth chasing in tests.
+    /* v8 ignore next */
+    const message = destroyErr instanceof Error ? destroyErr.message : String(destroyErr);
+    addBreadcrumb({
+      category: "lifecycle",
+      message: "video_recorder_destroy_failed",
+      data: { error: message },
+    });
+  }
+}
+
+/**
+ * Start the camera preview without recording. Resolves true once the preview
+ * is live, false when a `closeNativePreview()` landed while it was opening
+ * (the session is released again). Rejects on permission denial.
+ */
+export async function openNativePreview(): Promise<boolean> {
+  // One initialize at a time: a second call over a session that is coming up
+  // would never settle (see previewLive). StrictMode's mount → unmount → mount
+  // lands exactly here — the remount waits for the first open to tear down.
+  while (previewOpening) await previewOpening.catch(() => undefined);
+  if (previewLive) return true;
+  const opening = initializePreview(++previewGeneration);
+  previewOpening = opening;
+  try {
+    return await opening;
+  } finally {
+    // Every other caller is parked in the loop above, so this one owns the slot.
+    previewOpening = null;
+  }
+}
+
+async function initializePreview(generation: number): Promise<boolean> {
+  try {
+    await VideoRecorder.initialize(initializeOptions());
+  } catch (err) {
+    // A rejected initialize can still leave a half-built session behind on
+    // some plugin paths; release it so the next open starts clean.
+    await destroyQuietly();
+    throw err;
+  }
+  if (generation !== previewGeneration) {
+    await destroyQuietly();
+    return false;
+  }
+  previewLive = true;
+  addBreadcrumb({ category: "camera", message: "native_preview_open" });
+  return true;
+}
+
+/** Release the live preview (screen left, app backgrounded). Safe to call any time. */
+export async function closeNativePreview(): Promise<void> {
+  previewGeneration++;
+  previewLive = false;
+  await destroyQuietly();
+}
+
 /**
  * Launch the native video recorder and capture a clip.
  *
@@ -152,30 +255,23 @@ export async function recordNativeVideo(
   };
 
   try {
-    // Mark BEFORE the call, not after it resolves: an abort mid-`initialize()`
-    // walks away from a capture session that may already be live, and keying
-    // teardown off completion would leak exactly the camera handle this
-    // function exists to protect.
-    await raceAbort(
-      VideoRecorder.initialize({
-        camera: VideoRecorderCamera.BACK,
-        // 1080p preset. The web path asks for 1080×1920 in portrait and
-        // 1920×1080 in landscape (src/hooks/cameraCapture.ts); this plugin
-        // only exposes a quality enum, not a lens or a frame rate.
-        quality: VideoRecorderQuality.MAX_1080P,
-        // Left unset, the plugin encodes at a 3 Mbps default hardcoded in its
-        // native sources — well below what the web path asks for, so the same
-        // trick came out visibly softer on native. Pass the shared constant so
-        // neither platform has a quality advantage. See the ceiling arithmetic
-        // in src/constants/video.ts.
-        videoBitrate: VIDEO_BITS_PER_SECOND,
-        autoShow: true,
-        previewFrames: [PREVIEW_FRAME],
-      }).catch((err: unknown) => {
-        initializeRejected = true;
-        throw err;
-      }),
-    );
+    // A live preview already owns the session — reuse it (see previewLive).
+    // The take consumes it: the finally block below releases the camera.
+    if (previewLive) {
+      previewLive = false;
+      previewGeneration++;
+    } else {
+      // Mark BEFORE the call, not after it resolves: an abort mid-`initialize()`
+      // walks away from a capture session that may already be live, and keying
+      // teardown off completion would leak exactly the camera handle this
+      // function exists to protect.
+      await raceAbort(
+        VideoRecorder.initialize(initializeOptions()).catch((err: unknown) => {
+          initializeRejected = true;
+          throw err;
+        }),
+      );
+    }
 
     const tInit = typeof performance !== "undefined" ? performance.now() : 0;
     await raceAbort(VideoRecorder.startRecording());
@@ -255,20 +351,7 @@ export async function recordNativeVideo(
       // a failure to tear down shouldn't mask the real error (if any)
       // that's already propagating out of the try block. Breadcrumb so
       // operators can see if destroy() is silently failing in the field.
-      try {
-        await VideoRecorder.destroy();
-      } catch (destroyErr) {
-        // Non-Error teardown rejections are effectively unreachable — the
-        // plugin rejects with real Error objects. The `String(…)` fallback
-        // is a defensive safety net and not worth chasing in tests.
-        /* v8 ignore next */
-        const message = destroyErr instanceof Error ? destroyErr.message : String(destroyErr);
-        addBreadcrumb({
-          category: "lifecycle",
-          message: "video_recorder_destroy_failed",
-          data: { error: message },
-        });
-      }
+      await destroyQuietly();
     }
   }
 }
