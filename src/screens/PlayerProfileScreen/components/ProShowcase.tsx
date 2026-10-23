@@ -1,3 +1,4 @@
+import { RecordFigure } from "../../../components/RecordFigure";
 import { Swords, Wrench } from "lucide-react";
 import type { ProProfileContent } from "../../../constants/proProfiles";
 import { ProProfileEditor } from "../../../components/pro/ProProfileEditor";
@@ -220,7 +221,11 @@ export function ProShowcase({
       <section aria-label="Pro record" className={CARD}>
         <h3 className={H3}>S.K.A.T.E. RECORD</h3>
         <p className="font-body text-sm text-white/90 tabular-nums">
-          {games === 0 ? "No games yet. Be the first to play a pro." : `${wins}W · ${losses}L across ${games} games`}
+          {games === 0 ? (
+            "No games yet. Be the first to play a pro."
+          ) : (
+            <RecordFigure wins={wins} games={games} caption="won" />
+          )}
         </p>
       </section>
 

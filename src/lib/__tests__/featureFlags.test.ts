@@ -522,6 +522,21 @@ describe("isTurnLengthEnabled (VITE_FEATURE_TURN_LENGTH)", () => {
   });
 });
 
+describe("isRandomChallengerEnabled (VITE_FEATURE_RANDOM_CHALLENGER)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    localStorage.removeItem(FEATURE_TESTER_STORAGE_KEY);
+  });
+  it("is off by default and on only for literal true", async () => {
+    const { isRandomChallengerEnabled } = await import("../featureFlags");
+    expect(isRandomChallengerEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_RANDOM_CHALLENGER", "1");
+    expect(isRandomChallengerEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_RANDOM_CHALLENGER", "true");
+    expect(isRandomChallengerEnabled()).toBe(true);
+  });
+});
+
 describe("tester override in native store builds (App Store 2.3.1)", () => {
   afterEach(() => {
     localStorage.removeItem(FEATURE_TESTER_STORAGE_KEY);

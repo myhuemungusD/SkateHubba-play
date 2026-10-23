@@ -62,7 +62,8 @@ describe("ProShowcaseGate", () => {
     );
     expect(mockIsAdmin).toHaveBeenCalledWith("");
     expect(screen.queryByRole("note")).toBeNull();
-    expect(screen.getByText("3W · 1L across 4 games")).toBeInTheDocument();
+    expect(screen.getByText("3 wins out of 4 games")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Pro record" })).toHaveTextContent("3 / 4 won");
     await userEvent.click(screen.getByRole("button", { name: /PLAY A PRO/ }));
     expect(onPlayPro).toHaveBeenCalledWith("u1", "mikewhite");
   });

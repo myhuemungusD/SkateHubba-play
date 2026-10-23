@@ -299,7 +299,7 @@ describe("Lobby", () => {
 
   // ── Completed summary ──
 
-  it("summarises completed games as total and W–L", () => {
+  it("summarises completed games as total and wins / games", () => {
     const games = [
       makeGame({ id: "w", status: "complete", winner: "u1" }),
       makeGame({ id: "l", status: "complete", winner: "u2" }),
@@ -307,7 +307,8 @@ describe("Lobby", () => {
     ];
     renderLobby({ games });
 
-    expect(screen.getByRole("button", { name: "3 finished · 1–2" })).toBeInTheDocument();
+    const btn = screen.getByRole("button", { name: "3 finished. 1 win out of 3 games. View record" });
+    expect(btn).toHaveTextContent("3 finished · 1 / 3 won");
   });
 
   it("counts judge-only completed games toward the total but not W–L", () => {
@@ -317,7 +318,7 @@ describe("Lobby", () => {
     ];
     renderLobby({ profile: judgeProfile, games });
 
-    expect(screen.getByRole("button", { name: "2 finished · 1–0" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "2 finished. 1 win out of 1 game. View record" })).toBeInTheDocument();
   });
 
   it("hides the completed summary when nothing is finished", () => {

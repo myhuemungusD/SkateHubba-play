@@ -18,7 +18,11 @@ const MESSAGES: Record<string, string> = {
 
 /**
  * Background picture across the top of a profile (VITE_FEATURE_PROFILE_BANNER).
- * The owner gets one small camera icon to change it; no extra buttons.
+ * The owner gets one small camera button to change it; no extra buttons.
+ *
+ * No cover yet: a shorter strip (about 60% of the full height) with the
+ * CSS-only brand gradient (`.cover-empty`), for owners and visitors alike. The
+ * owner's camera button also reads "Add cover" there.
  */
 export function ProfileBanner({ uid, bannerImageUrl, isOwnProfile, crop }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -26,8 +30,6 @@ export function ProfileBanner({ uid, bannerImageUrl, isOwnProfile, crop }: Props
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const src = url ?? bannerImageUrl ?? null;
-
-  if (!src && !isOwnProfile) return null;
 
   const onPick = async (file: File | null) => {
     if (!file) return;
@@ -43,7 +45,11 @@ export function ProfileBanner({ uid, bannerImageUrl, isOwnProfile, crop }: Props
   };
 
   return (
-    <div className="relative -mx-5 -mt-7 mb-4 h-28 overflow-hidden bg-surface-alt" data-testid="profile-banner">
+    <div
+      className={`relative -mx-5 -mt-7 mb-4 overflow-hidden ${src ? "h-28 bg-surface-alt" : `cover-empty ${error ? "h-28" : "h-[68px]"}`}`}
+      data-testid="profile-banner"
+      data-empty={src ? undefined : "true"}
+    >
       {src && (
         <img
           src={src}
@@ -64,12 +70,17 @@ export function ProfileBanner({ uid, bannerImageUrl, isOwnProfile, crop }: Props
         <>
           <button
             type="button"
-            aria-label="Change background picture"
+            aria-label={src ? "Change background picture" : "Add cover picture"}
             disabled={busy}
             onClick={() => inputRef.current?.click()}
-            className="absolute right-2 top-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-white/15 bg-black/50 text-white backdrop-blur-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:opacity-50"
+            className="absolute right-2 top-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-black/50 px-3 text-white backdrop-blur-sm press-feedback focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:opacity-50"
           >
             <CameraIcon size={14} />
+            {!src && (
+              <span aria-hidden="true" className="font-display text-[11px] tracking-wider">
+                Add cover
+              </span>
+            )}
           </button>
           <input
             ref={inputRef}
