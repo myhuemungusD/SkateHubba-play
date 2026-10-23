@@ -4,7 +4,7 @@ import { Timer } from "../Timer";
 import { isFirebaseStorageUrl } from "../../utils/helpers";
 import { landShare, totalVotes, type Dispute, type DisputeTally, type DisputeVerdict } from "../../types/dispute";
 import { ABOVE_NAV, BELOW_HEADER, FEED_SLIDE, RAIL_BTN } from "./feedLayout";
-import { CLIP_POSTER } from "../../lib/clipPoster";
+import { CLIP_PLACEHOLDER } from "../../lib/clipPoster";
 import { SpotlightVideo } from "./SpotlightVideo";
 
 export interface DisputeCardProps {
@@ -72,7 +72,7 @@ export const DisputeCard = memo(function DisputeCard({
         />
       ) : (
         <img
-          src={CLIP_POSTER}
+          src={CLIP_PLACEHOLDER}
           alt=""
           width={360}
           height={640}
@@ -138,7 +138,7 @@ export const DisputeCard = memo(function DisputeCard({
                   src={setUrl}
                   controls
                   playsInline
-                  poster={CLIP_POSTER}
+                  poster={CLIP_PLACEHOLDER}
                   preload="none"
                   aria-label={`${dispute.setterUsername}'s ${dispute.trickName} set video`}
                   className="mt-2 max-h-[240px] w-full rounded-xl border border-white/10 bg-black object-contain"

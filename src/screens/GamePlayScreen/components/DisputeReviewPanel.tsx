@@ -3,7 +3,7 @@ import { Btn } from "../../../components/ui/Btn";
 import type { GameDoc } from "../../../services/games";
 import { isFirebaseStorageUrl } from "../../../utils/helpers";
 import { trickCategoryHeadline } from "../../../constants/trickCategories";
-import { CLIP_POSTER } from "../../../lib/clipPoster";
+import { withFirstFrame } from "../../../lib/clipPoster";
 
 interface Props {
   game: GameDoc;
@@ -42,10 +42,9 @@ export function DisputeReviewPanel({
             @{setterUsername.toUpperCase()}&apos;S SET
           </p>
           <video
-            src={game.currentTrickVideoUrl}
+            src={withFirstFrame(game.currentTrickVideoUrl)}
             controls
             playsInline
-            poster={CLIP_POSTER}
             preload="metadata"
             aria-label={`${setterUsername}'s ${game.currentTrickName || "trick"} video`}
             className="trick-frame rounded-2xl bg-black object-contain border border-border"
@@ -59,10 +58,9 @@ export function DisputeReviewPanel({
             @{matcherUsername.toUpperCase()}&apos;S ATTEMPT
           </p>
           <video
-            src={game.matchVideoUrl}
+            src={withFirstFrame(game.matchVideoUrl)}
             controls
             playsInline
-            poster={CLIP_POSTER}
             preload="metadata"
             aria-label={`${matcherUsername}'s match attempt video`}
             className="trick-frame rounded-2xl bg-black object-contain border border-border"

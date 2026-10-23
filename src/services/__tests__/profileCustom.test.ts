@@ -195,6 +195,18 @@ describe("Firestore I/O", () => {
     expect(h.setDoc).toHaveBeenCalledWith("users/u1/profileCustom/main", { ...out, updatedAt: "TS" });
   });
 
+  it.each([
+    ["bio", { bio: "just kys" }],
+    ["link label", { links: [{ label: "kys", url: "https://instagram.com/m" }] }],
+    ["sponsor name", { sponsors: [{ name: "kys shop", url: "" }] }],
+    ["favorite trick", { favoriteTricks: ["kys flip"] }],
+  ])("saveProfileCustom refuses an objectionable %s without writing", async (_field, patch) => {
+    await expect(saveProfileCustom("u1", { ...DEFAULT_PROFILE_CUSTOM, ...patch })).rejects.toThrow(
+      "language we don't allow",
+    );
+    expect(h.setDoc).not.toHaveBeenCalled();
+  });
+
   it("saveProfileCustom refuses other or missing users", async () => {
     await expect(saveProfileCustom("u2", DEFAULT_PROFILE_CUSTOM)).rejects.toThrow("profile_custom_unauthenticated");
     h.uid.value = null;

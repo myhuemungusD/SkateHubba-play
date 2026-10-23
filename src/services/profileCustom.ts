@@ -2,6 +2,7 @@ import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc
 import { requireAuth, requireDb } from "../firebase";
 import { MUSIC_TRACKS } from "../lib/clipEditor/musicLibrary";
 import { logger } from "./logger";
+import { containsObjectionableText, OBJECTIONABLE_TEXT_MESSAGE } from "../utils/objectionable";
 
 /**
  * Customizable profiles (behind VITE_FEATURE_PROFILE_CUSTOM).
@@ -231,6 +232,14 @@ export async function saveProfileCustom(uid: string, value: ProfileCustom): Prom
   const auth = requireAuth();
   if (!auth.currentUser || auth.currentUser.uid !== uid) throw new Error("profile_custom_unauthenticated");
   const clean = sanitizeProfileCustom(value);
+  // Guideline 1.2: everything here is public profile text, so filter it like comments.
+  const publicText = [
+    clean.bio,
+    ...clean.links.map((l) => l.label),
+    ...clean.sponsors.map((s) => s.name),
+    ...clean.favoriteTricks,
+  ];
+  if (publicText.some(containsObjectionableText)) throw new Error(OBJECTIONABLE_TEXT_MESSAGE);
   await setDoc(customRef(uid), { ...clean, updatedAt: serverTimestamp() });
   return clean;
 }

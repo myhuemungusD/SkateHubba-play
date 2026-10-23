@@ -210,8 +210,31 @@ describe("TurnHistoryViewer", () => {
 
     await clickShareAndWait();
     expect(share).toHaveBeenCalledWith(expect.objectContaining({ files: [expect.any(File)] }));
+    // An untyped blob is shared as mp4, not the old hardcoded webm.
+    const [file] = (share.mock.calls[0][0] as { files: File[] }).files;
+    expect(file.name).toMatch(/\.mp4$/);
+    expect(file.type).toBe("video/mp4");
 
     unstubLevel2Share();
+  });
+
+  it("saves an mp4 turn clip with a .mp4 name", async () => {
+    const mockBlob = new Blob(["video"], { type: "video/mp4" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true, blob: () => Promise.resolve(mockBlob) } as Response);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const names: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      names.push(this.download);
+    });
+
+    render(<TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showDownload />);
+    await userEvent.click(screen.getAllByText("Save clip")[0]);
+
+    await waitFor(() => expect(screen.getByText("Saved!")).toBeInTheDocument());
+    expect(names).toEqual(["skatehubba-round1-set.mp4"]);
+
+    vi.restoreAllMocks();
   });
 
   it("share button falls back to text when the clip download fails", async () => {

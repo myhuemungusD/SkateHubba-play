@@ -5,6 +5,7 @@ import { trackEvent } from "../services/analytics";
 import { shareText } from "../services/nativeBridge";
 import { captureException } from "../lib/sentry";
 import { ClipVideo } from "./TurnHistoryClipVideo";
+import { clipFileName, clipFileType } from "../lib/clipFile";
 
 interface TurnHistoryViewerProps {
   turns: TurnRecord[];
@@ -73,7 +74,7 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
                     </p>
                     <ClipVideo url={turn.setVideoUrl || ""} label={`${turn.trickName} set by ${turn.setterUsername}`} />
                     {showDownload && turn.setVideoUrl && isFirebaseStorageUrl(turn.setVideoUrl) && (
-                      <DownloadBtn url={turn.setVideoUrl} filename={`skatehubba-round${turn.turnNumber}-set.webm`} />
+                      <DownloadBtn url={turn.setVideoUrl} baseName={`skatehubba-round${turn.turnNumber}-set`} />
                     )}
                     {showShare && turn.setVideoUrl && isFirebaseStorageUrl(turn.setVideoUrl) && (
                       <ShareBtn url={turn.setVideoUrl} trickName={turn.trickName} context="turn_history" />
@@ -90,10 +91,7 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
                       label={`${turn.trickName} attempted by ${turn.matcherUsername}`}
                     />
                     {showDownload && turn.matchVideoUrl && isFirebaseStorageUrl(turn.matchVideoUrl) && (
-                      <DownloadBtn
-                        url={turn.matchVideoUrl}
-                        filename={`skatehubba-round${turn.turnNumber}-match.webm`}
-                      />
+                      <DownloadBtn url={turn.matchVideoUrl} baseName={`skatehubba-round${turn.turnNumber}-match`} />
                     )}
                     {showShare && turn.matchVideoUrl && isFirebaseStorageUrl(turn.matchVideoUrl) && (
                       <ShareBtn url={turn.matchVideoUrl} trickName={turn.trickName} context="turn_history" />
@@ -120,7 +118,8 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
   );
 });
 
-function DownloadBtn({ url, filename }: { url: string; filename: string }) {
+/** `baseName` has no extension; it comes from the downloaded blob's real type. */
+function DownloadBtn({ url, baseName }: { url: string; baseName: string }) {
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "failed">("idle");
   // Track the pending status-reset timer so an unmount mid-download (e.g.
   // user taps "Rematch" between save and the 2s reset) doesn't fire
@@ -145,17 +144,18 @@ function DownloadBtn({ url, filename }: { url: string; filename: string }) {
       const res = await fetch(url);
       if (!res.ok) throw new Error("Download failed");
       const blob = await res.blob();
-      const objectUrl = URL.createObjectURL(blob);
+      const { mime, ext } = clipFileType(blob.type);
+      const objectUrl = URL.createObjectURL(blob.type === mime ? blob : new Blob([blob], { type: mime }));
       const a = document.createElement("a");
       a.href = objectUrl;
-      a.download = filename;
+      a.download = `${baseName}.${ext}`;
       a.click();
       // Delay revocation so the browser has time to start the download
       setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
       setStatus("saved");
       scheduleReset();
     } catch (err) {
-      captureException(err, { extra: { context: "DownloadBtn", url, filename } });
+      captureException(err, { extra: { context: "DownloadBtn", url, baseName } });
       setStatus("failed");
       scheduleReset();
     }
@@ -210,9 +210,8 @@ function ShareBtn({ url, trickName, context }: { url: string; trickName: string;
         const res = await fetch(url);
         if (!res.ok) throw new Error("Fetch failed");
         const blob = await res.blob();
-        return [
-          new File([blob], `skatehubba-${trickName.replace(/\s+/g, "-").toLowerCase()}.webm`, { type: "video/webm" }),
-        ];
+        const { mime, ext } = clipFileType(blob.type);
+        return [new File([blob], clipFileName(trickName, ext), { type: mime })];
       };
       const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
       const method = await shareText({

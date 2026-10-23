@@ -12,7 +12,7 @@ import { SelfTimerCountdown, SelfTimerToggle } from "./SelfTimerControls";
 import { useCameraRelease } from "../hooks/useCameraRelease";
 import { useNativeViewfinder } from "../hooks/useNativeViewfinder";
 import { MAX_VIDEO_DURATION_SECONDS } from "../constants/video";
-import { CLIP_POSTER } from "../lib/clipPoster";
+import { withFirstFrame } from "../lib/clipPoster";
 
 // Lazy-load pro camera controls to keep them off the initial bundle
 const NativeCameraControls = lazy(() =>
@@ -180,11 +180,10 @@ export function VideoRecorder({
       >
         {state === "done" && blobUrl ? (
           <video
-            src={blobUrl}
+            src={withFirstFrame(blobUrl)}
             className={FRAME_FIT}
             controls
             playsInline
-            poster={CLIP_POSTER}
             preload="metadata"
             aria-label="Your recorded trick video"
           />

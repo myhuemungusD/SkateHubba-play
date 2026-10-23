@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { trackEvent } from "../../services/analytics";
 import { shareText } from "../../services/nativeBridge";
 import { captureException } from "../../lib/sentry";
+import { clipFileName, clipFileType } from "../../lib/clipFile";
 
 export function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; trickName: string }) {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "failed">("idle");
@@ -29,10 +30,12 @@ export function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; tr
       const res = await fetch(videoUrl);
       if (!res.ok) throw new Error("Download failed");
       const blob = await res.blob();
-      const objectUrl = URL.createObjectURL(blob);
+      const { mime, ext } = clipFileType(blob.type);
+      const typed = blob.type === mime ? blob : new Blob([blob], { type: mime });
+      const objectUrl = URL.createObjectURL(typed);
       const a = document.createElement("a");
       a.href = objectUrl;
-      a.download = `skatehubba-${trickName.replace(/\s+/g, "-").toLowerCase()}.webm`;
+      a.download = clipFileName(trickName, ext);
       a.click();
       safeTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
       setSaveStatus("saved");
@@ -52,9 +55,8 @@ export function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; tr
         const res = await fetch(videoUrl);
         if (!res.ok) throw new Error("Fetch failed");
         const blob = await res.blob();
-        return [
-          new File([blob], `skatehubba-${trickName.replace(/\s+/g, "-").toLowerCase()}.webm`, { type: "video/webm" }),
-        ];
+        const { mime, ext } = clipFileType(blob.type);
+        return [new File([blob], clipFileName(trickName, ext), { type: mime })];
       };
       const url = import.meta.env.VITE_APP_URL || window.location.origin;
       const method = await shareText({

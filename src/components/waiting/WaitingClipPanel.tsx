@@ -2,7 +2,7 @@ import type { GameDoc } from "../../services/games";
 import type { UserProfile } from "../../services/users";
 import { isFirebaseStorageUrl } from "../../utils/helpers";
 import { ClipShareButtons } from "./ClipShareButtons";
-import { CLIP_POSTER } from "../../lib/clipPoster";
+import { withFirstFrame } from "../../lib/clipPoster";
 
 interface WaitingClipPanelProps {
   game: GameDoc;
@@ -28,10 +28,9 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
               Your Attempt: {game.currentTrickName || "Trick"}
             </p>
             <video
-              src={game.matchVideoUrl}
+              src={withFirstFrame(game.matchVideoUrl)}
               controls
               playsInline
-              poster={CLIP_POSTER}
               preload="metadata"
               aria-label={`Your attempt at ${game.currentTrickName || "trick"}`}
               className="trick-frame rounded-2xl bg-black object-contain border border-border"
@@ -52,10 +51,9 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
         {game.currentTrickVideoUrl && isFirebaseStorageUrl(game.currentTrickVideoUrl) ? (
           <>
             <video
-              src={game.currentTrickVideoUrl}
+              src={withFirstFrame(game.currentTrickVideoUrl)}
               controls
               playsInline
-              poster={CLIP_POSTER}
               preload="metadata"
               aria-label={`Video of ${game.currentTrickName || "trick"} you set`}
               className="trick-frame rounded-2xl bg-black object-contain border border-border"
@@ -87,10 +85,9 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
       <div className="mt-6 w-full">
         <p className="font-display text-sm tracking-wider text-brand-orange mb-2">{clipLabel}</p>
         <video
-          src={clipUrl}
+          src={withFirstFrame(clipUrl)}
           controls
           playsInline
-          poster={CLIP_POSTER}
           preload="metadata"
           aria-label={clipLabel}
           className="trick-frame rounded-2xl bg-black object-contain border border-border"

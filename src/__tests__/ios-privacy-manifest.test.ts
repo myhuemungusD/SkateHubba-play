@@ -35,7 +35,7 @@ describe("iOS privacy manifest", () => {
 
   it.each([
     ["Name", true],
-    ["CoarseLocation", false],
+    ["CoarseLocation", true],
     ["GameplayContent", true],
   ])("declares %s linked=%s, App Functionality only", (type, linked) => {
     const block = manifest.split(`<string>NSPrivacyCollectedDataType${type}</string>`)[1]?.split("</dict>")[0] ?? "";

@@ -4,7 +4,7 @@ import type { ClipVoteState } from "../../services/clips.upvotes";
 import { ProUsername } from "../ProUsername";
 import { ClipActions } from "./ClipActions";
 import { ABOVE_NAV, FEED_SLIDE } from "./feedLayout";
-import { CLIP_POSTER } from "../../lib/clipPoster";
+import { CLIP_PLACEHOLDER } from "../../lib/clipPoster";
 import { SpotlightVideo } from "./SpotlightVideo";
 import { relativeClipTime } from "./utils";
 
@@ -93,7 +93,7 @@ export const SpotlightCard = memo(function SpotlightCard({
         />
       ) : (
         <img
-          src={CLIP_POSTER}
+          src={CLIP_PLACEHOLDER}
           alt=""
           width={360}
           height={640}

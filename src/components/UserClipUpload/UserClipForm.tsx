@@ -1,6 +1,6 @@
 import { useId } from "react";
 import { Btn } from "../ui/Btn";
-import { CLIP_POSTER } from "../../lib/clipPoster";
+import { withFirstFrame } from "../../lib/clipPoster";
 import { TRICK_NAME_MAX_LENGTH } from "./validation";
 
 export interface UserClipFormProps {
@@ -42,10 +42,9 @@ export function UserClipForm({
   return (
     <div className="flex flex-col gap-4">
       <video
-        src={previewUrl}
+        src={withFirstFrame(previewUrl)}
         controls
         playsInline
-        poster={CLIP_POSTER}
         preload="metadata"
         aria-label="Your clip"
         className="w-full max-h-[320px] rounded-2xl bg-black object-contain"

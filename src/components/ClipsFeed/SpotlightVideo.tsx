@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { PlayIcon } from "../icons";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
-import { CLIP_POSTER } from "../../lib/clipPoster";
+import { withFirstFrame } from "../../lib/clipPoster";
 import { BELOW_HEADER, RAIL_BTN } from "./feedLayout";
 
 /**
@@ -175,13 +175,12 @@ function SpotlightVideoImpl({ src, active = true, mediaLabel, muted: mutedProp, 
     <div ref={containerRef} className="absolute inset-0 bg-black">
       <video
         ref={videoRef}
-        src={src}
+        src={withFirstFrame(src)}
         aria-label={mediaLabel}
         autoPlay={active && !reducedMotion}
         muted={muted}
         loop
         playsInline
-        poster={CLIP_POSTER}
         preload={active ? "auto" : "metadata"}
         onPlay={handlePlay}
         onPause={handlePause}
