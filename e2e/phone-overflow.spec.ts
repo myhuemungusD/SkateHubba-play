@@ -184,6 +184,42 @@ async function expectNoSidewaysScroll(page: Page, where: string): Promise<void> 
   expect(offenders, `${where} has an element that scrolls sideways`).toEqual([]);
 }
 
+/**
+ * A letter row can also be lost without any scrolling: a card with
+ * overflow:hidden (GameHistoryCard, the scoreboard cards) just clips the
+ * pips. Every LetterPips row must sit inside the viewport and inside each
+ * ancestor that clips.
+ */
+async function expectLetterRowsUnclipped(page: Page, where: string): Promise<void> {
+  const clipped = await page.evaluate(() => {
+    const out: string[] = [];
+    const rows = Array.from(document.querySelectorAll<HTMLElement>('[role="img"]')).filter((el) =>
+      el.querySelector("[data-earned]"),
+    );
+    for (const row of rows) {
+      const r = row.getBoundingClientRect();
+      const label = row.getAttribute("aria-label") ?? "";
+      if (r.left < -1 || r.right > window.innerWidth + 1) {
+        out.push(`${label}: ${Math.round(r.left)}..${Math.round(r.right)} outside the ${window.innerWidth}px viewport`);
+        continue;
+      }
+      for (let a = row.parentElement; a && a !== document.body; a = a.parentElement) {
+        if (getComputedStyle(a).overflowX === "visible") continue;
+        const b = a.getBoundingClientRect();
+        if (r.left < b.left - 1 || r.right > b.right + 1) {
+          out.push(
+            `${label}: ${Math.round(r.left)}..${Math.round(r.right)} clipped by <${a.tagName.toLowerCase()}> ${Math.round(b.left)}..${Math.round(b.right)}`,
+          );
+          break;
+        }
+      }
+    }
+    return { rows: rows.length, out };
+  });
+  expect(clipped.rows, `${where} shows letter rows`).toBeGreaterThan(0);
+  expect(clipped.out, `${where} clips a letter row`).toEqual([]);
+}
+
 /** Longest handles the username rules allow, so truncation and wrapping are exercised. */
 async function seedLetterRows(): Promise<{ rivalUid: string }> {
   const me = await createUser("fit-me@test.com", "password123");
@@ -236,6 +272,7 @@ test.describe("signed-in letter rows", () => {
       test.setTimeout(90_000);
       await signInToLobby(page, phone.width, phone.height);
       await expectNoSidewaysScroll(page, "Lobby");
+      await expectLetterRowsUnclipped(page, "Lobby");
       await shot(page, `lobby-${phone.name}`);
     });
 
@@ -246,6 +283,7 @@ test.describe("signed-in letter rows", () => {
       await expect(page).toHaveURL(/\/game/, { timeout: 15_000 });
       await expect(page.getByText("YOUR MOVE")).toBeVisible({ timeout: 15_000 });
       await expectNoSidewaysScroll(page, "Game");
+      await expectLetterRowsUnclipped(page, "Game");
       await shot(page, `game-${phone.name}`);
     });
 
@@ -266,6 +304,7 @@ test.describe("signed-in letter rows", () => {
       await historyRow.scrollIntoViewIfNeeded();
       await expect(page.getByRole("img", { name: /^You: / }).first()).toBeVisible({ timeout: 15_000 });
       await expectNoSidewaysScroll(page, "Profile history");
+      await expectLetterRowsUnclipped(page, "Profile history");
       await shot(page, `profile-history-${phone.name}`);
     });
   }
