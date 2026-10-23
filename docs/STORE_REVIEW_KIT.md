@@ -5,8 +5,8 @@ Two commands that get SkateHubba ready for App Review and Google Play review: a 
 ## 1. Demo reviewer account: `npm run review:seed`
 
 ```bash
-# PowerShell: $env:REVIEW_EMAIL="..."; $env:REVIEW_PASSWORD="..."
-REVIEW_EMAIL=review@skatehubba.com REVIEW_PASSWORD='a-long-password' npm run review:seed
+# PowerShell: $env:REVIEW_EMAIL="..."; $env:REVIEW_PASSWORD="..."; $env:REVIEW_USERNAME="..."
+REVIEW_EMAIL=you@example.com REVIEW_PASSWORD='a-long-password' REVIEW_USERNAME=your_review_handle npm run review:seed
 npm run review:seed -- --dry-run      # list what it would write, change nothing
 npm run review:seed -- --emulator     # seed the local emulators instead (for screenshots)
 ```
@@ -15,12 +15,13 @@ npm run review:seed -- --emulator     # seed the local emulators instead (for sc
 - It signs in to `sk8hub-d7806` (database `skatehubba`) with Application Default Credentials (`gcloud auth application-default login`, or `GOOGLE_APPLICATION_CREDENTIALS`), the same as the other admin scripts.
 - Set `REVIEW_STORAGE_BUCKET` too. The seed uploads the demo clip to `review-kit/sh-video-edit.mp4` in that bucket, because the game screen only plays videos stored in Firebase Storage. Without it the seed warns, and the in-progress game shows "No video recorded".
 - It creates the account, or resets its password if it already exists. Then it writes:
-  - a profile (`@appreview`, or `REVIEW_USERNAME`) with stats, XP (level 11), the tutorial marked done, and badges that match the stats
+  - a profile with the handle from `REVIEW_USERNAME` (required, no default) with stats, XP (level 11), the tutorial marked done, and badges that match the stats
   - six demo opponents
-  - nine S.K.A.T.E. games, so Home is full: four on you (two to match, two to set), two waiting on them, and three finished (two wins, one loss)
-  - eight landed clips in the feed
-  - six spots near Apple Park, so the map has nearby pins while Apple reviews it, plus three public Spot Passport check-ins
-  - four Mike White shoes in the Closet (one equipped). They show "Designed by Mike White" in the app. Closet is off in the 1.2.0 iPhone build, so these only appear once Closet ships, and the 1.2.0 listing and screenshots leave Closet out.
+  - ten S.K.A.T.E. games, so Home is full: four on you (two to match, two to set), two waiting on them, and four finished (two wins, two losses)
+  - eight landed clips in the feed (`--emulator` only)
+  - six spots near Apple Park, plus three public Spot Passport check-ins (`--emulator` only)
+  - four Mike White shoes in the Closet (one equipped), `--emulator` only. They show "Designed by Mike White" in the app. Closet is off in the 1.2.0 iPhone build, so these only appear once Closet ships, and the 1.2.0 listing and screenshots leave Closet out.
+- **Production gets no emulator-only content.** Without `--emulator` the seed skips the feed clips, the map spots and the passport check-ins, because every real user would see them. It also skips the Closet items, because the Closet is off in the store build. App Review browses the real feed and map like everyone else.
 - Every document has a fixed id, so running it again refreshes the account instead of duplicating it.
 - **Gated features:** the reviewer is _not_ added to `config/featureTesters`, so App Review sees exactly what the public gets. Roll Dice and Skate Runner are hidden in the iPhone launch build, so nothing is seeded for them.
 
@@ -43,11 +44,11 @@ It signs in as the reviewer with Playwright (`npx playwright install chromium` o
 | play-7in   | Google Play | 7" tablet   | 1200×1920 |
 | play-10in  | Google Play | 10" tablet  | 1600×2560 |
 
-Run `review:seed` first so the screens have content. These are captures of the web build at device size. Look them over before uploading, because the native status bar isn't included.
+Store screenshots come from the `--emulator` seed only (`review:seed -- --emulator`). A production seed leaves the feed, map spots, passport and Closet empty, so its screens are not store material. These are captures of the web build at device size. Look them over before uploading, because the native status bar isn't included.
 
 ### App Store set, without touching production
 
-The App Store set is `ios-6.9` (1320×2868, the source set) and `ios-6.3` (1206×2622, the 6.3" size Apple lists as required). The app is iPhone-only, so there is no iPad set. Capture it from a local build with the iPhone launch flags (from `.github/workflows/ios-release.yml`: everything on except `VITE_FEATURE_DICE_ENABLED`, Skate Runner, Bucks purchase and SMS 2FA), against the emulators:
+The App Store set is `ios-6.9` (1320×2868, the source set) and `ios-6.3` (1206×2622, the 6.3" size Apple lists as required). The app is iPhone-only, so there is no iPad set. Capture it from a local build with the iPhone launch flags (from `.github/workflows/ios-release.yml`: everything on except `VITE_FEATURE_DICE_ENABLED`, Skate Runner, the Closet (`VITE_FEATURE_CLOSET_ENABLED`), Bucks purchase and SMS 2FA), against the emulators:
 
 ```bash
 npm run emulators                                  # auth, firestore, storage

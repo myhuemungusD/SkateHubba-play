@@ -140,6 +140,9 @@ export function Lobby({
 
         {isSpotPresenceEnabled() ? <WhosSkatingButton uid={profile.uid} /> : null}
         {isRunnerEnabled() ? <RunnerCard /> : null}
+
+        {/* S.K.A.T.E. is the core game, so its games come first and Roll Dice
+            sits below them, nearer the thumb. */}
         {isDiceEnabled() ? (
           <Suspense fallback={null}>
             <RollDiceCard />

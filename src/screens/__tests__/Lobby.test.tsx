@@ -72,11 +72,11 @@ function renderLobby(overrides: Partial<LobbyProps> = {}) {
 }
 
 /** Flagged lobby cards use <Link>, which needs a router the default wrapper does not provide. */
-function renderFlaggedLobby() {
+function renderFlaggedLobby(overrides: Partial<LobbyProps> = {}) {
   return render(
     <MemoryRouter>
       <NotificationProvider uid="u1">
-        <Lobby {...defaultProps} />
+        <Lobby {...defaultProps} {...overrides} />
       </NotificationProvider>
     </MemoryRouter>,
   );
@@ -618,6 +618,21 @@ describe("Lobby", () => {
       vi.stubEnv("VITE_FEATURE_DICE_ENABLED", "true");
       renderFlaggedLobby();
       expect(await screen.findByTestId("roll-dice-card")).toBeInTheDocument();
+    });
+
+    it("puts S.K.A.T.E. first and the Roll Dice card below the games", async () => {
+      vi.stubEnv("VITE_FEATURE_DICE_ENABLED", "true");
+      const { unmount } = renderFlaggedLobby({ games: [makeGame()] });
+      const card = await screen.findByTestId("roll-dice-card");
+      const game = cardByOpponent(/vs @rival/i);
+      expect(game.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      unmount();
+
+      renderFlaggedLobby();
+      const empty = screen.getByRole("heading", { name: "Ready to S.K.A.T.E.?" });
+      expect(empty.compareDocumentPosition(await screen.findByTestId("roll-dice-card"))).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
     });
 
     it("hides Profile button on active judge game card (judge is not a player)", async () => {
