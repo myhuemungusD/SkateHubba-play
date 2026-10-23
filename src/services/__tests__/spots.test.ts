@@ -658,6 +658,15 @@ describe("getSpotComments", () => {
     expect(mockLimit).toHaveBeenCalledWith(50);
   });
 
+  it("carries the author's handle when the comment stored one", async () => {
+    mockGetDocs.mockResolvedValueOnce(
+      makeQuerySnap([makeCommentSnap({ username: "kickflip" }), makeCommentSnap({}, "c2")]),
+    );
+    const comments = await getSpotComments(VALID_ID);
+    expect(comments[0].username).toBe("kickflip");
+    expect(comments[1]).not.toHaveProperty("username");
+  });
+
   it("returns [] for a non-UUID spot id", async () => {
     expect(await getSpotComments("garbled")).toEqual([]);
     expect(mockGetDocs).not.toHaveBeenCalled();
@@ -694,6 +703,18 @@ describe("addSpotComment", () => {
     expect(mockTxSet).toHaveBeenCalledTimes(1);
     expect(mockTxSet.mock.calls[0][1]).toEqual({
       userId: "commenter-uid",
+      content: "good spot",
+      createdAt: "SERVER_TS",
+    });
+  });
+
+  it("stores the author's handle when one is given", async () => {
+    mockTxGet.mockResolvedValueOnce(makeSpotSnap());
+    const comment = await addSpotComment(VALID_ID, "good spot", "commenter-uid", "kickflip");
+    expect(comment.username).toBe("kickflip");
+    expect(mockTxSet.mock.calls[0][1]).toEqual({
+      userId: "commenter-uid",
+      username: "kickflip",
       content: "good spot",
       createdAt: "SERVER_TS",
     });

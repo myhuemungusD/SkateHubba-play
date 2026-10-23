@@ -195,6 +195,7 @@ function toComment(spotId: string, snap: { id: string; data: () => Record<string
     id: snap.id,
     spotId,
     userId: raw.userId,
+    ...(typeof raw.username === "string" && raw.username.length > 0 ? { username: raw.username } : {}),
     content: raw.content,
     createdAt: timestampToIso(raw.createdAt),
   };
@@ -537,7 +538,17 @@ export async function getSpotComments(spotId: string): Promise<SpotComment[]> {
   return comments;
 }
 
-export async function addSpotComment(spotId: string, content: string, uid: string): Promise<SpotComment> {
+/**
+ * `username` is stored so the thread can show who wrote each comment (the
+ * create rule checks it is the author's real handle). Optional: omitting it
+ * still posts, and the thread falls back to a neutral label.
+ */
+export async function addSpotComment(
+  spotId: string,
+  content: string,
+  uid: string,
+  username?: string,
+): Promise<SpotComment> {
   if (!SPOT_ID_SHAPE.test(spotId)) throw new Error("Invalid spot ID");
   const trimmed = content.trim();
   if (trimmed.length === 0) throw new Error("Comment cannot be empty");
@@ -552,8 +563,10 @@ export async function addSpotComment(spotId: string, content: string, uid: strin
     const parentSnap = await tx.get(spotRef(spotId));
     if (!parentSnap.exists()) throw new Error("Spot not found");
     const commentDocRef = doc(commentsRef(spotId));
+    const handle = username ? { username } : {};
     tx.set(commentDocRef, {
       userId: uid,
+      ...handle,
       content: trimmed,
       createdAt: serverTimestamp(),
     });
@@ -561,6 +574,7 @@ export async function addSpotComment(spotId: string, content: string, uid: strin
       id: commentDocRef.id,
       spotId,
       userId: uid,
+      ...handle,
       content: trimmed,
       createdAt: new Date().toISOString(),
     } satisfies SpotComment;
