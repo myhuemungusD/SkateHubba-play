@@ -26,6 +26,7 @@
     { "source": "/logonew.png", "destination": "/og-image.png", "permanent": true },
     { "source": "/logoblack.png", "destination": "/favicon.ico", "permanent": true },
     { "source": "/support", "destination": "/support.html", "permanent": true },
+    { "source": "/support/", "destination": "/support.html", "permanent": true },
     { "source": "/play", "destination": "/lobby", "permanent": false },
     { "source": "/play/:path((?!runner/?$).*)", "destination": "/lobby", "permanent": false }
   ],
