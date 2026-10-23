@@ -8,9 +8,9 @@ This is a console checklist. Nothing in this document changes Firebase, Vercel, 
 
 Three audit accounts were created about two hours before this was written:
 
-- `jayham710+skatehubba.qa1.2e1130@gmail.com`
-- `jayham710+skatehubba.qa2.2e1130@gmail.com`
-- `jayham710+skatehubba.qa3.2e1130@gmail.com`
+- `qa-tester-1@example.com`
+- `qa-tester-2@example.com`
+- `qa-tester-3@example.com`
 
 The app told each one a verification email had been sent. Nothing arrived in that Gmail inbox, including spam.
 

@@ -149,12 +149,20 @@ export function dedupe(seeds, existing) {
   return { kept, skipped };
 }
 
+// Overpass etiquette asks for a contact in the User-Agent. Set
+// OVERPASS_CONTACT (an email or URL) when running the seed; the public repo
+// only ships the project URL.
+function overpassUserAgent() {
+  const contact = process.env.OVERPASS_CONTACT?.trim() || "+https://skatehubba.com";
+  return `SkateHubba-seed/1.0 (${contact})`;
+}
+
 async function fetchOverpass(region) {
   const res = await fetch(OVERPASS, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": "SkateHubba-seed/1.0 (jayham710@gmail.com)",
+      "User-Agent": overpassUserAgent(),
     },
     body: `data=${encodeURIComponent(overpassQuery(region))}`,
   });
