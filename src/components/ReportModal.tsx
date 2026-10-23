@@ -21,6 +21,8 @@ export function ReportModal({
   disputeId,
   spotId,
   comment,
+  message,
+  profile,
   onClose,
   onSubmitted,
 }: {
@@ -42,6 +44,10 @@ export function ReportModal({
   spotId?: string;
   /** A single comment being reported (needs `clipId` or `spotId`). */
   comment?: { id: string; text: string };
+  /** A single spot-chat message being reported (needs `spotId`). */
+  message?: { id: string; text: string };
+  /** Reporting the player themselves, from their profile (no game, clip or spot). */
+  profile?: boolean;
   onClose: () => void;
   onSubmitted: () => void;
 }) {
@@ -74,6 +80,8 @@ export function ReportModal({
         ...(disputeId ? { disputeId } : {}),
         ...(spotId ? { spotId } : {}),
         ...(comment ? { comment } : {}),
+        ...(message ? { message } : {}),
+        ...(profile ? { profile } : {}),
       });
       setReceiptId(id);
       setSubmitting(false);
@@ -84,6 +92,10 @@ export function ReportModal({
   };
 
   const illegal = reason === "illegal_content";
+  // A comment or chat message is quoted back so the reporter can see exactly
+  // what they're flagging; both take the text-only reason list.
+  const quoted = comment ?? message;
+  const quotedNoun = comment ? "comment" : "message";
   const detailsLabel = illegal ? "EXPLANATION (REQUIRED)" : "DETAILS (OPTIONAL)";
 
   if (receiptId) {
@@ -139,18 +151,18 @@ export function ReportModal({
         onClick={(e) => e.stopPropagation()}
       >
         <h3 id="report-modal-title" className="font-display text-xl text-white mb-1">
-          {!comment
+          {!quoted
             ? `Report @${reportedUsername}`
             : reportedUsername
-              ? `Report comment by @${reportedUsername}`
-              : "Report this comment"}
+              ? `Report ${quotedNoun} by @${reportedUsername}`
+              : `Report this ${quotedNoun}`}
         </h3>
-        {comment && (
+        {quoted && (
           <blockquote
             data-testid="report-comment-quote"
             className="mb-3 line-clamp-3 border-l-2 border-border pl-3 font-body text-sm text-[#CCC] break-words whitespace-pre-wrap"
           >
-            {comment.text}
+            {quoted.text}
           </blockquote>
         )}
         <p className="font-body text-sm text-muted mb-4">
@@ -172,7 +184,7 @@ export function ReportModal({
             <option value="" disabled>
               Select a reason...
             </option>
-            {(comment ? COMMENT_REPORT_REASONS : REASONS).map((r) => (
+            {(quoted ? COMMENT_REPORT_REASONS : REASONS).map((r) => (
               <option key={r} value={r}>
                 {REPORT_REASON_LABELS[r]}
               </option>

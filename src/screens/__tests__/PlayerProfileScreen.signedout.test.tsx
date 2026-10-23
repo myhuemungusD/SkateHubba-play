@@ -102,6 +102,7 @@ describe("PlayerProfileScreen — signed-out visitor", () => {
   it("withholds the block controls", () => {
     render(<PlayerProfileScreen {...visitorProps} blockedUids={new Set()} />);
     expect(screen.queryByText("Block this player")).not.toBeInTheDocument();
+    expect(screen.queryByText("Report this player")).not.toBeInTheDocument();
   });
 
   it("withholds own-profile affordances", () => {

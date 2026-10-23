@@ -9,6 +9,7 @@ service cloud.firestore {
     function fsExistsAfter(c, id) { return existsAfter(/databases/$(database)/documents/$(c)/$(id)); }
     // A comment under a clip or spot: kind is "clips" or "spots".
     function commentDoc(kind, parentId, commentId) { return get(/databases/$(database)/documents/$(kind)/$(parentId)/comments/$(commentId)); }
+    function spotMessageDoc(spotId, messageId) { return get(/databases/$(database)/documents/spots/$(spotId)/messages/$(messageId)); }
 
 
     // ── Project bucket name (audit S5+S12, PR-B) ──
@@ -2974,7 +2975,12 @@ service cloud.firestore {
           || (request.resource.data.gameId == null
               && request.resource.data.spotId is string
               && request.resource.data.spotId.size() > 0)
+          // A report about the player themselves, filed from their profile.
+          // reportedUid is the target, so it is still attributable.
+          || (request.resource.data.gameId == null
+              && request.resource.data.get('target', null) == 'profile')
         )
+        && (!('target' in request.resource.data) || request.resource.data.target == 'profile')
         && request.resource.data.reason is string
         && request.resource.data.reason in ['inappropriate_video', 'inappropriate', 'abusive_behavior', 'cheating', 'spam', 'non_skate_content', 'not_skating', 'illegal_content', 'other']
         && request.resource.data.description is string
@@ -3031,6 +3037,27 @@ service cloud.firestore {
           || (request.resource.data.commentText is string
               && request.resource.data.commentText.size() <= 300
               && 'commentId' in request.resource.data)
+        )
+        // Optional single spot-chat message plus its text as it read when
+        // reported. Same guarantee as a comment: it must be a real message on
+        // that spot, written by the reported user, with the quoted text.
+        && (
+          !('messageId' in request.resource.data)
+          || (request.resource.data.messageId is string
+              && request.resource.data.messageId.size() > 0
+              && request.resource.data.messageId.size() <= 128
+              && 'spotId' in request.resource.data
+              && !('clipId' in request.resource.data)
+              && !('commentId' in request.resource.data)
+              && request.resource.data.get('messageText', null) is string
+              && spotMessageDoc(request.resource.data.spotId, request.resource.data.messageId).data.userId == request.resource.data.reportedUid
+              && spotMessageDoc(request.resource.data.spotId, request.resource.data.messageId).data.content == request.resource.data.messageText)
+        )
+        && (
+          !('messageText' in request.resource.data)
+          || (request.resource.data.messageText is string
+              && request.resource.data.messageText.size() <= 500
+              && 'messageId' in request.resource.data)
         )
         // Optional disputeId. A community-call report names the dispute so
         // an admin can hide it. Shape only — auto-hide does not run for it.

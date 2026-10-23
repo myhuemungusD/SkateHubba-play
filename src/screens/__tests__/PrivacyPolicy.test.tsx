@@ -63,14 +63,14 @@ describe("PrivacyPolicy", () => {
   });
 
   // Review of #825: every claim matches what the app does today.
-  it("covers all three platforms, every processor, and pseudonymous IDs", () => {
+  it("covers web and the mobile app, every processor, and pseudonymous IDs", () => {
     render(<PrivacyPolicy onBack={vi.fn()} />);
     const text = document.body.textContent ?? "";
     for (const phrase of [
-      "iPhone and Android apps",
+      "in our mobile app",
       "Speed Insights",
       "reCAPTCHA",
-      "Play Integrity",
+      "App Attest",
       "Apple Push Notification service",
       "pseudonymous ID",
       "Download my data",
@@ -82,7 +82,14 @@ describe("PrivacyPolicy", () => {
     ]) {
       expect(text).toContain(phrase);
     }
-    for (const stale of ["hashed before transmission", "is not stored", "lawyer", "no personal information is"]) {
+    for (const stale of [
+      "Android",
+      "Google Play",
+      "hashed before transmission",
+      "is not stored",
+      "lawyer",
+      "no personal information is",
+    ]) {
       expect(text).not.toContain(stale);
     }
   });

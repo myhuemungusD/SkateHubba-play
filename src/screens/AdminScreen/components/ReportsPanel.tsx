@@ -9,6 +9,7 @@ import {
   type CommentParent,
 } from "../../../services/admin";
 import { banUser } from "../../../services/admin.bans";
+import { hideSpotMessage } from "../../../services/spotMessages";
 import { useNotifications } from "../../../context/NotificationContext";
 import { errorMessage } from "../utils";
 import { ReportRow } from "./ReportRow";
@@ -132,6 +133,19 @@ export function ReportsPanel({ adminUid }: { adminUid: string }) {
     }
   };
 
+  const hideMessage = async (report: AdminReport): Promise<void> => {
+    if (!report.spotId || !report.messageId) return;
+    setActing(report.id);
+    try {
+      await hideSpotMessage(report.spotId, report.messageId);
+      notify({ type: "success", title: "Chat message hidden", message: `@${report.reportedUsername}` });
+    } catch (err: unknown) {
+      notify({ type: "error", title: "Hide failed", message: errorMessage(err) });
+    } finally {
+      setActing(null);
+    }
+  };
+
   const ban = async (report: AdminReport): Promise<void> => {
     setActing(report.id);
     try {
@@ -216,6 +230,7 @@ export function ReportsPanel({ adminUid }: { adminUid: string }) {
               onBan={(r) => void ban(r)}
               onHideDispute={(r) => void hide(r)}
               onDeleteComment={(r) => void removeComment(r)}
+              onHideMessage={(r) => void hideMessage(r)}
             />
           ))}
         </ul>
