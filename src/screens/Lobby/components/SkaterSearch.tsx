@@ -2,7 +2,8 @@ import { useId, useState } from "react";
 import { Search } from "lucide-react";
 import { PlayerDirectory } from "../../../components/PlayerDirectory";
 import { usePlayerDirectory } from "../../../hooks/usePlayerDirectory";
-import { USERNAME_RE } from "../../../services/users";
+import { USERNAME_RE, type UserProfile } from "../../../services/users";
+import { usePrefixSkaterSearch } from "../usePrefixSkaterSearch";
 
 /** Most rows the search shows at once. */
 const MAX_RESULTS = 8;
@@ -23,8 +24,9 @@ export function normalizeSkaterQuery(raw: string): string {
 
 /**
  * Results for a non-empty query. Mounted only once the skater types, so Home
- * reads the shared player directory (the same one the challenge form browses)
- * only when someone actually searches.
+ * reads nothing until someone actually searches. Two sources are merged:
+ * a debounced handle-prefix lookup across every skater (older accounts too),
+ * then contains-matches from the shared newest-100 directory.
  */
 function SkaterSearchResults({
   query,
@@ -33,16 +35,14 @@ function SkaterSearchResults({
   onChallengeUser,
   onViewPlayer,
 }: Props & { query: string }) {
-  const { players, loading } = usePlayerDirectory(viewerUid);
-  const matches = players
-    .filter((p) => p.username.includes(query))
-    // Handles that start with the query rank ahead of ones that merely contain it.
-    .sort((a, b) => Number(b.username.startsWith(query)) - Number(a.username.startsWith(query)))
-    .slice(0, MAX_RESULTS);
+  const dir = usePlayerDirectory(viewerUid);
+  const prefix = usePrefixSkaterSearch(query, viewerUid);
+  const matches = mergeMatches(prefix.players, dir.players, query);
+  const loading = dir.loading || prefix.loading;
 
   if (!loading && matches.length === 0) {
-    // The directory holds the newest skaters only, so offer the exact handle
-    // too: the challenge form looks it up and says if it doesn't exist.
+    // Offer the exact handle too: the challenge form looks it up and says if
+    // it doesn't exist.
     const exact = USERNAME_RE.test(query) && query.length >= 3;
     return (
       <div className="mb-6 rounded-xl border border-white/[0.06] bg-surface px-4 py-3" role="status">
@@ -64,12 +64,30 @@ function SkaterSearchResults({
   return (
     <PlayerDirectory
       players={matches}
-      loading={loading}
+      loading={loading && matches.length === 0}
       canChallenge={canChallenge}
       onViewPlayer={onViewPlayer}
       onChallengeUser={onChallengeUser}
     />
   );
+}
+
+/**
+ * Prefix hits first, then directory handles that start with, then contain,
+ * the query. Deduped by uid and capped.
+ */
+export function mergeMatches(prefixHits: UserProfile[], directory: UserProfile[], query: string): UserProfile[] {
+  const fromDir = directory
+    .filter((p) => p.username.includes(query))
+    .sort((a, b) => Number(b.username.startsWith(query)) - Number(a.username.startsWith(query)));
+  const seen = new Set<string>();
+  const out: UserProfile[] = [];
+  for (const p of [...prefixHits, ...fromDir]) {
+    if (seen.has(p.uid)) continue;
+    seen.add(p.uid);
+    out.push(p);
+  }
+  return out.slice(0, MAX_RESULTS);
 }
 
 /** Home's first block: find a skater by handle and challenge them. */

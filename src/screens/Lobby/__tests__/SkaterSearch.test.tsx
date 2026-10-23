@@ -5,8 +5,10 @@ import type { UserProfile } from "../../../services/users";
 
 const dir = vi.hoisted(() => ({ usePlayerDirectory: vi.fn() }));
 vi.mock("../../../hooks/usePlayerDirectory", () => dir);
+const prefix = vi.hoisted(() => ({ usePrefixSkaterSearch: vi.fn() }));
+vi.mock("../usePrefixSkaterSearch", () => prefix);
 
-import { SkaterSearch, normalizeSkaterQuery } from "../components/SkaterSearch";
+import { SkaterSearch, mergeMatches, normalizeSkaterQuery } from "../components/SkaterSearch";
 
 const p = (uid: string, username: string): UserProfile => ({ uid, username, stance: "regular", createdAt: null });
 const players = [p("a", "skatekid"), p("b", "kidflip"), p("c", "tony"), p("d", "kickflipking")];
@@ -33,10 +35,39 @@ describe("normalizeSkaterQuery", () => {
   });
 });
 
+describe("mergeMatches", () => {
+  it("puts prefix hits first, dedupes by uid and caps at 8", () => {
+    const many = Array.from({ length: 10 }, (_, i) => p(`d${i}`, `xx${i}`));
+    const out = mergeMatches([p("d1", "xx1"), p("z", "xxz")], many, "xx");
+    expect(out.map((u) => u.uid)).toEqual(["d1", "z", "d0", "d2", "d3", "d4", "d5", "d6"]);
+  });
+});
+
 describe("SkaterSearch", () => {
   beforeEach(() => {
     dir.usePlayerDirectory.mockReset();
     dir.usePlayerDirectory.mockReturnValue({ players, loading: false, refresh: vi.fn() });
+    prefix.usePrefixSkaterSearch.mockReset();
+    prefix.usePrefixSkaterSearch.mockReturnValue({ players: [], loading: false });
+  });
+
+  it("finds older skaters outside the newest-100 directory via the prefix search, first and deduped", async () => {
+    prefix.usePrefixSkaterSearch.mockImplementation((q: string) => ({
+      players: q === "kid" ? [p("old", "kidold"), p("b", "kidflip")] : [],
+      loading: false,
+    }));
+    const { input } = setup();
+    await userEvent.type(input, "Kid");
+    expect(prefix.usePrefixSkaterSearch).toHaveBeenLastCalledWith("kid", "me");
+    const names = screen.getAllByRole("button", { name: /^Challenge @/ }).map((b) => b.getAttribute("aria-label"));
+    expect(names).toEqual(["Challenge @kidold", "Challenge @kidflip", "Challenge @skatekid"]);
+  });
+
+  it("holds the empty state while the prefix search is still running", async () => {
+    prefix.usePrefixSkaterSearch.mockReturnValue({ players: [], loading: true });
+    const { input } = setup();
+    await userEvent.type(input, "zzz");
+    expect(screen.queryByText(/No skaters match/)).toBeNull();
   });
 
   it("reads nothing until the skater types", () => {
