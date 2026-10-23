@@ -185,11 +185,12 @@ export default defineConfig({
         // and manual rAF queues, never real-time races), so the min is stable.
         // Truncating leaves a few items of slack in the big globs, so this is
         // a ratchet, not a strict no-drop gate; the per-file gate
-        // (scripts/check-coverage-per-file.mjs) backs it up. Raise them as coverage climbs; never lower one to make a PR
-        // pass. Goal: 100 everywhere.
+        // (scripts/check-coverage-per-file.mjs) backs it up. Raise them as
+        // coverage climbs; never lower one to make a PR pass. Goal: 100
+        // everywhere.
         lines: 91.4,
         functions: 91.7,
-        branches: 91.4,
+        branches: 91.5,
         statements: 90.4,
         // Fully covered: keep it that way.
         "src/services/**": { lines: 100, functions: 100, branches: 100, statements: 100 },
@@ -204,12 +205,12 @@ export default defineConfig({
         // would trip on every pre-existing under-covered file at once.
         "src/App.tsx": { lines: 74.4, functions: 59.8, branches: 77.3, statements: 72.5 },
         "src/boot/**": { lines: 88.8, functions: 85.7, branches: 85.8, statements: 88.4 },
-        "src/components/**": { lines: 97.4, functions: 95.8, branches: 92.2, statements: 95.5 },
+        "src/components/**": { lines: 97.4, functions: 96, branches: 92.3, statements: 95.6 },
         "src/constants/**": { lines: 97.8, functions: 98.3, branches: 90.4, statements: 96 },
         "src/context/**": { lines: 93.6, functions: 89.9, branches: 93.7, statements: 93.2 },
         "src/lib/**": { lines: 85.4, functions: 89.1, branches: 84, statements: 85.4 },
         "src/runner/**": { lines: 49.5, functions: 41.6, branches: 56.8, statements: 48 },
-        "src/screens/**": { lines: 98.2, functions: 97.2, branches: 94.2, statements: 96.9 },
+        "src/screens/**": { lines: 98.2, functions: 97.2, branches: 94.3, statements: 97 },
         // src/closet360 (one 3D viewer file) measures 0 today, so a floor would
         // be a no-op; it is the first target of the coverage plan instead.
       },
