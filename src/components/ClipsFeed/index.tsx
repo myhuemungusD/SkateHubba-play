@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { ClipDoc } from "../../services/clips";
 import type { UserProfile } from "../../services/users";
 import type { Dispute } from "../../types/dispute";
@@ -12,7 +12,7 @@ import { OwnClipModeration } from "./OwnClipModeration";
 import { ClipsFeedHeader } from "./ClipsFeedHeader";
 import { DisputeSlides, disputeSlideCount } from "./DisputeLane";
 import { FeedModals, type CommentReportTarget } from "./FeedModals";
-import { isNearSlide } from "./feedLayout";
+import { FEED_TOP_STACK, isNearSlide } from "./feedLayout";
 import { NextClipPrefetcher } from "./NextClipPrefetcher";
 import { SpotlightCard } from "./SpotlightCard";
 import { WttNameItOverlay } from "./WttNameItOverlay";
@@ -27,6 +27,11 @@ export interface ClipsFeedProps {
   onViewPlayer: (uid: string) => void;
   /** Kick off a challenge flow against a username — used by the "Challenge" CTA. */
   onChallengeUser: (username: string) => void;
+  /**
+   * Optional row under the mode switcher in the top stack (the Pro Picks
+   * pill). Lives in the stack so it can never slide under the header.
+   */
+  topAccessory?: ReactNode;
 }
 
 /**
@@ -38,7 +43,7 @@ export interface ClipsFeedProps {
  * When feed modes are enabled, shows a mode switcher (Scroll · Name It · Vote · Judge).
  * Name It mode shows WTT quiz cards; Vote mode emphasizes voting; Judge shows disputes.
  */
-export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedProps) {
+export function ClipsFeed({ profile, onViewPlayer, onChallengeUser, topAccessory }: ClipsFeedProps) {
   const feedModesEnabled = isFeedModesEnabled();
   const wttEnabled = isWttEnabled();
   const { mode, setMode } = useFeedMode();
@@ -112,39 +117,43 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
       <p className="sr-only">
         Swipe up or down, or use the arrow keys, to move between clips. Voting stays on the clip you are watching.
       </p>
-      <ClipsFeedHeader
-        sort={clips.sort}
-        onSortChange={clips.handleSortChange}
-        disabled={clips.loading || clips.loadingMore}
-        position={showSlides && slideCount > 0 ? { index: activeIndex, total: slideCount } : undefined}
-        onPostClip={() => setUploadOpen(true)}
-      />
+      <div className={FEED_TOP_STACK} data-testid="feed-top-stack">
+        <ClipsFeedHeader
+          sort={clips.sort}
+          onSortChange={clips.handleSortChange}
+          disabled={clips.loading || clips.loadingMore}
+          position={showSlides && slideCount > 0 ? { index: activeIndex, total: slideCount } : undefined}
+          onPostClip={() => setUploadOpen(true)}
+        />
 
-      {feedModesEnabled && (
-        <Suspense fallback={null}>
-          <div className="absolute inset-x-0 top-16 z-20">
-            <FeedModeToggle
-              mode={activeMode}
-              onChange={setMode}
-              disabled={clips.loading || disputes.loading}
-              showJudge={disputes.disputes.length > 0}
-              showNameIt={wttEnabled}
-              disputesPending={disputes.disputes.length > 0}
-              streakDue={nameItOpen && wtt.dailyCount === 0 && wtt.reliability?.streakDays === 0}
-            />
+        {feedModesEnabled && (
+          <Suspense fallback={<div className="h-11" aria-hidden="true" />}>
+            <div className="pointer-events-auto" data-testid="feed-mode-row">
+              <FeedModeToggle
+                mode={activeMode}
+                onChange={setMode}
+                disabled={clips.loading || disputes.loading}
+                showJudge={disputes.disputes.length > 0}
+                showNameIt={wttEnabled}
+                disputesPending={disputes.disputes.length > 0}
+                streakDue={nameItOpen && wtt.dailyCount === 0 && wtt.reliability?.streakDays === 0}
+              />
+            </div>
+          </Suspense>
+        )}
+
+        {topAccessory}
+
+        <OwnClipModeration uid={profile.uid} refreshKey={moderationRefresh} />
+
+        {clips.error && !clips.loading && (
+          <div className="pointer-events-auto mx-4 mt-2">
+            <ClipsFeedError error={clips.error} errorCode={clips.errorCode} onRetry={clips.loadPool} />
           </div>
-        </Suspense>
-      )}
-
-      <OwnClipModeration uid={profile.uid} refreshKey={moderationRefresh} />
+        )}
+      </div>
 
       {blocking && <ClipsFeedSkeleton />}
-
-      {clips.error && !clips.loading && (
-        <div className="absolute inset-x-4 top-24 z-30">
-          <ClipsFeedError error={clips.error} errorCode={clips.errorCode} onRetry={clips.loadPool} />
-        </div>
-      )}
 
       {showEmpty && (
         <div className="absolute inset-0 z-20 flex items-center justify-center px-6">

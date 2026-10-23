@@ -26,14 +26,59 @@ interface SpotlightOverlayProps {
 }
 
 const PADDING = 8;
+/** Clips the ring layer to below the top safe area (see readRect). */
+export const SPOTLIGHT_CLIP_CLASS =
+  "absolute inset-0 pointer-events-none [clip-path:inset(env(safe-area-inset-top,0px)_0_0_0)]";
 const ANCHOR_TIMEOUT_MS = 1500;
 
+/**
+ * The top safe-area inset in px (status bar / notch / Dynamic Island), read
+ * from a probe that resolves `env(safe-area-inset-top)` through the
+ * `.pt-safe-inset` utility. 0 where the browser has no inset.
+ */
+export function readSafeTop(): number {
+  const probe = document.createElement("div");
+  probe.className = "pt-safe-inset";
+  probe.setAttribute("aria-hidden", "true");
+  probe.style.position = "fixed";
+  probe.style.visibility = "hidden";
+  document.body.appendChild(probe);
+  const px = Number.parseFloat(getComputedStyle(probe).paddingTop);
+  probe.remove();
+  return Number.isFinite(px) ? px : 0;
+}
+
+/**
+ * Ring geometry around the target, PADDING px on each side. The top edge is
+ * clamped to the safe area: a control flush under the status bar (the feed's
+ * camera button) used to push the ring and its glow up behind the Dynamic
+ * Island, which read as a stray orange arc at the very top of the screen.
+ */
 function readRect(selector: string): Rect | null {
   const el = document.querySelector(selector);
   if (!el || !(el instanceof HTMLElement)) return null;
   const r = el.getBoundingClientRect();
   if (r.width === 0 && r.height === 0) return null;
-  return { top: r.top - PADDING, left: r.left - PADDING, width: r.width + PADDING * 2, height: r.height + PADDING * 2 };
+  const top = Math.max(r.top - PADDING, readSafeTop());
+  const bottom = r.top + r.height + PADDING;
+  return { top, left: r.left - PADDING, width: r.width + PADDING * 2, height: Math.max(0, bottom - top) };
+}
+
+/**
+ * Where the bubble docks. A bottom bubble moves to the top when its ring
+ * target sits in the lower half of the screen (and the reverse), so Hesher
+ * never covers the very thing he is pointing at.
+ */
+export function resolvePlacement(
+  placement: "top" | "bottom",
+  rect: Rect | null,
+  viewportHeight: number,
+): "top" | "bottom" {
+  if (!rect || viewportHeight <= 0) return placement;
+  const center = rect.top + rect.height / 2;
+  if (placement === "bottom" && center > viewportHeight / 2) return "top";
+  if (placement === "top" && center < viewportHeight / 2) return "bottom";
+  return placement;
 }
 
 /**
@@ -180,11 +225,14 @@ export function SpotlightOverlay({
   }, [effectiveRect]);
 
   const ringPulse = reducedMotion ? "" : "motion-safe:animate-pulse";
+  const dock = resolvePlacement(placement, effectiveRect, window.innerHeight);
 
   return (
     <div className={`fixed inset-0 pointer-events-none ${Z_TUTORIAL_OVERLAY_CLASS}`} data-testid="spotlight-overlay">
       {effectiveRect && (
-        <>
+        // Clip the ring and its 32px glow to below the status bar so nothing
+        // orange ever paints behind the notch / Dynamic Island.
+        <div className={SPOTLIGHT_CLIP_CLASS} data-testid="spotlight-clip">
           {/* Soft glow halo behind the ring for depth without dimming the page.
               Geometry is applied via the CSSOM in the layout effect above; the
               static glow shadow stays a Tailwind arbitrary-value class. */}
@@ -200,19 +248,28 @@ export function SpotlightOverlay({
             aria-hidden="true"
             className={`absolute rounded-2xl border-2 border-brand-orange pointer-events-none ${ringPulse}`}
           />
-        </>
+        </div>
       )}
 
       {/* Bubble pinned to bottom-center, above the bottom nav. pointer-events-auto
           on the bubble itself so it's tappable; the surrounding layer stays
           transparent so the rest of the page is fully interactable. */}
-      {placement === "top" ? (
-        <div className="absolute inset-x-0 top-0 flex justify-center px-4 pt-safe pointer-events-none">
+      {dock === "top" ? (
+        <div
+          className="absolute inset-x-0 top-0 flex justify-center px-4 pt-safe pointer-events-none"
+          data-coach-dock="top"
+        >
           <div className="pointer-events-auto w-full max-w-md mt-16">{children}</div>
         </div>
       ) : (
-        <div className="absolute inset-x-0 bottom-0 flex justify-center px-4 pb-safe pointer-events-none">
-          <div className="pointer-events-auto w-full max-w-md mb-20 sm:mb-6">{children}</div>
+        // `coach-dock-bottom` (index.css) lifts the bubble above the consent
+        // banner while it is open: both are fixed to the bottom edge, and the
+        // banner's measured inset is the only number they can share.
+        <div
+          className="coach-dock-bottom absolute inset-x-0 bottom-0 flex justify-center px-4 pb-safe pointer-events-none"
+          data-coach-dock="bottom"
+        >
+          <div className="coach-dock-bubble pointer-events-auto w-full max-w-md mb-20 sm:mb-6">{children}</div>
         </div>
       )}
     </div>

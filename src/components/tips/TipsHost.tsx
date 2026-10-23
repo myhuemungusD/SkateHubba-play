@@ -14,7 +14,8 @@ export const TIP_SETTLE_MS = 700;
  * Hosts Hesher's first-visit tips. Picks the open sheet's zone first, then
  * the route's set; shows nothing while the welcome tour is armed, while the
  * camera is live, when tips are off, or once that set has been seen.
- * Non-blocking like the tour: no focus trap, no inert, Esc closes.
+ * Non-blocking like the tour: no focus trap, no inert. Esc, the close button,
+ * or a tap anywhere outside the bubble puts the set away.
  */
 export function TipsHost() {
   const tips = useTipsContext();
@@ -53,8 +54,20 @@ function TipSequence({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") done();
     };
+    // Tap anywhere outside the bubble puts the tips away. Listens for `click`
+    // (not pointerdown) so a scroll or swipe never dismisses, and never stops
+    // the event: the tap still reaches the page, which stays fully live.
+    const onTapOutside = (e: MouseEvent) => {
+      const target = e.target;
+      if (target instanceof Element && target.closest("[data-coach-bubble]")) return;
+      done();
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    document.addEventListener("click", onTapOutside, true);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("click", onTapOutside, true);
+    };
   }, [list, done]);
 
   if (!list || list.length === 0) return null;

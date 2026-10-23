@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
-import { SpotlightOverlay } from "../SpotlightOverlay";
+import { SpotlightOverlay, readSafeTop, resolvePlacement, SPOTLIGHT_CLIP_CLASS } from "../SpotlightOverlay";
 
 /**
  * IntersectionObserver is not implemented in jsdom. Tests that exercise the
@@ -183,5 +183,76 @@ describe("SpotlightOverlay placement", () => {
       </SpotlightOverlay>,
     );
     expect(getByText("hi").parentElement?.className).toContain("mt-16");
+  });
+});
+
+/**
+ * Regression: the feed camera sits flush under the status bar, so the ring
+ * (8px padding) and its 32px orange glow painted up behind the Dynamic Island
+ * as a stray orange arc. The ring is clamped and clipped to the safe area.
+ */
+describe("SpotlightOverlay safe area", () => {
+  function stubSafeTop(px: number) {
+    const real = window.getComputedStyle;
+    return vi.spyOn(window, "getComputedStyle").mockImplementation((el: Element, pseudo?: string | null) => {
+      const style = real(el, pseudo);
+      if (el.classList.contains("pt-safe-inset")) {
+        return { ...style, paddingTop: `${px}px` } as CSSStyleDeclaration;
+      }
+      return style;
+    });
+  }
+
+  it("reads the top inset through the pt-safe-inset probe and leaves no probe behind", () => {
+    const spy = stubSafeTop(62);
+    expect(readSafeTop()).toBe(62);
+    expect(document.querySelector(".pt-safe-inset")).toBeNull();
+    spy.mockRestore();
+    expect(readSafeTop()).toBe(0);
+  });
+
+  it("clamps the ring's top edge to the safe area while keeping its bottom edge", async () => {
+    const spy = stubSafeTop(62);
+    try {
+      // 6.9" geometry measured in the before shots: camera 65-109px, inset 62px.
+      mountTarget("feed-camera", { top: 65, left: 265, width: 44, height: 44 });
+      renderOverlay({ targetSelector: '[data-tutorial="feed-camera"]' });
+      const cutout = (await screen.findByTestId("spotlight-cutout")) as HTMLElement;
+      expect(cutout.style.top).toBe("62px");
+      expect(cutout.style.height).toBe("55px"); // 109 + 8 - 62
+      expect(screen.getByTestId("spotlight-clip").className).toBe(SPOTLIGHT_CLIP_CLASS);
+      expect(SPOTLIGHT_CLIP_CLASS).toContain("clip-path:inset(env(safe-area-inset-top");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe("resolvePlacement", () => {
+  const rect = (top: number, height = 40) => ({ top, left: 0, width: 40, height });
+  it("keeps the requested dock without a ring or a viewport", () => {
+    expect(resolvePlacement("bottom", null, 800)).toBe("bottom");
+    expect(resolvePlacement("top", rect(700), 0)).toBe("top");
+  });
+  it("moves a bottom bubble up when its target is in the lower half, and the reverse", () => {
+    expect(resolvePlacement("bottom", rect(100), 800)).toBe("bottom");
+    expect(resolvePlacement("bottom", rect(600), 800)).toBe("top");
+    expect(resolvePlacement("top", rect(600), 800)).toBe("top");
+    expect(resolvePlacement("top", rect(100), 800)).toBe("bottom");
+  });
+
+  it("docks the bubble at the top when the ring target is low on screen", async () => {
+    mountTarget("spot-passport", { top: 600, left: 16, width: 300, height: 100 });
+    renderOverlay({ targetSelector: '[data-tutorial="spot-passport"]' });
+    await screen.findByTestId("spotlight-cutout");
+    expect(screen.getByText("tutorial body").closest("[data-coach-dock]")).toHaveAttribute("data-coach-dock", "top");
+  });
+
+  it("docks at the bottom with the consent-aware hook class by default", () => {
+    renderOverlay();
+    const dock = screen.getByText("tutorial body").closest("[data-coach-dock]");
+    expect(dock).toHaveAttribute("data-coach-dock", "bottom");
+    expect(dock).toHaveClass("coach-dock-bottom");
+    expect(dock?.firstElementChild).toHaveClass("coach-dock-bubble");
   });
 });

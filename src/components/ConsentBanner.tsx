@@ -5,6 +5,12 @@ import { readConsent, writeConsent } from "../lib/consent";
 export const CONSENT_BANNER_OPEN_CLASS = "consent-banner-open";
 /** CSS custom property carrying the banner's measured height in px. */
 export const CONSENT_BANNER_SPACE_VAR = "--consent-banner-space";
+/**
+ * CSS custom property carrying the distance in px from the bottom of the
+ * viewport to the banner's top edge (its height plus any lift above the tab
+ * bar). The tour / tips bubble docks above it (see `.coach-dock-bottom`).
+ */
+export const CONSENT_BANNER_INSET_VAR = "--consent-banner-inset";
 
 /**
  * While the fixed banner is visible, reserve matching space at the bottom of
@@ -13,24 +19,30 @@ export const CONSENT_BANNER_SPACE_VAR = "--consent-banner-space";
  * live height as a CSS variable + an <html> class; index.css turns that into
  * body padding. Purely presentational — consent state is untouched.
  */
-function useReserveBottomSpace(ref: RefObject<HTMLElement | null>, active: boolean) {
+function useReserveBottomSpace(ref: RefObject<HTMLElement | null>, active: boolean, lifted: boolean) {
   useEffect(() => {
     const el = ref.current;
     if (!active || !el) return;
     const root = document.documentElement;
     const publish = () => {
-      root.style.setProperty(CONSENT_BANNER_SPACE_VAR, `${Math.ceil(el.getBoundingClientRect().height)}px`);
+      const rect = el.getBoundingClientRect();
+      root.style.setProperty(CONSENT_BANNER_SPACE_VAR, `${Math.ceil(rect.height)}px`);
+      root.style.setProperty(CONSENT_BANNER_INSET_VAR, `${Math.max(0, Math.ceil(window.innerHeight - rect.top))}px`);
     };
     publish();
     root.classList.add(CONSENT_BANNER_OPEN_CLASS);
     const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(publish);
     ro?.observe(el);
+    window.addEventListener("resize", publish);
     return () => {
       ro?.disconnect();
+      window.removeEventListener("resize", publish);
       root.classList.remove(CONSENT_BANNER_OPEN_CLASS);
       root.style.removeProperty(CONSENT_BANNER_SPACE_VAR);
+      root.style.removeProperty(CONSENT_BANNER_INSET_VAR);
     };
-  }, [ref, active]);
+    // `lifted` moves the banner without resizing it, so re-measure on change.
+  }, [ref, active, lifted]);
 }
 
 /** Clears the fixed tab bar: row, raised Challenge disc, and the safe area. */
@@ -48,7 +60,7 @@ export function ConsentBanner({
   // in on a second render (avoids calling setState inside an effect).
   const [visible, setVisible] = useState(() => !readConsent());
   const regionRef = useRef<HTMLDivElement>(null);
-  useReserveBottomSpace(regionRef, visible);
+  useReserveBottomSpace(regionRef, visible, liftAboveNav);
 
   const accept = () => {
     writeConsent("accepted");

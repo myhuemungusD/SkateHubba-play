@@ -5,7 +5,8 @@ import { fetchOwnClipModeration, type OwnClipModerationRow } from "../../service
 
 /**
  * The owner's own public clips that are not in the feed. Pending clips say
- * "Checking…". Hidden until VITE_FEATURE_CLIP_MODERATION_ENABLED is "true".
+ * "Checking…". Renders as a row in the feed's top stack, under the header.
+ * Hidden until VITE_FEATURE_CLIP_MODERATION_ENABLED is "true".
  */
 export function OwnClipModeration({ uid, refreshKey }: { uid: string; refreshKey: number }) {
   const enabled = isClipModerationEnabled();
@@ -31,7 +32,7 @@ export function OwnClipModeration({ uid, refreshKey }: { uid: string; refreshKey
   return (
     <ul
       aria-label="Your clips being checked"
-      className="absolute inset-x-3 top-16 z-30 max-h-[40%] space-y-2 overflow-y-auto"
+      className="pointer-events-auto mx-3 mt-2 max-h-[40dvh] space-y-2 overflow-y-auto"
     >
       {rows.map((row) => (
         <li key={row.id} className="rounded-2xl border border-border bg-surface px-4 py-3">

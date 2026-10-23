@@ -83,6 +83,32 @@ describe("TipsHost", () => {
     expect(markSeen).toHaveBeenCalledTimes(2);
   });
 
+  /**
+   * Regression: the profile tips sat over the profile with only Esc or a
+   * small x to clear them. A tap anywhere outside the bubble now puts the set
+   * away; a tap inside it (next, the copy) never does.
+   */
+  it("puts the set away on a tap outside the bubble, but not on taps inside it", () => {
+    const outside = document.createElement("button");
+    outside.textContent = "page button";
+    document.body.appendChild(outside);
+    renderAt("/me");
+    settle();
+    fireEvent.click(screen.getByText("your page"));
+    fireEvent.click(screen.getByRole("button", { name: "got it" }).closest("[data-coach-bubble]")!);
+    expect(markSeen).not.toHaveBeenCalled();
+    fireEvent.click(outside);
+    expect(markSeen).toHaveBeenCalledWith("me");
+  });
+
+  it("does not listen for outside taps after it unmounts", () => {
+    const { unmount } = renderAt("/me");
+    settle();
+    unmount();
+    fireEvent.click(document.body);
+    expect(markSeen).not.toHaveBeenCalled();
+  });
+
   it("drops anchor-only tips when the hook is missing", () => {
     renderAt("/feed");
     settle();

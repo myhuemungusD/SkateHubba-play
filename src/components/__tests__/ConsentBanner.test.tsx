@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ConsentBanner, CONSENT_BANNER_OPEN_CLASS, CONSENT_BANNER_SPACE_VAR } from "../ConsentBanner";
+import {
+  ConsentBanner,
+  CONSENT_BANNER_INSET_VAR,
+  CONSENT_BANNER_OPEN_CLASS,
+  CONSENT_BANNER_SPACE_VAR,
+} from "../ConsentBanner";
 import { subscribeConsent } from "../../lib/consent";
 
 beforeEach(() => {
@@ -118,6 +123,42 @@ describe("ConsentBanner bottom clearance", () => {
       expect(root().classList.contains(CONSENT_BANNER_OPEN_CLASS)).toBe(false);
     } finally {
       globalThis.ResizeObserver = realRO;
+    }
+  });
+
+  /**
+   * Regression: the tour bubble (bottom dock, mb-20) and the lifted banner
+   * (bottom 5.5rem) were both pinned to the bottom edge with no shared
+   * number, so the banner's OK/No row sat on the tour's NEXT button. The
+   * banner now publishes its top edge as an inset the bubble docks above.
+   */
+  it("publishes its top edge as an inset from the viewport bottom, and re-measures when lifted", () => {
+    const rect = (top: number) =>
+      ({
+        top,
+        bottom: top + 60,
+        height: 60,
+        left: 0,
+        right: 390,
+        width: 390,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const spy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(rect(window.innerHeight - 60));
+    try {
+      const { rerender, unmount } = render(<ConsentBanner onNav={vi.fn()} />);
+      expect(root().style.getPropertyValue(CONSENT_BANNER_INSET_VAR)).toBe("60px");
+      spy.mockReturnValue(rect(window.innerHeight - 60 - 122));
+      rerender(<ConsentBanner onNav={vi.fn()} liftAboveNav />);
+      expect(root().style.getPropertyValue(CONSENT_BANNER_INSET_VAR)).toBe("182px");
+      spy.mockReturnValue(rect(window.innerHeight - 70));
+      window.dispatchEvent(new Event("resize"));
+      expect(root().style.getPropertyValue(CONSENT_BANNER_INSET_VAR)).toBe("70px");
+      unmount();
+      expect(root().style.getPropertyValue(CONSENT_BANNER_INSET_VAR)).toBe("");
+    } finally {
+      spy.mockRestore();
     }
   });
 });

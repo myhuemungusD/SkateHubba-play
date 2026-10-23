@@ -19,6 +19,9 @@ export interface ClipsFeedHeaderProps {
  * (profile → pinned clip → Edit) so the feed never shows two look-alike
  * buttons.
  *
+ * Header row of the feed's top stack (see `FEED_TOP_STACK`); the stack owns
+ * the safe-area padding so every row under it lines up.
+ *
  * Floating header over the full-screen feed. The Top/New toggle, post action,
  * and position stay reachable without taking a row away from the video.
  */
@@ -30,7 +33,10 @@ export const ClipsFeedHeader = memo(function ClipsFeedHeader({
   onPostClip,
 }: ClipsFeedHeaderProps) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-between gap-2 px-3 pt-safe">
+    <div
+      data-testid="clips-feed-header"
+      className="pointer-events-none flex min-h-11 items-center justify-between gap-2 px-3"
+    >
       <div className="pointer-events-auto flex items-center gap-2">
         <h2 className="font-display text-[11px] tracking-[0.2em] text-white drop-shadow">CLIPS</h2>
         {position && (
