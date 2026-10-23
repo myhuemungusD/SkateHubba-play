@@ -18,6 +18,14 @@ describe("DataDeletion", () => {
     expect(text.toLowerCase()).not.toContain("lobby");
   });
 
+  it("describes the export for both web and the native share sheet", () => {
+    render(<DataDeletion onBack={vi.fn()} />);
+    const text = (document.body.textContent ?? "").replace(/\s+/g, " ");
+    expect(text).toContain("a single JSON file that you can save or share");
+    expect(text).toContain("In a browser it downloads to your device");
+    expect(text).toContain("in the iPhone or Android app the share sheet opens");
+  });
+
   it("shows the same after-deletion facts as the Privacy Policy", () => {
     render(<DataDeletion onBack={vi.fn()} />);
     const text = document.body.textContent ?? "";
