@@ -155,6 +155,36 @@ describe("SpotDetailPage", () => {
     });
   });
 
+  // Covers the stale-result guard on the error path. Without the guard, the
+  // first spot's late failure would replace the second spot with its error.
+  it("drops a stale load failure after the route moves to another spot", async () => {
+    const OTHER_ID = "99999999-8888-7777-6666-555555555555";
+    let rejectFirst: (err: Error) => void = () => {};
+    mockGetSpot.mockReturnValueOnce(
+      new Promise<Spot>((_, reject) => {
+        rejectFirst = reject;
+      }),
+    );
+    render(
+      <MemoryRouter initialEntries={[`/spots/${FIXTURE_SPOT.id}`]}>
+        <GoToSpot id={OTHER_ID} />
+        <Routes>
+          <Route path="/spots/:id" element={<SpotDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    mockGetSpot.mockResolvedValueOnce({ ...FIXTURE_SPOT, id: OTHER_ID, name: "Other Rail" });
+    await userEvent.click(screen.getByRole("button", { name: "go to other spot" }));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Other Rail" })).toBeInTheDocument();
+    });
+
+    rejectFirst(new Error("stale-denied"));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByText("stale-denied")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Other Rail" })).toBeInTheDocument();
+  });
+
   it("loads the spot via getSpot and renders its name + description", async () => {
     renderPage();
     await waitFor(() => {
