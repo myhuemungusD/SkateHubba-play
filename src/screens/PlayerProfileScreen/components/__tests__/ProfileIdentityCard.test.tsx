@@ -55,6 +55,13 @@ function renderWithAvatarUrl(profileImageUrl: string) {
 }
 
 describe("ProfileIdentityCard", () => {
+  it("lets a long handle wrap instead of clipping at 320", () => {
+    renderWithAvatarUrl("https://example.com/a.webp");
+    const h1 = screen.getByRole("heading", { level: 1, name: "@rider" });
+    expect(h1).toHaveClass("min-w-0", "max-w-full", "[overflow-wrap:anywhere]");
+    expect(h1.parentElement?.parentElement).toHaveClass("min-w-0", "flex-1");
+  });
+
   it("renders username and stance", () => {
     render(<ProfileIdentityCard username="rider" isVerifiedPro={false} stance="regular" />);
     expect(screen.getByText("@rider")).toBeInTheDocument();

@@ -120,7 +120,7 @@ export function SpotDetailPage() {
       <div className="px-4 py-6 max-w-2xl mx-auto space-y-6">
         {/* Photo gallery */}
         {spot.photoUrls.length > 0 && (
-          <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4">
+          <div data-scroll-x className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4">
             {spot.photoUrls.map((url, i) => (
               <img
                 key={url}
