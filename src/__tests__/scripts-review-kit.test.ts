@@ -33,10 +33,10 @@ describe("plan", () => {
   });
 
   it("builds deterministic, public-only seed docs", () => {
-    const docs = plan.buildSeedDocs({ uid: "U", username: "appreview", appUrl: "https://a", now: new Date(0) });
+    const docs = plan.buildSeedDocs({ uid: "U", username: ENV.REVIEW_USERNAME, appUrl: "https://a", now: new Date(0) });
     const paths = docs.map(([p]: [string]) => p);
     expect(paths).toContain("users/U");
-    expect(paths).toContain("usernames/appreview");
+    expect(paths).toContain(`usernames/${ENV.REVIEW_USERNAME}`);
     expect(paths.filter((p: string) => p.startsWith("games/"))).toHaveLength(10);
     expect(paths.filter((p: string) => p.startsWith("clips/"))).toHaveLength(8);
     expect(paths.filter((p: string) => p.startsWith("spots/"))).toHaveLength(6);
