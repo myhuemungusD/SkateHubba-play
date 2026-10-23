@@ -138,6 +138,7 @@ export function buildSeedDocs({
   tutorialVersion = 2,
   tipsDisabled = false,
   videoUrl,
+  publicContent = true,
 }) {
   const day = 24 * 60 * 60 * 1000;
   const at = (offsetDays) => new Date(now.getTime() + offsetDays * day);
@@ -358,5 +359,15 @@ export function buildSeedDocs({
   spot("review-demo-spot-4", "Stevens Creek Gap", 37.3237, -122.0322, ["gap"]);
   spot("review-demo-spot-5", "Infinite Loop Curbs", 37.3318, -122.0312, ["curb", "ledge"]);
   spot("review-demo-spot-6", "Wolfe Rd Bank", 37.3301, -122.0146, ["bank"]);
-  return docs;
+  return publicContent ? docs : docs.filter(([path]) => !isPublicDemoPath(path, uid));
+}
+
+/**
+ * Demo docs that every user would see: feed clips, map spots, and passport
+ * stamps that point at those spots. Production seeds leave them out so real
+ * users never see made-up clips or spots; the emulator keeps them for
+ * screenshots.
+ */
+export function isPublicDemoPath(path, uid) {
+  return path.startsWith("clips/") || path.startsWith("spots/") || path.startsWith(`users/${uid}/passport/`);
 }

@@ -118,6 +118,24 @@ function fakeAdmin(exists: boolean) {
   return { admin, writes };
 }
 
+describe("public demo content", () => {
+  it("drops feed clips, map spots and passport stamps when publicContent is false", () => {
+    const all = plan.buildSeedDocs({ uid: "U", username: "a", appUrl: "https://a", now: new Date(0) });
+    const priv = plan.buildSeedDocs({
+      uid: "U",
+      username: "a",
+      appUrl: "https://a",
+      now: new Date(0),
+      publicContent: false,
+    });
+    const paths = priv.map(([p]: [string]) => p);
+    expect(paths.some((p: string) => plan.isPublicDemoPath(p, "U"))).toBe(false);
+    expect(paths).toContain("users/U");
+    expect(paths).toContain("passportSettings/U");
+    expect(all.length - priv.length).toBe(8 + 6 + 3);
+  });
+});
+
 describe("seed main", () => {
   it("requires credentials from env", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -154,6 +172,18 @@ describe("seed main", () => {
         expect(printed).not.toContain(value);
       }
     }
+  });
+  it("keeps public demo content out of production; only --emulator seeds it", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const prod = fakeAdmin(false);
+    expect(await seed.main(["--dry-run"], ENV, prod.admin)).toBe(0);
+    expect(JSON.stringify(log.mock.calls)).toContain("would create reviewer account");
+    expect(await seed.main([], ENV, prod.admin)).toBe(0);
+    expect(prod.writes.filter((p) => plan.isPublicDemoPath(p, "NEW"))).toEqual([]);
+    expect(prod.writes).toContain("games/review-demo-your-turn");
+    const emu = fakeAdmin(false);
+    expect(await seed.main(["--emulator"], ENV, emu.admin)).toBe(0);
+    expect(emu.writes.filter((p) => p.startsWith("clips/"))).toHaveLength(8);
   });
   it("rethrows unexpected auth errors and reads the tutorial version", async () => {
     const f = fakeAdmin(true);

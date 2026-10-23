@@ -18,9 +18,10 @@ npm run review:seed -- --emulator     # seed the local emulators instead (for sc
   - a profile (`@appreview`, or `REVIEW_USERNAME`) with stats, XP (level 11), the tutorial marked done, and badges that match the stats
   - six demo opponents
   - nine S.K.A.T.E. games, so Home is full: four on you (two to match, two to set), two waiting on them, and three finished (two wins, one loss)
-  - eight landed clips in the feed
-  - six spots near Apple Park, so the map has nearby pins while Apple reviews it, plus three public Spot Passport check-ins
+  - eight landed clips in the feed (`--emulator` only)
+  - six spots near Apple Park, plus three public Spot Passport check-ins (`--emulator` only)
   - four Mike White shoes in the Closet (one equipped). They show "Designed by Mike White" in the app. Closet is off in the 1.2.0 iPhone build, so these only appear once Closet ships, and the 1.2.0 listing and screenshots leave Closet out.
+- **Production gets no public demo content.** Without `--emulator` the seed skips the feed clips, the map spots and the passport check-ins, because every real user would see them. App Review browses the real feed and map like everyone else.
 - Every document has a fixed id, so running it again refreshes the account instead of duplicating it.
 - **Gated features:** the reviewer is _not_ added to `config/featureTesters`, so App Review sees exactly what the public gets. Roll Dice and Skate Runner are hidden in the iPhone launch build, so nothing is seeded for them.
 
