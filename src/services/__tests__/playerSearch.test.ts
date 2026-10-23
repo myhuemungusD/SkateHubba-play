@@ -17,7 +17,10 @@ vi.mock("firebase/firestore", () => ({
   where: (...args: unknown[]) => mockWhere(...args),
 }));
 vi.mock("../../firebase");
-vi.mock("../users", () => ({ getUserProfile: (...args: unknown[]) => mockGetUserProfile(...args) }));
+vi.mock("../users", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../users")>()),
+  getUserProfile: (...args: unknown[]) => mockGetUserProfile(...args),
+}));
 
 import { PREFIX_SEARCH_LIMIT, searchPlayersByPrefix } from "../playerSearch";
 
@@ -85,5 +88,19 @@ describe("searchPlayersByPrefix", () => {
     const out = await searchPlayersByPrefix("a", many, 2);
     expect(mockLimit).toHaveBeenCalledWith(50);
     expect(out.map((p) => p.uid)).toEqual(["1", "2"]);
+  });
+
+  it("hides test accounts, like the player directory", async () => {
+    mockGetDocs.mockResolvedValueOnce(
+      snap([
+        { id: "qa_bot", uid: "qa" },
+        { id: "qa_real", uid: "real" },
+      ]),
+    );
+    mockGetUserProfile.mockImplementation(async (uid) =>
+      uid === "qa" ? { ...profile("qa"), isTestAccount: true } : profile(uid as string),
+    );
+    const out = await searchPlayersByPrefix("qa");
+    expect(out.map((p) => p.uid)).toEqual(["real"]);
   });
 });
