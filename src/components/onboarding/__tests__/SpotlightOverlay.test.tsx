@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { logger } from "../../../services/logger";
-import { SpotlightOverlay, readSafeTop, resolvePlacement, SPOTLIGHT_CLIP_CLASS } from "../SpotlightOverlay";
+import {
+  SpotlightOverlay,
+  readSafeTop,
+  resolvePlacement,
+  BOTTOM_NAV_ZONE_PX,
+  SPOTLIGHT_CLIP_CLASS,
+} from "../SpotlightOverlay";
 
 /**
  * IntersectionObserver is not implemented in jsdom. Tests that exercise the
@@ -327,6 +333,13 @@ describe("resolvePlacement", () => {
     expect(resolvePlacement("bottom", rect(600), 800)).toBe("top");
     expect(resolvePlacement("top", rect(600), 800)).toBe("top");
     expect(resolvePlacement("top", rect(100), 800)).toBe("bottom");
+  });
+  it("keeps the bottom dock for a target in the bottom nav, next to the ring", () => {
+    // Tour steps 3 and 4 ring the Challenge disc and a nav tab.
+    expect(resolvePlacement("bottom", rect(800 - BOTTOM_NAV_ZONE_PX + 1), 800)).toBe("bottom");
+    expect(resolvePlacement("top", rect(760), 800)).toBe("bottom");
+    // Just above the nav zone, a low target still flips the bubble up.
+    expect(resolvePlacement("bottom", rect(800 - BOTTOM_NAV_ZONE_PX - 40), 800)).toBe("top");
   });
 
   it("docks the bubble at the top when the ring target is low on screen", async () => {
