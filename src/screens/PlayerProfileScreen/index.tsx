@@ -379,7 +379,7 @@ export function PlayerProfileScreen({
                     onTileTap={handleTileTap}
                   />
                 )}
-                {id === "closet" && (
+                {id === "closet" && isClosetEnabled() && (
                   <>
                     {pc.custom.showcaseSignature && (
                       <SignatureShowcase items={c.lockerItems} accent={pc.custom.accent} />
@@ -389,7 +389,7 @@ export function PlayerProfileScreen({
                       pinnedItems={c.pinnedItems}
                       isOwnProfile={isOwnProfile}
                     />
-                    {isClosetEnabled() && <ClosetShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} />}
+                    <ClosetShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} />
                   </>
                 )}
                 {id === "crew" && hasViewer && (
@@ -408,7 +408,13 @@ export function PlayerProfileScreen({
           </>
         ) : (
           <>
-            <ProfileShowcase equippedItems={c.equippedItems} pinnedItems={c.pinnedItems} isOwnProfile={isOwnProfile} />
+            {isClosetEnabled() && (
+              <ProfileShowcase
+                equippedItems={c.equippedItems}
+                pinnedItems={c.pinnedItems}
+                isOwnProfile={isOwnProfile}
+              />
+            )}
 
             {isXpEnabled() && <AchievementsRibbon achievements={c.achievements} clipsPosted={profile.clipsPosted} />}
 

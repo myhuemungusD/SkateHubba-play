@@ -86,6 +86,28 @@ describe("PlayerProfileScreen — Economy Phase A fetch failures", () => {
     expect(screen.queryByTestId("closet-item-d1")).not.toBeInTheDocument();
   });
 
+  it("skips the locker read and the equipped-avatar showcase when the Closet flag is off", async () => {
+    vi.stubEnv("VITE_FEATURE_CLOSET_ENABLED", "false");
+    mockFetchAchievements.mockResolvedValue([centuryBadge]);
+    mockFetchLockerItems.mockResolvedValue([buildLockerItem({ id: "s1", equipped: true })]);
+
+    render(<PlayerProfileScreen {...ownProfileProps} />);
+
+    expect(await screen.findByTestId("badges-row")).toBeInTheDocument();
+    expect(mockFetchLockerItems).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("profile-showcase")).not.toBeInTheDocument();
+  });
+
+  it("shows the equipped-avatar showcase when the Closet flag is on", async () => {
+    mockFetchAchievements.mockResolvedValue([]);
+    mockFetchLockerItems.mockResolvedValue([buildLockerItem({ id: "s1", equipped: true })]);
+
+    render(<PlayerProfileScreen {...ownProfileProps} />);
+
+    expect(await screen.findByTestId("profile-showcase")).toBeInTheDocument();
+    expect(mockFetchLockerItems).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps the badges row when only the locker read is rejected", async () => {
     mockFetchAchievements.mockResolvedValue([centuryBadge]);
     mockFetchLockerItems.mockRejectedValue({ code: "permission-denied", message: "Missing permissions" });

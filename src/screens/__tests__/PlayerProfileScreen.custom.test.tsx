@@ -67,6 +67,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("VITE_FEATURE_PROFILE_CUSTOM", "true");
   vi.stubEnv("VITE_FEATURE_PROFILE_BANNER", "true");
+  // The closet section + signature toggle only exist behind the Closet flag.
+  vi.stubEnv("VITE_FEATURE_CLOSET_ENABLED", "true");
   vi.stubGlobal("Audio", FakeAudio);
   mockLocker.mockResolvedValue([]);
   m.get.mockResolvedValue(full);
@@ -214,5 +216,44 @@ describe("PlayerProfileScreen — custom profile (flag on)", () => {
     await screen.findByTestId("player-profile-root");
     expect(m.get).not.toHaveBeenCalled();
     expect(screen.queryByTestId("customize-profile-button")).toBeNull();
+  });
+});
+
+describe("PlayerProfileScreen — custom profile with the Closet flag off (iOS 1.2.0)", () => {
+  beforeEach(() => {
+    vi.stubEnv("VITE_FEATURE_CLOSET_ENABLED", "false");
+    const mike = MIKE_WHITE_COLLECTION[0];
+    mockLocker.mockResolvedValue([
+      buildLockerItem({ id: "m1", itemDefId: mike.itemDefId, name: "M1", imageUrl: "https://x/m.png", equipped: true }),
+    ]);
+  });
+
+  it("never reads the locker and renders no closet section, signature or showcase", async () => {
+    render(<PlayerProfileScreen {...props} />);
+    expect(await screen.findByText("Mike White designs")).toBeInTheDocument();
+    expect(await screen.findByTestId("pinned-clips")).toBeInTheDocument();
+    expect(mockLocker).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("signature-showcase")).toBeNull();
+    expect(screen.queryByTestId("profile-showcase")).toBeNull();
+    expect(screen.queryByTestId("closet-showcase")).toBeNull();
+    expect(screen.getByTestId("custom-section-closet")).toBeEmptyDOMElement();
+  });
+
+  it("hides the Closet showcase option and signature toggle, and moves past the hidden slot", async () => {
+    m.save.mockImplementation(async (_uid: string, v: ProfileCustom) => v);
+    render(<PlayerProfileScreen {...props} />);
+    await screen.findByText("Mike White designs");
+    fireEvent.click(screen.getByTestId("customize-profile-button"));
+    fireEvent.click(screen.getByRole("tab", { name: "LAYOUT" }));
+    expect(screen.queryByText("Closet showcase")).toBeNull();
+    expect(screen.queryByText("Highlight signature pieces")).toBeNull();
+    expect(screen.getByRole("button", { name: "Move Spots up" })).toBeEnabled();
+    // Stats sits next to the hidden closet slot; "down" must jump to Spots.
+    fireEvent.click(screen.getByRole("button", { name: "Move Stats down" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "SAVE" }));
+    });
+    const saved = m.save.mock.calls[0][1] as ProfileCustom;
+    expect(saved.sections).toEqual(["crew", "clips", "spots", "closet", "stats"]);
   });
 });
