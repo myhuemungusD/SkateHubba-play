@@ -1,6 +1,7 @@
 import type { UserProfile } from "../services/users";
 import { PresenceDot } from "./presence/PresenceDot";
 import type { usePlayerDirectory } from "../hooks/usePlayerDirectory";
+import { ChevronRight } from "lucide-react";
 import { ProUsername } from "./ProUsername";
 
 type Player = ReturnType<typeof usePlayerDirectory>["players"][number];
@@ -22,12 +23,17 @@ interface Props {
   players: Player[];
   loading: boolean;
   /** False disables every row's Challenge button (unverified viewer). */
-  canChallenge: boolean;
+  canChallenge?: boolean;
   onViewPlayer?: (uid: string) => void;
-  onChallengeUser: (username: string) => void;
+  /**
+   * Picker rows (Challenge, Dice) keep a Challenge button. Browse rows (Home
+   * search) omit it: the row opens the profile, and Challenge lives there.
+   */
+  onChallengeUser?: (username: string) => void;
   /**
    * Seconds left on a challenge cooldown. While set, every Challenge button
-   * is disabled and shows the countdown in its text and accessible name.
+   * is disabled and shows "In 7s"; its name, "Challenge @x, available in 7s",
+   * contains that text.
    */
   waitSeconds?: number | null;
 }
@@ -35,7 +41,7 @@ interface Props {
 export function PlayerDirectory({
   players,
   loading,
-  canChallenge,
+  canChallenge = true,
   onViewPlayer,
   onChallengeUser,
   waitSeconds = null,
@@ -86,39 +92,45 @@ export function PlayerDirectory({
             key={p.uid}
             className="flex min-h-[72px] items-center justify-between gap-3 px-3.5 py-3 rounded-xl bg-surface border border-white/[0.06] shadow-card transition-colors duration-300 ease-smooth"
           >
+            {/* Named by its own text, so Voice Control can say what it sees (audit #32). */}
             <button
               type="button"
               onClick={() => onViewPlayer?.(p.uid)}
               className="flex flex-1 min-h-11 items-center gap-3 min-w-0 text-left cursor-pointer hover:opacity-80 transition-opacity focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-              aria-label={`View @${p.username}'s profile`}
             >
               <div className="relative w-10 h-10 rounded-full bg-surface-alt border border-white/[0.06] flex items-center justify-center shrink-0">
-                <span className="font-display text-sm text-white/80 leading-none">{p.username[0].toUpperCase()}</span>
+                <span aria-hidden="true" className="font-display text-sm text-white/80 leading-none">
+                  {p.username[0].toUpperCase()}
+                </span>
                 <PresenceDot uid={p.uid} className="absolute -bottom-0.5 -right-0.5" />
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <ProUsername
                   username={p.username}
                   isVerifiedPro={(p as UserProfile).isVerifiedPro}
-                  className="font-display text-base text-white block leading-none truncate"
+                  className="font-body text-sm font-semibold text-white block truncate"
                 />
-                <span className="font-body text-xs text-muted block mt-1.5 truncate">
+                <span className="font-body text-xs text-muted block mt-1 truncate">
                   {p.stance}
                   {` · ${gamesLabel(p)}`}
                 </span>
               </div>
+              <span className="sr-only">, view profile</span>
+              {!onChallengeUser && <ChevronRight size={18} aria-hidden="true" className="shrink-0 text-subtle" />}
             </button>
-            <button
-              type="button"
-              onClick={() => onChallengeUser(p.username)}
-              disabled={!enabled}
-              className={`font-display text-sm shrink-0 min-h-[44px] px-3 inline-flex items-center justify-center rounded-lg border transition-colors tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${enabled ? "text-brand-orange border-brand-orange/30 hover:bg-brand-orange/10 cursor-pointer" : "text-subtle border-border cursor-not-allowed opacity-60"}`}
-              aria-label={
-                waiting ? `Challenge @${p.username}, available in ${waitSeconds}s` : `Challenge @${p.username}`
-              }
-            >
-              {waiting ? `Wait ${waitSeconds}s` : "Challenge"}
-            </button>
+            {onChallengeUser && (
+              <button
+                type="button"
+                onClick={() => onChallengeUser(p.username)}
+                disabled={!enabled}
+                className={`font-body text-sm font-semibold shrink-0 min-h-[44px] px-3 inline-flex items-center justify-center rounded-lg border transition-colors tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${enabled ? "text-brand-orange border-brand-orange/30 hover:bg-brand-orange/10 cursor-pointer" : "text-subtle border-border cursor-not-allowed opacity-60"}`}
+                aria-label={
+                  waiting ? `Challenge @${p.username}, available in ${waitSeconds}s` : `Challenge @${p.username}`
+                }
+              >
+                {waiting ? `In ${waitSeconds}s` : "Challenge"}
+              </button>
+            )}
           </div>
         ))}
       </div>
