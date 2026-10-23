@@ -30,7 +30,6 @@ interface Props {
   onChallenge: () => void;
   onOpenGame: (g: GameDoc) => void;
   onOpenDice?: (gameId: string) => void;
-  onSignOut: () => void;
   onViewRecord: () => void;
   onOpenSettings?: () => void;
   user: { emailVerified?: boolean } | null;
@@ -54,7 +53,6 @@ export function Lobby({
   onChallenge,
   onOpenGame,
   onOpenDice,
-  onSignOut,
   onViewRecord,
   onOpenSettings,
   user,
@@ -74,7 +72,7 @@ export function Lobby({
   const activeOpponents = useMemo(() => new Set(recent.filter((o) => o.activeGame).map((o) => o.uid)), [recent]);
 
   return (
-    <div className="lobby-root relative min-h-dvh bg-background/40 pb-24">
+    <div className="lobby-root relative min-h-dvh bg-background/40 pb-tabbar">
       <LobbyHeader
         profile={profile}
         games={games}
@@ -83,7 +81,6 @@ export function Lobby({
         onOpenDice={onOpenDice}
         onOpenAppeal={onOpenAppeal}
         onOpenSettings={onOpenSettings}
-        onSignOut={onSignOut}
       />
 
       <div className="max-w-[430px] mx-auto">

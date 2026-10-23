@@ -44,7 +44,7 @@ export function PlayerClosetScreen({ uid, backFallback }: Props) {
   const count = load.state === "ready" ? load.items.length : null;
 
   return (
-    <div className="mx-auto min-h-dvh max-w-[430px] bg-background px-4 pb-24 pt-[max(env(safe-area-inset-top),1.25rem)]">
+    <div className="mx-auto min-h-dvh max-w-[430px] bg-background px-4 pb-tabbar pt-[max(env(safe-area-inset-top),1.25rem)]">
       <ScreenHeader fallback={backFallback} label="Back to profile" title="Closet" />
       {count !== null && (
         <p className="mb-4 mt-1 font-body text-xs text-muted tabular-nums" data-testid="closet-screen-count">
@@ -66,7 +66,7 @@ export function PlayerClosetScreen({ uid, backFallback }: Props) {
                 setLoad({ state: "loading" });
                 setAttempt((n) => n + 1);
               }}
-              className="mt-2 min-h-11 rounded-lg px-3 font-display text-xs tracking-wider text-brand-orange hover:text-white focus-visible:outline-2 focus-visible:outline-brand-orange"
+              className="mt-2 min-h-11 rounded-lg px-3 font-display text-sm tracking-wider text-brand-orange hover:text-white focus-visible:outline-2 focus-visible:outline-brand-orange"
             >
               Try again
             </button>

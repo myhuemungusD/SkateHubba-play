@@ -51,7 +51,7 @@ function SkaterSearchResults({
           <button
             type="button"
             onClick={() => onChallengeUser(query)}
-            className="mt-2 min-h-[44px] inline-flex items-center rounded-lg px-1 font-display text-xs tracking-wider text-brand-orange hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            className="mt-2 min-h-[44px] inline-flex items-center rounded-lg px-1 font-display text-sm tracking-wider text-brand-orange hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             aria-label={`Challenge @${query}`}
           >
             Challenge @{query} →

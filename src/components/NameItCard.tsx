@@ -59,7 +59,7 @@ export function NameItCard({ item, onAnswer, onSkip, disabled = false }: Props) 
         </div>
       ) : (
         <div className="bg-black/90 backdrop-blur-md rounded-2xl p-4">
-          <p className="font-display text-xs tracking-wider text-brand-orange text-center mb-3">WHAT'S THAT TRICK?</p>
+          <p className="font-display text-sm tracking-wider text-brand-orange text-center mb-3">WHAT'S THAT TRICK?</p>
           <div className="grid grid-cols-2 gap-2 mb-3">
             {item.options.map((trickId) => (
               <button

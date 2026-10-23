@@ -125,7 +125,9 @@ test("landing chrome stays put in Safari and Chrome iOS and clears the bar in th
   }
 });
 
-test("lobby Sign Out stays fully below the Google app bar and matches Safari in Chrome iOS", async ({ browser }) => {
+test("lobby Settings button stays fully below the Google app bar and matches Safari in Chrome iOS", async ({
+  browser,
+}) => {
   test.setTimeout(180_000);
   const signY = new Map<string, number>();
   const pad = new Map<string, number>();
@@ -135,8 +137,10 @@ test("lobby Sign Out stays fully below the Google app bar and matches Safari in 
     await signUpAndSetupProfile(page, `${agent.name}-overlay@test.com`, "password123", `${agent.name}overlay`);
     for (const phone of PHONES) {
       await page.setViewportSize({ width: phone.width, height: phone.height });
-      const signOut = page.getByRole("button", { name: "Sign Out" });
-      await expect(signOut).toBeVisible();
+      // Sign Out moved into Settings (design audit #2); the header's
+      // trailing control is now the Settings gear.
+      const settingsBtn = page.getByRole("button", { name: "Settings" });
+      await expect(settingsBtn).toBeVisible();
       // The lobby tour scrolls its anchor into view. On the Google app the
       // extra top padding makes that scroll non-zero, which would hide the
       // header the same way a real scroll does. Measure at rest, tour closed.
@@ -150,18 +154,16 @@ test("lobby Sign Out stays fully below the Google app bar and matches Safari in 
       });
       await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
       const metrics = await page.evaluate(() => {
-        const signOutButton = Array.from(document.querySelectorAll("button")).find(
-          (el) => el.textContent?.trim() === "Sign Out",
-        );
-        const header = signOutButton?.closest(".pt-safe") ?? signOutButton;
-        const buttonBox = signOutButton?.getBoundingClientRect();
+        const settingsButton = document.querySelector<HTMLButtonElement>('button[aria-label="Settings"]');
+        const header = settingsButton?.closest(".pt-safe") ?? settingsButton;
+        const buttonBox = settingsButton?.getBoundingClientRect();
         const headerBox = header?.getBoundingClientRect();
         return {
           buttonY: buttonBox?.top ?? -1,
           buttonBottom: buttonBox?.bottom ?? -1,
           headerTop: headerBox?.top ?? -1,
           pad: parseFloat(getComputedStyle(document.body).paddingTop) || 0,
-          found: Boolean(signOutButton),
+          found: Boolean(settingsButton),
         };
       });
       expect(metrics.found).toBe(true);

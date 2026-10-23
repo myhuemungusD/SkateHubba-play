@@ -55,7 +55,7 @@ describe("ProToolsScreen", () => {
     expect(screen.queryByRole("note")).toBeNull();
     // The only button is Back: placeholders write nothing.
     expect(screen.getAllByRole("button")).toHaveLength(1);
-    await userEvent.click(screen.getByRole("button", { name: /BACK/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(onBack).toHaveBeenCalled();
   });
 

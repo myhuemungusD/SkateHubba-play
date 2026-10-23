@@ -140,7 +140,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
           {/* ── Phone Contacts (Contact Picker browsers only) ── */}
           {contactPicker && (
             <div>
-              <h4 className="font-display text-[11px] tracking-[0.2em] text-subtle mb-2">TEXT A FRIEND</h4>
+              <h4 className="font-display text-sm tracking-[0.2em] text-subtle mb-2">TEXT A FRIEND</h4>
               <button
                 type="button"
                 onClick={() => void handleContacts(contactPicker)}
@@ -174,7 +174,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
 
           {/* ── Social Media ── */}
           <div>
-            <h4 className="font-display text-[11px] tracking-[0.2em] text-subtle mb-2">SHARE ON SOCIALS</h4>
+            <h4 className="font-display text-sm tracking-[0.2em] text-subtle mb-2">SHARE ON SOCIALS</h4>
             <div className="grid grid-cols-3 gap-2">
               {socials.map((s) => (
                 <a

@@ -1,5 +1,8 @@
 import { useId, type ReactNode } from "react";
 
+/** Form label type: 13px DM Sans, sentence case (design audit #7, Auth). Shared by every form label. */
+export const FIELD_LABEL = "font-body text-caption font-semibold text-muted";
+
 export function Field({
   label,
   value,
@@ -53,7 +56,7 @@ export function Field({
   return (
     <div className="mb-4 w-full">
       {label && (
-        <label htmlFor={id} className="block font-display text-sm tracking-[0.12em] text-dim mb-2">
+        <label htmlFor={id} className={`block ${FIELD_LABEL} mb-2`}>
           {label}
         </label>
       )}

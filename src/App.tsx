@@ -125,7 +125,7 @@ function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
       <button
         type="button"
         onClick={onBack}
-        className="px-6 py-3 rounded-xl bg-brand-orange text-[#1a1a1a] font-display tracking-wider focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+        className="px-6 py-3 rounded-xl bg-brand-orange text-surface-alt font-display tracking-wider focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
       >
         Back to Lobby
       </button>
@@ -491,7 +491,7 @@ function AppRoutes() {
       )}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:rounded-xl focus:bg-brand-orange focus:text-[#1a1a1a] focus:font-display focus:tracking-wider focus:outline-none"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:rounded-xl focus:bg-brand-orange focus:text-surface-alt focus:font-display focus:tracking-wider focus:outline-none"
       >
         Skip to main content
       </a>
@@ -586,7 +586,6 @@ function AppRoutes() {
                       nav.setScreen("challenge");
                     }}
                     onOpenGame={game.openGame}
-                    onSignOut={auth.handleSignOut}
                     onViewRecord={() => nav.setScreen("me")}
                     onOpenSettings={() => navigate("/settings")}
                     hasMoreGames={game.hasMoreGames}
@@ -826,6 +825,7 @@ function AppRoutes() {
                     onBack={backOr("/me")}
                     onDownloadData={auth.handleDownloadData}
                     onDeleteAccount={auth.handleDeleteAccount}
+                    onSignOut={auth.handleSignOut}
                   />
                 ) : (
                   <Navigate to="/" replace />

@@ -113,10 +113,13 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
         <div className="absolute inset-0 pointer-events-none bg-hero-glow" />
 
         <div
-          className={`relative max-w-6xl mx-auto px-6 flex flex-col items-center text-center${animateHero ? " hero-stagger" : ""}`}
+          className={`relative max-w-6xl mx-auto px-6 flex flex-col items-center text-center lg:grid lg:grid-cols-[1.25fr_1fr] lg:gap-x-16 lg:items-center lg:text-left${animateHero ? " hero-stagger" : ""}`}
         >
-          {/* Badge */}
-          <span className="landing-kicker inline-flex items-center gap-2 font-body text-xs tracking-wide text-brand-orange/80 border border-brand-orange/15 rounded-full px-4 py-1.5 mb-8 backdrop-blur-sm">
+          {/* Badge. From 1024px the hero is two columns (design audit #13):
+              badge, headline and subtitle on the left, sign-in on the right,
+              placed with grid rows so the stagger animation's children stay
+              direct descendants. */}
+          <span className="landing-kicker lg:justify-self-start inline-flex items-center gap-2 font-body text-xs tracking-wide text-brand-orange/80 border border-brand-orange/15 rounded-full px-4 py-1.5 mb-8 backdrop-blur-sm">
             <span className="w-1.5 h-1.5 rounded-full bg-brand-orange animate-rec-pulse" />
             Free to play
           </span>
@@ -142,7 +145,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
           {/* Auth Buttons — Google is the primary path; email options sit
               below as a quieter secondary row so returning users still have
               an explicit "Sign in" entry without competing with the brand CTA. */}
-          <div className="w-full max-w-sm flex flex-col gap-3">
+          <div className="w-full max-w-sm flex flex-col gap-3 lg:col-start-2 lg:row-span-3 lg:row-start-1 lg:justify-self-end">
             {appleOn ? <AppleButton onClick={handleApple} loading={appleLoading} disabled={googleLoading} /> : null}
             <GoogleButton onClick={handleGoogle} loading={googleLoading} disabled={appleOn && appleLoading} />
             <div
@@ -210,7 +213,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
                 <span className="w-2 h-2 rounded-full bg-brand-red animate-rec-pulse" />
                 <span className="font-body text-xs text-white/70">Real game. No edits. No cap.</span>
               </div>
-              <span className="font-display text-xs tracking-widest text-white/30">SKATEHUBBA</span>
+              <span className="font-display text-sm tracking-widest text-white/30">SKATEHUBBA</span>
             </div>
           </div>
         </div>
@@ -223,14 +226,14 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
         className="max-w-6xl mx-auto px-6 py-16 md:py-28 scroll-mt-20"
       >
         <div className="text-center mb-14 md:mb-20">
-          <span className="font-display text-xs tracking-[0.3em] text-brand-orange/80 mb-3 block">THE DEAL</span>
+          <span className="font-display text-sm tracking-[0.3em] text-brand-orange/80 mb-3 block">THE DEAL</span>
           <h2 className="font-display text-fluid-3xl text-white tracking-wider">HOW IT WORKS</h2>
         </div>
 
         {/* Steps with connecting line on desktop */}
         <div className="relative">
           {/* Connecting line (desktop only) */}
-          <div className="hidden md:block absolute top-8 left-[16.67%] right-[16.67%] h-px bg-gradient-to-r from-[#FF6B00]/20 via-[#FF8533]/20 to-[#FFA366]/20" />
+          <div className="hidden md:block absolute top-8 left-[16.67%] right-[16.67%] h-px bg-gradient-to-r from-brand-orange/20 via-brand-orange-hover/20 to-[#FFA366]/20" />
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-6">
             {HOW_IT_WORKS.map((item) => (
@@ -259,13 +262,13 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
               <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-16 h-4 bg-background rounded-full z-10" />
               {/* Screen content */}
               <div className="absolute inset-3 top-8 rounded-2xl bg-[#0D0D0D] flex flex-col items-center justify-center gap-3 p-4">
-                <span className="font-display text-xs tracking-[0.25em] text-brand-orange/80">GAME ON</span>
+                <span className="font-display text-sm tracking-[0.25em] text-brand-orange/80">GAME ON</span>
                 <div className="flex gap-1.5">
                   {["S", "K", "A", "T", "E"].map((l, i) => (
                     <span
                       key={l}
                       className={`font-display text-xl ${
-                        i < 2 ? "text-[#FF3D00] [text-shadow:0_0_8px_rgba(255,61,0,0.4)]" : "text-[#222]"
+                        i < 2 ? "text-brand-red [text-shadow:0_0_8px_rgba(255,61,0,0.4)]" : "text-[#222]"
                       }`}
                     >
                       {l}
@@ -276,11 +279,11 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
                   <span className="font-body text-xs text-[#8a8a8a]">trick video</span>
                 </div>
                 <div className="flex gap-2 w-full">
-                  <div className="flex-1 h-8 rounded-lg bg-gradient-to-r from-brand-orange to-[#FF8533] flex items-center justify-center">
-                    <span className="font-display text-[11px] text-white tracking-wider">LANDED</span>
+                  <div className="flex-1 h-8 rounded-lg bg-gradient-to-r from-brand-orange to-brand-orange-hover flex items-center justify-center">
+                    <span className="font-display text-sm text-white tracking-wider">LANDED</span>
                   </div>
                   <div className="flex-1 h-8 rounded-lg bg-[#161616] border border-white/[0.06] flex items-center justify-center">
-                    <span className="font-display text-[11px] text-faint tracking-wider">MISSED</span>
+                    <span className="font-display text-sm text-faint tracking-wider">MISSED</span>
                   </div>
                 </div>
               </div>
@@ -292,7 +295,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
 
           {/* Text content */}
           <div className="flex-1 text-center md:text-left">
-            <span className="font-display text-xs tracking-[0.3em] text-brand-orange/80 mb-4 block">THE GAME</span>
+            <span className="font-display text-sm tracking-[0.3em] text-brand-orange/80 mb-4 block">THE GAME</span>
             <h2 className="font-display text-fluid-3xl text-white tracking-wider mb-4 leading-[1.1]">
               NO EDITS.
               <br />
@@ -322,7 +325,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, 
       {/* ─── Features Grid ──────────────────────────────── */}
       <section id="features" aria-label="Features" className="max-w-6xl mx-auto px-6 py-16 md:py-28 scroll-mt-20">
         <div className="text-center mb-14 md:mb-20">
-          <span className="font-display text-xs tracking-[0.3em] text-brand-orange/80 mb-3 block">WHAT YOU GET</span>
+          <span className="font-display text-sm tracking-[0.3em] text-brand-orange/80 mb-3 block">WHAT YOU GET</span>
           <h2 className="font-display text-fluid-3xl text-white tracking-wider">BUILT DIFFERENT</h2>
         </div>
 

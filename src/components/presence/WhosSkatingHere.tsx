@@ -62,7 +62,7 @@ export function WhosSkatingHere({ spot }: { spot: { id: string; name: string } }
                 type="button"
                 disabled={!meHere}
                 onClick={() => navigate(`/challenge?spot=${spot.id}&here=1&to=${encodeURIComponent(s.username)}`)}
-                className="shrink-0 min-h-9 px-3 rounded-lg bg-[#F97316] text-white text-xs font-semibold disabled:opacity-50"
+                className="shrink-0 min-h-9 px-3 rounded-lg bg-brand-orange text-black text-xs font-semibold disabled:opacity-50"
                 aria-label={`Challenge @${s.username}`}
               >
                 Challenge

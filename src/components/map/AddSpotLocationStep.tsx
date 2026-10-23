@@ -57,7 +57,7 @@ export function AddSpotLocationStep({ userLocation, pinLatText, pinLngText, onLa
               onLat(String(userLocation.lat), userLocation.lat);
               onLng(String(userLocation.lng), userLocation.lng);
             }}
-            className="mt-3 text-xs text-[#F97316] hover:underline"
+            className="mt-3 text-xs text-brand-orange hover:underline"
           >
             Use my current location
           </button>
@@ -67,8 +67,8 @@ export function AddSpotLocationStep({ userLocation, pinLatText, pinLngText, onLa
       <button
         type="button"
         onClick={onNext}
-        className="w-full py-2.5 rounded-xl bg-[#F97316] text-white font-semibold text-sm
-                   hover:bg-[#EA580C] transition-colors"
+        className="w-full py-2.5 rounded-xl bg-brand-orange text-black font-semibold text-sm
+                   hover:bg-brand-orange-hover transition-colors"
       >
         Next
       </button>

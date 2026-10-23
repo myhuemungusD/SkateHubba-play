@@ -57,8 +57,8 @@ class MapErrorBoundary extends Component<{ children: ReactNode; onReset?: () => 
               <button
                 type="button"
                 onClick={this.handleReset}
-                className="min-h-[44px] px-6 bg-[#F97316] text-white rounded-xl font-semibold text-sm
-                           hover:bg-[#EA580C] transition-colors"
+                className="min-h-[44px] px-6 bg-brand-orange text-black rounded-xl font-semibold text-sm
+                           hover:bg-brand-orange-hover transition-colors"
               >
                 Try again
               </button>

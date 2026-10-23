@@ -103,28 +103,28 @@ export function GameHistoryCard({ game, profileUid, expanded, onToggle, onOpenGa
       >
         <div className="min-w-0">
           <div className="flex items-center gap-2 mb-1.5">
-            <span className="font-display text-[17px] text-white leading-none truncate">
+            <span className="font-display text-[1.0625rem] text-white leading-none truncate">
               vs @{opponentName(game, profileUid)}
             </span>
             <span
-              className={`px-2 py-0.5 rounded font-display text-[11px] tracking-wider leading-none shrink-0 ${
+              className={`px-2 py-0.5 rounded font-display text-sm tracking-wider leading-none shrink-0 ${
                 won ? "bg-[rgba(0,230,118,0.15)] text-brand-green" : "bg-[rgba(255,61,0,0.15)] text-brand-red"
               }`}
             >
               {won ? "WIN" : "LOSS"}
             </span>
-            {game.status === "forfeit" && <span className="font-body text-[11px] text-subtle shrink-0">forfeit</span>}
+            {game.status === "forfeit" && <span className="font-body text-label text-subtle shrink-0">forfeit</span>}
           </div>
           <div className="flex items-center gap-3">
             <LetterScore count={playerLetterCount(game, profileUid)} label="You" />
-            <span className="font-body text-[11px] text-faint">vs</span>
+            <span className="font-body text-label text-faint">vs</span>
             <LetterScore count={opponentLetterCount(game, profileUid)} label="Them" />
             {game.updatedAt && (
               <>
                 <span className="text-[#2E2E2E]" aria-hidden="true">
                   ·
                 </span>
-                <span className="font-body text-[11px] text-subtle">{formatDate(game.updatedAt)}</span>
+                <span className="font-body text-label text-subtle">{formatDate(game.updatedAt)}</span>
               </>
             )}
           </div>

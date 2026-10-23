@@ -1,5 +1,6 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ImagePlus, Layers, Palette, Save } from "lucide-react";
+import { BackChevron } from "../../components/ScreenHeader";
+import { ImagePlus, Layers, Palette, Save } from "lucide-react";
 import { Avatar2D } from "../../components/Avatar2D";
 import { pushRecent } from "../../lib/closetStudio/color";
 import { StudioDoc, type BrushSettings } from "../../lib/closetStudio/engine";
@@ -179,14 +180,7 @@ export function ClosetStudioScreen({ uid, onBack }: Props) {
 
   const header = (
     <div className="mb-4 flex items-center gap-3">
-      <button
-        type="button"
-        onClick={onBack}
-        aria-label="Back"
-        className="-ml-2 inline-flex min-h-11 min-w-11 items-center justify-center text-white"
-      >
-        <ArrowLeft size={22} aria-hidden="true" />
-      </button>
+      <BackChevron onClick={onBack} />
       <h1 className="font-display text-2xl tracking-wide text-white">Closet Studio</h1>
     </div>
   );
@@ -269,7 +263,7 @@ export function ClosetStudioScreen({ uid, onBack }: Props) {
               <p className="font-body text-xs text-subtle">Live preview</p>
               {credit && (
                 <p
-                  className="font-body text-[11px] uppercase tracking-wider text-brand-orange"
+                  className="font-body text-label uppercase tracking-wider text-brand-orange"
                   data-testid="studio-credit"
                 >
                   {credit}

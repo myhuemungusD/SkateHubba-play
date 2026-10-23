@@ -150,7 +150,7 @@ export function SpotFilterBar({
           className={`relative h-10 min-w-[40px] px-3 rounded-xl border flex items-center justify-center
                       transition-colors ${
                         active > 0
-                          ? "bg-[#F97316] border-[#F97316] text-white"
+                          ? "bg-brand-orange border-brand-orange text-black"
                           : "bg-surface-alt/95 backdrop-blur border-[#333] text-[#CCC] hover:bg-[#222]"
                       }`}
         >
@@ -189,7 +189,7 @@ export function SpotFilterBar({
             <button
               type="button"
               onClick={reset}
-              className="ml-2 text-[#F97316] hover:underline"
+              className="ml-2 text-brand-orange hover:underline"
               aria-label="Clear all filters"
             >
               Clear

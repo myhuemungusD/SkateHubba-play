@@ -34,7 +34,7 @@ describe("DataDeletion", () => {
   it("calls onBack when back button is clicked", async () => {
     const onBack = vi.fn();
     render(<DataDeletion onBack={onBack} />);
-    await userEvent.click(screen.getByText("← Back"));
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(onBack).toHaveBeenCalledOnce();
   });
 });

@@ -1,4 +1,4 @@
-import { ArrowLeft } from "lucide-react";
+import { BackChevron } from "../../components/ScreenHeader";
 import { ComingSoonCard } from "../../components/pro/ComingSoonCard";
 import { PRO_TOOLS } from "../../components/pro/proTools";
 import { BlessingHero } from "../../components/pro/BlessingHero";
@@ -56,16 +56,11 @@ interface ScreenProps {
 export function ProToolsScreen({ uid = null, reviewMode, onBack }: ScreenProps) {
   const username = useMyUsername(!reviewMode && isProCommunityEnabled() ? uid : null);
   return (
-    <div className="mx-auto min-h-dvh max-w-lg px-5 pb-24 pt-6" data-testid="pro-tools-screen">
-      <button
-        type="button"
-        onClick={onBack}
-        className="mb-4 flex min-h-[44px] items-center gap-2 font-display text-xs tracking-wider text-white/70 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-      >
-        <ArrowLeft size={16} aria-hidden="true" />
-        BACK
-      </button>
-      <span className="pro-username font-display text-[11px] tracking-[0.3em]">✦ PRO</span>
+    <div className="mx-auto min-h-dvh max-w-lg px-5 pb-tabbar pt-6" data-testid="pro-tools-screen">
+      <div className="mb-4">
+        <BackChevron onClick={onBack} />
+      </div>
+      <span className="pro-username font-display text-sm tracking-[0.3em]">✦ PRO</span>
       <h1 data-tutorial="pro-tools" className="mt-1 mb-2 font-display text-2xl tracking-wide text-white">
         Pro tools
       </h1>

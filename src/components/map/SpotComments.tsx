@@ -76,14 +76,14 @@ export function SpotComments({ spotId, comments, onPosted, viewer }: SpotComment
           onChange={(e) => setText(e.target.value)}
           placeholder="Add a comment…"
           className="flex-1 bg-surface-alt border border-[#333] rounded-lg px-3 py-2 text-white text-base
-                     placeholder:text-subtle focus:outline-none focus:border-[#F97316]"
+                     placeholder:text-subtle focus:outline-none focus:border-brand-orange"
         />
         <button
           type="button"
           onClick={() => void submit()}
           disabled={submitting || !text.trim()}
-          className="touch-target min-w-[44px] inline-flex items-center justify-center px-3 py-2 bg-[#F97316] text-white rounded-lg
-                     hover:bg-[#EA580C] disabled:opacity-40 disabled:cursor-not-allowed"
+          className="touch-target min-w-[44px] inline-flex items-center justify-center px-3 py-2 bg-brand-orange text-black rounded-lg
+                     hover:bg-brand-orange-hover disabled:opacity-40 disabled:cursor-not-allowed"
           aria-label="Send comment"
         >
           <Send size={16} />
@@ -115,7 +115,7 @@ export function SpotComments({ spotId, comments, onPosted, viewer }: SpotComment
                   type="button"
                   onClick={() => setReporting(c)}
                   aria-label={c.username ? `Report comment by @${c.username}` : "Report this comment"}
-                  className="mt-1 inline-flex min-h-[44px] items-center font-display text-[11px] tracking-[0.15em] text-faint transition-colors hover:text-brand-red focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+                  className="mt-1 inline-flex min-h-[44px] items-center font-display text-sm tracking-[0.15em] text-faint transition-colors hover:text-brand-red focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
                 >
                   REPORT
                 </button>

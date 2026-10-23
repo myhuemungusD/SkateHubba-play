@@ -57,7 +57,7 @@ export function CameraQualitySelector({ active }: { active: boolean }) {
         onClick={() => setOpen(!open)}
         className="h-11 px-3 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-sm transition-colors"
       >
-        <span className="font-display text-xs text-white tracking-wider">{QUALITY_LABELS[current]}</span>
+        <span className="font-display text-sm text-white tracking-wider">{QUALITY_LABELS[current]}</span>
       </button>
 
       {open && (

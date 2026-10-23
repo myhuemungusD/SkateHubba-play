@@ -36,7 +36,7 @@ export function SpotFilterPanel({ filters, onChange, active, toggleObstacle, res
                 aria-pressed={on}
                 className={`touch-target inline-flex items-center justify-center px-2.5 py-1 text-xs rounded-full border transition-colors ${
                   on
-                    ? "bg-[#F97316] border-[#F97316] text-white"
+                    ? "bg-brand-orange border-brand-orange text-black"
                     : "bg-transparent border-[#444] text-[#BBB] hover:border-[#666]"
                 }`}
               >
@@ -61,7 +61,7 @@ export function SpotFilterPanel({ filters, onChange, active, toggleObstacle, res
                 aria-pressed={on}
                 className={`touch-target inline-flex items-center justify-center px-3 py-1 text-xs rounded-full border transition-colors ${
                   on
-                    ? "bg-[#F97316] border-[#F97316] text-white"
+                    ? "bg-brand-orange border-brand-orange text-black"
                     : "bg-transparent border-[#444] text-[#BBB] hover:border-[#666]"
                 }`}
               >
@@ -84,7 +84,7 @@ export function SpotFilterPanel({ filters, onChange, active, toggleObstacle, res
           aria-checked={filters.verifiedOnly}
           onClick={() => onChange({ ...filters, verifiedOnly: !filters.verifiedOnly })}
           className={`relative w-10 h-6 rounded-full transition-colors ${
-            filters.verifiedOnly ? "bg-[#F97316]" : "bg-[#333]"
+            filters.verifiedOnly ? "bg-brand-orange" : "bg-[#333]"
           }`}
         >
           <span
@@ -109,7 +109,7 @@ export function SpotFilterPanel({ filters, onChange, active, toggleObstacle, res
         <button
           type="button"
           onClick={onDone}
-          className="touch-target inline-flex items-center justify-center px-4 py-1.5 text-xs rounded-lg bg-[#F97316] text-white font-semibold hover:bg-[#EA580C]"
+          className="touch-target inline-flex items-center justify-center px-4 py-1.5 text-xs rounded-lg bg-brand-orange text-black font-semibold hover:bg-brand-orange-hover"
         >
           Done
         </button>

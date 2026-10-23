@@ -76,7 +76,7 @@ export function ReportRow({
       )}
 
       {report.clipId && (
-        <p data-testid={`report-clip-${report.id}`} className="mt-2 font-mono text-[11px] break-all text-subtle">
+        <p data-testid={`report-clip-${report.id}`} className="mt-2 font-mono text-label break-all text-subtle">
           clip {report.clipId}
         </p>
       )}
@@ -88,7 +88,7 @@ export function ReportRow({
           data-testid={`report-comment-${report.id}`}
           className="mt-2 rounded-lg border border-brand-red/30 bg-surface-alt/60 p-2 font-body text-xs leading-relaxed break-words whitespace-pre-wrap text-white/90"
         >
-          <span className="font-display text-[10px] tracking-[0.15em] text-brand-red">COMMENT </span>
+          <span className="font-display text-sm tracking-[0.15em] text-brand-red">COMMENT </span>
           {report.commentText || "(text not captured)"}
         </p>
       )}
@@ -106,13 +106,13 @@ export function ReportRow({
       )}
 
       {report.spotId && (
-        <p data-testid={`report-spot-${report.id}`} className="mt-2 font-mono text-[11px] break-all text-subtle">
+        <p data-testid={`report-spot-${report.id}`} className="mt-2 font-mono text-label break-all text-subtle">
           spot {report.spotId}
         </p>
       )}
 
       {report.disputeId && (
-        <p data-testid={`report-dispute-${report.id}`} className="mt-2 font-mono text-[11px] break-all text-subtle">
+        <p data-testid={`report-dispute-${report.id}`} className="mt-2 font-mono text-label break-all text-subtle">
           dispute {report.disputeId}
         </p>
       )}
@@ -121,7 +121,7 @@ export function ReportRow({
           row says "feed clip" instead of "game null" — an operator reading a
           literal null has to go and find out whether it means "no game" or
           "we lost the field". */}
-      <p className="mt-1 font-body text-[11px] break-all text-faint">
+      <p className="mt-1 font-body text-label break-all text-faint">
         {relativeAge(report.createdAt)} · {provenance(report)} · reporter {report.reporterUid}
       </p>
 
@@ -130,7 +130,7 @@ export function ReportRow({
           "unknown" rather than being hidden, so the verdict itself is never
           silently dropped from the row. */}
       {report.status !== "pending" && (
-        <p data-testid={`report-resolution-${report.id}`} className="mt-1 font-body text-[11px] break-all text-faint">
+        <p data-testid={`report-resolution-${report.id}`} className="mt-1 font-body text-label break-all text-faint">
           {report.status} by {report.resolvedBy || "unknown"} · {relativeAge(report.resolvedAt)}
         </p>
       )}

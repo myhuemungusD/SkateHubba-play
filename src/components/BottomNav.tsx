@@ -115,7 +115,7 @@ export function BottomNav() {
                         ? // Raised filled disc: Challenge is the only creation
                           // action in the app, so it carries the visual weight
                           // of a FAB while staying a plain tab <Link>.
-                          "relative inline-flex items-center justify-center -mt-5 w-11 h-11 rounded-full bg-brand-orange text-[#1a1a1a] shadow-glow-sm ring-4 ring-background/80"
+                          "relative inline-flex items-center justify-center -mt-5 w-11 h-11 rounded-full bg-brand-orange text-surface-alt shadow-glow-sm ring-4 ring-background/80"
                         : "relative inline-flex"
                     }
                   >
@@ -136,7 +136,7 @@ export function BottomNav() {
                     {badgeCount > 0 && (
                       <span
                         aria-hidden="true"
-                        className="absolute -top-1 -right-2 min-w-[17px] h-[17px] px-1 flex items-center justify-center rounded-full bg-brand-orange font-display text-[11px] text-[#1a1a1a] leading-none tabular-nums"
+                        className="absolute -top-1 -right-2 min-w-[17px] h-[17px] px-1 flex items-center justify-center rounded-full bg-brand-orange font-display text-sm text-surface-alt leading-none tabular-nums"
                       >
                         {badgeCount > 9 ? "9+" : badgeCount}
                       </span>
@@ -145,9 +145,7 @@ export function BottomNav() {
                   {/* Tracking is tighter than the 0.15em used elsewhere purely
                       so five labels (incl. "Challenge") fit a 320px viewport
                       without wrapping. Font size is unchanged. */}
-                  <span className="font-display text-[11px] tracking-[0.05em] leading-none uppercase">
-                    {item.label}
-                  </span>
+                  <span className="font-display text-sm tracking-[0.05em] leading-none uppercase">{item.label}</span>
                   {active && (
                     <span
                       className="absolute bottom-1 h-[3px] w-8 rounded-full bg-brand-orange shadow-glow-sm"

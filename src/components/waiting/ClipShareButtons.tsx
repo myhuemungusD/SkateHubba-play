@@ -84,7 +84,7 @@ export function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; tr
         type="button"
         onClick={handleSave}
         disabled={saveStatus === "saving"}
-        className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border font-display text-xs tracking-wider transition-colors disabled:opacity-50 ${
+        className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border font-display text-sm tracking-wider transition-colors disabled:opacity-50 ${
           saveStatus === "saved"
             ? "border-brand-green text-brand-green"
             : saveStatus === "failed"
@@ -113,7 +113,7 @@ export function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; tr
         type="button"
         onClick={handleShare}
         disabled={shareStatus === "sharing"}
-        className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border font-display text-xs tracking-wider transition-colors disabled:opacity-50 ${
+        className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border font-display text-sm tracking-wider transition-colors disabled:opacity-50 ${
           shareStatus === "shared"
             ? "border-brand-green text-brand-green"
             : shareStatus === "failed"

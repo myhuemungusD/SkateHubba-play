@@ -1,5 +1,5 @@
 import type { UserProfile } from "../../services/users";
-import { ChevronLeftIcon } from "../../components/icons";
+import { BackChevron } from "../../components/ScreenHeader";
 import { deriveMyStats } from "./deriveMyStats";
 
 /**
@@ -30,7 +30,7 @@ interface Props {
 const UNAVAILABLE = "—";
 
 function SectionLabel({ title }: { title: string }) {
-  return <p className="font-display text-[11px] tracking-[0.2em] text-brand-orange mb-2.5 mt-6 first:mt-0">{title}</p>;
+  return <p className="font-display text-sm tracking-[0.2em] text-brand-orange mb-2.5 mt-6 first:mt-0">{title}</p>;
 }
 
 /**
@@ -45,7 +45,7 @@ function Metric({ label, value, suffix }: { label: string; value: string | numbe
       <p className={`font-display text-xl leading-none tabular-nums ${value === null ? "text-subtle" : "text-white"}`}>
         {shown}
       </p>
-      <p className="font-body text-[11px] uppercase tracking-wider text-subtle mt-1.5">{label}</p>
+      <p className="font-body text-label uppercase tracking-wider text-subtle mt-1.5">{label}</p>
     </div>
   );
 }
@@ -62,17 +62,9 @@ export function MyStatsScreen({ profile, onBack }: Props) {
   const s = deriveMyStats(profile);
 
   return (
-    <div className="min-h-dvh pb-24 overflow-y-auto bg-profile-glow">
+    <div className="min-h-dvh pb-tabbar overflow-y-auto bg-profile-glow">
       <div className="px-5 pt-safe pb-4 flex justify-between items-center border-b border-white/[0.04] glass">
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex items-center gap-2 touch-target text-muted hover:text-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange rounded-lg"
-          aria-label="Back to profile"
-        >
-          <ChevronLeftIcon size={16} />
-          <span className="font-body text-xs">Profile</span>
-        </button>
+        <BackChevron onClick={onBack} label="Back to profile" />
         <img
           src="/logonew.webp"
           alt=""

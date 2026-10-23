@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { CircleHelp } from "lucide-react";
 import { ScreenHeader } from "../../components/ScreenHeader";
-import { ConfirmSheet } from "../../components/dice/ConfirmSheet";
+import { ConfirmSheet } from "../../components/ui/ConfirmSheet";
 import { DiceSpot } from "../../components/dice/DiceSpot";
 import { MatchResult } from "../../components/dice/MatchResult";
 import { RoundLog, handName } from "../../components/dice/RoundLog";

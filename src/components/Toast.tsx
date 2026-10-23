@@ -111,7 +111,7 @@ export function Toast({ notification, onDismiss }: { notification: AppNotificati
             type="button"
             onClick={runAction}
             onPointerDown={(e) => e.stopPropagation()}
-            className="touch-target mt-2 inline-flex items-center justify-center min-h-[44px] font-display text-[11px] tracking-wider text-brand-orange border border-brand-orange/40 rounded-xl px-3.5 py-1.5 hover:bg-brand-orange/[0.08] hover:border-brand-orange/60 active:scale-[0.97] transition-all duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            className="touch-target mt-2 inline-flex items-center justify-center min-h-[44px] font-display text-sm tracking-wider text-brand-orange border border-brand-orange/40 rounded-xl px-3.5 py-1.5 hover:bg-brand-orange/[0.08] hover:border-brand-orange/60 active:scale-[0.97] transition-all duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
             {action.label}
           </button>

@@ -49,7 +49,7 @@ export function BlessingHero({ uid, live }: { uid: string | null; live: boolean 
       {!live && <p className="mt-3 font-body text-xs text-amber-100/80">Preview: put-ons turn on for testers first.</p>}
       {mine.length > 0 && (
         <div className="mt-4 border-t border-white/10 pt-3">
-          <p className="mb-2 font-display text-[11px] tracking-wider text-white/60">YOUR PUT-ONS</p>
+          <p className="mb-2 font-display text-sm tracking-wider text-white/60">YOUR PUT-ONS</p>
           <ul className="space-y-1">
             {mine.map((b) => (
               <li key={b.id} className="flex justify-between font-body text-sm text-white/85">

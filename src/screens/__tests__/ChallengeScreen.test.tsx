@@ -165,7 +165,7 @@ describe("ChallengeScreen", () => {
     const onBack = vi.fn();
     renderWithRouter(<ChallengeScreen {...defaultProps} onBack={onBack} />);
 
-    await userEvent.click(screen.getByText("← Back"));
+    await userEvent.click(screen.getByRole("button", { name: "Back to lobby" }));
     expect(onBack).toHaveBeenCalled();
   });
 

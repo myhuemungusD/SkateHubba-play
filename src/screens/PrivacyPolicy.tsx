@@ -5,6 +5,7 @@ import { ProcessorsSection } from "../components/legal/ProcessorsSection";
 import { RetentionSection } from "../components/legal/RetentionSection";
 import { TrickTrainingSection } from "../components/legal/TrickTrainingSection";
 import { Btn } from "../components/ui/Btn";
+import { LegalTopBar } from "../components/legal/LegalTopBar";
 import type { Screen } from "../context/NavigationContext";
 
 const EFFECTIVE_DATE = "October 22, 2026";
@@ -13,16 +14,7 @@ const CONTACT_EMAIL = "privacy@skatehubba.com";
 export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (s: Screen) => void }) {
   return (
     <div className="min-h-dvh bg-background/90 text-white">
-      <div className="px-5 pt-safe pb-4 border-b border-[#222] flex items-center gap-4">
-        {/* Btn is w-full. In this row that width is the whole header, which
-            pushes the logo past the viewport. w-fit sizes the control to its label. */}
-        <div className="w-fit shrink-0">
-          <Btn onClick={onBack} variant="ghost">
-            ← Back
-          </Btn>
-        </div>
-        <img src="/logonew.webp" alt="" draggable={false} className="h-6 w-auto select-none" aria-hidden="true" />
-      </div>
+      <LegalTopBar onBack={onBack} />
 
       <article className="max-w-2xl mx-auto px-5 py-8 prose-invert">
         <h1 className="font-display text-4xl text-white mb-1">Privacy Policy</h1>
@@ -196,7 +188,11 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
           {onNav && (
             <p>
               For more details, see our{" "}
-              <button type="button" onClick={() => onNav("datadeletion")} className="text-brand-orange hover:underline">
+              <button
+                type="button"
+                onClick={() => onNav("datadeletion")}
+                className="py-2.5 -my-2.5 text-brand-orange hover:underline"
+              >
                 Data Deletion page
               </button>
               .
@@ -229,7 +225,7 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
 
       <div className="px-5 pb-12 flex justify-center">
         <Btn onClick={onBack} variant="ghost">
-          ← Back to App
+          Back to app
         </Btn>
       </div>
     </div>

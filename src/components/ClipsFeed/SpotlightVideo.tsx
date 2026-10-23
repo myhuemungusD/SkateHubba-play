@@ -223,7 +223,7 @@ function SpotlightVideoImpl({ src, active = true, mediaLabel, muted: mutedProp, 
           role="alert"
           className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black/70 p-4 backdrop-blur-sm"
         >
-          <p className="font-display text-[11px] tracking-[0.2em] text-white/70">Couldn&apos;t play this clip</p>
+          <p className="font-display text-sm tracking-[0.2em] text-white/70">Couldn&apos;t play this clip</p>
           <button
             type="button"
             onClick={handleRetry}

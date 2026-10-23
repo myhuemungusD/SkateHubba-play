@@ -34,6 +34,7 @@
 
   /* ── Colors ──────────────────────────────────────── */
   --color-brand-orange: #ff6b00;
+  --color-brand-orange-hover: #ff8533;
   --color-brand-green: #00e676;
   --color-brand-red: #ff3d00;
 
@@ -57,15 +58,26 @@
   --font-body: "DM Sans", sans-serif;
 
   /* ── Font sizes (fluid type scale) ───────────────── */
-  --font-size-fluid-xs: clamp(0.7rem, 0.65rem + 0.25vw, 0.8rem);
-  --font-size-fluid-sm: clamp(0.8rem, 0.75rem + 0.3vw, 0.95rem);
-  --font-size-fluid-base: clamp(0.9rem, 0.85rem + 0.35vw, 1.1rem);
-  --font-size-fluid-lg: clamp(1.1rem, 1rem + 0.5vw, 1.35rem);
-  --font-size-fluid-xl: clamp(1.25rem, 1.1rem + 0.75vw, 1.75rem);
-  --font-size-fluid-2xl: clamp(1.5rem, 1.2rem + 1.5vw, 2.5rem);
-  --font-size-fluid-3xl: clamp(1.875rem, 1.5rem + 2vw, 3.25rem);
-  --font-size-fluid-4xl: clamp(2.25rem, 1.75rem + 2.5vw, 4rem);
-  --font-size-fluid-hero: clamp(2.75rem, 2rem + 3.5vw, 5rem);
+  /* Tailwind v4 only turns the `--text-*` namespace into `text-*` utilities.
+     These used to be `--text-fluid-*`, which generated nothing, so every
+     `text-fluid-*` heading silently fell back to 16px (design audit, Auth). */
+  --text-fluid-xs: clamp(0.7rem, 0.65rem + 0.25vw, 0.8rem);
+  --text-fluid-sm: clamp(0.8rem, 0.75rem + 0.3vw, 0.95rem);
+  --text-fluid-base: clamp(0.9rem, 0.85rem + 0.35vw, 1.1rem);
+  --text-fluid-lg: clamp(1.1rem, 1rem + 0.5vw, 1.35rem);
+  --text-fluid-xl: clamp(1.25rem, 1.1rem + 0.75vw, 1.75rem);
+  --text-fluid-2xl: clamp(1.5rem, 1.2rem + 1.5vw, 2.5rem);
+  --text-fluid-3xl: clamp(1.875rem, 1.5rem + 2vw, 3.25rem);
+  --text-fluid-4xl: clamp(2.25rem, 1.75rem + 2.5vw, 4rem);
+  --text-fluid-hero: clamp(2.75rem, 2rem + 3.5vw, 5rem);
+
+  /* ── Fixed type floor (rem, so Dynamic Type scales it) ── */
+  /* `text-label` is the smallest size in the app (micro labels, captions,
+     pills). Bebas display text never goes below text-sm (14px). */
+  --text-label: 0.75rem;
+  --text-label--line-height: 1rem;
+  --text-caption: 0.8125rem;
+  --text-caption--line-height: 1.125rem;
 
   /* ── Box shadows ─────────────────────────────────── */
   --shadow-glow-sm: 0 0 15px rgba(255, 107, 0, 0.15), 0 0 4px rgba(255, 107, 0, 0.08);
@@ -95,7 +107,6 @@
   --radius-4xl: 2rem;
 
   /* ── Transition timing ───────────────────────────── */
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -256,6 +267,38 @@
     0 2px 4px rgba(0, 0, 0, 0.25),
     0 16px 48px rgba(0, 0, 0, 0.3),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* iOS grouped list (Settings). Rows inside a group lose their own card and
+   sit on one inset rounded surface with hairline dividers, the way iOS and
+   Instagram settings group related rows. */
+.settings-group {
+  border-radius: 1rem;
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.settings-group > .glass-card,
+.settings-group > * > .glass-card,
+.settings-group > .glass-card:hover,
+.settings-group > * > .glass-card:hover {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.settings-group > .rounded-2xl,
+.settings-group > * > .rounded-2xl {
+  border-radius: 0;
+}
+.settings-group > :is(.space-y-2, .space-y-3) > * {
+  margin-block: 0;
+}
+.settings-group > * + *,
+.settings-group > :is(.space-y-2, .space-y-3) > * + * {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 /* ── Grain overlay for depth ─────────────────────────── */
@@ -623,6 +666,16 @@
 .pb-safe {
   padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
 }
+/* Scroll padding for any screen that sits under the floating BottomNav.
+   --tabbar-h is the bar's own height (py-2 row of 44pt items plus its
+   bottom gap); the safe-area term matches the nav's own pb-safe, and the
+   extra 1rem keeps the last row from touching the bar. */
+:root {
+  --tabbar-h: 4.5rem;
+}
+.pb-tabbar {
+  padding-bottom: calc(var(--tabbar-h) + max(env(safe-area-inset-bottom), 0.75rem) + 1rem);
+}
 /* Pure env() without a minimum. Use on layouts that already have their own
    height (e.g. a fixed nav with h-14) so non-notched viewports are unchanged. */
 .pt-safe-inset {
@@ -856,6 +909,11 @@ input:-webkit-autofill {
   -webkit-text-fill-color: transparent;
   background-clip: text;
   animation: gold-shimmer 3s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pro-username {
+    animation: none;
+  }
 }
 
 @keyframes gold-shimmer {

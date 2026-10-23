@@ -49,7 +49,7 @@ export function PasswordStrengthMeter({
           />
         ))}
       </div>
-      <span className={`font-body text-[11px] ${TEXT_COLORS[strength]}`}>{label}</span>
+      <span className={`font-body text-label ${TEXT_COLORS[strength]}`}>{label}</span>
     </div>
   );
 }

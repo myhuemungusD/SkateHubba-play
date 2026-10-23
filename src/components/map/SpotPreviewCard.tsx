@@ -130,8 +130,8 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
                 so users coming in from a direct URL know why the card matters. */}
             {isActiveGame && (
               <div
-                className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold tracking-wide
-                           uppercase text-[#F97316]"
+                className="mt-1 inline-flex items-center gap-1 text-label font-semibold tracking-wide
+                           uppercase text-brand-orange"
                 data-testid="active-game-badge"
               >
                 <Flag size={10} aria-hidden="true" />
@@ -178,8 +178,8 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
           <button
             type="button"
             onClick={() => navigate(`/challenge?spot=${spot.id}`)}
-            className="mt-4 w-full py-2.5 rounded-xl bg-[#F97316] text-white font-semibold text-sm
-                     hover:bg-[#EA580C] transition-colors"
+            className="mt-4 w-full py-2.5 rounded-xl bg-brand-orange text-black font-semibold text-sm
+                     hover:bg-brand-orange-hover transition-colors"
           >
             Challenge from here
           </button>

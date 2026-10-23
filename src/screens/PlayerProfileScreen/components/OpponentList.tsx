@@ -36,7 +36,7 @@ export function OpponentList({ opponents, currentUserUid, isOwnProfile, onViewPl
             >
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-8 h-8 rounded-full bg-surface-alt border border-border flex items-center justify-center shrink-0">
-                  <span className="font-display text-[11px] text-brand-orange leading-none">
+                  <span className="font-display text-sm text-brand-orange leading-none">
                     {opp.username[0].toUpperCase()}
                   </span>
                 </div>
@@ -50,7 +50,7 @@ export function OpponentList({ opponents, currentUserUid, isOwnProfile, onViewPl
                     wins={opp.wins}
                     games={opp.totalGames}
                     caption="won"
-                    className="mt-1 block font-body text-[11px] text-white/80"
+                    className="mt-1 block font-body text-label text-white/80"
                     testId={`opponent-record-${opp.uid}`}
                   />
                 </div>
@@ -64,7 +64,7 @@ export function OpponentList({ opponents, currentUserUid, isOwnProfile, onViewPl
                 ) : opp.wins < opp.losses ? (
                   <SkullIcon size={16} className="text-brand-red" />
                 ) : (
-                  <span className="font-display text-[11px] tracking-wider text-subtle">EVEN</span>
+                  <span className="font-display text-sm tracking-wider text-subtle">EVEN</span>
                 )}
               </div>
             </Wrapper>

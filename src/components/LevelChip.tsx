@@ -20,7 +20,7 @@ export function LevelChip({ level }: Props) {
     <span
       role="img"
       aria-label={`Level ${shown}`}
-      className="inline-flex items-center justify-center px-2 py-0.5 rounded-md bg-brand-orange/[0.12] border border-brand-orange/30 font-display text-xs tracking-wider text-brand-orange leading-none tabular-nums"
+      className="inline-flex items-center justify-center px-2 py-0.5 rounded-md bg-brand-orange/[0.12] border border-brand-orange/30 font-display text-sm tracking-wider text-brand-orange leading-none tabular-nums"
     >
       L{shown}
     </span>

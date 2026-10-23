@@ -64,7 +64,7 @@ export function CustomizeAboutTab({ draft, set }: TabProps) {
               set("favoriteTricks", [...draft.favoriteTricks, newTrick.trim()]);
               setNewTrick("");
             }}
-            className="rounded-lg bg-white/10 px-3 font-display text-xs text-white disabled:opacity-40"
+            className="rounded-lg bg-white/10 px-3 font-display text-sm text-white disabled:opacity-40"
           >
             ADD
           </button>
@@ -118,13 +118,13 @@ export function CustomizeAboutTab({ draft, set }: TabProps) {
               set("links", [...draft.links, { label: newLink.label.trim(), url: newLink.url.trim() }]);
               setNewLink({ label: "", url: "" });
             }}
-            className="rounded-lg bg-white/10 px-3 font-display text-xs text-white disabled:opacity-40"
+            className="rounded-lg bg-white/10 px-3 font-display text-sm text-white disabled:opacity-40"
           >
             ADD
           </button>
         </div>
       )}
-      <p className="mb-5 font-body text-[11px] text-subtle">
+      <p className="mb-5 font-body text-label text-subtle">
         Instagram, TikTok, YouTube, X, Twitch, Spotify, SoundCloud, Linktree and shop sites.
       </p>
 
@@ -173,7 +173,7 @@ export function CustomizeAboutTab({ draft, set }: TabProps) {
               set("sponsors", [...draft.sponsors, { name: newSponsor.name.trim(), url: sponsorUrl }]);
               setNewSponsor({ name: "", url: "" });
             }}
-            className="rounded-lg bg-white/10 px-3 font-display text-xs text-white disabled:opacity-40"
+            className="rounded-lg bg-white/10 px-3 font-display text-sm text-white disabled:opacity-40"
           >
             ADD
           </button>

@@ -85,7 +85,7 @@ export const DisputeCard = memo(function DisputeCard({
       {active && (
         <>
           <div className={`absolute left-4 right-20 z-20 ${BELOW_HEADER}`}>
-            <p className="inline-flex max-w-full items-center gap-1.5 rounded-2xl border border-amber-400/40 bg-black/60 px-3 py-1.5 font-display text-[11px] leading-snug tracking-[0.14em] text-amber-300 backdrop-blur-sm">
+            <p className="inline-flex max-w-full items-center gap-1.5 rounded-2xl border border-amber-400/40 bg-black/60 px-3 py-1.5 font-display text-sm leading-snug tracking-[0.14em] text-amber-300 backdrop-blur-sm">
               <GavelIcon size={13} className="shrink-0 text-amber-300" />
               <span>Community call: Landed or bailed?</span>
             </p>
@@ -96,7 +96,7 @@ export const DisputeCard = memo(function DisputeCard({
               @{dispute.matcherUsername} says they landed @{dispute.setterUsername}&apos;s trick.{" "}
               <span className="whitespace-nowrap text-white">Did they?</span>
             </p>
-            <p className="mt-2 font-display text-[11px] tracking-[0.14em] text-white/80 tabular-nums">
+            <p className="mt-2 font-display text-sm tracking-[0.14em] text-white/80 tabular-nums">
               <span className={ownVerdict === "land" ? "text-brand-green" : "text-brand-green/80"}>
                 LAND {tally.land}
               </span>
@@ -107,7 +107,7 @@ export const DisputeCard = memo(function DisputeCard({
             </p>
             {deadline !== null && (
               <div className="mt-2 flex items-center gap-2">
-                <span className="font-body text-[11px] text-white/70">Time left</span>
+                <span className="font-body text-label text-white/70">Time left</span>
                 <Timer deadline={deadline} />
               </div>
             )}
@@ -120,7 +120,7 @@ export const DisputeCard = memo(function DisputeCard({
                 type="button"
                 onClick={() => onReport(dispute)}
                 aria-label={`Report @${dispute.matcherUsername}'s attempt`}
-                className="mt-3 inline-flex min-h-[44px] items-center gap-1.5 rounded-xl px-1 font-display text-[11px] tracking-[0.15em] text-white/70 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+                className="mt-3 inline-flex min-h-[44px] items-center gap-1.5 rounded-xl px-1 font-display text-sm tracking-[0.15em] text-white/70 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
               >
                 <FlagIcon size={14} />
                 REPORT
@@ -130,7 +130,7 @@ export const DisputeCard = memo(function DisputeCard({
               <details className="mt-3">
                 <summary
                   aria-label={`Watch @${dispute.setterUsername}'s original set of ${dispute.trickName}`}
-                  className="flex min-h-[44px] cursor-pointer list-none items-center font-display text-[11px] tracking-[0.15em] text-brand-orange focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+                  className="flex min-h-[44px] cursor-pointer list-none items-center font-display text-sm tracking-[0.15em] text-brand-orange focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
                 >
                   WATCH THE SET · @{dispute.setterUsername.toUpperCase()}
                 </summary>
@@ -160,7 +160,7 @@ export const DisputeCard = memo(function DisputeCard({
                 aria-label={`Land — @${dispute.matcherUsername} landed it`}
                 className={`${RAIL_BTN} border-brand-green/50 bg-brand-green/20 text-brand-green`}
               >
-                <span className="font-display text-[11px] tracking-wider">LAND</span>
+                <span className="font-display text-sm tracking-wider">LAND</span>
               </button>
               <button
                 type="button"
@@ -169,7 +169,7 @@ export const DisputeCard = memo(function DisputeCard({
                 aria-label={`Bail — @${dispute.matcherUsername} bailed`}
                 className={`${RAIL_BTN} border-brand-red/50 bg-brand-red/20 text-brand-red`}
               >
-                <span className="font-display text-[11px] tracking-wider">BAIL</span>
+                <span className="font-display text-sm tracking-wider">BAIL</span>
               </button>
             </div>
           )}
@@ -196,12 +196,12 @@ function DisputeTallyMeter({ tally, ownVerdict }: { tally: DisputeTally; ownVerd
         />
       </div>
       <div className="mt-2 flex items-center justify-between gap-2">
-        <p className="font-body text-[11px] text-white/70 tabular-nums">
+        <p className="font-body text-label text-white/70 tabular-nums">
           {total === 0 ? "No calls in yet" : `${total} ${total === 1 ? "call" : "calls"} in`}
         </p>
         {ownVerdict && (
           <span
-            className={`rounded-md border px-2 py-1 font-display text-[11px] tracking-[0.15em] ${
+            className={`rounded-md border px-2 py-1 font-display text-sm tracking-[0.15em] ${
               ownVerdict === "land"
                 ? "border-brand-green/40 bg-brand-green/10 text-brand-green"
                 : "border-brand-red/40 bg-brand-red/10 text-brand-red"

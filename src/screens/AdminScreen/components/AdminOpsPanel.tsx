@@ -5,9 +5,9 @@ import { hideDispute } from "../../../services/admin";
 import { listAdminAudit, type AuditEntry } from "../../../services/admin.audit";
 
 const CARD = "rounded-2xl border border-white/[0.06] bg-surface p-4 shadow-card";
-const H3 = "mb-3 flex items-center gap-2 font-display text-xs tracking-[0.15em] text-white";
+const H3 = "mb-3 flex items-center gap-2 font-display text-sm tracking-[0.15em] text-white";
 const BTN =
-  "min-h-[36px] rounded-lg border border-white/[0.1] px-3 font-display text-[11px] tracking-wider text-white/80 hover:bg-surface-alt disabled:opacity-50";
+  "min-h-[36px] rounded-lg border border-white/[0.1] px-3 font-display text-sm tracking-wider text-white/80 hover:bg-surface-alt disabled:opacity-50";
 
 const ACTION_LABELS: Record<string, string> = {
   ban: "Banned",

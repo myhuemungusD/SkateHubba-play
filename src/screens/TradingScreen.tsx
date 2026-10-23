@@ -285,7 +285,7 @@ function TradeStatusBadge({ status }: { status: TradeStatus }) {
 
   return (
     <div className={`px-3 py-1 border rounded-lg ${colors[status]}`}>
-      <span className="text-xs font-display tracking-wider">{status.toUpperCase()}</span>
+      <span className="text-sm font-display tracking-wider">{status.toUpperCase()}</span>
     </div>
   );
 }

@@ -157,7 +157,7 @@ test("matcher records response and misses → earns a letter", async ({ browser 
   await setterSetsTrick(p1, "Heelflip");
 
   // P2 doesn't know the game ID — they find it on their own lobby, where it
-  // sits in the "YOUR TURN" stack (card reads "vs @p1skater"), and open it.
+  // sits in the "Your turn" stack (card reads "vs @p1skater"), and open it.
   const { ctx: p2Ctx, page: p2Page } = await openMatcherSession(browser, P2, P1.username);
 
   // P2 should see the matching UI
@@ -316,7 +316,7 @@ test("completing a game shows game over screen with winner and rematch option", 
     p2Letters: 4, // P2 is one miss away from losing
   });
 
-  // P2 opens the game from the "YOUR TURN" stack and submits a miss → should
+  // P2 opens the game from the "Your turn" stack and submits a miss → should
   // trigger game over
   const { ctx: p2Ctx, page: p2Page } = await openMatcherSession(browser, P2, P1.username);
   await expect(p2Page.getByText(/Match @p1skater's 360 Flip/i)).toBeVisible({ timeout: 10_000 });

@@ -16,7 +16,7 @@ interface Props {
 export function TrickCategoryPicker({ value, onChange, disabled = false }: Props) {
   return (
     <div className="mb-4">
-      <span className="font-display text-[11px] tracking-[0.2em] text-muted block mb-2">TRICK CATEGORY</span>
+      <span className="font-display text-sm tracking-[0.2em] text-muted block mb-2">TRICK CATEGORY</span>
       <div role="radiogroup" aria-label="Trick category" className="flex flex-wrap gap-2">
         {TRICK_CATEGORIES.map((cat) => {
           const selected = cat.id === value;

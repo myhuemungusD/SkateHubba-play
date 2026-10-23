@@ -53,7 +53,7 @@ export function ConfirmButton({ label, question, confirmLabel, onConfirm, loadin
               setOpen(false);
               onConfirm();
             }}
-            className={`inline-flex min-h-[44px] items-center justify-center rounded-lg border px-3 font-display text-[11px] tracking-[0.15em] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${TONES[tone]}`}
+            className={`inline-flex min-h-[44px] items-center justify-center rounded-lg border px-3 font-display text-sm tracking-[0.15em] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${TONES[tone]}`}
           >
             {confirmLabel.toUpperCase()}
           </button>
@@ -67,7 +67,7 @@ export function ConfirmButton({ label, question, confirmLabel, onConfirm, loadin
       type="button"
       onClick={() => setOpen(true)}
       disabled={disabled || loading}
-      className={`inline-flex min-h-[44px] items-center justify-center rounded-xl border px-4 font-display text-[11px] tracking-[0.15em] transition-colors active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-not-allowed disabled:opacity-40 ${TONES[tone]}`}
+      className={`inline-flex min-h-[44px] items-center justify-center rounded-xl border px-4 font-display text-sm tracking-[0.15em] transition-colors active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-not-allowed disabled:opacity-40 ${TONES[tone]}`}
     >
       {loading ? "..." : label.toUpperCase()}
     </button>

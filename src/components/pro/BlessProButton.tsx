@@ -64,7 +64,7 @@ export function BlessProButton({ targetUid, username }: Props) {
         type="button"
         data-testid="bless-pro-button"
         onClick={() => setOpen(true)}
-        className="flex w-full min-h-[44px] items-center justify-center gap-2 rounded-xl border border-amber-300/40 bg-amber-300/10 font-display text-xs tracking-wider text-amber-100 hover:bg-amber-300/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+        className="flex w-full min-h-[44px] items-center justify-center gap-2 rounded-xl border border-amber-300/40 bg-amber-300/10 font-display text-sm tracking-wider text-amber-100 hover:bg-amber-300/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
       >
         <Sparkles size={14} aria-hidden="true" />
         PUT ON
@@ -95,7 +95,7 @@ export function BlessProButton({ targetUid, username }: Props) {
               Only for skaters who are pro for real: a board or shoe with a real company. Your name goes on their
               profile for good, and you get a couple of these a month.
             </p>
-            <label htmlFor="bless-reason" className="mb-1 block font-display text-[11px] tracking-wider text-white/60">
+            <label htmlFor="bless-reason" className="mb-1 block font-display text-sm tracking-wider text-white/60">
               WHY (SHOWN ON THEIR PROFILE)
             </label>
             <textarea
@@ -108,7 +108,7 @@ export function BlessProButton({ targetUid, username }: Props) {
               className="w-full rounded-xl border border-white/10 bg-black/30 p-3 font-body text-sm text-white"
               placeholder="Filmed with them for years. Real deal."
             />
-            <p className="mt-1 text-right font-body text-[11px] text-white/50">
+            <p className="mt-1 text-right font-body text-label text-white/50">
               {len}/{BLESSING_REASON_MAX}
             </p>
             {error && (

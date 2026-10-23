@@ -60,7 +60,7 @@ export function AddSpotPhotosStep({
             onChange={(e) => setPhotoInput(e.target.value)}
             placeholder="https://..."
             className="flex-1 bg-background border border-[#444] rounded-lg px-3 py-2 text-white text-base
-                       placeholder:text-subtle focus:outline-none focus:border-[#F97316]"
+                       placeholder:text-subtle focus:outline-none focus:border-brand-orange"
           />
           <button
             type="button"
@@ -81,8 +81,8 @@ export function AddSpotPhotosStep({
         type="button"
         onClick={onSubmit}
         disabled={submitting}
-        className="w-full py-2.5 rounded-xl bg-[#F97316] text-white font-semibold text-sm
-                   hover:bg-[#EA580C] transition-colors disabled:opacity-60"
+        className="w-full py-2.5 rounded-xl bg-brand-orange text-black font-semibold text-sm
+                   hover:bg-brand-orange-hover transition-colors disabled:opacity-60"
       >
         {submitting ? "Submitting\u2026" : "Submit Spot"}
       </button>

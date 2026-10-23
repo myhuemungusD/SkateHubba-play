@@ -36,10 +36,10 @@ export function UploadProgress({ progress }: { progress: UploadProgressData | nu
       <div className="w-full h-2.5 bg-surface-alt border border-border rounded-full overflow-hidden">
         <div
           ref={barRef}
-          className="h-full bg-gradient-to-r from-brand-orange to-[#FF8533] rounded-full transition-all duration-300 ease-out shadow-[0_0_8px_rgba(255,107,0,0.3)]"
+          className="h-full bg-gradient-to-r from-brand-orange to-brand-orange-hover rounded-full transition-all duration-300 ease-out shadow-[0_0_8px_rgba(255,107,0,0.3)]"
         />
       </div>
-      <p className="font-body text-[11px] text-subtle mt-1.5 text-center tabular-nums">
+      <p className="font-body text-label text-subtle mt-1.5 text-center tabular-nums">
         {transferredMB} / {sizeMB} MB
       </p>
     </div>

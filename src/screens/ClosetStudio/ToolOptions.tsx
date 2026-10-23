@@ -98,7 +98,7 @@ export function ToolOptions({ tool, brush, onBrush, stamp, onStamp }: Props) {
           value={stamp.size}
           onChange={(size) => onStamp({ ...stamp, size })}
         />
-        <p className="font-body text-[11px] text-faint">Tap the canvas to place it.</p>
+        <p className="font-body text-label text-faint">Tap the canvas to place it.</p>
       </div>
     );
   }

@@ -9,7 +9,7 @@ export function LetterScore({ count, label }: { count: number; label: string }) 
       {LETTERS.map((l, i) => (
         <span
           key={i}
-          className={`font-display text-[11px] leading-none ${i < count ? "text-brand-red" : "text-[#2E2E2E]"}`}
+          className={`font-display text-sm leading-none ${i < count ? "text-brand-red" : "text-[#2E2E2E]"}`}
         >
           {l}
         </span>

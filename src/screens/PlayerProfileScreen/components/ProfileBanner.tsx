@@ -77,7 +77,7 @@ export function ProfileBanner({ uid, bannerImageUrl, isOwnProfile, crop }: Props
           >
             <CameraIcon size={14} />
             {!src && (
-              <span aria-hidden="true" className="font-display text-[11px] tracking-wider">
+              <span aria-hidden="true" className="font-display text-sm tracking-wider">
                 Add cover
               </span>
             )}

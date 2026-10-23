@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AccountActions } from "../AccountActions";
 import { deferred } from "../../__tests__/harness/deferred";
@@ -170,6 +170,32 @@ describe("AccountActions", () => {
 
       await userEvent.click(screen.getByText("×"));
       expect(screen.queryByText("Delete failed")).not.toBeInTheDocument();
+    });
+  });
+  describe("sign out", () => {
+    it("hides the Sign out row when no handler is provided", () => {
+      render(<AccountActions onDeleteAccount={onDeleteAccount} />);
+      expect(screen.queryByRole("button", { name: /^Sign out/ })).not.toBeInTheDocument();
+    });
+
+    it("asks first, and Cancel keeps the user signed in", async () => {
+      const onSignOut = vi.fn();
+      render(<AccountActions onSignOut={onSignOut} />);
+      await userEvent.click(screen.getByRole("button", { name: /^Sign out/ }));
+      expect(screen.getByRole("alertdialog", { name: "Sign out?" })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(onSignOut).not.toHaveBeenCalled();
+    });
+
+    it("signs out once the user confirms", async () => {
+      const onSignOut = vi.fn();
+      render(<AccountActions onSignOut={onSignOut} />);
+      await userEvent.click(screen.getByRole("button", { name: /^Sign out/ }));
+      const dialog = screen.getByRole("alertdialog");
+      await userEvent.click(within(dialog).getByRole("button", { name: "Sign out" }));
+      expect(onSignOut).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     });
   });
 });

@@ -30,7 +30,7 @@ describe("RecentlyPlayed", () => {
         onOpenGame={vi.fn()}
       />,
     );
-    expect(screen.getByRole("heading", { name: "RECENTLY PLAYED" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Recently played" })).toBeInTheDocument();
     expect(screen.getByTestId("recent-record-u2")).toHaveTextContent("2 / 4");
     expect(screen.getByText("2 wins out of 4 games")).toBeInTheDocument();
     expect(screen.getByTestId("recent-record-u3")).toHaveTextContent("1 / 1");
@@ -50,13 +50,13 @@ describe("RecentlyPlayed", () => {
     render(<RecentlyPlayed opponents={[opp({ games: 1, decided: 0, wins: 0, activeGame: g })]} onOpenGame={vi.fn()} />);
     expect(screen.getByText("In progress")).toBeInTheDocument();
     expect(screen.queryByTestId("recent-record-u2")).toBeNull();
-    expect(screen.getByRole("button", { name: "@rival, first game in progress. View profile" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^@rival,\s?In progress\. View profile$/ })).toBeInTheDocument();
   });
 
   it("opens the profile from the row", async () => {
     const onViewPlayer = vi.fn();
     render(<RecentlyPlayed opponents={[opp()]} onOpenGame={vi.fn()} onViewPlayer={onViewPlayer} />);
-    await userEvent.click(screen.getByRole("button", { name: "@rival, 2 wins out of 4 games. View profile" }));
+    await userEvent.click(screen.getByRole("button", { name: /^@rival,\s?2 wins out of 4 games\. View profile$/ }));
     expect(onViewPlayer).toHaveBeenCalledWith("u2");
   });
 

@@ -18,7 +18,7 @@ export function UserLookupForm({ lookup, label }: { lookup: AdminUserLookup; lab
         void lookup.lookup();
       }}
     >
-      <label htmlFor={inputId} className="block font-display text-[11px] tracking-[0.2em] text-dim mb-2">
+      <label htmlFor={inputId} className="block font-display text-sm tracking-[0.2em] text-dim mb-2">
         {label.toUpperCase()}
       </label>
       <div className="flex gap-2">
@@ -39,7 +39,7 @@ export function UserLookupForm({ lookup, label }: { lookup: AdminUserLookup; lab
           type="submit"
           disabled={lookup.loading}
           aria-label="Look up player"
-          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-2xl border border-brand-orange/40 bg-brand-orange/[0.12] px-4 font-display text-[11px] tracking-[0.2em] text-brand-orange transition-all duration-300 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-2xl border border-brand-orange/40 bg-brand-orange/[0.12] px-4 font-display text-sm tracking-[0.2em] text-brand-orange transition-all duration-300 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-not-allowed disabled:opacity-40"
         >
           {lookup.loading ? "..." : <Search size={18} strokeWidth={2} aria-hidden="true" />}
         </button>

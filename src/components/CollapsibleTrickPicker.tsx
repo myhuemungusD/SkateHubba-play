@@ -42,7 +42,7 @@ export function CollapsibleTrickPicker({ selection, onChange, disabled, trickCat
         <button
           type="button"
           onClick={() => setOpen(false)}
-          className="-mt-3 min-h-11 w-full rounded-xl font-display text-xs tracking-[0.16em] text-brand-orange focus-visible:outline-2 focus-visible:outline-brand-orange"
+          className="-mt-3 min-h-11 w-full rounded-xl font-display text-sm tracking-[0.16em] text-brand-orange focus-visible:outline-2 focus-visible:outline-brand-orange"
         >
           DONE
         </button>
@@ -56,7 +56,7 @@ export function CollapsibleTrickPicker({ selection, onChange, disabled, trickCat
       className="mb-3 flex items-center gap-3 rounded-2xl border border-brand-orange/30 bg-black/50 px-3 py-2"
     >
       <div className="min-w-0 flex-1">
-        <p className="font-display text-[11px] tracking-[0.2em] text-brand-orange">TRICK</p>
+        <p className="font-display text-sm tracking-[0.2em] text-brand-orange">TRICK</p>
         <p className="truncate font-body text-sm text-white">{name ? `Set your ${name}` : "No trick picked yet"}</p>
         {!name && constraintText && <p className="truncate font-body text-xs text-brand-orange/80">{constraintText}</p>}
       </div>
@@ -65,7 +65,7 @@ export function CollapsibleTrickPicker({ selection, onChange, disabled, trickCat
         disabled={disabled}
         aria-expanded={false}
         onClick={() => setOpen(true)}
-        className="min-h-11 shrink-0 rounded-full border border-brand-orange px-4 font-display text-xs tracking-wider text-white disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-brand-orange"
+        className="min-h-11 shrink-0 rounded-full border border-brand-orange px-4 font-display text-sm tracking-wider text-white disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-brand-orange"
       >
         {name ? "Change" : "Pick a trick"}
       </button>

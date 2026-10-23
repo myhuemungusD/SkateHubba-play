@@ -64,7 +64,7 @@ export function ClosetShowcase({ items, isOwnProfile, onSeeAll }: Props) {
               onClick={onSeeAll}
               data-testid="closet-see-all"
               aria-label={`See all ${countLabel} in the closet`}
-              className="-mr-1 inline-flex min-h-11 items-center gap-0.5 rounded-lg px-1 font-display text-xs tracking-wider text-brand-orange hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              className="-mr-1 inline-flex min-h-11 items-center gap-0.5 rounded-lg px-1 font-display text-sm tracking-wider text-brand-orange hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
               See all
               <ChevronRight size={14} aria-hidden="true" />
@@ -79,13 +79,9 @@ export function ClosetShowcase({ items, isOwnProfile, onSeeAll }: Props) {
 function SectionHeading({ own = false }: { own?: boolean }) {
   return (
     <div className="mb-3 flex items-center justify-between">
-      <h2 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">CLOSET</h2>
+      <h2 className="font-display text-sm tracking-[0.2em] text-brand-orange">CLOSET</h2>
       {own && isClosetStudioEnabled() && (
-        <a
-          href="/closet/studio"
-          className="font-body text-[11px] text-white underline"
-          data-testid="open-closet-studio"
-        >
+        <a href="/closet/studio" className="font-body text-label text-white underline" data-testid="open-closet-studio">
           Closet Studio
         </a>
       )}

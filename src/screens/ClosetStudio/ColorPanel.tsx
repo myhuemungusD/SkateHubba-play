@@ -98,7 +98,7 @@ export function ColorPanel({ color, recent, onColor }: Props) {
       <div className="flex flex-wrap gap-2">{SWATCHES.map((hex) => chip(hex, "Swatch"))}</div>
       {recent.length > 0 && (
         <div>
-          <p className="mb-1 font-body text-[11px] uppercase tracking-wider text-faint">Recent</p>
+          <p className="mb-1 font-body text-label uppercase tracking-wider text-faint">Recent</p>
           <div className="flex flex-wrap gap-2">{recent.map((hex) => chip(hex, "Recent"))}</div>
         </div>
       )}

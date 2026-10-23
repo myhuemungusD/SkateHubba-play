@@ -67,7 +67,7 @@ export function HesherMascot({ state = "idle", className, decorative = false }: 
           alt={decorative ? "" : HESHER_LABEL}
           draggable={false}
           decoding="async"
-          className="block w-full h-full rounded-full object-cover bg-[#1a1a1a] ring-2 ring-brand-orange select-none"
+          className="block w-full h-full rounded-full object-cover bg-surface-alt ring-2 ring-brand-orange select-none"
         />
       </picture>
     </span>

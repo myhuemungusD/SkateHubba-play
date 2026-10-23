@@ -15,7 +15,7 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
     return (
       <div className="mt-6 w-full">
         <div className="text-center py-2 px-4 mb-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.06]">
-          <span className="font-display text-xs tracking-wider text-amber-400">UNDER REVIEW</span>
+          <span className="font-display text-sm tracking-wider text-amber-400">UNDER REVIEW</span>
           <p className="font-body text-xs text-muted mt-0.5">
             {game.judgeUsername && game.judgeStatus === "accepted"
               ? `You claimed landed — referee @${game.judgeUsername} is ruling.`

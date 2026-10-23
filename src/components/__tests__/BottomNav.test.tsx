@@ -86,7 +86,7 @@ describe("BottomNav", () => {
     renderNav("/lobby");
     const disc = screen.getByRole("link", { name: "Challenge" }).querySelector("span");
     expect(disc?.className).toContain("bg-brand-orange");
-    expect(disc?.className).toContain("text-[#1a1a1a]");
+    expect(disc?.className).toContain("text-surface-alt");
   });
 
   it("marks the current screen as the active tab", () => {

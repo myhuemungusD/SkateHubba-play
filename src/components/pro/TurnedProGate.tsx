@@ -48,7 +48,7 @@ export function TurnedProGate({ uid, onTurnedPro }: { uid: string; onTurnedPro?:
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 p-6 text-center"
     >
       <div className="w-full max-w-sm">
-        <p className="pro-username font-display text-xs tracking-[0.35em]">✦ PRO</p>
+        <p className="pro-username font-display text-sm tracking-[0.35em]">✦ PRO</p>
         <h1 id="turned-pro-title" className="mt-3 font-display text-4xl leading-tight tracking-wide text-white">
           {celebrate ? "You're on." : `@${shown.blesserUsername} put you on as PRO`}
         </h1>
@@ -91,7 +91,7 @@ export function TurnedProGate({ uid, onTurnedPro }: { uid: string; onTurnedPro?:
               data-testid="blessing-decline"
               disabled={busy}
               onClick={() => void answer(false)}
-              className="w-full min-h-[44px] rounded-xl font-display text-xs tracking-wider text-white/60 hover:text-white"
+              className="w-full min-h-[44px] rounded-xl font-display text-sm tracking-wider text-white/60 hover:text-white"
             >
               NOT NOW
             </button>

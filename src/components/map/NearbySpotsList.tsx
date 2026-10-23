@@ -72,7 +72,7 @@ export function NearbySpotsList({ status, spots, hiddenByFilters = false, radius
               onClick={() => onSelect(spot)}
               className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-[#222] transition-colors"
             >
-              <MapPin size={16} className="text-[#F97316] flex-shrink-0" aria-hidden="true" />
+              <MapPin size={16} className="text-brand-orange flex-shrink-0" aria-hidden="true" />
               <span className="flex-1 min-w-0">
                 <span className="flex items-center gap-1.5">
                   <span className="text-sm text-white truncate">{spot.name}</span>

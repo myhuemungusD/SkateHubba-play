@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "./spotMap.css";
-import { Crosshair, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import type { Spot } from "../../types/spot";
 import type { NearbySpot } from "../../services/spots";
 import { logger } from "../../services/logger";
@@ -25,7 +25,9 @@ import {
   EmptyViewportPrompt,
   NoFilterMatchesNotice,
   MapToast,
+  RecenterButton,
 } from "./SpotMapOverlays";
+import { MapListFallback } from "./MapListFallback";
 
 interface SpotMapProps {
   activeGameSpotId?: string;
@@ -62,6 +64,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry, autoOpenAddSp
   const [filters, setFilters] = useState<SpotFilters>(DEFAULT_SPOT_FILTERS);
   const [selectedSpot, setSelectedSpot] = useState<Spot | null>(null);
   const [isAddingSpot, setIsAddingSpot] = useState(autoOpenAddSpot);
+  const [listView, setListView] = useState(false);
 
   const {
     userLocation,
@@ -245,8 +248,20 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry, autoOpenAddSp
   // If the build is missing the Mapbox token, render a dedicated unavailable
   // state instead of a perpetual "Loading map…" overlay. This path is hit in
   // previews/forks that don't have VITE_MAPBOX_TOKEN wired up.
+  // "Use list view" (design audit #31): nearby spots without Mapbox. Starts
+  // GPS if the map never got the chance to (it only starts on recenter).
+  const openListView = () => {
+    setListView(true);
+    if (!userLocation) recenterToUser(() => {});
+  };
+  const listFallback = listView && <MapListFallback userLocation={userLocation} onBack={() => setListView(false)} />;
+
   if (!MAPBOX_TOKEN) {
-    return <SpotMapUnavailable onRetry={onRetry} />;
+    return listFallback ? (
+      <div className="relative w-full h-dvh">{listFallback}</div>
+    ) : (
+      <SpotMapUnavailable onRetry={onRetry} onUseList={openListView} />
+    );
   }
 
   return (
@@ -257,7 +272,10 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry, autoOpenAddSp
           swap to a recoverable error instead of an endless spinner. */}
       {mapLoading && !mapLoadTimeout && <MapLoadingOverlay />}
 
-      {mapLoading && mapLoadTimeout && <MapLoadTimeoutOverlay onRetry={onRetry} />}
+      {mapLoading && mapLoadTimeout && !listView && (
+        <MapLoadTimeoutOverlay onRetry={onRetry} onUseList={openListView} />
+      )}
+      {listFallback}
 
       {/* Filter + search bar — hidden until the map is ready so it never
           obscures the loading state. */}
@@ -289,32 +307,16 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry, autoOpenAddSp
       {/* Toast */}
       {toast && <MapToast message={toast} />}
 
-      {/* Recenter button — bumped from 32px to 40px to hit WCAG 2.5.5 min
-          target size, and the border / fill change when tracking is active
-          so users can tell at a glance whether the map will follow them. */}
-      <button
-        type="button"
-        onClick={handleRecenter}
-        aria-label={isTrackingUser ? "Following your location" : "Recenter to my location"}
-        aria-pressed={isTrackingUser}
-        className={`absolute bottom-36 right-2.5 z-20 w-10 h-10 rounded-lg
-                    flex items-center justify-center transition-colors ${
-                      isTrackingUser
-                        ? "bg-[#F97316] border border-[#F97316] text-white"
-                        : "bg-surface-alt border border-[#333] text-white hover:bg-[#333]"
-                    }`}
-      >
-        <Crosshair size={18} aria-hidden="true" />
-      </button>
+      <RecenterButton tracking={isTrackingUser} onClick={handleRecenter} />
 
       {/* Add spot FAB (signed-in only; signed-out visitors can browse) */}
       {user && (
         <button
           type="button"
           onClick={() => setIsAddingSpot(true)}
-          className="absolute bottom-24 right-2.5 z-20 w-12 h-12 bg-[#F97316] rounded-full
-                   flex items-center justify-center text-white shadow-lg
-                   hover:bg-[#EA580C] transition-colors"
+          className="absolute bottom-24 right-2.5 z-20 w-12 h-12 bg-brand-orange rounded-full
+                   flex items-center justify-center text-black shadow-lg
+                   hover:bg-brand-orange-hover transition-colors"
           aria-label="Add a spot"
           data-tutorial="map-add-spot"
         >

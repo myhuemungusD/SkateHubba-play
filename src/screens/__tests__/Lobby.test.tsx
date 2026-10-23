@@ -62,7 +62,6 @@ const defaultProps: LobbyProps = {
   games: [],
   onChallenge: vi.fn(),
   onOpenGame: vi.fn(),
-  onSignOut: vi.fn(),
   onViewRecord: vi.fn(),
   user: { emailVerified: true },
 };
@@ -89,7 +88,7 @@ async function renderExpanded(overrides: Partial<LobbyProps> = {}) {
   return result;
 }
 
-const yourTurnSection = () => screen.queryByRole("region", { name: "YOUR TURN" });
+const yourTurnSection = () => screen.queryByRole("region", { name: "Your turn" });
 const theirTurnToggle = () => screen.queryByRole("button", { name: /waiting on them/ });
 const cardByOpponent = (name: RegExp) => screen.getByRole("button", { name });
 
@@ -307,7 +306,7 @@ describe("Lobby", () => {
     ];
     renderLobby({ games });
 
-    const btn = screen.getByRole("button", { name: "3 finished. 1 win out of 3 games. View record" });
+    const btn = screen.getByRole("button", { name: "3 finished · 1 win out of 3 games. View record" });
     expect(btn).toHaveTextContent("3 finished · 1 / 3 won");
   });
 
@@ -318,7 +317,7 @@ describe("Lobby", () => {
     ];
     renderLobby({ profile: judgeProfile, games });
 
-    expect(screen.getByRole("button", { name: "2 finished. 1 win out of 1 game. View record" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "2 finished · 1 win out of 1 game. View record" })).toBeInTheDocument();
   });
 
   it("hides the completed summary when nothing is finished", () => {
@@ -501,13 +500,14 @@ describe("Lobby", () => {
 
   // ── Header & pagination ──
 
-  it("Sign Out button fires onSignOut", async () => {
-    const onSignOut = vi.fn();
-    renderLobby({ onSignOut });
+  it("header has no Sign Out (it lives in Settings) and the gear opens Settings", async () => {
+    const onOpenSettings = vi.fn();
+    renderLobby({ onOpenSettings });
 
-    await userEvent.click(screen.getByRole("button", { name: "Sign Out" }));
+    expect(screen.queryByRole("button", { name: /sign out/i })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
 
-    expect(onSignOut).toHaveBeenCalledTimes(1);
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
   it("View my record header button fires onViewRecord", async () => {

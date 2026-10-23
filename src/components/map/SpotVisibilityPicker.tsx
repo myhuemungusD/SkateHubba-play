@@ -30,14 +30,14 @@ export function SpotVisibilityPicker({ visibility, onChange, crewText, onCrewTex
             aria-pressed={visibility === o.value}
             onClick={() => onChange(o.value)}
             className={`py-2 rounded-lg text-xs font-semibold border ${
-              visibility === o.value ? "border-[#F97316] text-[#F97316]" : "border-[#333] text-[#CCC]"
+              visibility === o.value ? "border-brand-orange text-brand-orange" : "border-[#333] text-[#CCC]"
             }`}
           >
             {o.label}
           </button>
         ))}
       </div>
-      <p className="mt-1 text-[11px] text-subtle">{hint}</p>
+      <p className="mt-1 text-label text-subtle">{hint}</p>
       {visibility === "crew" && (
         <input
           type="text"

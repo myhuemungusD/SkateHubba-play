@@ -1,3 +1,4 @@
+import { FIELD_LABEL } from "./ui/Field";
 /**
  * COPPA/CCPA date-of-birth + parental-consent fieldset, shared by AuthScreen
  * (email signup) and ProfileSetup (Google signup fallback). Presentational
@@ -39,7 +40,7 @@ export function DobConsentFields({
 }) {
   return (
     <>
-      <label className="block font-display text-sm tracking-[0.12em] text-dim mb-2">Date of Birth</label>
+      <label className={`block ${FIELD_LABEL} mb-2`}>Date of birth</label>
       <DobRow month={month} day={day} year={year} onChange={onDobChange} disabled={disabled} />
       <p className="font-body text-xs text-subtle mb-5">{helpText}</p>
       {showConsent && (

@@ -108,7 +108,7 @@ export function GameReplay({ turns }: GameReplayProps) {
               Round {currentTurn.turnNumber}: {currentTurn.trickName}
             </p>
             <p
-              className={`font-display text-xs tracking-wider mt-1 ${
+              className={`font-display text-sm tracking-wider mt-1 ${
                 clipPhase === "set" ? "text-brand-orange" : "text-brand-green"
               }`}
             >
@@ -146,7 +146,7 @@ export function GameReplay({ turns }: GameReplayProps) {
           {clipPhase === "match" && (
             <div className="flex justify-center mt-2">
               <span
-                className={`font-display text-xs tracking-wider px-3 py-1 rounded-full ${
+                className={`font-display text-sm tracking-wider px-3 py-1 rounded-full ${
                   currentTurn.landed
                     ? "bg-[rgba(0,230,118,0.15)] text-brand-green"
                     : "bg-[rgba(255,61,0,0.15)] text-brand-red"

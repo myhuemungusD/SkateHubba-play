@@ -4,7 +4,7 @@ import { Link } from "react-router";
 import { fetchProClipReel, fetchProSpots, type ProSpot } from "../../services/proShowcase";
 import type { PinnableClip } from "../../services/profileCustom";
 
-const H3 = "mb-2 flex items-center gap-1.5 font-display text-[11px] tracking-[0.2em] text-brand-orange";
+const H3 = "mb-2 flex items-center gap-1.5 font-display text-sm tracking-[0.2em] text-brand-orange";
 const CARD = "mb-4 rounded-2xl border border-white/[0.06] bg-surface p-4 shadow-card";
 
 interface Props {
@@ -91,7 +91,7 @@ export function ProReelAndSpots({ uid, displayName, isOwn }: Props) {
                   >
                     {spot.name}
                   </Link>
-                  <span className="shrink-0 font-body text-[11px] text-white/60">
+                  <span className="shrink-0 font-body text-label text-white/60">
                     {recommended ? "Recommended · " : ""}
                     {clips.length} {clips.length === 1 ? "clip" : "clips"}
                   </span>

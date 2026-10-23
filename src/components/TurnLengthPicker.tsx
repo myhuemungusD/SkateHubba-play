@@ -16,7 +16,7 @@ const LABELS: Record<TurnLengthHours, string> = { 24: "24 hours", 72: "3 days", 
 export function TurnLengthPicker({ value, onChange, disabled = false }: Props) {
   return (
     <div className="mb-4">
-      <span className="font-display text-[11px] tracking-[0.2em] text-muted block mb-2">TIME PER TURN</span>
+      <span className="font-display text-sm tracking-[0.2em] text-muted block mb-2">TIME PER TURN</span>
       <div role="radiogroup" aria-label="Time per turn" className="flex flex-wrap gap-2">
         {TURN_LENGTH_OPTIONS.map((hours) => {
           const selected = hours === value;

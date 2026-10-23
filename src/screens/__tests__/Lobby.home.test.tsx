@@ -54,7 +54,6 @@ const base: LobbyProps = {
   games: [],
   onChallenge: vi.fn(),
   onOpenGame: vi.fn(),
-  onSignOut: vi.fn(),
   onViewRecord: vi.fn(),
 };
 

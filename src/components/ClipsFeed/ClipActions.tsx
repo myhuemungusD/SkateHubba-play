@@ -58,7 +58,7 @@ export const ClipActions = memo(function ClipActions({
           className={`${RAIL_BTN} ${upPressed ? "border-brand-orange/60 bg-brand-orange/30 text-brand-orange" : ""}`}
         >
           <ThumbsUpIcon size={18} className={upPressed ? "text-brand-orange" : "text-white"} />
-          <span className="font-display text-xs leading-none tabular-nums">{vote.upvoteCount}</span>
+          <span className="font-display text-sm leading-none tabular-nums">{vote.upvoteCount}</span>
         </button>
         <button
           type="button"
@@ -75,7 +75,7 @@ export const ClipActions = memo(function ClipActions({
           className={`${RAIL_BTN} ${downPressed ? "border-brand-red/60 bg-brand-red/30 text-brand-red" : ""}`}
         >
           <ThumbsDownIcon size={18} />
-          <span className="font-display text-xs leading-none tabular-nums">{vote.downvoteCount}</span>
+          <span className="font-display text-sm leading-none tabular-nums">{vote.downvoteCount}</span>
         </button>
       </div>
 

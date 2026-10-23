@@ -14,9 +14,9 @@ import {
 } from "../../../services/adminInsights";
 
 const CARD = "rounded-2xl border border-white/[0.06] bg-surface p-4 shadow-card";
-const H3 = "mb-3 flex items-center gap-2 font-display text-xs tracking-[0.15em] text-white";
+const H3 = "mb-3 flex items-center gap-2 font-display text-sm tracking-[0.15em] text-white";
 const BTN =
-  "min-h-[36px] rounded-lg border border-white/[0.1] px-3 font-display text-[11px] tracking-wider text-white/80 hover:bg-surface-alt disabled:opacity-50";
+  "min-h-[36px] rounded-lg border border-white/[0.1] px-3 font-display text-sm tracking-wider text-white/80 hover:bg-surface-alt disabled:opacity-50";
 const INPUT = "w-full rounded-lg border border-white/[0.1] bg-surface-alt px-3 py-2 font-body text-sm text-white";
 
 const AUDIENCE_LABELS: Record<Audience, string> = { all: "Everyone", testers: "Testers", pros: "Verified pros" };
@@ -64,13 +64,13 @@ export function AnalyticsSection() {
         <dl className="grid grid-cols-2 gap-2">
           {stats.map(([label, value]) => (
             <div key={label} className="rounded-lg bg-surface-alt p-2">
-              <dt className="font-body text-[11px] text-white/60">{label}</dt>
+              <dt className="font-body text-label text-white/60">{label}</dt>
               <dd className="font-display text-lg text-white">{value}</dd>
             </div>
           ))}
         </dl>
       )}
-      <p className="mt-2 font-body text-[11px] text-white/50">
+      <p className="mt-2 font-body text-label text-white/50">
         Players are counted from games played. Retention: players who joined 8–14 days ago and played in the last 7
         days.
       </p>
@@ -192,9 +192,9 @@ export function AnnouncementsSection() {
         {rows?.length === 0 && <li className="font-body text-xs text-white/60">No announcements yet.</li>}
         {rows?.map((a) => (
           <li key={a.id} className="rounded-lg bg-surface-alt p-2">
-            <p className="font-display text-xs text-white">{a.title}</p>
+            <p className="font-display text-sm text-white">{a.title}</p>
             <p className="font-body text-xs text-white/70">{a.body}</p>
-            <p className="font-body text-[11px] text-white/50">
+            <p className="font-body text-label text-white/50">
               {AUDIENCE_LABELS[a.audience]}
               {a.push ? ` · push${a.pushCount !== null ? ` to ${a.pushCount}` : ""}` : ""}
               {a.active ? " · live" : " · ended"}

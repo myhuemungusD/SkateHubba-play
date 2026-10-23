@@ -29,13 +29,13 @@ export function MatchResult({ title, reason, score, won, repDelta, repAfter }: M
         <dl className="mt-4 flex gap-6">
           {score ? (
             <div>
-              <dt className="font-display text-xs tracking-[0.18em] text-muted">Final</dt>
+              <dt className="font-display text-sm tracking-[0.18em] text-muted">Final</dt>
               <dd className="font-display text-2xl tabular-nums text-white">{score}</dd>
             </div>
           ) : null}
           {repDelta !== null ? (
             <div>
-              <dt className="font-display text-xs tracking-[0.18em] text-muted">Rep</dt>
+              <dt className="font-display text-sm tracking-[0.18em] text-muted">Rep</dt>
               <dd className="font-display text-2xl tabular-nums text-white">
                 <span className={repDelta >= 0 ? "text-brand-green" : "text-brand-red"}>
                   {repDelta >= 0 ? "+" : "−"}

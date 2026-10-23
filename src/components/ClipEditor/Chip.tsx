@@ -1,3 +1,4 @@
+import { FIELD_LABEL } from "../ui/Field";
 import type { ReactNode } from "react";
 
 /** Toggle-style option button used across the editor panels (44px min target). */
@@ -33,7 +34,7 @@ export function Chip({
 }
 
 export function PanelHeading({ children }: { children: ReactNode }) {
-  return <h4 className="mb-2 font-display text-xs tracking-[0.14em] text-dim">{children}</h4>;
+  return <h4 className={`mb-2 ${FIELD_LABEL}`}>{children}</h4>;
 }
 
 /** The editor's tool tab strip (Trim, Look, Text, ...). */

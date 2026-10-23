@@ -35,7 +35,7 @@ export function LastTenPips({ results }: { results: MatchResult[] }) {
           <span
             key={`${i}-${result}`}
             aria-hidden="true"
-            className={`inline-flex h-5 w-5 items-center justify-center rounded-full border font-display text-[11px] leading-none ${
+            className={`inline-flex h-5 w-5 items-center justify-center rounded-full border font-display text-sm leading-none ${
               result === "W"
                 ? "bg-brand-green/15 border-brand-green/30 text-brand-green"
                 : "bg-white/[0.04] border-white/[0.08] text-subtle"
@@ -45,7 +45,7 @@ export function LastTenPips({ results }: { results: MatchResult[] }) {
           </span>
         ))}
       </div>
-      <p className="font-body text-[11px] uppercase tracking-wider text-subtle mt-2.5">
+      <p className="font-body text-label uppercase tracking-wider text-subtle mt-2.5">
         Last {results.length} — oldest first
       </p>
     </div>

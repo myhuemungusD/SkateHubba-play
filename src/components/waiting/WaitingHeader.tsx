@@ -74,14 +74,14 @@ export function WaitingHeader({
       </div>
       <h2 className="font-display text-fluid-2xl text-white mb-2">Waiting on {waitingOnLabel}</h2>
       {game.judgeUsername && game.judgeStatus === "pending" && (
-        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-subtle/40 bg-white/[0.03] px-3 py-1 text-[11px] text-subtle">
+        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-subtle/40 bg-white/[0.03] px-3 py-1 text-label text-subtle">
           <span className="font-display tracking-wider">REFEREE PENDING</span>
           <span className="font-body">@{game.judgeUsername} hasn&apos;t responded — honor system applies</span>
         </div>
       )}
       {game.judgeUsername && game.judgeStatus === "accepted" && (
         <div
-          className="mb-3 inline-flex items-center gap-2 rounded-full border border-brand-orange/30 bg-brand-orange/[0.06] px-3 py-1 text-[11px] text-brand-orange"
+          className="mb-3 inline-flex items-center gap-2 rounded-full border border-brand-orange/30 bg-brand-orange/[0.06] px-3 py-1 text-label text-brand-orange"
           data-testid="judge-active-badge"
         >
           <span className="font-display tracking-wider">REFEREE</span>
@@ -89,7 +89,7 @@ export function WaitingHeader({
         </div>
       )}
       {game.judgeUsername && game.judgeStatus === "declined" && (
-        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-subtle/40 bg-white/[0.03] px-3 py-1 text-[11px] text-subtle">
+        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-subtle/40 bg-white/[0.03] px-3 py-1 text-label text-subtle">
           <span className="font-display tracking-wider">NO REFEREE</span>
           <span className="font-body">Honor system — no disputes</span>
         </div>
