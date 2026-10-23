@@ -15,9 +15,12 @@ import { ChallengeButton } from "./components/ChallengeButton";
 import { RollDiceButton } from "./components/RollDiceButton";
 import {
   isClipEditorEnabled,
+  isClosetEnabled,
   isDiceEnabled,
   isExtrasEnabled,
+  isMapCheckinsEnabled,
   isProBlessingEnabled,
+  isProCommunityEnabled,
   isProfileBannerEnabled,
   isProfileCustomEnabled,
   isXpEnabled,
@@ -38,7 +41,6 @@ import { AddedSpotsSection } from "./components/AddedSpotsSection";
 import { WinStreakBanner } from "./components/WinStreakBanner";
 import { ProShowcaseGate } from "./components/ProShowcaseGate";
 import { PropsRow } from "../../components/pro/ProPicks";
-import { isProCommunityEnabled } from "../../lib/featureFlags";
 import { OwnProfileActions } from "./components/OwnProfileActions";
 import { useShareProfile } from "./useShareProfile";
 import { useProfileCustom } from "./components/custom/useProfileCustom";
@@ -48,7 +50,6 @@ import { SignatureShowcase } from "./components/custom/SignatureShowcase";
 import { ProfileCustomizeSheet } from "./components/custom/ProfileCustomizeSheet";
 import { gradientCss, type SectionId } from "../../services/profileCustom";
 import { SpotPassport } from "../../components/SpotPassport";
-import { isMapCheckinsEnabled } from "../../lib/featureFlags";
 
 /**
  * Streak length before the banner appears. A "1 win streak" is just a win —
@@ -378,7 +379,7 @@ export function PlayerProfileScreen({
                     onTileTap={handleTileTap}
                   />
                 )}
-                {id === "closet" && (
+                {id === "closet" && isClosetEnabled() && (
                   <>
                     {pc.custom.showcaseSignature && (
                       <SignatureShowcase items={c.lockerItems} accent={pc.custom.accent} />
@@ -407,7 +408,13 @@ export function PlayerProfileScreen({
           </>
         ) : (
           <>
-            <ProfileShowcase equippedItems={c.equippedItems} pinnedItems={c.pinnedItems} isOwnProfile={isOwnProfile} />
+            {isClosetEnabled() && (
+              <ProfileShowcase
+                equippedItems={c.equippedItems}
+                pinnedItems={c.pinnedItems}
+                isOwnProfile={isOwnProfile}
+              />
+            )}
 
             {isXpEnabled() && <AchievementsRibbon achievements={c.achievements} clipsPosted={profile.clipsPosted} />}
 
@@ -420,7 +427,7 @@ export function PlayerProfileScreen({
               onTileTap={handleTileTap}
             />
 
-            <ClosetShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} />
+            {isClosetEnabled() && <ClosetShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} />}
 
             {/* Owner-only: advertising an unbuilt feature on someone else's public
               profile is noise to every visitor but the owner. */}

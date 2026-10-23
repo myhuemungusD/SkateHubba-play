@@ -81,11 +81,13 @@ interface ApiResponse {
  * Origins allowed to call this endpoint cross-origin.
  *
  * On the web this is same-origin and CORS never engages. It engages on native:
- * the Capacitor webview serves the app from `https://localhost` (both
- * platforms, `capacitor.config.ts` sets `iosScheme`/`androidScheme: "https"`;
- * `capacitor://localhost` is Capacitor's iOS default and stays listed so a
- * scheme change can't silently break deletion), so a call to the deployed API
- * is cross-origin and the browser will preflight it. Without this the native
+ * the Capacitor webview serves the app from `capacitor://localhost` on iOS and
+ * `https://localhost` on Android, so a call to the deployed API is
+ * cross-origin and the browser will preflight it. (`capacitor.config.ts` sets
+ * `iosScheme: "https"`, but WKWebView owns https, so Capacitor's
+ * CAPInstanceDescriptor.normalize() rejects it and falls back to `capacitor`.
+ * `https://localhost` is the live Android origin and would also cover iOS if
+ * Capacitor ever honoured the setting.) Without this the native
  * delete-account flow cannot work at all — which the App Store requires to exist.
  *
  * Plain-http dev origins (`DEV_ORIGINS`) are allowed only outside production

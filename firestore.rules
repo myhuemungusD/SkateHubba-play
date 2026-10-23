@@ -971,6 +971,19 @@ service cloud.firestore {
             && trainingConsentStampOk('trainingConsentPromptSeenAt');
         }
 
+        // App Review 1.2 terms agreement, stamped by createProfile when the
+        // ProfileSetup checkbox is ticked. Optional so accounts created
+        // before 1.2.0 (and older clients) keep working. When written it must
+        // be the server time; once set it can't be removed or backdated.
+        function termsAcceptedAtOk() {
+          return ('termsAcceptedAt' in request.resource.data
+              && (request.resource.data.termsAcceptedAt == request.time
+                || (resource != null && 'termsAcceptedAt' in resource.data
+                    && request.resource.data.termsAcceptedAt == resource.data.termsAcceptedAt)))
+            || (!('termsAcceptedAt' in request.resource.data)
+              && (resource == null || !('termsAcceptedAt' in resource.data)));
+        }
+
         // ── Allowlist of accepted keys ──
         // Every key currently written to users/{uid}/private/profile by
         // the codebase. Keep in sync with UserPrivateProfile in
@@ -993,7 +1006,8 @@ service cloud.firestore {
             'trainingConsentRevokedAt',
             'trainingConsentPromptSeenAt',
             'tipsSeen',
-            'tipsDisabled'
+            'tipsDisabled',
+            'termsAcceptedAt'
           ]);
         }
 
@@ -1005,7 +1019,8 @@ service cloud.firestore {
           && onboardingSkippedAtOk()
           && pushEnabledOk()
           && tipsOk()
-          && trainingConsentOk();
+          && trainingConsentOk()
+          && termsAcceptedAtOk();
         allow update: if isOwner(uid)
           && privateProfileKeysOk()
           && fcmTokensOk()
@@ -1014,7 +1029,8 @@ service cloud.firestore {
           && onboardingSkippedAtOk()
           && pushEnabledOk()
           && tipsOk()
-          && trainingConsentOk();
+          && trainingConsentOk()
+          && termsAcceptedAtOk();
         allow delete: if isOwner(uid);
       }
 

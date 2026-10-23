@@ -35,6 +35,13 @@ const config: CapacitorConfig = {
   webDir: "dist",
   server: {
     androidScheme: "https",
+    // No effect on iOS: WKWebView already handles https, so Capacitor's
+    // CAPInstanceDescriptor.normalize() rejects it and falls back to the
+    // default scheme. Shipped iOS builds serve from capacitor://localhost and
+    // Android from https://localhost; both are in the API CORS allowlist
+    // (api/account/delete.ts PRODUCTION_ORIGINS). Value left as-is for 1.2.0:
+    // removing it is a no-op for the origin but should go through a device
+    // smoke rather than a store-readiness PR.
     iosScheme: "https",
     ...(devServerUrl ? { url: devServerUrl, cleartext: true } : {}),
   },
