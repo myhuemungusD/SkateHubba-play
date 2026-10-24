@@ -95,7 +95,8 @@ export function MascotBubble({
   // `'unsafe-inline'`.
   const gripFillRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
-    if (gripFillRef.current) gripFillRef.current.style.width = `${wornPct}%`;
+    // The strip always renders, so the ref is set by the time this runs.
+    gripFillRef.current?.style.setProperty("width", `${wornPct}%`);
   }, [wornPct]);
 
   return (
@@ -124,15 +125,27 @@ export function MascotBubble({
           </div>
         </div>
         {handleClose && (
+          // A full 44pt circle you can see, not a bare glyph inside an
+          // invisible hit area: first-run tips sit over real content, so the
+          // way out has to read at a glance.
           <button
             type="button"
             onClick={handleClose}
             aria-label={closeLabel}
-            className={`-mt-1 -mr-1 text-muted hover:text-white rounded-full ${TOUCH_TARGET} ${FOCUS_RING}`}
+            data-testid="mascot-close"
+            className={`-mt-1 -mr-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white hover:bg-white/20 active:bg-white/25 ${TOUCH_TARGET} ${FOCUS_RING}`}
           >
-            <span aria-hidden="true" className="font-display text-lg leading-none">
-              ×
-            </span>
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            >
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
           </button>
         )}
       </div>

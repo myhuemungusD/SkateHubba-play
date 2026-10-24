@@ -683,6 +683,24 @@ html.consent-banner-open body {
   );
 }
 
+/* Tour / tip bubbles dock to the bottom edge like the consent banner. While
+   the banner is open, sit the bubble above the banner's measured inset
+   (published by ConsentBanner) instead of at the fixed nav clearance, so the
+   tour's NEXT button can never land under the banner's OK / No row. */
+html.consent-banner-open .coach-dock-bottom {
+  padding-bottom: max(calc(5rem + env(safe-area-inset-bottom)), calc(var(--consent-banner-inset, 0px) + 0.5rem));
+}
+
+@media (min-width: 640px) {
+  html.consent-banner-open .coach-dock-bottom {
+    padding-bottom: max(calc(1.5rem + env(safe-area-inset-bottom)), calc(var(--consent-banner-inset, 0px) + 0.5rem));
+  }
+}
+
+html.consent-banner-open .coach-dock-bubble {
+  margin-bottom: 0;
+}
+
 /* While the lobby tour card is up, leave room to scroll the finished-games
    row clear of the bubble (the bubble is fixed above the bottom nav). */
 html.tour-open .lobby-root {

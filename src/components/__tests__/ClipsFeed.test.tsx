@@ -1049,6 +1049,27 @@ describe("ClipsFeed", () => {
     expect(screen.queryByRole("button", { name: /Land — @bob landed it/i })).not.toBeInTheDocument();
   });
 
+  it("prefetches the next dispute's match clip, but only from Firebase Storage", async () => {
+    const host = "https://firebasestorage.googleapis.com/v0/b/x/o";
+    mockFetchOpenDisputes.mockResolvedValueOnce([
+      makeDispute({ id: "g1_3" }),
+      makeDispute({ id: "g2_4", gameId: "g2", matchVideoUrl: `${host}/match2.webm?alt=media` }),
+      makeDispute({ id: "g3_5", gameId: "g3", matchVideoUrl: "https://example.com/off-storage.webm" }),
+    ]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await screen.findAllByRole("article");
+    const prefetchedSrcs = () =>
+      Array.from(document.querySelectorAll<HTMLVideoElement>("video[aria-hidden='true']")).map((v) => v.src);
+
+    await waitFor(() => expect(prefetchedSrcs().some((src) => src.includes("match2.webm"))).toBe(true));
+
+    // Slide 1 is active: slide 2's off-storage URL is never fetched.
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    await waitFor(() => expect(document.querySelector("[data-active='true']")).toHaveAccessibleName(/community call/i));
+    expect(prefetchedSrcs().some((src) => src.includes("off-storage"))).toBe(false);
+  });
+
   it("plays the first clip after the dispute error page, not the one N slides ahead", async () => {
     mockFetchOpenDisputes.mockRejectedValueOnce(new Error("unavailable"));
     mockFetchClipsFeed.mockResolvedValueOnce([
@@ -1271,5 +1292,48 @@ describe("ClipsFeed — user clips and comments", () => {
     await user.click(await screen.findByRole("button", { name: /back to scroll/i }));
     expect(screen.getByRole("button", { name: "Scroll" })).toHaveAttribute("aria-pressed", "true");
     expect(mockUseWttFeed).toHaveBeenLastCalledWith("me", false);
+  });
+});
+
+/**
+ * Regression: the mode switcher used to sit at a fixed `top-16` (64px) while
+ * the header row sits under `pt-safe` (62px on a 6.9" iPhone), so the switcher
+ * and its orange underline landed inside the header row on notched phones.
+ * Everything at the top now flows in one safe-area-aware stack.
+ */
+describe("ClipsFeed — top stack", () => {
+  it("stacks header, mode switcher, and accessory in order under one safe-area column", async () => {
+    flags.feedModes = true;
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+    render(
+      <ClipsFeed
+        profile={profile}
+        onViewPlayer={vi.fn()}
+        onChallengeUser={vi.fn()}
+        topAccessory={<div data-testid="accessory" />}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+    const stack = screen.getByTestId("feed-top-stack");
+    expect(stack).toHaveClass("pt-safe");
+    const header = screen.getByTestId("clips-feed-header");
+    const modeRow = await screen.findByTestId("feed-mode-row");
+    const accessory = screen.getByTestId("accessory");
+    expect([...stack.children]).toEqual(expect.arrayContaining([header, modeRow, accessory]));
+    expect(header.compareDocumentPosition(modeRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(modeRow.compareDocumentPosition(accessory) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Nothing in the stack positions itself with a fixed offset that ignores the notch.
+    for (const el of [stack, ...stack.querySelectorAll("*")]) {
+      expect(el.className.toString()).not.toMatch(/(^|\s)top-[1-9]\d*(\s|$)/);
+    }
+    expect(header).not.toHaveClass("absolute");
+    expect(modeRow).not.toHaveClass("absolute");
+  });
+
+  it("renders the feed error inside the stack, below the header", async () => {
+    mockFetchClipsFeed.mockRejectedValueOnce(new Error("boom"));
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    const alert = await screen.findByRole("button", { name: /try again|retry/i });
+    expect(screen.getByTestId("feed-top-stack")).toContainElement(alert);
   });
 });

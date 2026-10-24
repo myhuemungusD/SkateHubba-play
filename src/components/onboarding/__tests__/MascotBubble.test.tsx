@@ -66,6 +66,13 @@ describe("MascotBubble", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("draws the close button as a visible 44pt circle with an icon, not a bare glyph", () => {
+    render(<MascotBubble {...defaultProps()} onClose={vi.fn()} />);
+    const close = screen.getByRole("button", { name: /close tour/i });
+    expect(close).toHaveClass("h-11", "w-11", "min-h-11", "min-w-11", "rounded-full", "border", "bg-white/10");
+    expect(close.querySelector("svg")).not.toBeNull();
+  });
+
   it("hides the close button when onClose is omitted", () => {
     render(<MascotBubble {...defaultProps()} />);
     expect(screen.queryByRole("button", { name: /close tour/i })).toBeNull();

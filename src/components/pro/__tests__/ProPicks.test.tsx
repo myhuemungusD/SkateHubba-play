@@ -31,6 +31,8 @@ describe("ProPicks", () => {
     h.listFeaturedClips.mockResolvedValue([
       { clipId: "f1", proUid: "p", proUsername: "mike", videoUrl: "v", trickName: "kf" },
       { clipId: "f2", proUid: "p", proUsername: "mike", videoUrl: null, trickName: "" },
+      // No trick name: the player still gets a labelled video (falls back to the clip id).
+      { clipId: "f3", proUid: "p", proUsername: "mike", videoUrl: "w", trickName: "" },
     ]);
     h.listChallenges.mockResolvedValue([
       { id: "c1", proUid: "p", proUsername: "mike", trickName: "tre", description: "flat ground" },
@@ -42,6 +44,7 @@ describe("ProPicks", () => {
     fireEvent.click(screen.getByRole("button", { name: /PRO PICKS/ }));
     expect(screen.getByText("Loading…")).toBeInTheDocument();
     expect(await screen.findByLabelText("kf")).toBeInTheDocument();
+    expect(screen.getByLabelText("f3").tagName).toBe("VIDEO");
     expect(screen.getByText("flat ground")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Your clip for tre"), { target: { value: "m1" } });
     fireEvent.click(screen.getAllByRole("button", { name: "ENTER" })[0]);

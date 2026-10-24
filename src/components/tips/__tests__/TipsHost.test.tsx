@@ -83,6 +83,57 @@ describe("TipsHost", () => {
     expect(markSeen).toHaveBeenCalledTimes(2);
   });
 
+  /**
+   * Regression: the profile tips sat over the profile with only Esc or a
+   * small x to clear them. A tap anywhere outside the bubble now puts the set
+   * away; a tap inside it (next, the copy) never does.
+   */
+  it("puts the set away on a tap outside the bubble, but not on taps inside it", () => {
+    const outside = document.createElement("button");
+    outside.textContent = "page button";
+    document.body.appendChild(outside);
+    renderAt("/me");
+    settle();
+    fireEvent.click(screen.getByText("your page"));
+    fireEvent.click(screen.getByRole("button", { name: "got it" }).closest("[data-coach-bubble]")!);
+    expect(markSeen).not.toHaveBeenCalled();
+    fireEvent.click(outside);
+    expect(markSeen).toHaveBeenCalledWith("me");
+  });
+
+  /**
+   * The outside tap puts the tips away AND still reaches what was tapped:
+   * swallowing it would make the first tap on the page feel dead.
+   */
+  it("lets an outside tap reach the page while it puts the set away", () => {
+    const onPageTap = vi.fn();
+    render(
+      <MemoryRouter initialEntries={["/me"]}>
+        <button type="button" onClick={onPageTap}>
+          like
+        </button>
+        <TipsHost />
+      </MemoryRouter>,
+    );
+    settle();
+    const outside = screen.getByRole("button", { name: "like" });
+    const tap = new MouseEvent("click", { bubbles: true, cancelable: true });
+    const notCancelled = fireEvent(outside, tap);
+    expect(onPageTap).toHaveBeenCalledTimes(1);
+    expect(notCancelled).toBe(true);
+    expect(tap.defaultPrevented).toBe(false);
+    expect(markSeen).toHaveBeenCalledTimes(1);
+    expect(markSeen).toHaveBeenCalledWith("me");
+  });
+
+  it("does not listen for outside taps after it unmounts", () => {
+    const { unmount } = renderAt("/me");
+    settle();
+    unmount();
+    fireEvent.click(document.body);
+    expect(markSeen).not.toHaveBeenCalled();
+  });
+
   it("drops anchor-only tips when the hook is missing", () => {
     renderAt("/feed");
     settle();
@@ -96,6 +147,25 @@ describe("TipsHost", () => {
     renderAt("/closet/studio");
     settle();
     expect(screen.getByText("tip 1 of 2", { selector: "p" })).toBeInTheDocument();
+    // Step 2 is the anchored "tools" tip: the ring targets its hook.
+    el.getBoundingClientRect = () =>
+      ({
+        top: 300,
+        left: 20,
+        width: 100,
+        height: 40,
+        bottom: 340,
+        right: 120,
+        x: 20,
+        y: 300,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    fireEvent.click(screen.getByRole("button", { name: "next" }));
+    expect(screen.getByText("tools")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(20);
+    });
+    expect(screen.getByTestId("spotlight-cutout")).toBeInTheDocument();
   });
 
   it("prefers an open zone over the route", () => {

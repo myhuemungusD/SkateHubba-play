@@ -12,8 +12,9 @@ import type { ClipsFeedProps } from "../../components/ClipsFeed";
  * was given.
  */
 vi.mock("../../components/ClipsFeed", () => ({
-  ClipsFeed: ({ profile, onViewPlayer, onChallengeUser }: ClipsFeedProps) => (
+  ClipsFeed: ({ profile, onViewPlayer, onChallengeUser, topAccessory }: ClipsFeedProps) => (
     <div data-testid="clips-feed" data-viewer={profile.uid}>
+      <div data-testid="top-accessory-slot">{topAccessory}</div>
       <button onClick={() => onViewPlayer("u2")}>__view__</button>
       <button onClick={() => onChallengeUser("rival")}>__challenge__</button>
     </div>
@@ -56,5 +57,11 @@ describe("FeedScreen pro picks", () => {
     vi.stubEnv("VITE_FEATURE_PRO_COMMUNITY", "true");
     render(<FeedScreen profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     expect(screen.getByTestId("pro-picks")).toHaveAttribute("data-uid", "u1");
+  });
+
+  it("hands Pro picks to the feed's top stack instead of floating them over the header", () => {
+    vi.stubEnv("VITE_FEATURE_PRO_COMMUNITY", "true");
+    render(<FeedScreen profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    expect(screen.getByTestId("top-accessory-slot")).toContainElement(screen.getByTestId("pro-picks"));
   });
 });

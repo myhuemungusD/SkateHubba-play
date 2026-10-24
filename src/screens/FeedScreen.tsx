@@ -20,8 +20,14 @@ export function FeedScreen({ profile, onViewPlayer, onChallengeUser }: Props) {
   return (
     <div className="relative h-dvh bg-black">
       <h1 className="sr-only">Clips</h1>
-      {isProCommunityEnabled() && <ProPicks player={{ uid: profile.uid, username: profile.username }} />}
-      <ClipsFeed profile={profile} onViewPlayer={onViewPlayer} onChallengeUser={onChallengeUser} />
+      <ClipsFeed
+        profile={profile}
+        onViewPlayer={onViewPlayer}
+        onChallengeUser={onChallengeUser}
+        topAccessory={
+          isProCommunityEnabled() ? <ProPicks player={{ uid: profile.uid, username: profile.username }} /> : undefined
+        }
+      />
     </div>
   );
 }

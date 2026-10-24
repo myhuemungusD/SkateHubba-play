@@ -83,6 +83,32 @@ describe("ProfileIdentityCard", () => {
     expect(screen.getByText("140 / 216 XP")).toBeInTheDocument();
   });
 
+  it.each([
+    ["0 XP", 0],
+    ["no XP field yet", undefined],
+  ])("hides the level chip and the XP bar at %s, even with the XP flag on", (_label, xp) => {
+    vi.stubEnv("VITE_FEATURE_XP_ENABLED", "true");
+    render(<ProfileIdentityCard username="rider" isVerifiedPro={false} stance="regular" xp={xp} />);
+    expect(screen.queryByRole("img", { name: /^Level / })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("xp-progress")).not.toBeInTheDocument();
+    expect(screen.queryByText(/\/ \d+ XP$/)).not.toBeInTheDocument();
+  });
+
+  it("shows the bar from the first point of XP", () => {
+    vi.stubEnv("VITE_FEATURE_XP_ENABLED", "true");
+    render(<ProfileIdentityCard username="rider" isVerifiedPro={false} stance="regular" xp={1} />);
+    expect(screen.getByRole("img", { name: "Level 1" })).toBeInTheDocument();
+    expect(screen.getByText("1 / 24 XP")).toBeInTheDocument();
+  });
+
+  it("never shows the bar while the XP flag is off, whatever the XP", () => {
+    vi.stubEnv("VITE_FEATURE_XP_ENABLED", "false");
+    render(<ProfileIdentityCard username="rider" isVerifiedPro={false} stance="regular" xp={140} />);
+    expect(screen.queryByRole("img", { name: /^Level / })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("xp-progress")).not.toBeInTheDocument();
+    expect(screen.queryByText("140 / 216 XP")).not.toBeInTheDocument();
+  });
+
   it("renders the first-letter initial when no profileImageUrl is provided", () => {
     render(<ProfileIdentityCard username="rider" isVerifiedPro={false} stance="regular" />);
     expect(screen.getByText("R")).toBeInTheDocument();

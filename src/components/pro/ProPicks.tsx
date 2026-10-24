@@ -71,7 +71,11 @@ function ChallengeRow({ c, player, clips }: { c: ProChallenge; player: Player; c
   );
 }
 
-/** Feed overlay: clips pinned by pros and open pro challenges. */
+/**
+ * Feed row: clips pinned by pros and open pro challenges. Rendered inside the
+ * feed's top stack (`ClipsFeed` `topAccessory`), never positioned on its own,
+ * so the pill can't hide under the header row or the mode switcher.
+ */
 export function ProPicks({ player }: { player: Player }) {
   const [open, setOpen] = useState(false);
   const [featured, setFeatured] = useState<FeaturedClip[] | null>(null);
@@ -93,7 +97,7 @@ export function ProPicks({ player }: { player: Player }) {
   }, [open, featured, player.uid]);
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-col items-center pt-safe">
+    <div className="pointer-events-none flex flex-col items-center" data-testid="pro-picks-row">
       <button
         type="button"
         aria-expanded={open}
