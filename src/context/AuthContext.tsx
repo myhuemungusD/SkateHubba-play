@@ -545,6 +545,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // message tells them how to finish.
         clearPendingDeleteUid();
         setPendingDeleteUid(null);
+        // The push token was scrubbed above, before we knew the delete would
+        // stop. The account stays, so put it back (a no-op off native or
+        // without permission). Best-effort: it logs its own failures.
+        void registerPushTokenIfGranted(uid).catch(() => {});
         throw err;
       }
       logger.error("delete_account_auth_failed", { uid, code });

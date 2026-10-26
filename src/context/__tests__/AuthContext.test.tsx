@@ -735,6 +735,8 @@ describe("handleDeleteAccount", () => {
 
       expect(mockCaptureException).not.toHaveBeenCalled();
       expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+      // The token scrubbed before the delete is put back: the account stays.
+      expect(registerPushTokenIfGranted).toHaveBeenLastCalledWith("u1");
     });
 
     it("clears sessionStorage on fully successful first-attempt delete", async () => {
