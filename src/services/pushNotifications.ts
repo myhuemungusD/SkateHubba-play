@@ -54,7 +54,27 @@ let fcmListenerUid: string | null = null;
 
 const FCM_TOKEN_EVENT = "skatehubba:fcm-token";
 
-type FcmWindow = Window & { __skatehubbaFcmToken?: string };
+/**
+ * `uid + token` of the last bridge token saved, and the saves still running.
+ *
+ * WHY: the native side re-posts the FCM token for a few seconds (JS may not
+ * be listening yet). Each post used to start a full save (2 reads, 2 writes),
+ * so one launch made up to 9 saves, and when the rules denied them all the
+ * app spun on denied writes (Sentry SKATEHUBBA-SENTRY-D, a 45 s hang). Now a
+ * repeat post of a token that is already saved, or still saving, is skipped.
+ */
+let bridgeSavedKey: string | null = null;
+const inFlight = new Map<string, Promise<boolean>>();
+
+function tokenKey(uid: string, token: string): string {
+  return `${uid}\n${token}`;
+}
+
+/**
+ * `__skatehubbaFcmTokenAck` tells AppDelegate.deliverFcmToken that JS has the
+ * token, so it stops re-posting it.
+ */
+type FcmWindow = Window & { __skatehubbaFcmToken?: string; __skatehubbaFcmTokenAck?: string };
 
 let fcmBridge: ((event: Event) => void) | null = null;
 
@@ -62,11 +82,14 @@ let fcmBridge: ((event: Event) => void) | null = null;
 export function _resetActivePushToken(): void {
   activePushToken = null;
   fcmListenerUid = null;
+  bridgeSavedKey = null;
+  inFlight.clear();
   if (fcmBridge) {
     window.removeEventListener(FCM_TOKEN_EVENT, fcmBridge);
     fcmBridge = null;
   }
   delete (window as FcmWindow).__skatehubbaFcmToken;
+  delete (window as FcmWindow).__skatehubbaFcmTokenAck;
 }
 
 function readCachedFcmToken(): string | null {
@@ -93,7 +116,12 @@ function ensureFcmBridge(): void {
     const uid = fcmListenerUid;
     const token = tokenFromFcmEvent(event);
     if (!uid || !token) return;
-    void persistToken(uid, token);
+    // Tell the native side to stop re-posting: JS has the token now.
+    (window as FcmWindow).__skatehubbaFcmTokenAck = token;
+    if (bridgeSavedKey === tokenKey(uid, token)) return;
+    void persistToken(uid, token).then((saved) => {
+      if (saved) bridgeSavedKey = tokenKey(uid, token);
+    });
   };
   window.addEventListener(FCM_TOKEN_EVENT, fcmBridge);
 }
@@ -287,18 +315,34 @@ async function registerAndPersist(uid: string, assumeEnabled: boolean): Promise<
   }
 }
 
-async function persistToken(uid: string, token: string): Promise<void> {
-  if (!token) return;
-  try {
-    // Canonical owner-only list plus the cross-readable /pushTargets/{uid}
-    // mirror the dispatch path (src/services/pushDispatch.ts) embeds in a
-    // push_dispatch doc. Same helper as the web path, so both trim to the
-    // newest 9 plus this device at the 10-token rules cap.
-    await storePushToken(requireDb(), uid, token);
-    activePushToken = token;
-  } catch (err) {
-    logger.warn("push_token_persist_failed", { uid, error: parseFirebaseError(err) });
-  }
+/**
+ * Save `token` for `uid`. Resolves true when the save landed. A second call
+ * for the same uid and token while the first is still running shares that
+ * first save instead of starting another.
+ */
+function persistToken(uid: string, token: string): Promise<boolean> {
+  if (!token) return Promise.resolve(false);
+  const key = tokenKey(uid, token);
+  const pending = inFlight.get(key);
+  if (pending) return pending;
+  const run = (async (): Promise<boolean> => {
+    try {
+      // Canonical owner-only list plus the cross-readable /pushTargets/{uid}
+      // mirror the dispatch path (src/services/pushDispatch.ts) embeds in a
+      // push_dispatch doc. Same helper as the web path, so both trim to the
+      // newest 9 plus this device at the 10-token rules cap.
+      await storePushToken(requireDb(), uid, token);
+      activePushToken = token;
+      return true;
+    } catch (err) {
+      logger.warn("push_token_persist_failed", { uid, error: parseFirebaseError(err) });
+      return false;
+    } finally {
+      inFlight.delete(key);
+    }
+  })();
+  inFlight.set(key, run);
+  return run;
 }
 
 /* ────────────────────────────────────────────
@@ -371,6 +415,8 @@ export function subscribeToNativePushOpens(cb: (gameId: string, data?: Record<st
 export async function unregisterPushToken(uid: string): Promise<void> {
   if (!isPushSupported()) return;
   fcmListenerUid = null;
+  bridgeSavedKey = null;
+  delete (window as FcmWindow).__skatehubbaFcmTokenAck;
 
   const token = activePushToken;
   if (token) {

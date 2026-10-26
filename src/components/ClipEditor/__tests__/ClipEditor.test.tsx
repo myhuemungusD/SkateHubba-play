@@ -151,6 +151,27 @@ describe("ClipEditor", () => {
     expect(onCancel).toHaveBeenCalled();
   });
 
+  it("Escape on the error screen goes back without reaching the upload window", async () => {
+    readAngle.mockRejectedValueOnce(new Error("bad"));
+    const onDone = vi.fn();
+    const onCancel = vi.fn();
+    // Stands in for UserClipUploadModal, whose own Escape closes the whole upload.
+    const hostKeyDown = vi.fn();
+    const hostClick = vi.fn();
+    render(
+      <div onKeyDown={hostKeyDown} onClick={hostClick}>
+        <ClipEditor blob={new Blob(["x"], { type: "video/mp4" })} onDone={onDone} onCancel={onCancel} />
+      </div>,
+    );
+    const alert = await screen.findByRole("alertdialog");
+    fireEvent.keyDown(alert, { key: "Escape" });
+    fireEvent.keyDown(alert, { key: "a" });
+    fireEvent.click(alert);
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(hostKeyDown).not.toHaveBeenCalled();
+    expect(hostClick).not.toHaveBeenCalled();
+  });
+
   it("shows an error instead of an unhandled rejection when the first seek fails", async () => {
     engine.seekRejects = true;
     renderEditor();

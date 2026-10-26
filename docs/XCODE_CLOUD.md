@@ -96,6 +96,9 @@ the eye icon) or from the Firebase console.
 | `VITE_FIREBASE_VAPID_KEY`           | Yes (optional) | Vercel Production / Firebase > Cloud Messaging > Web Push certificates                                                                           |
 | `VITE_MAPBOX_TOKEN`                 | Yes            | Vercel Production (same public `pk.` token as GitHub secret, #747)                                                                               |
 | `VITE_MAPBOX_STYLE_URL`             | No (optional)  | Vercel Production, if set                                                                                                                        |
+| `VITE_SENTRY_DSN`                   | Yes            | Vercel Production (same value as the GitHub secret). Required: the script stops without it, or the build ships with no crash reports             |
+| `VITE_POSTHOG_KEY`                  | Yes            | Vercel Production (same value as the GitHub secret). Required: the script stops without it, or the build ships with no analytics                 |
+| `VITE_POSTHOG_HOST`                 | No (optional)  | Vercel Production, if set. The script warns when it's missing                                                                                    |
 | `GOOGLE_SERVICE_INFO_PLIST_BASE64`  | Yes            | Firebase console > Project settings > iOS app `com.skatehubba.app` > download `GoogleService-Info.plist`, then paste its base64 (or the raw XML) |
 
 Every finished feature is hard-coded on in `ci_post_clone.sh` (same list as

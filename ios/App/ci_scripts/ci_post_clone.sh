@@ -19,7 +19,7 @@ missing=""
 for name in VITE_APP_URL VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN \
   VITE_FIREBASE_PROJECT_ID VITE_FIREBASE_STORAGE_BUCKET \
   VITE_FIREBASE_MESSAGING_SENDER_ID VITE_FIREBASE_APP_ID \
-  VITE_MAPBOX_TOKEN; do
+  VITE_MAPBOX_TOKEN VITE_SENTRY_DSN VITE_POSTHOG_KEY; do
   eval "value=\${$name:-}"
   [ -n "$value" ] || missing="$missing $name"
 done
@@ -31,6 +31,10 @@ if [ -n "$missing" ]; then
   exit 1
 fi
 [ -n "${VITE_FIREBASE_VAPID_KEY:-}" ] || echo "warning: VITE_FIREBASE_VAPID_KEY is not set; web push stays off."
+# Sentry and PostHog are required above: without them the build ships with no
+# crash reports and no analytics, and nothing fails to tell you.
+[ -n "${VITE_POSTHOG_HOST:-}" ] || echo "warning: VITE_POSTHOG_HOST is not set; PostHog uses its default host."
+[ -n "${VITE_MAPBOX_STYLE_URL:-}" ] || echo "warning: VITE_MAPBOX_STYLE_URL is not set; the map uses the default style."
 
 # 2. Node from Homebrew, major version from .nvmrc (22).
 NODE_MAJOR="$(tr -dc '0-9.' < .nvmrc | cut -d. -f1)"

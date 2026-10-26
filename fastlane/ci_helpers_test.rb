@@ -133,4 +133,29 @@ class SkatehubbaCITest < Minitest::Test
     assert_includes fastfile, "latest_testflight_build_number("
     refute_includes fastfile, "APPLE_ID"
   end
+  def test_missing_sentry_dsym_env_names_only
+    full = { "SENTRY_AUTH_TOKEN" => "x", "SENTRY_ORG" => "o", "SENTRY_PROJECT" => "p" }
+    assert_empty SkatehubbaCI.missing_sentry_dsym_env(full)
+    assert_equal %w[SENTRY_AUTH_TOKEN], SkatehubbaCI.missing_sentry_dsym_env(full.merge("SENTRY_AUTH_TOKEN" => " "))
+    assert_equal SkatehubbaCI::SENTRY_DSYM_ENV, SkatehubbaCI.missing_sentry_dsym_env({})
+  end
+
+  def test_dsym_search_paths
+    Dir.mktmpdir do |dir|
+      archive = File.join(dir, "App.xcarchive")
+      FileUtils.mkdir_p(File.join(archive, "dSYMs"))
+      zip = File.join(dir, "SkateHubba.app.dSYM.zip")
+      File.write(zip, "")
+      assert_equal [File.join(archive, "dSYMs"), zip], SkatehubbaCI.dsym_search_paths(archive, zip)
+      assert_equal [zip], SkatehubbaCI.dsym_search_paths(nil, zip)
+      assert_empty SkatehubbaCI.dsym_search_paths(File.join(dir, "missing"), "")
+    end
+  end
+
+  def test_beta_lane_uploads_dsyms_before_testflight
+    fastfile = File.read(File.expand_path("Fastfile", __dir__))
+    upload = fastfile.index("upload_dsyms_to_sentry")
+    assert upload, "beta lane must upload dSYMs"
+    assert_operator fastfile.index("upload_dsyms_to_sentry", upload + 1), :<, fastfile.index("pilot(")
+  end
 end

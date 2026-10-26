@@ -48,6 +48,8 @@ describe("ClipShareButtons", () => {
       expect.objectContaining({
         text: "Check out my Kick Flip on SkateHubba!",
         textWithoutFiles: expect.stringContaining("Check out my Kick Flip on SkateHubba!\n"),
+        // The iOS app shares the video file itself.
+        nativeFile: { url: "https://cdn/clip.webm", filename: "skatehubba-kick-flip.webm" },
       }),
     );
     expect(trackEvent).toHaveBeenCalledWith("clip_shared", { method: "clipboard", context: "waiting_screen" });

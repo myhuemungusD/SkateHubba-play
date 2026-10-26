@@ -25,19 +25,33 @@ export const MAX_PUSH_TOKENS = 10;
 
 /**
  * The token list to write when adding `token`, or null when `arrayUnion` is
- * enough (the token is already there, or there is room).
+ * enough (the stored list is clean and stays within the cap).
  *
- * WHY: at the cap, `arrayUnion` would make an 11-entry list and the rules
- * deny the whole write, so a new browser or phone silently never gets push.
- * Instead the oldest entries drop (arrayUnion appends, so the list runs
- * oldest to newest) and the newest 9 plus this device remain. A dropped
- * token belonged to a device that has not registered since; if it is still
- * alive it re-adds itself on its next sign-in.
+ * WHY: the rules deny any write that leaves more than 10 entries, and they
+ * check the whole stored list, not just what this write adds. At the cap,
+ * `arrayUnion` would make an 11-entry list, so a new phone silently never
+ * gets push. Worse, a list that is ALREADY over 10 (written before the cap
+ * existed, or by an older build) used to be left alone when it already held
+ * this token, so every save was denied and the iPhone app retried in a loop
+ * (Sentry SKATEHUBBA-SENTRY-D). So whenever the stored list is over the cap,
+ * or holds junk the rules would count, it is rewritten: duplicates and
+ * non-strings dropped, the newest 9 other tokens kept (arrayUnion appends,
+ * so the list runs oldest to newest), and this device last. A dropped token
+ * belonged to a device that has not registered since; if it is still alive
+ * it re-adds itself on its next sign-in.
  */
 export function cappedTokenList(existing: unknown, token: string): string[] | null {
-  const list = Array.isArray(existing) ? existing.filter((t): t is string => typeof t === "string") : [];
-  if (list.includes(token) || list.length < MAX_PUSH_TOKENS) return null;
-  return [...list.slice(-(MAX_PUSH_TOKENS - 1)), token];
+  const raw: unknown[] = Array.isArray(existing) ? existing : [];
+  const clean = raw.every((t) => typeof t === "string");
+  const has = raw.includes(token);
+  if (clean && (has ? raw.length <= MAX_PUSH_TOKENS : raw.length < MAX_PUSH_TOKENS)) return null;
+  // Newest occurrence wins, so walk from the end and keep first sightings.
+  const others: string[] = [];
+  for (let i = raw.length - 1; i >= 0 && others.length < MAX_PUSH_TOKENS - 1; i--) {
+    const t = raw[i];
+    if (typeof t === "string" && t !== token && !others.includes(t)) others.push(t);
+  }
+  return [...others.reverse(), token];
 }
 
 /** Add `token` to the private profile's fcmTokens, trimming at the cap. */

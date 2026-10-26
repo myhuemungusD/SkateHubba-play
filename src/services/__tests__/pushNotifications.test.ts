@@ -553,6 +553,65 @@ describe("registerPushToken on iOS", () => {
     expect(mockSetDoc).not.toHaveBeenCalled();
   });
 
+  it("saves a re-posted token once, not once per post (SENTRY-D loop)", async () => {
+    await register();
+    // AppDelegate re-posts the same token while the first save is running.
+    for (let i = 0; i < 9; i++) {
+      window.dispatchEvent(new CustomEvent("skatehubba:fcm-token", { detail: { token: "fcm-repeat" } }));
+    }
+    await flush();
+    // One save = one private write + one mirror write.
+    expect(mockSetDoc).toHaveBeenCalledTimes(2);
+
+    // Later posts of an already-saved token are skipped too.
+    window.dispatchEvent(new CustomEvent("skatehubba:fcm-token", { detail: { token: "fcm-repeat" } }));
+    await flush();
+    expect(mockSetDoc).toHaveBeenCalledTimes(2);
+
+    // A new token is still saved.
+    window.dispatchEvent(new CustomEvent("skatehubba:fcm-token", { detail: { token: "fcm-rotated" } }));
+    await flush();
+    expect(mockSetDoc).toHaveBeenCalledTimes(4);
+  });
+
+  it("acks the token so the native side stops re-posting it", async () => {
+    const w = window as Window & { __skatehubbaFcmTokenAck?: string };
+    await register();
+    expect(w.__skatehubbaFcmTokenAck).toBeUndefined();
+    window.dispatchEvent(new CustomEvent("skatehubba:fcm-token", { detail: { token: "fcm-ack" } }));
+    expect(w.__skatehubbaFcmTokenAck).toBe("fcm-ack");
+    await flush();
+    await unregisterPushToken("u1");
+    expect(w.__skatehubbaFcmTokenAck).toBeUndefined();
+  });
+
+  it("a denied save is tried once per post burst and retried on a later post", async () => {
+    mockSetDoc.mockRejectedValueOnce(new Error("Missing or insufficient permissions"));
+    await register();
+    window.dispatchEvent(new CustomEvent("skatehubba:fcm-token", { detail: { token: "fcm-denied" } }));
+    window.dispatchEvent(new CustomEvent("skatehubba:fcm-token", { detail: { token: "fcm-denied" } }));
+    await flush();
+    // Private write rejected, so the mirror write never ran, and the second post shared the first save.
+    expect(mockSetDoc).toHaveBeenCalledTimes(1);
+
+    // Not marked saved, so a later post (e.g. a new APNs registration) tries again.
+    window.dispatchEvent(new CustomEvent("skatehubba:fcm-token", { detail: { token: "fcm-denied" } }));
+    await flush();
+    expect(mockSetDoc).toHaveBeenCalledTimes(3);
+  });
+
+  it("re-registering after sign-in still saves the cached token", async () => {
+    await register();
+    window.dispatchEvent(new CustomEvent("skatehubba:fcm-token", { detail: { token: "fcm-same" } }));
+    await flush();
+    mockSetDoc.mockClear();
+    // e.g. push toggled back on in Settings: the explicit path is not skipped.
+    (window as Window & { __skatehubbaFcmToken?: string }).__skatehubbaFcmToken = "fcm-same";
+    await register();
+    await flush();
+    expect(mockSetDoc).toHaveBeenCalledTimes(2);
+  });
+
   it("stops persisting after unregister", async () => {
     await register();
     window.dispatchEvent(new CustomEvent("skatehubba:fcm-token", { detail: { token: "fcm-live" } }));

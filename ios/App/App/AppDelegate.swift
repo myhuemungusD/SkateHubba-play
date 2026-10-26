@@ -91,19 +91,33 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     /// Push the FCM token into the page. JS may not be listening yet (the
     /// APNs callback can beat the React tree), so the value is also parked
     /// on `window.__skatehubbaFcmToken` and the event is repeated for a few
-    /// seconds. `arrayUnion` makes a duplicate write a no-op.
+    /// seconds, but only until JS acknowledges it by setting
+    /// `window.__skatehubbaFcmTokenAck` to the same token
+    /// (src/services/pushNotifications.ts). Without the ack every repeat
+    /// started another Firestore save, and when the rules denied them the
+    /// app hung on /lobby (Sentry SKATEHUBBA-SENTRY-D).
     private func deliverFcmToken(_ token: String) {
         let escaped = token
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
         let js = """
-        window.__skatehubbaFcmToken = '\(escaped)';
-        window.dispatchEvent(new CustomEvent('skatehubba:fcm-token', { detail: { token: window.__skatehubbaFcmToken } }));
+        (function () {
+          if (window.__skatehubbaFcmTokenAck === '\(escaped)') return true;
+          window.__skatehubbaFcmToken = '\(escaped)';
+          window.dispatchEvent(new CustomEvent('skatehubba:fcm-token', { detail: { token: window.__skatehubbaFcmToken } }));
+          return window.__skatehubbaFcmTokenAck === '\(escaped)';
+        })();
         """
         func attempt(_ remaining: Int) {
             DispatchQueue.main.async {
-                self.bridgeController()?.webView?.evaluateJavaScript(js, completionHandler: nil)
-                if remaining > 0 {
+                guard let webView = self.bridgeController()?.webView else {
+                    if remaining > 0 {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { attempt(remaining - 1) }
+                    }
+                    return
+                }
+                webView.evaluateJavaScript(js) { result, _ in
+                    if (result as? Bool) == true || remaining <= 0 { return }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                         attempt(remaining - 1)
                     }

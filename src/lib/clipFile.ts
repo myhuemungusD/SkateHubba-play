@@ -21,3 +21,19 @@ export function clipFileType(blobType: string | undefined): { mime: string; ext:
 export function clipFileName(trickName: string, ext: string): string {
   return `skatehubba-${trickName.replace(/\s+/g, "-").toLowerCase()}.${ext}`;
 }
+
+/**
+ * Best guess at a stored clip's extension from its download URL, before the
+ * file is fetched (the native share sheet needs a name up front). Storage
+ * paths end in `.mp4` (native) or `.webm` (web); anything else is mp4.
+ */
+export function clipExtFromUrl(url: string): string {
+  let path = url.split("?")[0];
+  try {
+    path = decodeURIComponent(new URL(url).pathname);
+  } catch {
+    // Not a parseable URL — match on the raw string.
+  }
+  const m = /\.(mp4|mov|webm)$/i.exec(path);
+  return m ? m[1].toLowerCase() : "mp4";
+}

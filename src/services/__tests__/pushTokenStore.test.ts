@@ -43,6 +43,48 @@ describe("cappedTokenList", () => {
   });
 });
 
+describe("cappedTokenList over the cap (SENTRY-D save loop)", () => {
+  const over = Array.from({ length: 12 }, (_, i) => `old-${i}`);
+
+  it("trims a list already over 10 even when it holds this token", () => {
+    // Before: returned null, so arrayUnion kept 12 entries and every save was denied.
+    const out = cappedTokenList(over, "old-3");
+    expect(out).toHaveLength(MAX_PUSH_TOKENS);
+    expect(out).toEqual([
+      ...over
+        .slice(-10)
+        .filter((t) => t !== "old-3")
+        .slice(-9),
+      "old-3",
+    ]);
+  });
+
+  it("drops duplicates and junk the rules would still count", () => {
+    // Under the cap a duplicate is harmless, so arrayUnion is still enough.
+    expect(cappedTokenList(["a", "a", "b"], "c")).toBeNull();
+    // A non-string entry counts toward the rules cap, so the list is cleaned.
+    expect(cappedTokenList(["a", 7, "b"], "a")).toEqual(["b", "a"]);
+    // Over the cap, the newest copy of a duplicate decides its position.
+    expect(cappedTokenList([...full, "old-0"], "new")).toEqual([...full.slice(2), "old-0", "new"]);
+  });
+
+  it("is exactly at the cap with this token present: no rewrite", () => {
+    expect(cappedTokenList(full, "old-9")).toBeNull();
+  });
+
+  it("always produces a list the rules accept", () => {
+    for (let n = 0; n <= 30; n++) {
+      const list = Array.from({ length: n }, (_, i) => `t-${i % 13}`);
+      for (const tok of ["t-0", "t-5", "fresh"]) {
+        const out = cappedTokenList(list, tok);
+        const written = out ?? (list.includes(tok) ? list : [...list, tok]);
+        expect(written.length).toBeLessThanOrEqual(MAX_PUSH_TOKENS);
+        expect(written).toContain(tok);
+      }
+    }
+  });
+});
+
 describe("storePushToken", () => {
   it("uses arrayUnion with room to spare, private doc first", async () => {
     await storePushToken(db, "u1", "tok");

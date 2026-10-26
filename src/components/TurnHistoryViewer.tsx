@@ -6,7 +6,7 @@ import { trackEvent } from "../services/analytics";
 import { shareText } from "../services/nativeBridge";
 import { captureException } from "../lib/sentry";
 import { ClipVideo } from "./TurnHistoryClipVideo";
-import { clipFileName, clipFileType } from "../lib/clipFile";
+import { clipExtFromUrl, clipFileName, clipFileType } from "../lib/clipFile";
 
 interface TurnHistoryViewerProps {
   turns: TurnRecord[];
@@ -222,6 +222,8 @@ function ShareBtn({ url, trickName, context }: { url: string; trickName: string;
         title: `SkateHubba — ${trickName}`,
         text: `Check out my ${trickName} on SkateHubba!`,
         loadFiles,
+        // iOS app: send the video itself, not just a link.
+        nativeFile: { url, filename: clipFileName(trickName, clipExtFromUrl(url)) },
         textWithoutFiles: `Check out my ${trickName} on SkateHubba!\n${appUrl}`,
       });
       trackEvent("clip_shared", { method, context });
