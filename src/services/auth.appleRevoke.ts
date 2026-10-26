@@ -112,7 +112,7 @@ export async function revokeAppleTokensIfNeeded(
       return "failed";
     }
     const idToken = await untilAborted(user.getIdToken(), ac.signal);
-    const appCheck = await untilAborted(appCheckHeader(user.uid), ac.signal);
+    const appCheck = await untilAborted(appCheckHeaderWithin(user.uid, APPCHECK_BUDGET_MS), ac.signal);
     const url = `https://identitytoolkit.googleapis.com/v2/accounts:revokeToken?key=${encodeURIComponent(apiKey)}`;
     const res = await untilAborted(
       fetch(url, {
@@ -224,6 +224,25 @@ async function appCheckHeader(uid: string): Promise<Record<string, string>> {
     logger.warn("apple_revoke_appcheck_unavailable", { uid });
     return {};
   }
+}
+
+/**
+ * Most of the revoke budget may go to App Check. App Attest can be slow on
+ * a cold start, and App Check isn't enforced on Auth yet, so a stalled token
+ * must not cost the revoke itself.
+ */
+const APPCHECK_BUDGET_MS = 2_000;
+
+/** `appCheckHeader`, or no header if it takes longer than `ms`. */
+function appCheckHeaderWithin(uid: string, ms: number): Promise<Record<string, string>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<Record<string, string>>((resolve) => {
+    timer = setTimeout(() => {
+      logger.warn("apple_revoke_appcheck_slow", { uid, budgetMs: ms });
+      resolve({});
+    }, ms);
+  });
+  return Promise.race([appCheckHeader(uid), late]).finally(() => clearTimeout(timer));
 }
 
 /**

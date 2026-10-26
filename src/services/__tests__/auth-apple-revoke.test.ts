@@ -172,6 +172,19 @@ describe("revokeAppleTokensIfNeeded", () => {
       expect(sentHeaders()).toEqual({ "Content-Type": "application/json" });
     });
 
+    it("gives App Check about 2 s, then revokes without the header", async () => {
+      vi.useFakeTimers();
+      mockAppCheckOn.mockReturnValue(true);
+      mockGetAppCheckToken.mockImplementation(() => new Promise(() => {}));
+      const pending = revokeAppleTokensIfNeeded(appleUser);
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(mockFetch).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await pending).toBe("revoked");
+      expect(sentHeaders()).toEqual({ "Content-Type": "application/json" });
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
     it("fails soft and still revokes when the App Check token can't be had", async () => {
       mockAppCheckOn.mockReturnValue(true);
       mockGetAppCheckToken.mockRejectedValue(new Error("attestation failed"));
@@ -185,6 +198,12 @@ describe("revokeAppleTokensIfNeeded", () => {
     expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("cancelled");
     expect(mockFetch).not.toHaveBeenCalled();
     // A cancel is the user's choice, not a fault: breadcrumb only.
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
+  });
+
+  it("reports cancel when the sheet error only says it was canceled", async () => {
+    mockSignInWithApple.mockRejectedValue(new Error("The user canceled the authorization attempt."));
+    expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("cancelled");
     expect(mockCaptureMessage).not.toHaveBeenCalled();
   });
 
@@ -350,6 +369,19 @@ describe("revokeAppleTokensIfNeeded", () => {
     expect(await revokeAppleTokensIfNeeded(hangingUser, { timeoutMs: 10 })).toBe("failed");
     expect(mockFetch).not.toHaveBeenCalled();
     expectReported("timeout");
+  });
+
+  it("fails open when the ID token refresh rejects", async () => {
+    mockSignInWithApple.mockResolvedValue({ credential: { authorizationCode: "code123" } });
+    const failingUser = makeUser({
+      getIdToken: vi
+        .fn()
+        .mockRejectedValue(Object.assign(new Error("offline"), { code: "auth/network-request-failed" })),
+    });
+    expect(await revokeAppleTokensIfNeeded(failingUser)).toBe("failed");
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockLog).toHaveBeenCalledWith("apple_revoke_failed", { uid: "u1", error: "auth/network-request-failed" });
+    expectReported("error");
   });
 
   it("aborts the timed-out revoke request instead of leaving it running", async () => {
