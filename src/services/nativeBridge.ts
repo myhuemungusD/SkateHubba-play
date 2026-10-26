@@ -38,8 +38,16 @@ export interface ShareTextOptions {
   text: string;
   /** Optional link, passed as the Web Share `url` field. */
   url?: string;
-  /** Web Share Level 2 attachments. Web-only — the native sheet takes text. */
+  /** Web Share Level 2 attachments. Web-only — see `nativeFile` for the app. */
   files?: File[];
+  /**
+   * A remote file (e.g. a clip's download URL) to send as a real file from
+   * the native share sheet. Native-only: the plugin downloads it straight to
+   * the app's Cache directory (a native request, so no WebView CORS and no
+   * copy of the video in JS memory), shares it, then deletes it. If the
+   * download fails the native path falls back to sharing `textWithoutFiles`.
+   */
+  nativeFile?: { url: string; filename: string };
   /**
    * Lazily build the attachments. Only called on the web path when Web Share
    * Level 2 exists, so the native shell never downloads the clip (a
@@ -66,19 +74,21 @@ export function isShareAvailable(): boolean {
 /**
  * Open a share sheet, resolving with the method actually used.
  *
- * Native: the OS sheet via @capacitor/share (text + url; files are not
- * forwarded — the plugin takes filesystem URLs, not in-memory `File`s).
+ * Native: the OS sheet via @capacitor/share. With `nativeFile` it shares the
+ * downloaded file itself (resolves `"native_share"`); otherwise, or when the
+ * download fails, it shares the text + url (`"native_share_text"`).
  * Web: the pre-existing chain — Web Share with files → Web Share text-only →
  * clipboard copy.
  *
  * Rejects when the user cancels or the sheet fails, same as `navigator.share`.
  */
 export async function shareText(options: ShareTextOptions): Promise<ShareMethod> {
-  const { title, text, url, loadFiles, textWithoutFiles } = options;
+  const { title, text, url, loadFiles, textWithoutFiles, nativeFile } = options;
   let { files } = options;
   const plainText = textWithoutFiles ?? text;
 
   if (Capacitor.isNativePlatform()) {
+    if (nativeFile && (await shareNativeFile(nativeFile, title))) return "native_share";
     const nativeShare = await loadNativeShare();
     if (nativeShare) {
       await nativeShare({ ...(title ? { title } : {}), text: plainText, ...(url ? { url } : {}) });
@@ -147,6 +157,45 @@ async function loadNativeShare(): Promise<
   } catch (err) {
     logger.warn("native_share_unavailable", { error: parseFirebaseError(err) });
     return null;
+  }
+}
+
+/**
+ * Download `file` into Cache and open the native share sheet on it. Resolves
+ * `true` once the sheet completes, `false` when the file couldn't be fetched
+ * or shared (the caller then shares the link instead). A user-cancelled sheet
+ * rejects, like every other share. The cached copy is always removed.
+ */
+async function shareNativeFile(file: { url: string; filename: string }, title: string | undefined): Promise<boolean> {
+  // Trick names can hold "/" ("50/50"): keep the cache path one flat file.
+  const path = file.filename.replace(/[^\w.-]+/g, "-");
+  let fs: typeof import("@capacitor/filesystem");
+  let uri: string;
+  try {
+    fs = await import("@capacitor/filesystem");
+    const res = await fs.Filesystem.downloadFile({
+      url: file.url,
+      path,
+      directory: fs.Directory.Cache,
+    });
+    uri = res.path ?? (await fs.Filesystem.getUri({ path, directory: fs.Directory.Cache })).uri;
+  } catch (err) {
+    logger.warn("share_file_download_failed", { error: parseFirebaseError(err) });
+    return false;
+  }
+
+  try {
+    const { Share } = await import("@capacitor/share");
+    await Share.share({ ...(title ? { title } : {}), files: [uri] });
+    return true;
+  } catch (err) {
+    if (isShareCancel(err)) throw err;
+    logger.warn("share_file_failed", { error: parseFirebaseError(err) });
+    return false;
+  } finally {
+    fs.Filesystem.deleteFile({ path, directory: fs.Directory.Cache }).catch((err: unknown) => {
+      logger.warn("share_file_cleanup_failed", { error: parseFirebaseError(err) });
+    });
   }
 }
 

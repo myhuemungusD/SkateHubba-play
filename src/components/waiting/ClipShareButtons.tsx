@@ -3,7 +3,7 @@ import { Capacitor } from "@capacitor/core";
 import { trackEvent } from "../../services/analytics";
 import { shareText } from "../../services/nativeBridge";
 import { captureException } from "../../lib/sentry";
-import { clipFileName, clipFileType } from "../../lib/clipFile";
+import { clipExtFromUrl, clipFileName, clipFileType } from "../../lib/clipFile";
 
 export function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; trickName: string }) {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "failed">("idle");
@@ -64,6 +64,8 @@ export function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; tr
         title: `SkateHubba — ${trickName}`,
         text: `Check out my ${trickName} on SkateHubba!`,
         loadFiles,
+        // iOS app: send the video itself, not just a link.
+        nativeFile: { url: videoUrl, filename: clipFileName(trickName, clipExtFromUrl(videoUrl)) },
         textWithoutFiles: `Check out my ${trickName} on SkateHubba!\n${url}`,
       });
       trackEvent("clip_shared", { method, context: "waiting_screen" });
