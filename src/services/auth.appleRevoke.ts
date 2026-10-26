@@ -93,10 +93,12 @@ export async function revokeAppleTokensIfNeeded(
   }
 
   // Fresh budget for the network part only, starting now that the user is
-  // done with the sheet.
+  // done with the sheet. One AbortController bounds every step: the fetch is
+  // cancelled for real (no socket left open, no late result nobody reads),
+  // and the steps that can't take a signal are raced against it.
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const deadline = Date.now() + timeoutMs;
-  const remaining = () => Math.max(0, deadline - Date.now());
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
 
   try {
     const auth = requireAuth();
@@ -105,9 +107,9 @@ export async function revokeAppleTokensIfNeeded(
       logger.warn("apple_revoke_no_api_key", { uid: user.uid });
       return "failed";
     }
-    const idToken = await withTimeout(user.getIdToken(), remaining(), "id_token");
+    const idToken = await untilAborted(user.getIdToken(), ac.signal);
     const url = `https://identitytoolkit.googleapis.com/v2/accounts:revokeToken?key=${encodeURIComponent(apiKey)}`;
-    const res = (await withTimeout(
+    const res = await untilAborted(
       fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -117,10 +119,10 @@ export async function revokeAppleTokensIfNeeded(
           tokenType: "CODE",
           token: code,
         }),
+        signal: ac.signal,
       }),
-      remaining(),
-      "rest",
-    )) as Response;
+      ac.signal,
+    );
     if (!res.ok) {
       const safeMessage = await readSafeErrorMessage(res);
       logger.warn("apple_revoke_failed", { uid: user.uid, status: res.status, message: safeMessage });
@@ -129,26 +131,34 @@ export async function revokeAppleTokensIfNeeded(
     logger.info("apple_revoke_done", { uid: user.uid });
     return "revoked";
   } catch (err) {
-    const text = parseFirebaseError(err);
-    if (/apple_revoke_timeout/.test(text)) {
+    if (ac.signal.aborted) {
       logger.warn("apple_revoke_rest_timeout", { uid: user.uid, timeoutMs });
       return "failed";
     }
-    logger.warn("apple_revoke_failed", { uid: user.uid, message: text });
+    logger.warn("apple_revoke_failed", { uid: user.uid, message: parseFirebaseError(err) });
     return "failed";
+  } finally {
+    clearTimeout(timer);
   }
 }
 
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+/**
+ * Settle with `p`, or reject as soon as `signal` aborts. `fetch` honours the
+ * signal itself; this also bounds `getIdToken()`, which takes none, and
+ * guards against a fetch polyfill that ignores it.
+ */
+function untilAborted<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`apple_revoke_timeout:${label}`)), Math.max(0, ms));
+    const onAbort = () => reject(new Error("apple_revoke_timeout"));
+    if (signal.aborted) return onAbort();
+    signal.addEventListener("abort", onAbort, { once: true });
     p.then(
       (v) => {
-        clearTimeout(t);
+        signal.removeEventListener("abort", onAbort);
         resolve(v);
       },
-      (e) => {
-        clearTimeout(t);
+      (e: unknown) => {
+        signal.removeEventListener("abort", onAbort);
         reject(e);
       },
     );

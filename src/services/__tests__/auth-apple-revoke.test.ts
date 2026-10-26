@@ -197,11 +197,47 @@ describe("revokeAppleTokensIfNeeded", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("times out and proceeds when the REST call hangs", async () => {
+  it("aborts the timed-out revoke request instead of leaving it running", async () => {
     mockSignInWithApple.mockResolvedValue({ credential: { authorizationCode: "code123" } });
-    mockFetch.mockImplementation(() => new Promise(() => {}));
+    let seenSignal: AbortSignal | undefined;
+    mockFetch.mockImplementation(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          seenSignal = init.signal ?? undefined;
+          seenSignal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+        }),
+    );
     const outcome = await revokeAppleTokensIfNeeded(appleUser, { timeoutMs: 20 });
     expect(outcome).toBe("failed");
     expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(seenSignal?.aborted).toBe(true);
+  });
+
+  it("still bounds a fetch that ignores the abort signal", async () => {
+    mockSignInWithApple.mockResolvedValue({ credential: { authorizationCode: "code123" } });
+    mockFetch.mockImplementation(() => new Promise(() => {}));
+    expect(await revokeAppleTokensIfNeeded(appleUser, { timeoutMs: 20 })).toBe("failed");
+  });
+
+  it("does not start the request once the budget is already spent", async () => {
+    vi.useFakeTimers();
+    mockSignInWithApple.mockResolvedValue({ credential: { authorizationCode: "code123" } });
+    // The token refresh eats the whole budget before it hands back.
+    const slowUser = makeUser({
+      getIdToken: vi.fn(() => {
+        vi.advanceTimersByTime(100);
+        return Promise.resolve("id-token");
+      }),
+    });
+    expect(await revokeAppleTokensIfNeeded(slowUser, { timeoutMs: 50 })).toBe("failed");
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("clears its timer once the revoke settles", async () => {
+    vi.useFakeTimers();
+    mockSignInWithApple.mockResolvedValue({ credential: { authorizationCode: "code123" } });
+    mockFetch.mockResolvedValue(okResponse());
+    expect(await revokeAppleTokensIfNeeded(appleUser, { timeoutMs: 50 })).toBe("revoked");
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
