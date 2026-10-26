@@ -89,11 +89,27 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+const okAuthDeletedResponse = () => ({
+  ok: true,
+  status: 200,
+  json: vi.fn().mockResolvedValue({ ok: true, authDeleted: true }),
+});
+
 describe("deleteAccount — native shell", () => {
-  it("stops with nothing deleted when the Apple revoke sheet is dismissed", async () => {
-    mockAppleRevoke.mockResolvedValueOnce("cancelled");
-    await expect(deleteAccount("u1")).rejects.toMatchObject({ code: "account-delete/cancelled" });
-    expect(mockFetch).not.toHaveBeenCalled();
+  // Guideline 5.1.1(v) wants the revoke, but a failed revoke (dismissed
+  // Face ID, timeout, REST error, or an unexpected throw) must not strand
+  // the user in an account they asked to delete. The failure is logged (see
+  // auth-apple-revoke.test.ts) and deletion continues either way.
+  it.each([
+    ["sheet is dismissed", () => mockAppleRevoke.mockResolvedValueOnce("cancelled")],
+    ["revoke throws", () => mockAppleRevoke.mockRejectedValueOnce(new Error("revoke blew up"))],
+  ])("still deletes the account when the Apple revoke %s (warn-and-proceed)", async (_label, arrange) => {
+    vi.stubEnv("VITE_APP_URL", "https://skatehubba.com");
+    arrange();
+    mockFetch.mockResolvedValue(okAuthDeletedResponse());
+
+    await expect(deleteAccount("u1")).resolves.toEqual({ authDeleted: true });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it("refuses to call a URL that cannot resolve when VITE_APP_URL is unset", async () => {
@@ -116,11 +132,7 @@ describe("deleteAccount — native shell", () => {
 
   it("uses the configured origin on native when VITE_APP_URL is set", async () => {
     vi.stubEnv("VITE_APP_URL", "https://skatehubba.com");
-    mockFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: vi.fn().mockResolvedValue({ ok: true, authDeleted: true }),
-    });
+    mockFetch.mockResolvedValue(okAuthDeletedResponse());
 
     await expect(deleteAccount("u1")).resolves.toEqual({ authDeleted: true });
 
@@ -134,11 +146,7 @@ describe("deleteAccount — native shell", () => {
     // same-origin and works, so this must not be treated as a misconfiguration.
     mockIsNativePlatform.mockReturnValue(false);
     vi.stubEnv("VITE_APP_URL", "");
-    mockFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: vi.fn().mockResolvedValue({ ok: true, authDeleted: true }),
-    });
+    mockFetch.mockResolvedValue(okAuthDeletedResponse());
 
     await expect(deleteAccount("u1")).resolves.toEqual({ authDeleted: true });
     expect(mockFetch.mock.calls[0][0]).toBe("/api/account/delete");
