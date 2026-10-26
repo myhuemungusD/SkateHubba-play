@@ -3,7 +3,7 @@ import { Capacitor } from "@capacitor/core";
 import type { TurnRecord } from "../services/games";
 import { isFirebaseStorageUrl } from "../utils/helpers";
 import { trackEvent } from "../services/analytics";
-import { shareText } from "../services/nativeBridge";
+import { isShareCancel, shareText } from "../services/nativeBridge";
 import { captureException } from "../lib/sentry";
 import { ClipVideo } from "./TurnHistoryClipVideo";
 import { clipExtFromUrl, clipFileName, clipFileType } from "../lib/clipFile";
@@ -230,6 +230,11 @@ function ShareBtn({ url, trickName, context }: { url: string; trickName: string;
       setStatus("shared");
       scheduleReset();
     } catch (err) {
+      // Closing the sheet is a choice, not an error: no red label, no Sentry.
+      if (isShareCancel(err)) {
+        setStatus("idle");
+        return;
+      }
       captureException(err, { extra: { context: "ShareBtn", url, trickName } });
       setStatus("failed");
       scheduleReset();
