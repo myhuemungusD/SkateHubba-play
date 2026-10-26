@@ -93,10 +93,17 @@ export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean
   logger.info("delete_account_attempt", { uid });
 
   // Guideline 5.1.1(v): revoke Sign in with Apple tokens before the account
-  // goes. A dismissed Apple sheet stops here with nothing deleted.
-  const revoke = await revokeAppleTokensIfNeeded(user);
-  if (revoke === "cancelled") {
-    throw new CodedError("account-delete/cancelled", "Account deletion was cancelled. Nothing was deleted.");
+  // goes. Warn-and-proceed: a Face ID dismissal, a timeout, or a REST error
+  // must never strand the user in an account they asked to delete, so every
+  // non-success outcome is logged and the deletion continues. The revoke
+  // helper swallows its own errors, but we still wrap defensively — a thrown
+  // revoke must not break the delete contract.
+  const revoke = await revokeAppleTokensIfNeeded(user).catch((err: unknown) => {
+    logger.warn("delete_account_apple_revoke_threw", { uid, message: parseFirebaseError(err) });
+    return "failed" as const;
+  });
+  if (revoke !== "revoked" && revoke !== "not-apple") {
+    logger.warn("delete_account_apple_revoke_skipped", { uid, outcome: revoke });
   }
 
   const idToken = await user.getIdToken();
