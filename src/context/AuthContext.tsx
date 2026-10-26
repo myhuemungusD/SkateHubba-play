@@ -539,6 +539,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       result = await deleteAccount(uid);
     } catch (err) {
       const code = getErrorCode(err);
+      if (code === "account-delete/cancelled") {
+        // The user closed the Apple sheet; nothing was deleted. Not an error,
+        // so no Sentry event, and no pending marker to leave behind. The
+        // message tells them how to finish.
+        clearPendingDeleteUid();
+        setPendingDeleteUid(null);
+        throw err;
+      }
       logger.error("delete_account_auth_failed", { uid, code });
       // Identify by the hashed id the Sentry user is keyed on; the raw uid and
       // the username are personal data and never go to a third party.

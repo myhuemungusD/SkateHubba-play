@@ -726,6 +726,17 @@ describe("handleDeleteAccount", () => {
       );
     });
 
+    it("treats a closed Apple sheet as a stop, not a failure: no Sentry, no pending marker", async () => {
+      const cancelErr = Object.assign(new Error("Nothing was deleted."), { code: "account-delete/cancelled" });
+      mockDeleteAccount.mockRejectedValueOnce(cancelErr);
+
+      const { triggerDelete } = renderWithTrigger(profile);
+      expect(await triggerDelete()).toBe(cancelErr);
+
+      expect(mockCaptureException).not.toHaveBeenCalled();
+      expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+    });
+
     it("clears sessionStorage on fully successful first-attempt delete", async () => {
       mockDeleteAccount.mockResolvedValueOnce({ authDeleted: true });
 

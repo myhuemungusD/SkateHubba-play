@@ -80,6 +80,7 @@ vi.mock("../../firebase");
 vi.stubGlobal("fetch", mockFetch);
 
 import { deleteAccount } from "../auth";
+import { APPLE_CANCEL_MESSAGE } from "../auth.deleteAccount";
 import { auth } from "../../firebase";
 
 beforeEach(() => {
@@ -106,17 +107,80 @@ describe("deleteAccount — native shell", () => {
   // Face ID, timeout, REST error, or an unexpected throw) must not strand
   // the user in an account they asked to delete. The failure is logged (see
   // auth-apple-revoke.test.ts) and deletion continues either way.
-  it.each([
-    ["sheet is dismissed", () => mockAppleRevoke.mockResolvedValueOnce("cancelled"), []],
-    ["revoke throws", () => mockAppleRevoke.mockRejectedValueOnce(new Error("revoke blew up")), [["threw"]]],
-  ])("still deletes the account when the Apple revoke %s (warn-and-proceed)", async (_label, arrange, reports) => {
+  it("still deletes the account when the Apple revoke throws (warn-and-proceed)", async () => {
     vi.stubEnv("VITE_APP_URL", "https://skatehubba.com");
-    arrange();
+    mockAppleRevoke.mockRejectedValueOnce(new Error("revoke blew up"));
     mockFetch.mockResolvedValue(okAuthDeletedResponse());
 
     await expect(deleteAccount("u1")).resolves.toEqual({ authDeleted: true });
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(mockReportRevokeFailure.mock.calls).toEqual(reports);
+    expect(mockReportRevokeFailure.mock.calls).toEqual([["threw"]]);
+  });
+
+  describe("when the Apple sheet is closed", () => {
+    const cancelled = () => mockAppleRevoke.mockResolvedValueOnce("cancelled");
+    const rejectionOf = (p: Promise<unknown>) =>
+      p.then(
+        () => {
+          throw new Error("expected deleteAccount to stop");
+        },
+        (e: unknown) => e as Error & { code?: string },
+      );
+
+    beforeEach(() => {
+      vi.stubEnv("VITE_APP_URL", "https://skatehubba.com");
+      mockFetch.mockResolvedValue(okAuthDeletedResponse());
+    });
+
+    it("stops with nothing deleted the first time, and deletes the second time", async () => {
+      cancelled();
+      const err = await rejectionOf(deleteAccount("u1"));
+      expect(err.code).toBe("account-delete/cancelled");
+      expect(err.message).toBe(APPLE_CANCEL_MESSAGE);
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockSignOut).not.toHaveBeenCalled();
+      expect(mockReportRevokeFailure).not.toHaveBeenCalled();
+
+      cancelled();
+      await expect(deleteAccount("u1")).resolves.toEqual({ authDeleted: true });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockReportRevokeFailure.mock.calls).toEqual([["cancelled_twice"]]);
+    });
+
+    it("tells the user how to finish on iPhone, and names no other platform", () => {
+      expect(APPLE_CANCEL_MESSAGE).toContain("Nothing was deleted");
+      expect(APPLE_CANCEL_MESSAGE).toContain("Settings → your name → Sign in with Apple");
+      expect(APPLE_CANCEL_MESSAGE).not.toMatch(/android|google|play store|web/i);
+    });
+
+    it("asks again after a long gap, on another account, or after a non-cancel attempt", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        cancelled();
+        expect((await rejectionOf(deleteAccount("u1"))).code).toBe("account-delete/cancelled");
+        vi.setSystemTime(Date.now() + 11 * 60 * 1000);
+        cancelled();
+        expect((await rejectionOf(deleteAccount("u1"))).code).toBe("account-delete/cancelled");
+
+        (auth as unknown as { currentUser: { uid: string } }).currentUser.uid = "u2";
+        cancelled();
+        expect((await rejectionOf(deleteAccount("u2"))).code).toBe("account-delete/cancelled");
+
+        // A timed-out revoke in between resets the count.
+        mockAppleRevoke.mockResolvedValueOnce("failed");
+        mockFetch.mockRejectedValueOnce(new Error("offline"));
+        await expect(deleteAccount("u2")).rejects.toMatchObject({ code: "account-delete/network" });
+        cancelled();
+        expect((await rejectionOf(deleteAccount("u2"))).code).toBe("account-delete/cancelled");
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+
+        // Leave no remembered cancel behind for later cases.
+        cancelled();
+        await expect(deleteAccount("u2")).resolves.toEqual({ authDeleted: true });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it("refuses to call a URL that cannot resolve when VITE_APP_URL is unset", async () => {

@@ -22,6 +22,47 @@ export class CodedError extends Error {
   }
 }
 
+/**
+ * Shown when the user closes the Apple sheet during a delete. Plain and
+ * iOS-only on purpose: the sheet only appears on iPhone/iPad, and this copy
+ * must not mention any other platform (Guideline 2.3.10).
+ */
+export const APPLE_CANCEL_MESSAGE =
+  "Deleting your account needs a quick confirmation with Apple. Nothing was deleted. " +
+  "Tap Delete Forever and confirm with Apple to finish. If you cancel again, we'll still delete your account. " +
+  "Then remove SkateHubba in Settings → your name → Sign in with Apple.";
+
+/**
+ * How long a first cancel of the Apple sheet is remembered. A second cancel
+ * inside this window, for the same account, is read as "delete it anyway".
+ */
+const APPLE_CANCEL_WINDOW_MS = 10 * 60 * 1000;
+let appleCancelledOnce: { uid: string; at: number } | null = null;
+
+/**
+ * Decide what a dismissed Apple sheet means for this delete.
+ *
+ * First cancel: stop with nothing deleted, so the user can confirm with
+ * Apple and get a real revoke. Second cancel in the same flow: the user has
+ * said no to Apple twice, so honour the delete they asked for and send them
+ * to Settings to remove the Apple link by hand (the copy above told them
+ * before they cancelled again). Never strand someone in an account they want
+ * gone.
+ */
+function stopOnFirstAppleCancel(uid: string): void {
+  const now = Date.now();
+  const prior = appleCancelledOnce;
+  if (prior && prior.uid === uid && now - prior.at < APPLE_CANCEL_WINDOW_MS) {
+    appleCancelledOnce = null;
+    logger.warn("delete_account_apple_cancelled_twice", { uid });
+    reportRevokeFailure("cancelled_twice");
+    return;
+  }
+  appleCancelledOnce = { uid, at: now };
+  logger.info("delete_account_apple_cancelled", { uid });
+  throw new CodedError("account-delete/cancelled", APPLE_CANCEL_MESSAGE);
+}
+
 const misconfigured = () =>
   new CodedError(
     "account-delete/misconfigured",
@@ -93,9 +134,10 @@ export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean
   logger.info("delete_account_attempt", { uid });
 
   // Guideline 5.1.1(v): revoke Sign in with Apple tokens before the account
-  // goes. Warn-and-proceed: a Face ID dismissal, a timeout, or a REST error
-  // must never strand the user in an account they asked to delete, so every
-  // non-success outcome is logged and the deletion continues. The revoke
+  // goes. A first dismissal of the Apple sheet stops here with nothing
+  // deleted; a second one goes ahead (see stopOnFirstAppleCancel). A timeout
+  // or a REST error must never strand the user in an account they asked to
+  // delete, so those are logged and the deletion continues. The revoke
   // helper swallows its own errors, but we still wrap defensively — a thrown
   // revoke must not break the delete contract.
   const revoke = await revokeAppleTokensIfNeeded(user).catch((err: unknown) => {
@@ -103,6 +145,11 @@ export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean
     reportRevokeFailure("threw");
     return "failed" as const;
   });
+  if (revoke === "cancelled") {
+    stopOnFirstAppleCancel(uid);
+  } else {
+    appleCancelledOnce = null;
+  }
   if (revoke !== "revoked" && revoke !== "not-apple") {
     logger.warn("delete_account_apple_revoke_skipped", { uid, outcome: revoke });
   }

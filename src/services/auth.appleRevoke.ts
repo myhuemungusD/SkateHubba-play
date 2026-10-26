@@ -151,7 +151,8 @@ export async function revokeAppleTokensIfNeeded(
 }
 
 /** Why a revoke didn't land. Short, fixed strings so Sentry can group them. */
-export type RevokeFailureReason = "sheet_error" | "no_code" | "no_api_key" | "http" | "timeout" | "error" | "threw";
+export type RevokeFailureReason =
+  "sheet_error" | "no_code" | "no_api_key" | "http" | "timeout" | "error" | "threw" | "cancelled_twice";
 
 /**
  * One Sentry warning per revoke that didn't land, so a silent regression of
