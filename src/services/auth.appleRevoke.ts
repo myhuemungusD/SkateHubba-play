@@ -39,19 +39,28 @@ import { logger } from "./logger";
  *     Apple user id to revoke against and the call blocks forever. Everything
  *     stays on the web SDK + REST path.
  *
- *  3. Everything is wrapped in a timeout and swallows its own errors. Account
- *     deletion must not be held up by Apple being slow, Face ID being
- *     dismissed, or the REST endpoint returning 4xx — the user asked to
- *     delete, and leaving them stranded in a half-deleted account is worse
- *     than skipping the revoke this once. The caller treats every outcome
- *     other than "not-apple" / "revoked" as warn-and-proceed.
+ *  3. The Apple sheet itself is NOT timed. It is the user's own time (Face
+ *     ID retry, typing an Apple ID password, reading the sheet), and
+ *     `ASAuthorizationController` always calls back on success, error or
+ *     dismissal; our sign-in path (`auth.ts`) awaits the same sheet with no
+ *     limit. A deadline here used to fire while the sheet was still on
+ *     screen, deleting the account and silently skipping the revoke.
+ *
+ *     Only once the sheet hands back a code does a fresh budget start, and it
+ *     covers everything that touches the network: refreshing the ID token
+ *     and the REST revoke. The helper swallows its own errors — Apple or
+ *     Firebase being slow, or a 4xx, must not strand the user in an account
+ *     they asked to delete. The caller decides what each outcome means.
  */
 export type AppleRevokeOutcome = "not-apple" | "revoked" | "cancelled" | "failed";
 
 const DEFAULT_TIMEOUT_MS = 8000;
 
 export interface AppleRevokeOptions {
-  /** Hard cap on the entire revoke flow (sheet + REST call combined). */
+  /**
+   * Cap on the network part of the revoke (ID token refresh + REST call),
+   * started after the Apple sheet returns a code. The sheet is never timed.
+   */
   timeoutMs?: number;
 }
 
@@ -62,22 +71,15 @@ export async function revokeAppleTokensIfNeeded(
   const isApple = user.providerData?.some((p) => p.providerId === "apple.com") === true;
   if (!isApple || !Capacitor.isNativePlatform()) return "not-apple";
 
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const deadline = Date.now() + timeoutMs;
-  const remaining = () => Math.max(0, deadline - Date.now());
-
   let code: string | undefined;
   try {
-    const result = (await withTimeout(FirebaseAuthentication.signInWithApple(), remaining(), "sheet")) as {
+    // No deadline: see note 3 above. The sheet always settles on its own.
+    const result = (await FirebaseAuthentication.signInWithApple()) as {
       credential?: { authorizationCode?: string };
     };
     code = result?.credential?.authorizationCode;
   } catch (err) {
     const text = parseFirebaseError(err);
-    if (/apple_revoke_timeout/.test(text)) {
-      logger.warn("apple_revoke_reauth_timeout", { uid: user.uid, timeoutMs });
-      return "failed";
-    }
     if (/\b1001\b/.test(text) || /cancel/i.test(text)) {
       logger.info("apple_revoke_cancelled", { uid: user.uid });
       return "cancelled";
@@ -90,6 +92,12 @@ export async function revokeAppleTokensIfNeeded(
     return "failed";
   }
 
+  // Fresh budget for the network part only, starting now that the user is
+  // done with the sheet.
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
+  const remaining = () => Math.max(0, deadline - Date.now());
+
   try {
     const auth = requireAuth();
     const apiKey = auth.app.options.apiKey;
@@ -97,7 +105,7 @@ export async function revokeAppleTokensIfNeeded(
       logger.warn("apple_revoke_no_api_key", { uid: user.uid });
       return "failed";
     }
-    const idToken = await user.getIdToken();
+    const idToken = await withTimeout(user.getIdToken(), remaining(), "id_token");
     const url = `https://identitytoolkit.googleapis.com/v2/accounts:revokeToken?key=${encodeURIComponent(apiKey)}`;
     const res = (await withTimeout(
       fetch(url, {

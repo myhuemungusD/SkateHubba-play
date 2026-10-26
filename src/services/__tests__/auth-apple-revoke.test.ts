@@ -174,10 +174,26 @@ describe("revokeAppleTokensIfNeeded", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("times out and proceeds when the Apple sheet hangs", async () => {
-    mockSignInWithApple.mockImplementation(() => new Promise(() => {}));
-    const outcome = await revokeAppleTokensIfNeeded(appleUser, { timeoutMs: 10 });
-    expect(outcome).toBe("failed");
+  it("never times the Apple sheet: a slow Face ID still revokes, and the budget starts after the sheet", async () => {
+    vi.useFakeTimers();
+    let resolveSheet: (v: unknown) => void = () => {};
+    mockSignInWithApple.mockImplementation(() => new Promise((r) => (resolveSheet = r)));
+    mockFetch.mockResolvedValue(okResponse());
+
+    const pending = revokeAppleTokensIfNeeded(appleUser, { timeoutMs: 50 });
+    // The user takes far longer than the network budget on the sheet.
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(mockFetch).not.toHaveBeenCalled();
+    resolveSheet({ credential: { authorizationCode: "code123" } });
+
+    expect(await pending).toBe("revoked");
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("times out and proceeds when the ID token refresh hangs", async () => {
+    mockSignInWithApple.mockResolvedValue({ credential: { authorizationCode: "code123" } });
+    const hangingUser = makeUser({ getIdToken: vi.fn(() => new Promise<string>(() => {})) });
+    expect(await revokeAppleTokensIfNeeded(hangingUser, { timeoutMs: 10 })).toBe("failed");
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
