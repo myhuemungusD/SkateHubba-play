@@ -85,7 +85,7 @@ export async function revokeAppleTokensIfNeeded(
       logger.info("apple_revoke_cancelled", { uid: user.uid });
       return "cancelled";
     }
-    logger.warn("apple_revoke_reauth_failed", { uid: user.uid, message: text });
+    logger.warn("apple_revoke_reauth_failed", { uid: user.uid, error: errorKind(err) });
     reportRevokeFailure("sheet_error");
     return "failed";
   }
@@ -129,9 +129,13 @@ export async function revokeAppleTokensIfNeeded(
       ac.signal,
     );
     if (!res.ok) {
-      const safeMessage = await readSafeErrorMessage(res);
-      logger.warn("apple_revoke_failed", { uid: user.uid, status: res.status, message: safeMessage });
-      reportRevokeFailure("http", { status: res.status, apiError: apiErrorSymbol(safeMessage) });
+      const apiError = await readApiErrorSymbol(res);
+      logger.warn("apple_revoke_failed", {
+        uid: user.uid,
+        status: res.status,
+        error: apiError ?? `http-${res.status}`,
+      });
+      reportRevokeFailure("http", { status: res.status, apiError });
       return "failed";
     }
     logger.info("apple_revoke_done", { uid: user.uid });
@@ -142,7 +146,7 @@ export async function revokeAppleTokensIfNeeded(
       reportRevokeFailure("timeout");
       return "failed";
     }
-    logger.warn("apple_revoke_failed", { uid: user.uid, message: parseFirebaseError(err) });
+    logger.warn("apple_revoke_failed", { uid: user.uid, error: errorKind(err) });
     reportRevokeFailure("error");
     return "failed";
   } finally {
@@ -176,11 +180,23 @@ export function reportRevokeFailure(
 
 /**
  * The leading `SCREAMING_CASE` symbol of an Identity Toolkit error message
- * (`"INVALID_ID_TOKEN"`, `"INVALID_ARGUMENT : ..."` → `"INVALID_ARGUMENT"`).
- * Anything free-form after it is dropped before it reaches Sentry.
+ * (`"INVALID_ID_TOKEN"`, `"INVALID_IDP_RESPONSE : Unable to parse …"` →
+ * `"INVALID_IDP_RESPONSE"`). The free-form tail is dropped: it can echo what
+ * was sent, including the Apple code.
  */
 function apiErrorSymbol(message: string): string | undefined {
   return /^[A-Z][A-Z0-9_]{0,63}/.exec(message)?.[0];
+}
+
+/**
+ * A short, secret-free label for a caught error: a Firebase/plugin-style
+ * `code` if it looks like one, otherwise the error's class name. Never the
+ * message, which is free text from a plugin, the platform or the server.
+ */
+function errorKind(err: unknown): string {
+  const code = (err as { code?: unknown } | null)?.code;
+  if (typeof code === "string" && /^[\w/.-]{1,64}$/.test(code)) return code;
+  return err instanceof Error ? err.name : typeof err;
 }
 
 /**
@@ -234,19 +250,22 @@ function untilAborted<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
 }
 
 /**
- * Pull a non-sensitive status message out of an Identity Toolkit error body.
- * The body shape is `{ error: { code, message, status } }` where message is
- * an all-caps symbol like `INVALID_GRANT` — safe to log. We never log the
- * raw body: a defensive proxy or a future Firebase change could echo back
- * the submitted token or code, and those must not land in a log line.
+ * The error symbol from an Identity Toolkit error body
+ * (`{ error: { code, message, status } }`), or undefined if there is none.
+ *
+ * Only the leading symbol is kept. `message` is not always a bare symbol:
+ * it can be `"SYMBOL : free text"`, and the free text can echo the request
+ * (for example `"Unable to parse code: <the code>"`). Neither the raw body
+ * nor the full message is ever logged or reported: logger breadcrumbs ride
+ * along with the Sentry warning sent for the same failure.
  */
-async function readSafeErrorMessage(res: Response): Promise<string> {
+async function readApiErrorSymbol(res: Response): Promise<string | undefined> {
   try {
     const body = (await res.json()) as { error?: { message?: unknown; status?: unknown } } | null;
     const message = typeof body?.error?.message === "string" ? body.error.message : "";
     const status = typeof body?.error?.status === "string" ? body.error.status : "";
-    return message || status || `http-${res.status}`;
+    return apiErrorSymbol(message) ?? apiErrorSymbol(status);
   } catch {
-    return `http-${res.status}`;
+    return undefined;
   }
 }

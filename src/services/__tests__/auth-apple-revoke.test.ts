@@ -10,7 +10,11 @@ const { mockIsNative, mockSignInWithApple, mockFetch, mockApiKey, mockAppCheckOn
     mockGetAppCheckToken: vi.fn(),
   }),
 );
-const { mockCaptureMessage, mockLog } = vi.hoisted(() => ({ mockCaptureMessage: vi.fn(), mockLog: vi.fn() }));
+const { mockCaptureMessage, mockLog, mockSentryOther } = vi.hoisted(() => ({
+  mockCaptureMessage: vi.fn(),
+  mockLog: vi.fn(),
+  mockSentryOther: vi.fn(),
+}));
 
 vi.mock("firebase/auth", () => ({}));
 vi.mock("@capacitor/core", () => ({ Capacitor: { isNativePlatform: mockIsNative } }));
@@ -26,7 +30,11 @@ vi.mock("@capacitor-firebase/app-check", () => ({
   FirebaseAppCheck: { getToken: (...a: unknown[]) => mockGetAppCheckToken(...a) },
 }));
 
-vi.mock("../../lib/sentry", () => ({ captureMessage: mockCaptureMessage }));
+vi.mock("../../lib/sentry", () => ({
+  captureMessage: mockCaptureMessage,
+  captureException: mockSentryOther,
+  addBreadcrumb: mockSentryOther,
+}));
 vi.mock("../logger", () => ({ logger: { info: mockLog, warn: mockLog, error: mockLog, debug: mockLog } }));
 
 import { revokeAppleTokensIfNeeded, reportRevokeFailure, type RevokeFailureReason } from "../auth.appleRevoke";
@@ -55,7 +63,7 @@ afterEach(() => {
   // Nothing secret may reach a log line or Sentry, whatever the outcome. The
   // uid may go to the logger (it redacts), never to a Sentry event.
   const logged = JSON.stringify(mockLog.mock.calls);
-  const reported = JSON.stringify(mockCaptureMessage.mock.calls);
+  const reported = JSON.stringify([mockCaptureMessage.mock.calls, mockSentryOther.mock.calls]);
   for (const secret of ["code123", "id-token", "fake-appcheck-token"]) {
     expect(logged).not.toContain(secret);
     expect(reported).not.toContain(secret);
@@ -241,6 +249,57 @@ describe("revokeAppleTokensIfNeeded", () => {
     } as unknown as Response);
     expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("failed");
     expectReported("http", { status: 400, apiError: "INVALID_ID_TOKEN" });
+  });
+
+  it("never logs or reports the free-form tail of an API error, which can echo the code", async () => {
+    mockSignInWithApple.mockResolvedValue({ credential: { authorizationCode: "code123" } });
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: vi.fn().mockResolvedValue({ error: { message: "INVALID_IDP_RESPONSE : Unable to parse code: code123" } }),
+    } as unknown as Response);
+    expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("failed");
+    // The afterEach no-secret check covers every logger and Sentry call;
+    // also pin exactly what is logged.
+    expect(mockLog).toHaveBeenCalledWith("apple_revoke_failed", {
+      uid: "u1",
+      status: 400,
+      error: "INVALID_IDP_RESPONSE",
+    });
+    expect(JSON.stringify([mockLog.mock.calls, mockCaptureMessage.mock.calls])).not.toContain("Unable to parse");
+    expectReported("http", { status: 400, apiError: "INVALID_IDP_RESPONSE" });
+  });
+
+  it("falls back to the status symbol when the message has none", async () => {
+    mockSignInWithApple.mockResolvedValue({ credential: { authorizationCode: "code123" } });
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: vi.fn().mockResolvedValue({ error: { message: "bad code123", status: "INVALID_ARGUMENT" } }),
+    } as unknown as Response);
+    expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("failed");
+    expect(mockLog).toHaveBeenCalledWith("apple_revoke_failed", { uid: "u1", status: 400, error: "INVALID_ARGUMENT" });
+    expectReported("http", { status: 400, apiError: "INVALID_ARGUMENT" });
+  });
+
+  it("logs a plugin error code, never the plugin's message", async () => {
+    mockSignInWithApple.mockRejectedValue(Object.assign(new Error("Apple said no to code123"), { code: "1000" }));
+    expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("failed");
+    expect(mockLog).toHaveBeenCalledWith("apple_revoke_reauth_failed", { uid: "u1", error: "1000" });
+  });
+
+  it("logs the error class when the code field is free text", async () => {
+    mockSignInWithApple.mockRejectedValue(Object.assign(new TypeError("boom"), { code: "not a code: code123" }));
+    expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("failed");
+    expect(mockLog).toHaveBeenCalledWith("apple_revoke_reauth_failed", { uid: "u1", error: "TypeError" });
+  });
+
+  it("logs only the value type when the request rejects with a non-Error", async () => {
+    mockSignInWithApple.mockResolvedValue({ credential: { authorizationCode: "code123" } });
+    mockFetch.mockRejectedValue("socket closed: code123");
+    expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("failed");
+    expect(mockLog).toHaveBeenCalledWith("apple_revoke_failed", { uid: "u1", error: "string" });
+    expectReported("error");
   });
 
   it("fails open when the REST endpoint error body is unparseable", async () => {
