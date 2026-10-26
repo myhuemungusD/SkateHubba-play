@@ -2,6 +2,7 @@ import { type User } from "firebase/auth";
 import { Capacitor } from "@capacitor/core";
 import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
 import { ensureAppCheck, isAppCheckInitialized, requireAuth } from "../firebase";
+import { captureMessage } from "../lib/sentry";
 import { parseFirebaseError } from "../utils/helpers";
 import { logger } from "./logger";
 
@@ -85,10 +86,12 @@ export async function revokeAppleTokensIfNeeded(
       return "cancelled";
     }
     logger.warn("apple_revoke_reauth_failed", { uid: user.uid, message: text });
+    reportRevokeFailure("sheet_error");
     return "failed";
   }
   if (!code) {
     logger.warn("apple_revoke_no_code", { uid: user.uid });
+    reportRevokeFailure("no_code");
     return "failed";
   }
 
@@ -105,6 +108,7 @@ export async function revokeAppleTokensIfNeeded(
     const apiKey = auth.app.options.apiKey;
     if (!apiKey) {
       logger.warn("apple_revoke_no_api_key", { uid: user.uid });
+      reportRevokeFailure("no_api_key");
       return "failed";
     }
     const idToken = await untilAborted(user.getIdToken(), ac.signal);
@@ -127,6 +131,7 @@ export async function revokeAppleTokensIfNeeded(
     if (!res.ok) {
       const safeMessage = await readSafeErrorMessage(res);
       logger.warn("apple_revoke_failed", { uid: user.uid, status: res.status, message: safeMessage });
+      reportRevokeFailure("http", { status: res.status, apiError: apiErrorSymbol(safeMessage) });
       return "failed";
     }
     logger.info("apple_revoke_done", { uid: user.uid });
@@ -134,13 +139,47 @@ export async function revokeAppleTokensIfNeeded(
   } catch (err) {
     if (ac.signal.aborted) {
       logger.warn("apple_revoke_rest_timeout", { uid: user.uid, timeoutMs });
+      reportRevokeFailure("timeout");
       return "failed";
     }
     logger.warn("apple_revoke_failed", { uid: user.uid, message: parseFirebaseError(err) });
+    reportRevokeFailure("error");
     return "failed";
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Why a revoke didn't land. Short, fixed strings so Sentry can group them. */
+export type RevokeFailureReason = "sheet_error" | "no_code" | "no_api_key" | "http" | "timeout" | "error" | "threw";
+
+/**
+ * One Sentry warning per revoke that didn't land, so a silent regression of
+ * the 5.1.1(v) fix shows up somewhere other than a device log.
+ *
+ * Only the fixed reason, the HTTP status and the Identity Toolkit error symbol
+ * go out. Never the Apple code, the ID token, the App Check token or the uid;
+ * the event also goes through the redaction in `lib/sentry`. A user cancel is
+ * not a failure and stays a breadcrumb.
+ */
+export function reportRevokeFailure(
+  reason: RevokeFailureReason,
+  detail: { status?: number; apiError?: string } = {},
+): void {
+  captureMessage("apple_revoke_failed", {
+    level: "warning",
+    tags: { apple_revoke: "failed", apple_revoke_reason: reason },
+    extra: { reason, ...detail },
+  });
+}
+
+/**
+ * The leading `SCREAMING_CASE` symbol of an Identity Toolkit error message
+ * (`"INVALID_ID_TOKEN"`, `"INVALID_ARGUMENT : ..."` → `"INVALID_ARGUMENT"`).
+ * Anything free-form after it is dropped before it reaches Sentry.
+ */
+function apiErrorSymbol(message: string): string | undefined {
+  return /^[A-Z][A-Z0-9_]{0,63}/.exec(message)?.[0];
 }
 
 /**

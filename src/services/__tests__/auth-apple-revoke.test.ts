@@ -10,6 +10,7 @@ const { mockIsNative, mockSignInWithApple, mockFetch, mockApiKey, mockAppCheckOn
     mockGetAppCheckToken: vi.fn(),
   }),
 );
+const { mockCaptureMessage, mockLog } = vi.hoisted(() => ({ mockCaptureMessage: vi.fn(), mockLog: vi.fn() }));
 
 vi.mock("firebase/auth", () => ({}));
 vi.mock("@capacitor/core", () => ({ Capacitor: { isNativePlatform: mockIsNative } }));
@@ -25,7 +26,10 @@ vi.mock("@capacitor-firebase/app-check", () => ({
   FirebaseAppCheck: { getToken: (...a: unknown[]) => mockGetAppCheckToken(...a) },
 }));
 
-import { revokeAppleTokensIfNeeded } from "../auth.appleRevoke";
+vi.mock("../../lib/sentry", () => ({ captureMessage: mockCaptureMessage }));
+vi.mock("../logger", () => ({ logger: { info: mockLog, warn: mockLog, error: mockLog, debug: mockLog } }));
+
+import { revokeAppleTokensIfNeeded, reportRevokeFailure, type RevokeFailureReason } from "../auth.appleRevoke";
 import type { User } from "firebase/auth";
 
 const makeUser = (overrides: Partial<User> = {}): User =>
@@ -48,9 +52,27 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Nothing secret may reach a log line or Sentry, whatever the outcome. The
+  // uid may go to the logger (it redacts), never to a Sentry event.
+  const logged = JSON.stringify(mockLog.mock.calls);
+  const reported = JSON.stringify(mockCaptureMessage.mock.calls);
+  for (const secret of ["code123", "id-token", "fake-appcheck-token"]) {
+    expect(logged).not.toContain(secret);
+    expect(reported).not.toContain(secret);
+  }
+  expect(reported).not.toContain('"u1"');
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
+
+const expectReported = (reason: RevokeFailureReason, detail: Record<string, unknown> = {}) => {
+  expect(mockCaptureMessage).toHaveBeenCalledTimes(1);
+  expect(mockCaptureMessage).toHaveBeenCalledWith("apple_revoke_failed", {
+    level: "warning",
+    tags: { apple_revoke: "failed", apple_revoke_reason: reason },
+    extra: { reason, ...detail },
+  });
+};
 
 const okResponse = () =>
   ({
@@ -64,6 +86,7 @@ describe("revokeAppleTokensIfNeeded", () => {
     expect(await revokeAppleTokensIfNeeded(googleUser)).toBe("not-apple");
     expect(mockSignInWithApple).not.toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
   });
 
   it("skips accounts with no provider data", async () => {
@@ -80,12 +103,14 @@ describe("revokeAppleTokensIfNeeded", () => {
     mockSignInWithApple.mockResolvedValue({});
     expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("failed");
     expect(mockFetch).not.toHaveBeenCalled();
+    expectReported("no_code");
   });
 
   it("fails open when the credential has no authorization code", async () => {
     mockSignInWithApple.mockResolvedValue({ credential: {} });
     expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("failed");
     expect(mockFetch).not.toHaveBeenCalled();
+    expectReported("no_code");
   });
 
   it("revokes by POSTing the fresh code to v2/accounts:revokeToken with tokenType CODE", async () => {
@@ -105,6 +130,7 @@ describe("revokeAppleTokensIfNeeded", () => {
       tokenType: "CODE",
       token: "code123",
     });
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
   });
 
   describe("App Check header", () => {
@@ -150,15 +176,18 @@ describe("revokeAppleTokensIfNeeded", () => {
     mockSignInWithApple.mockRejectedValue(new Error("The operation couldn't be completed. (error 1001.)"));
     expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("cancelled");
     expect(mockFetch).not.toHaveBeenCalled();
+    // A cancel is the user's choice, not a fault: breadcrumb only.
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
   });
 
   it("fails open when the sheet errors non-cancel", async () => {
     mockSignInWithApple.mockRejectedValue(new Error("network"));
     expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("failed");
     expect(mockFetch).not.toHaveBeenCalled();
+    expectReported("sheet_error");
   });
 
-  it("fails open and does not log tokens when the REST endpoint rejects the code", async () => {
+  it("fails open and reports the API error symbol when the REST endpoint rejects the code", async () => {
     mockSignInWithApple.mockResolvedValue({ credential: { authorizationCode: "code123" } });
     mockFetch.mockResolvedValue({
       ok: false,
@@ -167,6 +196,7 @@ describe("revokeAppleTokensIfNeeded", () => {
     } as unknown as Response);
 
     expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("failed");
+    expectReported("http", { status: 400, apiError: "INVALID_GRANT" });
   });
 
   it("fails open when the REST error body has only a status symbol", async () => {
@@ -177,6 +207,7 @@ describe("revokeAppleTokensIfNeeded", () => {
       json: vi.fn().mockResolvedValue({ error: { status: "INVALID_ARGUMENT" } }),
     } as unknown as Response);
     expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("failed");
+    expectReported("http", { status: 400, apiError: "INVALID_ARGUMENT" });
   });
 
   it("fails open when the REST error body has neither message nor status", async () => {
@@ -187,6 +218,8 @@ describe("revokeAppleTokensIfNeeded", () => {
       json: vi.fn().mockResolvedValue({ error: {} }),
     } as unknown as Response);
     expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("failed");
+    // The `http-500` fallback is not an API symbol, so none is sent.
+    expectReported("http", { status: 500, apiError: undefined });
   });
 
   it("fails open when the REST error body has no error field at all", async () => {
@@ -197,6 +230,17 @@ describe("revokeAppleTokensIfNeeded", () => {
       json: vi.fn().mockResolvedValue(null),
     } as unknown as Response);
     expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("failed");
+  });
+
+  it("keeps only the leading symbol of a free-form API error message", async () => {
+    mockSignInWithApple.mockResolvedValue({ credential: { authorizationCode: "code123" } });
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: vi.fn().mockResolvedValue({ error: { message: "INVALID_ID_TOKEN : extra detail from the server" } }),
+    } as unknown as Response);
+    expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("failed");
+    expectReported("http", { status: 400, apiError: "INVALID_ID_TOKEN" });
   });
 
   it("fails open when the REST endpoint error body is unparseable", async () => {
@@ -214,6 +258,7 @@ describe("revokeAppleTokensIfNeeded", () => {
     mockSignInWithApple.mockResolvedValue({ credential: { authorizationCode: "code123" } });
     mockFetch.mockRejectedValue(new Error("network"));
     expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("failed");
+    expectReported("error");
   });
 
   it("fails open when the project has no API key", async () => {
@@ -221,6 +266,7 @@ describe("revokeAppleTokensIfNeeded", () => {
     mockSignInWithApple.mockResolvedValue({ credential: { authorizationCode: "code123" } });
     expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("failed");
     expect(mockFetch).not.toHaveBeenCalled();
+    expectReported("no_api_key");
   });
 
   it("never times the Apple sheet: a slow Face ID still revokes, and the budget starts after the sheet", async () => {
@@ -244,6 +290,7 @@ describe("revokeAppleTokensIfNeeded", () => {
     const hangingUser = makeUser({ getIdToken: vi.fn(() => new Promise<string>(() => {})) });
     expect(await revokeAppleTokensIfNeeded(hangingUser, { timeoutMs: 10 })).toBe("failed");
     expect(mockFetch).not.toHaveBeenCalled();
+    expectReported("timeout");
   });
 
   it("aborts the timed-out revoke request instead of leaving it running", async () => {
@@ -260,6 +307,7 @@ describe("revokeAppleTokensIfNeeded", () => {
     expect(outcome).toBe("failed");
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(seenSignal?.aborted).toBe(true);
+    expectReported("timeout");
   });
 
   it("still bounds a fetch that ignores the abort signal", async () => {
@@ -288,5 +336,10 @@ describe("revokeAppleTokensIfNeeded", () => {
     mockFetch.mockResolvedValue(okResponse());
     expect(await revokeAppleTokensIfNeeded(appleUser, { timeoutMs: 50 })).toBe("revoked");
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("reportRevokeFailure sends a fixed-shape warning for a thrown revoke", () => {
+    reportRevokeFailure("threw");
+    expectReported("threw");
   });
 });

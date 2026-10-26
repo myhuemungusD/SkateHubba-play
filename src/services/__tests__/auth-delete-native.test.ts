@@ -66,8 +66,14 @@ vi.mock("@capacitor-firebase/authentication", () => ({
 
 vi.mock("../../lib/sentry", () => sentryStub);
 
-const mockAppleRevoke = vi.hoisted(() => vi.fn(() => Promise.resolve("not-apple")));
-vi.mock("../auth.appleRevoke", () => ({ revokeAppleTokensIfNeeded: mockAppleRevoke }));
+const { mockAppleRevoke, mockReportRevokeFailure } = vi.hoisted(() => ({
+  mockAppleRevoke: vi.fn(() => Promise.resolve("not-apple")),
+  mockReportRevokeFailure: vi.fn(),
+}));
+vi.mock("../auth.appleRevoke", () => ({
+  revokeAppleTokensIfNeeded: mockAppleRevoke,
+  reportRevokeFailure: mockReportRevokeFailure,
+}));
 
 vi.mock("../../firebase");
 
@@ -101,15 +107,16 @@ describe("deleteAccount — native shell", () => {
   // the user in an account they asked to delete. The failure is logged (see
   // auth-apple-revoke.test.ts) and deletion continues either way.
   it.each([
-    ["sheet is dismissed", () => mockAppleRevoke.mockResolvedValueOnce("cancelled")],
-    ["revoke throws", () => mockAppleRevoke.mockRejectedValueOnce(new Error("revoke blew up"))],
-  ])("still deletes the account when the Apple revoke %s (warn-and-proceed)", async (_label, arrange) => {
+    ["sheet is dismissed", () => mockAppleRevoke.mockResolvedValueOnce("cancelled"), []],
+    ["revoke throws", () => mockAppleRevoke.mockRejectedValueOnce(new Error("revoke blew up")), [["threw"]]],
+  ])("still deletes the account when the Apple revoke %s (warn-and-proceed)", async (_label, arrange, reports) => {
     vi.stubEnv("VITE_APP_URL", "https://skatehubba.com");
     arrange();
     mockFetch.mockResolvedValue(okAuthDeletedResponse());
 
     await expect(deleteAccount("u1")).resolves.toEqual({ authDeleted: true });
     expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockReportRevokeFailure.mock.calls).toEqual(reports);
   });
 
   it("refuses to call a URL that cannot resolve when VITE_APP_URL is unset", async () => {

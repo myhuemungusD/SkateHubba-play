@@ -5,7 +5,7 @@ import { captureException } from "../lib/sentry";
 import { parseFirebaseError } from "../utils/helpers";
 import { hashUid } from "../utils/pii";
 import { logger } from "./logger";
-import { revokeAppleTokensIfNeeded } from "./auth.appleRevoke";
+import { reportRevokeFailure, revokeAppleTokensIfNeeded } from "./auth.appleRevoke";
 
 /** Server-side erasure endpoint. See `api/account/delete.ts`. */
 const ACCOUNT_DELETE_PATH = "/api/account/delete";
@@ -100,6 +100,7 @@ export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean
   // revoke must not break the delete contract.
   const revoke = await revokeAppleTokensIfNeeded(user).catch((err: unknown) => {
     logger.warn("delete_account_apple_revoke_threw", { uid, message: parseFirebaseError(err) });
+    reportRevokeFailure("threw");
     return "failed" as const;
   });
   if (revoke !== "revoked" && revoke !== "not-apple") {
