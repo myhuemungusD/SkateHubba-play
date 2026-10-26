@@ -540,9 +540,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       const code = getErrorCode(err);
       if (code === "account-delete/cancelled") {
-        // The user closed the Apple sheet; nothing was deleted. Not an error,
-        // so no Sentry event, and no pending marker to leave behind. The
-        // message tells them how to finish.
+        // The user closed the Apple sheet; nothing was deleted, and nothing is
+        // until they confirm with Apple. Not an error, so no exception (the
+        // service reports it at info level), and no pending marker to leave
+        // behind. The message and the modal's Try Again tell them how to finish.
         clearPendingDeleteUid();
         setPendingDeleteUid(null);
         // The push token was scrubbed above, before we knew the delete would

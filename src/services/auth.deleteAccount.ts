@@ -1,7 +1,7 @@
 import { signOut as fbSignOut } from "firebase/auth";
 import { Capacitor } from "@capacitor/core";
 import { requireAuth } from "../firebase";
-import { captureException } from "../lib/sentry";
+import { captureException, captureMessage } from "../lib/sentry";
 import { parseFirebaseError } from "../utils/helpers";
 import { hashUid } from "../utils/pii";
 import { logger } from "./logger";
@@ -29,37 +29,18 @@ export class CodedError extends Error {
  */
 export const APPLE_CANCEL_MESSAGE =
   "Deleting your account needs a quick confirmation with Apple. Nothing was deleted. " +
-  "Tap Delete Forever and confirm with Apple to finish. If you cancel again, we'll still delete your account. " +
-  "Then remove SkateHubba in Settings → your name → Sign in with Apple.";
+  "Tap Try Again and confirm with Apple to finish. " +
+  "You can also remove SkateHubba in Settings → your name → Sign in with Apple.";
 
 /**
- * How long a first cancel of the Apple sheet is remembered. A second cancel
- * inside this window, for the same account, is read as "delete it anyway".
+ * The user closed the Apple sheet: stop with nothing deleted, every time.
+ * The delete only goes ahead once Apple confirms, so the Apple link is
+ * really revoked. Reported at info level under its own tag: a cancel is a
+ * user choice, not a revoke failure.
  */
-const APPLE_CANCEL_WINDOW_MS = 10 * 60 * 1000;
-let appleCancelledOnce: { uid: string; at: number } | null = null;
-
-/**
- * Decide what a dismissed Apple sheet means for this delete.
- *
- * First cancel: stop with nothing deleted, so the user can confirm with
- * Apple and get a real revoke. Second cancel in the same flow: the user has
- * said no to Apple twice, so honour the delete they asked for and send them
- * to Settings to remove the Apple link by hand (the copy above told them
- * before they cancelled again). Never strand someone in an account they want
- * gone.
- */
-function stopOnFirstAppleCancel(uid: string): void {
-  const now = Date.now();
-  const prior = appleCancelledOnce;
-  if (prior && prior.uid === uid && now - prior.at < APPLE_CANCEL_WINDOW_MS) {
-    appleCancelledOnce = null;
-    logger.warn("delete_account_apple_cancelled_twice", { uid });
-    reportRevokeFailure("cancelled_twice");
-    return;
-  }
-  appleCancelledOnce = { uid, at: now };
+function stopOnAppleCancel(uid: string): never {
   logger.info("delete_account_apple_cancelled", { uid });
+  captureMessage("apple_revoke_cancelled", { level: "info", tags: { apple_revoke: "cancelled" } });
   throw new CodedError("account-delete/cancelled", APPLE_CANCEL_MESSAGE);
 }
 
@@ -134,8 +115,8 @@ export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean
   logger.info("delete_account_attempt", { uid });
 
   // Guideline 5.1.1(v): revoke Sign in with Apple tokens before the account
-  // goes. A first dismissal of the Apple sheet stops here with nothing
-  // deleted; a second one goes ahead (see stopOnFirstAppleCancel). A timeout
+  // goes. Closing the Apple sheet stops here with nothing deleted, every
+  // time, until the user confirms with Apple (see stopOnAppleCancel). A timeout
   // or a REST error must never strand the user in an account they asked to
   // delete, so those are logged and the deletion continues. The revoke
   // helper swallows its own errors, but we still wrap defensively — a thrown
@@ -145,11 +126,7 @@ export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean
     reportRevokeFailure("threw");
     return "failed" as const;
   });
-  if (revoke === "cancelled") {
-    stopOnFirstAppleCancel(uid);
-  } else {
-    appleCancelledOnce = null;
-  }
+  if (revoke === "cancelled") stopOnAppleCancel(uid);
   if (revoke !== "revoked" && revoke !== "not-apple") {
     logger.warn("delete_account_apple_revoke_skipped", { uid, outcome: revoke });
   }

@@ -12,6 +12,9 @@ export function DeleteAccountModal({
 }) {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  // Set when the Apple sheet was closed: nothing was deleted, and the delete
+  // button becomes "Try Again", which re-runs the flow and reopens the sheet.
+  const [appleConfirmNeeded, setAppleConfirmNeeded] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(panelRef);
 
@@ -63,13 +66,14 @@ export function DeleteAccountModal({
                 await onDeleteAccount();
               } catch (err: unknown) {
                 setDeleteError(err instanceof Error ? err.message : "Deletion failed — try again");
+                setAppleConfirmNeeded((err as { code?: unknown } | null)?.code === "account-delete/cancelled");
                 setDeleting(false);
               }
             }}
             variant="danger"
             disabled={deleting}
           >
-            {deleting ? "Deleting..." : "Delete Forever"}
+            {deleting ? "Deleting..." : appleConfirmNeeded ? "Try Again" : "Delete Forever"}
           </Btn>
         </div>
       </div>

@@ -83,6 +83,27 @@ describe("DeleteAccountModal", () => {
     expect(screen.getByText("Delete Forever")).not.toBeDisabled();
   });
 
+  it("offers Try Again after the Apple sheet is closed, and runs the delete again", async () => {
+    const cancelErr = Object.assign(new Error("Deleting your account needs a quick confirmation with Apple."), {
+      code: "account-delete/cancelled",
+    });
+    onDeleteAccount.mockRejectedValueOnce(cancelErr).mockRejectedValueOnce(new Error("Auth error"));
+
+    render(<DeleteAccountModal onClose={onClose} onDeleteAccount={onDeleteAccount} />);
+    await userEvent.click(screen.getByText("Delete Forever"));
+    await waitFor(() => {
+      expect(screen.getByText(cancelErr.message)).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByText("Try Again"));
+    expect(onDeleteAccount).toHaveBeenCalledTimes(2);
+    // Any other failure goes back to the normal label.
+    await waitFor(() => {
+      expect(screen.getByText("Delete Forever")).toBeInTheDocument();
+    });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("shows fallback error message for non-Error exceptions", async () => {
     onDeleteAccount.mockRejectedValue("some string");
 

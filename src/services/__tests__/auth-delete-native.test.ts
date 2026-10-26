@@ -132,54 +132,37 @@ describe("deleteAccount — native shell", () => {
       mockFetch.mockResolvedValue(okAuthDeletedResponse());
     });
 
-    it("stops with nothing deleted the first time, and deletes the second time", async () => {
-      cancelled();
-      const err = await rejectionOf(deleteAccount("u1"));
-      expect(err.code).toBe("account-delete/cancelled");
-      expect(err.message).toBe(APPLE_CANCEL_MESSAGE);
+    it("stops with nothing deleted every time, however often the sheet is closed", async () => {
+      const report = (sentryStub as unknown as { captureMessage: ReturnType<typeof vi.fn> }).captureMessage;
+      report.mockClear();
+      for (let i = 0; i < 3; i++) {
+        cancelled();
+        const err = await rejectionOf(deleteAccount("u1"));
+        expect(err.code).toBe("account-delete/cancelled");
+        expect(err.message).toBe(APPLE_CANCEL_MESSAGE);
+      }
       expect(mockFetch).not.toHaveBeenCalled();
       expect(mockSignOut).not.toHaveBeenCalled();
+      // A cancel is a user choice, not a revoke failure: its own tag, info level, no uid.
       expect(mockReportRevokeFailure).not.toHaveBeenCalled();
+      expect(report.mock.calls).toEqual(
+        Array(3).fill(["apple_revoke_cancelled", { level: "info", tags: { apple_revoke: "cancelled" } }]),
+      );
+    });
 
+    it("deletes once the user confirms with Apple after a cancel", async () => {
       cancelled();
+      expect((await rejectionOf(deleteAccount("u1"))).code).toBe("account-delete/cancelled");
+      mockAppleRevoke.mockResolvedValueOnce("revoked");
       await expect(deleteAccount("u1")).resolves.toEqual({ authDeleted: true });
       expect(mockFetch).toHaveBeenCalledTimes(1);
-      expect(mockReportRevokeFailure.mock.calls).toEqual([["cancelled_twice"]]);
     });
 
     it("tells the user how to finish on iPhone, and names no other platform", () => {
       expect(APPLE_CANCEL_MESSAGE).toContain("Nothing was deleted");
+      expect(APPLE_CANCEL_MESSAGE).toContain("Try Again");
       expect(APPLE_CANCEL_MESSAGE).toContain("Settings → your name → Sign in with Apple");
       expect(APPLE_CANCEL_MESSAGE).not.toMatch(/android|google|play store|web/i);
-    });
-
-    it("asks again after a long gap, on another account, or after a non-cancel attempt", async () => {
-      vi.useFakeTimers({ toFake: ["Date"] });
-      try {
-        cancelled();
-        expect((await rejectionOf(deleteAccount("u1"))).code).toBe("account-delete/cancelled");
-        vi.setSystemTime(Date.now() + 11 * 60 * 1000);
-        cancelled();
-        expect((await rejectionOf(deleteAccount("u1"))).code).toBe("account-delete/cancelled");
-
-        (auth as unknown as { currentUser: { uid: string } }).currentUser.uid = "u2";
-        cancelled();
-        expect((await rejectionOf(deleteAccount("u2"))).code).toBe("account-delete/cancelled");
-
-        // A timed-out revoke in between resets the count.
-        mockAppleRevoke.mockResolvedValueOnce("failed");
-        mockFetch.mockRejectedValueOnce(new Error("offline"));
-        await expect(deleteAccount("u2")).rejects.toMatchObject({ code: "account-delete/network" });
-        cancelled();
-        expect((await rejectionOf(deleteAccount("u2"))).code).toBe("account-delete/cancelled");
-        expect(mockFetch).toHaveBeenCalledTimes(1);
-
-        // Leave no remembered cancel behind for later cases.
-        cancelled();
-        await expect(deleteAccount("u2")).resolves.toEqual({ authDeleted: true });
-      } finally {
-        vi.useRealTimers();
-      }
     });
   });
 
