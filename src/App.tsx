@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useSyncExternalStore, lazy, Suspense,
 import { Routes, Route, Navigate, useParams, useNavigate, useLocation } from "react-router";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
+import { Capacitor } from "@capacitor/core";
 import { AuthProvider, useAuthContext } from "./context/AuthContext";
 import { NavigationProvider, useNavigationContext } from "./context/NavigationContext";
 import { GameProvider, useGameContext } from "./context/GameContext";
@@ -955,7 +956,10 @@ function AppRoutes() {
         onNav={nav.setScreen}
         liftAboveNav={Boolean(auth.activeProfile) && isBottomNavScreen(nav.screen)}
       />
-      {analyticsAllowed && (
+      {/* Web only. Inside the iPhone/Android app the Vercel scripts load from a
+          capacitor:// origin, fail every launch and only add Sentry noise;
+          native analytics go through PostHog instead. */}
+      {analyticsAllowed && !Capacitor.isNativePlatform() && (
         <>
           <Analytics />
           <SpeedInsights />
