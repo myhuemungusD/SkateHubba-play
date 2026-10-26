@@ -50,6 +50,7 @@ vi.mock("../logger", () => ({
 }));
 
 import {
+  isShareCancel,
   isShareAvailable,
   shareText,
   shareUrl,
@@ -231,6 +232,20 @@ describe("shareText on web", () => {
 });
 
 /* ── copyText ─────────────────────────────────── */
+
+describe("isShareCancel", () => {
+  it.each([
+    ["a web Share AbortError", new DOMException("The user aborted a request.", "AbortError"), true],
+    ["the plugin's cancel rejection", new Error("Share canceled"), true],
+    ["a plain object with a cancel message", { message: "User cancelled" }, true],
+    ["a real failure", new Error("No activity found to handle intent"), false],
+    ["an object with a non-string message", { message: 42 }, false],
+    ["null", null, false],
+    ["a string", "canceled", false],
+  ])("%s → %s", (_label, err, expected) => {
+    expect(isShareCancel(err)).toBe(expected);
+  });
+});
 
 describe("copyText", () => {
   it("uses navigator.clipboard on web", async () => {

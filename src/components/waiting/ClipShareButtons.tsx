@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { trackEvent } from "../../services/analytics";
-import { shareText } from "../../services/nativeBridge";
+import { isShareCancel, shareText } from "../../services/nativeBridge";
 import { captureException } from "../../lib/sentry";
 import { clipExtFromUrl, clipFileName, clipFileType } from "../../lib/clipFile";
 
@@ -72,6 +72,11 @@ export function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; tr
       setShareStatus("shared");
       safeTimeout(() => setShareStatus("idle"), 2000);
     } catch (err) {
+      // Closing the sheet is a choice, not an error: no red label, no Sentry.
+      if (isShareCancel(err)) {
+        setShareStatus("idle");
+        return;
+      }
       captureException(err, { extra: { context: "ClipShareButtons.share", videoUrl, trickName } });
       setShareStatus("failed");
       safeTimeout(() => setShareStatus("idle"), 2000);

@@ -114,6 +114,15 @@ describe("shareText with a native clip file", () => {
     expect(mockDeleteFile).toHaveBeenCalledWith({ path: "skatehubba-kickflip.mp4", directory: "CACHE" });
   });
 
+  it("treats a cancel that is not an Error instance as a cancel too, not as a failed file share", async () => {
+    // A bridge rejection can arrive as a plain { message, code } object.
+    const cancel = { message: "Share canceled", code: "UNKNOWN" };
+    mockShare.mockRejectedValueOnce(cancel);
+    await expect(shareText(OPTS)).rejects.toBe(cancel);
+    expect(mockShare).toHaveBeenCalledTimes(1);
+    expect(mockWarn).not.toHaveBeenCalledWith("share_file_failed", expect.any(Object));
+  });
+
   it("falls back to sharing the link when the file share itself fails", async () => {
     mockShare.mockRejectedValueOnce(new Error("UIActivityViewController failed"));
     await expect(shareText(OPTS)).resolves.toBe("native_share_text");

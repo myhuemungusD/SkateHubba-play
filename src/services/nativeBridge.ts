@@ -20,8 +20,8 @@
  *
  * Every export is safe to call on web: it falls back to the browser API that
  * the call site used before (identical behavior and identical error
- * semantics — a user-cancelled share still rejects, because the callers
- * render that as "Share failed"). A native plugin that fails to load is
+ * semantics — a user-cancelled share still rejects; callers tell a cancel
+ * from a failure with {@link isShareCancel}). A native plugin that fails to load is
  * logged and degrades to the same web path.
  */
 
@@ -222,9 +222,16 @@ export interface SaveTextFileOptions {
 /** Message the UI shows when the native write or share sheet fails. */
 export const SAVE_FILE_FAILED_MESSAGE = "Couldn't open the share sheet. Try again.";
 
-/** True when the native share plugin rejected because the user closed the sheet. */
-function isShareCancel(err: unknown): boolean {
-  return err instanceof Error && /cancel/i.test(err.message);
+/**
+ * True when a share rejected because the user closed the sheet, not because
+ * it failed. Web Share rejects with a DOMException named `AbortError`;
+ * @capacitor/share rejects with "Share canceled" on iOS and Android. A cancel
+ * is a normal outcome: callers return to idle and report nothing.
+ */
+export function isShareCancel(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const { name, message } = err as { name?: unknown; message?: unknown };
+  return name === "AbortError" || (typeof message === "string" && /cancel/i.test(message));
 }
 
 /**
