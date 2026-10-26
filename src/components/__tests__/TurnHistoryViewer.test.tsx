@@ -5,6 +5,7 @@ import { TurnHistoryViewer } from "../TurnHistoryViewer";
 import type { TurnRecord } from "../../services/games";
 import { Capacitor } from "@capacitor/core";
 import { captureException } from "../../lib/sentry";
+import { trackEvent } from "../../services/analytics";
 
 vi.mock("../../utils/helpers", () => ({
   isFirebaseStorageUrl: (url: string) => url.startsWith("https://firebasestorage.googleapis.com/"),
@@ -226,6 +227,8 @@ describe("TurnHistoryViewer", () => {
     const [file] = (share.mock.calls[0][0] as { files: File[] }).files;
     expect(file.name).toMatch(/\.mp4$/);
     expect(file.type).toBe("video/mp4");
+    // A completed share is what clip_shared counts (the cancel tests assert it stays quiet).
+    expect(trackEvent).toHaveBeenCalledWith("clip_shared", { method: expect.any(String), context: "turn_history" });
 
     unstubLevel2Share();
   });
@@ -381,22 +384,28 @@ describe("TurnHistoryViewer clip buttons: timers and outcomes", () => {
   it.each([
     ["a Web Share AbortError", () => new DOMException("Share canceled", "AbortError")],
     ["the plugin's 'Share canceled'", () => new Error("Share canceled")],
-  ])("goes back to idle with no failure and no Sentry when the user closes the sheet (%s)", async (_label, make) => {
-    const share = stubLevel2Share();
-    share.mockRejectedValueOnce(make());
-    vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      blob: () => Promise.resolve(new Blob(["vid"], { type: "video/webm" })),
-    } as Response);
+    ["a bridge cancel that is a plain object", () => ({ message: "Share canceled", code: "CANCELED" })],
+  ])(
+    "goes back to idle with no failure, no Sentry and no clip_shared when the user closes the sheet (%s)",
+    async (_label, make) => {
+      const share = stubLevel2Share();
+      share.mockRejectedValueOnce(make());
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        blob: () => Promise.resolve(new Blob(["vid"], { type: "video/webm" })),
+      } as Response);
 
-    render(<TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showShare />);
-    await userEvent.click(screen.getAllByText("Share clip")[0]);
+      render(<TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showShare />);
+      await userEvent.click(screen.getAllByText("Share clip")[0]);
 
-    await waitFor(() => expect(share).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getAllByText("Share clip")[0]).toBeEnabled());
-    expect(screen.queryByText("Share failed")).not.toBeInTheDocument();
-    expect(captureException).not.toHaveBeenCalled();
-  });
+      await waitFor(() => expect(share).toHaveBeenCalled());
+      await waitFor(() => expect(screen.getAllByText("Share clip")[0]).toBeEnabled());
+      expect(screen.queryByText("Share failed")).not.toBeInTheDocument();
+      expect(screen.queryByText("Shared!")).not.toBeInTheDocument();
+      expect(captureException).not.toHaveBeenCalled();
+      expect(trackEvent).not.toHaveBeenCalledWith("clip_shared", expect.anything());
+    },
+  );
 
   it("shows a red failure label, reports it, and resets after 2s when the share really fails", async () => {
     const share = stubLevel2Share();
