@@ -108,4 +108,25 @@ module SkatehubbaCI
     phase.add_file_reference(ref) unless already
     project.save
   end
+  # Pinned sentry-cli for the dSYM upload (run through npx, so no new gem or
+  # Gemfile.lock change). Bump on purpose, not automatically.
+  SENTRY_CLI_PACKAGE = "@sentry/cli@2.58.6"
+  SENTRY_DSYM_ENV = %w[SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT].freeze
+
+  # Names (never values) of the Sentry settings the dSYM upload needs that
+  # are blank. Empty means the upload can run.
+  def self.missing_sentry_dsym_env(env = ENV)
+    SENTRY_DSYM_ENV.select { |name| env[name].to_s.strip.empty? }
+  end
+
+  # Where the dSYMs from build_app live: the archive's dSYMs folder when it
+  # exists, plus the zipped copy gym writes next to the IPA. sentry-cli
+  # searches both and skips files it already has.
+  def self.dsym_search_paths(archive_path, dsym_zip_path)
+    paths = []
+    archive_dsyms = archive_path.to_s.empty? ? "" : File.join(archive_path.to_s, "dSYMs")
+    paths << archive_dsyms if !archive_dsyms.empty? && File.directory?(archive_dsyms)
+    paths << dsym_zip_path.to_s if !dsym_zip_path.to_s.empty? && File.exist?(dsym_zip_path.to_s)
+    paths
+  end
 end

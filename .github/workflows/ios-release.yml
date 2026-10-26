@@ -219,6 +219,12 @@ jobs:
           FASTLANE_SKIP_UPDATE_CHECK: "true"
           FASTLANE_HIDE_CHANGELOG: "true"
           FASTLANE_DONT_STORE_PASSWORD: "1"
+          # dSYM upload so native crash/hang reports are readable (same secret
+          # names release.yml uses for web source maps). Optional: the lane
+          # warns and carries on when they are unset.
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: |
           set -euo pipefail
           # Ephemeral keychain password for this runner only. It is not the

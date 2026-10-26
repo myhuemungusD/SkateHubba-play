@@ -109,6 +109,32 @@ platform :ios do
     SkatehubbaCI.attach_google_service_plist!(File.expand_path("../ios/App/App.xcodeproj", __dir__))
   end
 
+  # Send this build's dSYMs to Sentry so native crash and hang reports show
+  # function names instead of <unknown> (Sentry SKATEHUBBA-SENTRY-D: a 45 s
+  # hang nobody could read). sentry-cli reads SENTRY_AUTH_TOKEN, SENTRY_ORG
+  # and SENTRY_PROJECT from the environment, so nothing secret goes on the
+  # command line or into the log. Fail soft: a missing token or a Sentry
+  # outage must never block a TestFlight upload, so it only warns, loudly.
+  def upload_dsyms_to_sentry
+    missing = SkatehubbaCI.missing_sentry_dsym_env
+    unless missing.empty?
+      UI.important("Skipping Sentry dSYM upload: #{missing.join(', ')} not set. Crash reports for this build will show <unknown> frames.")
+      return
+    end
+    paths = SkatehubbaCI.dsym_search_paths(
+      lane_context[SharedValues::XCODEBUILD_ARCHIVE],
+      lane_context[SharedValues::DSYM_OUTPUT_PATH],
+    )
+    if paths.empty?
+      UI.important("Skipping Sentry dSYM upload: build_app produced no dSYMs (check DEBUG_INFORMATION_FORMAT = dwarf-with-dsym).")
+      return
+    end
+    sh("npx", "--yes", SkatehubbaCI::SENTRY_CLI_PACKAGE, "debug-files", "upload", "--include-sources", *paths)
+    UI.success("Uploaded dSYMs to Sentry.")
+  rescue StandardError => e
+    UI.important("Sentry dSYM upload failed (TestFlight upload continues): #{e.class}")
+  end
+
   desc "Sync Apple signing certs + provisioning profiles via fastlane match"
   lane :certificates do
     team = require_apple_team_id!
@@ -186,6 +212,7 @@ platform :ios do
     # Fail before upload if any privacy manifest in the IPA declares tracking,
     # and keep the full manifest list in the run summary (Privacy Report evidence).
     sh("node", File.expand_path("../scripts/check-ios-privacy-manifests.mjs", __dir__), File.expand_path(ipa.to_s))
+    upload_dsyms_to_sentry
     # No changelog: pilot waits for the build to appear before it can save
     # "What to Test". Skipping that wait is the point of this upload.
     pilot(
