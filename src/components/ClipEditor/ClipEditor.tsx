@@ -103,6 +103,14 @@ export function ClipEditor({ blob, onDone, onCancel }: ClipEditorProps) {
         role="alertdialog"
         aria-modal="true"
         aria-label="Clip editor"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          // Same as the editor view: Escape means "back to the upload", not
+          // "close the whole upload flow" (the host modal's Escape handler
+          // would otherwise throw the staged clip away).
+          e.stopPropagation();
+          if (e.key === "Escape") onCancel();
+        }}
         className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-4 bg-black p-6 text-center"
       >
         <p className="font-body text-white">{error}</p>
