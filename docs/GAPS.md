@@ -1,5 +1,7 @@
 # SkateHubba Gap Analysis & Prioritization
 
+> **Current release review: 2026-10-26.** See [STORE_READINESS_2026-10-26.md](STORE_READINESS_2026-10-26.md) for source-verified store gates and validation limits. Status claims below belong to their stated audit dates; they do not prove current deployments, console settings or signed builds.
+
 **Date:** 2026-09-19 · **Last status sweep:** 2026-10-15 at `ae0c296`
 **Scope:** `SkateHubba-play` (full audit). _(The original report also carried a DesignMainline static-site pass; that section was removed 2026-08-26 as out-of-repo scope — those findings live with that repo.)_
 **Method:** Five parallel code audits (roadmap-vs-code, rules/service parity, test coverage, security/infra/ops, code-quality/UX), plus the full `npm run verify` gate. Highest-severity findings were re-verified by hand against source. Line references are `file:line` at the audited commit (`5091db4`).
@@ -108,13 +110,9 @@ Every item lists the evidence so it can be picked up cold.
 **Original severity: active user-facing breakage.**
 _As originally filed:_ when a matcher claimed a land on the honor path, `games.match.ts` wrote `phase: "pendingReview"` + `reviewDeadline` and **no notification** — the in-code comment said "DEFERRED." The same silence applied to `disputes.raise.ts`, so the claimer was not told their land was disputed. The implemented fix uses the existing `your_turn` type for both transitions, writes each notification transactionally, and dispatches push after commit; a dedicated dispute type was unnecessary.
 
-### P0-4 · DSA compliance: zero controls, hard deadline of 2026-02-17 **already missed**
+### P0-4 · EU distribution and trader verification
 
-**Status: PARTIALLY CLOSED** — `docs/DSA_COMPLIANCE.md` tracks the account-level items. D-U-N-S is done (14-018-2909, Design Mainline LLC); the Apple org conversion is in progress (case 102992449613); the DSA point of contact is still open. The signed-in code path is under P1-5 and is in the product.
-
-**Compliance blocker. The trader/DUNS items cannot be compressed at the deadline.**
-**Escalated 2026-08-26: the deadline passed ~6 months ago and every account-level row in `docs/DSA_COMPLIANCE.md` is still 🔴.** The app ships to Apple and Google. The `dsa-compliance-checkpoint` skill tracks a **17 February 2026** gate, now overdue. The account-level items — Apple Individual→Organization conversion, D-U-N-S issuance (days-to-weeks), DSA point-of-contact — bear external lead time and block submission regardless of code.
-**Fix (start immediately, non-code):** kick off D-U-N-S + Apple org conversion now; designate a DSA point of contact (Art. 11/12) in `TermsOfService.tsx`. Signed-in code items are in P1-5.
+**2026-10-26: external verification remains open.** The repo records D-U-N-S complete and Apple organization migration in progress. Apple's EU trader enforcement date is 17 February **2025**, not 2026. Organization conversion is not a universal prerequisite to declaring trader status. Do not restart completed paperwork or infer worldwide rejection from an EU distribution condition. See [DSA_COMPLIANCE.md](DSA_COMPLIANCE.md) for current recorded status, source links and console checks.
 
 ---
 
@@ -267,7 +265,7 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 
 ### P3-3 · Release hygiene
 
-`package.json` still `1.1.0` and the repo has **no git tags at all**. The missing `[Unreleased]` section (dangling link at `:365`) and the stale referee-unshipped claims were fixed in the 2026-08-26 doc pass; the changelog now carries the ~4 months of merged work. **Still open:** cut an actual release tag.
+**2026-10-26 correction:** `package.json` is `1.2.0`, and CHANGELOG has a v1.2.0 entry dated 2026-10-21. Signed store artifacts and release-tag evidence still need to be recorded. The older claim was: The missing `[Unreleased]` section (dangling link at `:365`) and the stale referee-unshipped claims were fixed in the 2026-08-26 doc pass; the changelog now carries the ~4 months of merged work. **Still open:** cut an actual release tag.
 
 ### P3-4 · File-length budget enforced nowhere; 10 files over
 

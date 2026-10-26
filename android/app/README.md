@@ -1,5 +1,7 @@
 # Android native build — Firebase config
 
+> **2026-10-26 store baseline:** target/compile SDK are 36. The Android release workflow enables App Check; verify Play Integrity registration and real tokens before release. The older monitor-only rollout advice below is not the store build configuration. See [release gates](../../docs/STORE_READINESS_2026-10-26.md).
+
 This directory is the Capacitor-generated Android app. Two Firebase config
 files must live on disk for native builds to succeed, but **neither is
 checked into the repo** — they contain project-specific identifiers that

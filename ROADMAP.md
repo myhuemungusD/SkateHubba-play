@@ -1,5 +1,7 @@
 # SkateHubba Roadmap
 
+> **2026-10-26 release review:** [Store readiness](docs/STORE_READINESS_2026-10-26.md) tracks the current submission gates; older phase completion labels describe implementation, not store approval.
+
 **Vision:** SkateHubba becomes the identity and gameplay layer for skating — where clips turn into battles, battles turn into crews, crews turn into cities, and cities turn into a skate graph no content app or spot finder can replicate.
 
 **Philosophy:** Find product-market fit first. Nail one thing, prove it works with real skaters, then expand. No feature factory.
@@ -18,17 +20,17 @@ Architectural boundaries are set by [docs/CHARTER.md](docs/CHARTER.md). Nothing 
 
 ## Where we are (Oct 2026)
 
-Released **v1.1.0**, live at [skatehubba.com](https://skatehubba.com).
+The source version is **v1.2.0** (`package.json`); deployment and store availability require separate evidence.
 
-| Phase                              | State                                                                                                                                                 |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phase 1 — Core Loop                | Shipped                                                                                                                                               |
-| Phase 2 — Viral Mechanics          | Shipped                                                                                                                                               |
-| Phase 3 — Social Graph & Discovery | Shipped except spectator mode (deferred)                                                                                                              |
-| Phase 4 — Network Effects          | Partial — spots/map shipped; crew, trick library, tournaments not started                                                                             |
-| Referee System                     | Shipped (v1.1.0)                                                                                                                                      |
-| Binding community disputes         | Shipped post-v1.1.0 (`pendingReview` → `communityReview`)                                                                                             |
-| Testers-only builds                | Map check-ins, spot presence, Closet, pro tools, Hesher tips, Skate Runner and more, all default off ([docs/FEATURE_FLAGS.md](docs/FEATURE_FLAGS.md)) |
+| Phase                              | State                                                                                                                                                                            |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase 1 — Core Loop                | Shipped                                                                                                                                                                          |
+| Phase 2 — Viral Mechanics          | Shipped                                                                                                                                                                          |
+| Phase 3 — Social Graph & Discovery | Shipped except spectator mode (deferred)                                                                                                                                         |
+| Phase 4 — Network Effects          | Partial — spots/map shipped; crew, trick library, tournaments not started                                                                                                        |
+| Referee System                     | Shipped (v1.1.0)                                                                                                                                                                 |
+| Binding community disputes         | Shipped post-v1.1.0 (`pendingReview` → `communityReview`)                                                                                                                        |
+| Testers-only builds                | Store workflows enable check-ins, presence, pro tools and tips. Closet and Runner remain off; web tester overrides are separate ([docs/FEATURE_FLAGS.md](docs/FEATURE_FLAGS.md)) |
 
 **The core loop is built.** Async games, video proof, push delivery, clips feed with vote-driven ranking, leaderboard, profiles, spot map, moderation — all in production. The open question is no longer _can we build it_. It is _do skaters use it_.
 
@@ -40,7 +42,7 @@ Released **v1.1.0**, live at [skatehubba.com](https://skatehubba.com).
 
 Feature work in this stretch is only justified if it removes friction from that number.
 
-- [ ] **Cut a release tag** — the referee system already shipped in the v1.1.0 CHANGELOG block, but the repo has **no git tags at all** and `package.json` still reads `1.1.0` while ~5½ months of work sits unreleased (`[Unreleased]` in CHANGELOG is current as of 2026-10-01). Tag what is out, then keep `[Unreleased]` current.
+- [ ] **Record the release candidate** — source is v1.2.0 and CHANGELOG has a 2026-10-21 v1.2.0 entry. Record the exact release SHA, tag, signed artifact IDs and validation results together; a version bump alone does not prove a store release.
 - [ ] **Instrument the traction number** — `game_completed` already fires (`src/services/analytics.ts`). Stand up the reporting so completed-game count and completion rate are visible without hand-counting.
 - [ ] **Close the abandonment gaps** — read drop-off across `game_created → trick_set → match_submitted → game_completed` and fix whichever stage bleeds hardest.
 - [ ] **Return rate** — do players who finish a game start a second one within 7 days?
