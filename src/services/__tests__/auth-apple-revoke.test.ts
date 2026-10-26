@@ -1,11 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const { mockIsNative, mockSignInWithApple, mockFetch, mockApiKey } = vi.hoisted(() => ({
-  mockIsNative: vi.fn(() => true),
-  mockSignInWithApple: vi.fn(),
-  mockFetch: vi.fn(),
-  mockApiKey: { value: "test-key" as string | undefined },
-}));
+const { mockIsNative, mockSignInWithApple, mockFetch, mockApiKey, mockAppCheckOn, mockGetAppCheckToken } = vi.hoisted(
+  () => ({
+    mockIsNative: vi.fn(() => true),
+    mockSignInWithApple: vi.fn(),
+    mockFetch: vi.fn(),
+    mockApiKey: { value: "test-key" as string | undefined },
+    mockAppCheckOn: vi.fn(() => false),
+    mockGetAppCheckToken: vi.fn(),
+  }),
+);
 
 vi.mock("firebase/auth", () => ({}));
 vi.mock("@capacitor/core", () => ({ Capacitor: { isNativePlatform: mockIsNative } }));
@@ -14,6 +18,11 @@ vi.mock("@capacitor-firebase/authentication", () => ({
 }));
 vi.mock("../../firebase", () => ({
   requireAuth: () => ({ app: { options: { apiKey: mockApiKey.value } } }),
+  ensureAppCheck: () => Promise.resolve(),
+  isAppCheckInitialized: () => mockAppCheckOn(),
+}));
+vi.mock("@capacitor-firebase/app-check", () => ({
+  FirebaseAppCheck: { getToken: (...a: unknown[]) => mockGetAppCheckToken(...a) },
 }));
 
 import { revokeAppleTokensIfNeeded } from "../auth.appleRevoke";
@@ -34,6 +43,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockIsNative.mockReturnValue(true);
   mockApiKey.value = "test-key";
+  mockAppCheckOn.mockReturnValue(false);
   vi.stubGlobal("fetch", mockFetch);
 });
 
@@ -94,6 +104,45 @@ describe("revokeAppleTokensIfNeeded", () => {
       providerId: "apple.com",
       tokenType: "CODE",
       token: "code123",
+    });
+  });
+
+  describe("App Check header", () => {
+    const sentHeaders = () => (mockFetch.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+    beforeEach(() => {
+      mockSignInWithApple.mockResolvedValue({ credential: { authorizationCode: "code123" } });
+      mockFetch.mockResolvedValue(okResponse());
+    });
+
+    it("attaches X-Firebase-AppCheck when App Check is running", async () => {
+      mockAppCheckOn.mockReturnValue(true);
+      mockGetAppCheckToken.mockResolvedValue({ token: "fake-appcheck-token" });
+      expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("revoked");
+      expect(mockGetAppCheckToken).toHaveBeenCalledWith({ forceRefresh: false });
+      expect(sentHeaders()).toEqual({
+        "Content-Type": "application/json",
+        "X-Firebase-AppCheck": "fake-appcheck-token",
+      });
+    });
+
+    it("sends no header when App Check is off", async () => {
+      expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("revoked");
+      expect(mockGetAppCheckToken).not.toHaveBeenCalled();
+      expect(sentHeaders()).toEqual({ "Content-Type": "application/json" });
+    });
+
+    it("sends no header when the plugin hands back an empty token", async () => {
+      mockAppCheckOn.mockReturnValue(true);
+      mockGetAppCheckToken.mockResolvedValue({ token: "" });
+      expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("revoked");
+      expect(sentHeaders()).toEqual({ "Content-Type": "application/json" });
+    });
+
+    it("fails soft and still revokes when the App Check token can't be had", async () => {
+      mockAppCheckOn.mockReturnValue(true);
+      mockGetAppCheckToken.mockRejectedValue(new Error("attestation failed"));
+      expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("revoked");
+      expect(sentHeaders()).toEqual({ "Content-Type": "application/json" });
     });
   });
 

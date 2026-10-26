@@ -1,7 +1,7 @@
 import { type User } from "firebase/auth";
 import { Capacitor } from "@capacitor/core";
 import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
-import { requireAuth } from "../firebase";
+import { ensureAppCheck, isAppCheckInitialized, requireAuth } from "../firebase";
 import { parseFirebaseError } from "../utils/helpers";
 import { logger } from "./logger";
 
@@ -108,11 +108,12 @@ export async function revokeAppleTokensIfNeeded(
       return "failed";
     }
     const idToken = await untilAborted(user.getIdToken(), ac.signal);
+    const appCheck = await untilAborted(appCheckHeader(user.uid), ac.signal);
     const url = `https://identitytoolkit.googleapis.com/v2/accounts:revokeToken?key=${encodeURIComponent(apiKey)}`;
     const res = await untilAborted(
       fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...appCheck },
         body: JSON.stringify({
           idToken,
           providerId: "apple.com",
@@ -139,6 +140,33 @@ export async function revokeAppleTokensIfNeeded(
     return "failed";
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/**
+ * `X-Firebase-AppCheck` for this hand-rolled Identity Toolkit call.
+ *
+ * The Firebase Auth SDK attaches this header to its own requests once App
+ * Check is running; a raw `fetch` does not. App Check isn't enforced on Auth
+ * today (docs/APPCHECK_ROLLOUT.md), but the day it is, a revoke without the
+ * header would 401 and the 5.1.1(v) bug would come back silently.
+ *
+ * This only runs in the native shell, where the token comes from the native
+ * plugin (App Attest / DeviceCheck) — the same source the web SDK is bridged
+ * to in `lib/nativeAppCheck.ts`. Fail soft: if App Check is off or the token
+ * can't be had, send no header and let the revoke try anyway. The token is
+ * never logged.
+ */
+async function appCheckHeader(uid: string): Promise<Record<string, string>> {
+  try {
+    await ensureAppCheck();
+    if (!isAppCheckInitialized()) return {};
+    const { FirebaseAppCheck } = await import("@capacitor-firebase/app-check");
+    const { token } = await FirebaseAppCheck.getToken({ forceRefresh: false });
+    return token ? { "X-Firebase-AppCheck": token } : {};
+  } catch {
+    logger.warn("apple_revoke_appcheck_unavailable", { uid });
+    return {};
   }
 }
 

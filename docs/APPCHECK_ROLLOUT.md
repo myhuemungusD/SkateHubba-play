@@ -289,6 +289,13 @@ and Storage metrics.
 - [Native apps](#native-apps-ios--android) section resolved.
 - You are at a keyboard, on a weekday, not about to travel. Enforcement is
   instant and global.
+- Before enforcing **Authentication**: the account-delete Apple revoke
+  (`src/services/auth.appleRevoke.ts`) is a hand-rolled `fetch` to Identity
+  Toolkit `v2/accounts:revokeToken`, not an SDK call. It sends
+  `X-Firebase-AppCheck` itself, from the native plugin, and skips the header
+  if no token can be had. On a TestFlight build, delete an Apple-linked test
+  account and confirm the `apple_revoke_done` breadcrumb, not an
+  `apple_revoke_failed` warning with a 401.
 
 ### Execute — one API at a time
 
