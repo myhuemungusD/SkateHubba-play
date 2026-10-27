@@ -5,9 +5,14 @@ import { ClipShareButtons } from "../waiting/ClipShareButtons";
 import { trackEvent } from "../../services/analytics";
 import { shareText } from "../../services/nativeBridge";
 import { Capacitor } from "@capacitor/core";
+import { captureException } from "../../lib/sentry";
 
 vi.mock("../../services/analytics", () => ({ trackEvent: vi.fn() }));
-vi.mock("../../services/nativeBridge", () => ({ shareText: vi.fn() }));
+vi.mock("../../services/nativeBridge", async (importOriginal) => ({
+  isShareCancel: (await importOriginal<typeof import("../../services/nativeBridge")>()).isShareCancel,
+  shareText: vi.fn(),
+}));
+vi.mock("../../lib/sentry", () => ({ captureException: vi.fn() }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -58,15 +63,34 @@ describe("ClipShareButtons", () => {
     expect(screen.getByText("Share Clip")).toBeInTheDocument();
   });
 
-  it("shows a failure label when the bridge rejects", async () => {
-    vi.mocked(shareText).mockRejectedValue(new Error("cancelled"));
+  it("shows a failure label and reports when the share really fails", async () => {
+    vi.mocked(shareText).mockRejectedValue(new Error("No activity found"));
     render(<ClipShareButtons videoUrl="https://cdn/clip.webm" trickName="Kick Flip" />);
 
     await userEvent.click(screen.getByText("Share Clip"));
 
     expect(await screen.findByText("Share failed")).toBeInTheDocument();
+    expect(captureException).toHaveBeenCalledWith(expect.any(Error), {
+      extra: { context: "ClipShareButtons.share", videoUrl: "https://cdn/clip.webm", trickName: "Kick Flip" },
+    });
     act(() => void vi.advanceTimersByTime(2000));
     expect(screen.getByText("Share Clip")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["web Share AbortError", new DOMException("Share canceled", "AbortError")],
+    ["iOS/Android plugin cancel", new Error("Share canceled")],
+    ["plugin cancel as a plain object", { message: "Share cancelled", code: "UNKNOWN" }],
+  ])("returns to idle with no failure and no report when the user closes the sheet (%s)", async (_label, err) => {
+    vi.mocked(shareText).mockRejectedValue(err);
+    render(<ClipShareButtons videoUrl="https://cdn/clip.webm" trickName="Kick Flip" />);
+
+    await userEvent.click(screen.getByText("Share Clip"));
+
+    expect(await screen.findByText("Share Clip")).toBeEnabled();
+    expect(screen.queryByText("Share failed")).not.toBeInTheDocument();
+    expect(captureException).not.toHaveBeenCalled();
+    expect(trackEvent).not.toHaveBeenCalled();
   });
 
   it("shares an mp4 clip as .mp4 with its real type", async () => {
@@ -84,6 +108,10 @@ describe("ClipShareButtons", () => {
     const [file] = await loadFiles();
     expect(file.name).toBe("skatehubba-tre-flip.mp4");
     expect(file.type).toBe("video/mp4");
+
+    // A failed clip download rejects, so the bridge degrades to a text share.
+    vi.mocked(fetch).mockResolvedValue({ ok: false } as unknown as Response);
+    await expect(loadFiles()).rejects.toThrow("Fetch failed");
   });
 
   it("saves with the matching extension and defaults an untyped blob to mp4", async () => {
@@ -92,7 +120,8 @@ describe("ClipShareButtons", () => {
       blob: () => Promise.resolve(new Blob(["v"])),
     } as unknown as Response);
     const createObjectURL = vi.fn((b: Blob) => `blob:${b.type}`);
-    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL }));
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
       expect(this.download).toBe("skatehubba-tre-flip.mp4");
     });
@@ -103,7 +132,26 @@ describe("ClipShareButtons", () => {
     expect(await screen.findByText("Saved!")).toBeInTheDocument();
     expect(click).toHaveBeenCalled();
     expect(createObjectURL.mock.calls[0][0].type).toBe("video/mp4");
+    act(() => void vi.advanceTimersByTime(2000));
+    expect(screen.getByText("Save Clip")).toBeInTheDocument();
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+    act(() => void vi.advanceTimersByTime(8000));
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:video/mp4");
     click.mockRestore();
+  });
+
+  it("shows a failure label and reports when the download fails", async () => {
+    vi.mocked(fetch).mockResolvedValue({ ok: false } as unknown as Response);
+    render(<ClipShareButtons videoUrl="https://cdn/clip.webm" trickName="Kick Flip" />);
+
+    await userEvent.click(screen.getByText("Save Clip"));
+
+    expect(await screen.findByText("Save failed")).toBeInTheDocument();
+    expect(captureException).toHaveBeenCalledWith(expect.any(Error), {
+      extra: { context: "ClipShareButtons.save", videoUrl: "https://cdn/clip.webm", trickName: "Kick Flip" },
+    });
+    act(() => void vi.advanceTimersByTime(2000));
+    expect(screen.getByText("Save Clip")).toBeInTheDocument();
   });
 
   it("keeps a webm clip as .webm", async () => {

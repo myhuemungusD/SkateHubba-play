@@ -1,9 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TurnHistoryViewer } from "../TurnHistoryViewer";
 import type { TurnRecord } from "../../services/games";
 import { Capacitor } from "@capacitor/core";
+import { captureException } from "../../lib/sentry";
+import { trackEvent } from "../../services/analytics";
 
 vi.mock("../../utils/helpers", () => ({
   isFirebaseStorageUrl: (url: string) => url.startsWith("https://firebasestorage.googleapis.com/"),
@@ -12,6 +14,8 @@ vi.mock("../../utils/helpers", () => ({
 vi.mock("../../services/analytics", () => ({
   trackEvent: vi.fn(),
 }));
+
+vi.mock("../../lib/sentry", () => ({ captureException: vi.fn(), addBreadcrumb: vi.fn() }));
 
 const makeTurn = (n: number, overrides?: Partial<TurnRecord>): TurnRecord => ({
   turnNumber: n,
@@ -223,6 +227,8 @@ describe("TurnHistoryViewer", () => {
     const [file] = (share.mock.calls[0][0] as { files: File[] }).files;
     expect(file.name).toMatch(/\.mp4$/);
     expect(file.type).toBe("video/mp4");
+    // A completed share is what clip_shared counts (the cancel tests assert it stays quiet).
+    expect(trackEvent).toHaveBeenCalledWith("clip_shared", { method: expect.any(String), context: "turn_history" });
 
     unstubLevel2Share();
   });
@@ -290,5 +296,150 @@ describe("TurnHistoryViewer", () => {
     // Default makeTurn doesn't set judgedBy (undefined)
     render(<TurnHistoryViewer turns={[turn]} currentUserUid="u1" defaultExpanded />);
     expect(screen.queryByText("Refereed")).not.toBeInTheDocument();
+  });
+});
+
+describe("TurnHistoryViewer clip buttons: timers and outcomes", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    unstubLevel2Share();
+    vi.useRealTimers();
+  });
+
+  it("renders a turn with no set clip, showing only the match clip's buttons", () => {
+    render(
+      <TurnHistoryViewer
+        turns={[makeTurn(1, { setVideoUrl: "" })]}
+        currentUserUid="u1"
+        defaultExpanded
+        showShare
+        showDownload
+      />,
+    );
+    expect(screen.getAllByText("Share clip")).toHaveLength(1);
+    expect(screen.getAllByText("Save clip")).toHaveLength(1);
+  });
+
+  it("types an untyped download as mp4, revokes its object URL after 10s, and restarts the reset on a re-save", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      blob: () => Promise.resolve(new Blob(["video"])),
+    } as Response);
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const names: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      names.push(this.download);
+    });
+    const clearSpy = vi.spyOn(globalThis, "clearTimeout");
+
+    const { unmount } = render(
+      <TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showDownload />,
+    );
+    await userEvent.click(screen.getAllByText("Save clip")[0]);
+    await screen.findByText("Saved!");
+    expect(names).toEqual(["skatehubba-round1-set.mp4"]);
+    expect((createObjectURL.mock.calls[0][0] as Blob).type).toBe("video/mp4");
+
+    // Saving again while "Saved!" shows replaces the pending reset.
+    clearSpy.mockClear();
+    await userEvent.click(screen.getByText("Saved!"));
+    await waitFor(() => expect(names).toHaveLength(2));
+    expect(clearSpy).toHaveBeenCalled();
+
+    act(() => void vi.advanceTimersByTime(10_000));
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:test");
+    expect(screen.getAllByText("Save clip")).toHaveLength(2);
+
+    // Unmounting mid-reset clears the pending timer.
+    await userEvent.click(screen.getAllByText("Save clip")[0]);
+    await screen.findByText("Saved!");
+    clearSpy.mockClear();
+    unmount();
+    expect(clearSpy).toHaveBeenCalled();
+  });
+
+  it("reports a download the server refused and resets the label after 2s", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: false } as Response);
+
+    render(<TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showDownload />);
+    await userEvent.click(screen.getAllByText("Save clip")[0]);
+
+    expect(await screen.findByText("Save failed")).toHaveClass("text-brand-red");
+    expect(captureException).toHaveBeenCalledWith(expect.objectContaining({ message: "Download failed" }), {
+      extra: {
+        context: "DownloadBtn",
+        url: "https://firebasestorage.googleapis.com/set1.webm",
+        baseName: "skatehubba-round1-set",
+      },
+    });
+    act(() => void vi.advanceTimersByTime(2000));
+    expect(screen.getAllByText("Save clip")).toHaveLength(2);
+  });
+
+  it.each([
+    ["a Web Share AbortError", () => new DOMException("Share canceled", "AbortError")],
+    ["the plugin's 'Share canceled'", () => new Error("Share canceled")],
+    ["a bridge cancel that is a plain object", () => ({ message: "Share canceled", code: "CANCELED" })],
+  ])(
+    "goes back to idle with no failure, no Sentry and no clip_shared when the user closes the sheet (%s)",
+    async (_label, make) => {
+      const share = stubLevel2Share();
+      share.mockRejectedValueOnce(make());
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        blob: () => Promise.resolve(new Blob(["vid"], { type: "video/webm" })),
+      } as Response);
+
+      render(<TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showShare />);
+      await userEvent.click(screen.getAllByText("Share clip")[0]);
+
+      await waitFor(() => expect(share).toHaveBeenCalled());
+      await waitFor(() => expect(screen.getAllByText("Share clip")[0]).toBeEnabled());
+      expect(screen.queryByText("Share failed")).not.toBeInTheDocument();
+      expect(screen.queryByText("Shared!")).not.toBeInTheDocument();
+      expect(captureException).not.toHaveBeenCalled();
+      expect(trackEvent).not.toHaveBeenCalledWith("clip_shared", expect.anything());
+    },
+  );
+
+  it("shows a red failure label, reports it, and resets after 2s when the share really fails", async () => {
+    const share = stubLevel2Share();
+    const failure = new DOMException("Permission denied", "NotAllowedError");
+    share.mockRejectedValueOnce(failure);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      blob: () => Promise.resolve(new Blob(["vid"], { type: "video/webm" })),
+    } as Response);
+    const clearSpy = vi.spyOn(globalThis, "clearTimeout");
+
+    const { unmount } = render(
+      <TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showShare />,
+    );
+    await userEvent.click(screen.getAllByText("Share clip")[0]);
+
+    const label = await screen.findByText("Share failed");
+    expect(label).toHaveClass("text-brand-red");
+    expect(captureException).toHaveBeenCalledWith(failure, {
+      extra: { context: "ShareBtn", url: "https://firebasestorage.googleapis.com/set1.webm", trickName: "Kickflip 1" },
+    });
+
+    act(() => void vi.advanceTimersByTime(2000));
+    expect(screen.getAllByText("Share clip")).toHaveLength(2);
+
+    // A share that succeeds while a reset is pending, then an unmount, clears the timers.
+    await userEvent.click(screen.getAllByText("Share clip")[0]);
+    await screen.findByText("Shared!");
+    clearSpy.mockClear();
+    await userEvent.click(screen.getByText("Shared!"));
+    await waitFor(() => expect(share).toHaveBeenCalledTimes(3));
+    expect(clearSpy).toHaveBeenCalled();
+    clearSpy.mockClear();
+    unmount();
+    expect(clearSpy).toHaveBeenCalled();
   });
 });
