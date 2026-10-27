@@ -289,6 +289,16 @@ and Storage metrics.
 - [Native apps](#native-apps-ios--android) section resolved.
 - You are at a keyboard, on a weekday, not about to travel. Enforcement is
   instant and global.
+- Before enforcing **Authentication**: the account-delete Apple revoke
+  (`src/services/auth.appleRevoke.ts`) is a hand-rolled `fetch` to Identity
+  Toolkit `v2/accounts:revokeToken`, not an SDK call. It sends
+  `X-Firebase-AppCheck` itself, from the native plugin, and skips the header
+  if no token can be had. On a TestFlight build, delete an Apple-linked test
+  account with the phone attached to Xcode or Console.app, and confirm the
+  device log shows the `apple_revoke_done` line (a success sends nothing to
+  Sentry, so its breadcrumb never leaves the phone). Also confirm no
+  `apple_revoke_failed` warning with a 401 arrives in Sentry, and SkateHubba
+  is gone from Settings → your name → Sign in with Apple.
 
 ### Execute — one API at a time
 

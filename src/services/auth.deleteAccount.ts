@@ -1,11 +1,11 @@
 import { signOut as fbSignOut } from "firebase/auth";
 import { Capacitor } from "@capacitor/core";
 import { requireAuth } from "../firebase";
-import { captureException } from "../lib/sentry";
+import { captureException, captureMessage } from "../lib/sentry";
 import { parseFirebaseError } from "../utils/helpers";
 import { hashUid } from "../utils/pii";
 import { logger } from "./logger";
-import { revokeAppleTokensIfNeeded } from "./auth.appleRevoke";
+import { reportRevokeFailure, revokeAppleTokensIfNeeded } from "./auth.appleRevoke";
 
 /** Server-side erasure endpoint. See `api/account/delete.ts`. */
 const ACCOUNT_DELETE_PATH = "/api/account/delete";
@@ -20,6 +20,28 @@ export class CodedError extends Error {
     super(message, cause === undefined ? undefined : { cause });
     this.code = code;
   }
+}
+
+/**
+ * Shown when the user closes the Apple sheet during a delete. Plain and
+ * iOS-only on purpose: the sheet only appears on iPhone/iPad, and this copy
+ * must not mention any other platform (Guideline 2.3.10).
+ */
+export const APPLE_CANCEL_MESSAGE =
+  "Deleting your account needs a quick confirmation with Apple. Nothing was deleted. " +
+  "Tap Try Again and confirm with Apple to finish. " +
+  "You can also remove SkateHubba in Settings → your name → Sign in with Apple.";
+
+/**
+ * The user closed the Apple sheet: stop with nothing deleted, every time.
+ * The delete only goes ahead once Apple confirms, so the Apple link is
+ * really revoked. Reported at info level under its own tag: a cancel is a
+ * user choice, not a revoke failure.
+ */
+function stopOnAppleCancel(uid: string): never {
+  logger.info("delete_account_apple_cancelled", { uid });
+  captureMessage("apple_revoke_cancelled", { level: "info", tags: { apple_revoke: "cancelled" } });
+  throw new CodedError("account-delete/cancelled", APPLE_CANCEL_MESSAGE);
 }
 
 const misconfigured = () =>
@@ -93,15 +115,18 @@ export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean
   logger.info("delete_account_attempt", { uid });
 
   // Guideline 5.1.1(v): revoke Sign in with Apple tokens before the account
-  // goes. Warn-and-proceed: a Face ID dismissal, a timeout, or a REST error
-  // must never strand the user in an account they asked to delete, so every
-  // non-success outcome is logged and the deletion continues. The revoke
+  // goes. Closing the Apple sheet stops here with nothing deleted, every
+  // time, until the user confirms with Apple (see stopOnAppleCancel). A timeout
+  // or a REST error must never strand the user in an account they asked to
+  // delete, so those are logged and the deletion continues. The revoke
   // helper swallows its own errors, but we still wrap defensively — a thrown
   // revoke must not break the delete contract.
   const revoke = await revokeAppleTokensIfNeeded(user).catch((err: unknown) => {
     logger.warn("delete_account_apple_revoke_threw", { uid, message: parseFirebaseError(err) });
+    reportRevokeFailure("threw");
     return "failed" as const;
   });
+  if (revoke === "cancelled") stopOnAppleCancel(uid);
   if (revoke !== "revoked" && revoke !== "not-apple") {
     logger.warn("delete_account_apple_revoke_skipped", { uid, outcome: revoke });
   }

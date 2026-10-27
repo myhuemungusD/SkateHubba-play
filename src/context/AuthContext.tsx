@@ -539,6 +539,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       result = await deleteAccount(uid);
     } catch (err) {
       const code = getErrorCode(err);
+      if (code === "account-delete/cancelled") {
+        // The user closed the Apple sheet; nothing was deleted, and nothing is
+        // until they confirm with Apple. Not an error, so no exception (the
+        // service reports it at info level), and no pending marker to leave
+        // behind. The message and the modal's Try Again tell them how to finish.
+        clearPendingDeleteUid();
+        setPendingDeleteUid(null);
+        // The push token was scrubbed above, before we knew the delete would
+        // stop. The account stays, so put it back (a no-op off native or
+        // without permission). Best-effort: it logs its own failures.
+        void registerPushTokenIfGranted(uid).catch(() => {});
+        throw err;
+      }
       logger.error("delete_account_auth_failed", { uid, code });
       // Identify by the hashed id the Sentry user is keyed on; the raw uid and
       // the username are personal data and never go to a third party.

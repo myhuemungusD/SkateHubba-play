@@ -66,14 +66,21 @@ vi.mock("@capacitor-firebase/authentication", () => ({
 
 vi.mock("../../lib/sentry", () => sentryStub);
 
-const mockAppleRevoke = vi.hoisted(() => vi.fn(() => Promise.resolve("not-apple")));
-vi.mock("../auth.appleRevoke", () => ({ revokeAppleTokensIfNeeded: mockAppleRevoke }));
+const { mockAppleRevoke, mockReportRevokeFailure } = vi.hoisted(() => ({
+  mockAppleRevoke: vi.fn(() => Promise.resolve("not-apple")),
+  mockReportRevokeFailure: vi.fn(),
+}));
+vi.mock("../auth.appleRevoke", () => ({
+  revokeAppleTokensIfNeeded: mockAppleRevoke,
+  reportRevokeFailure: mockReportRevokeFailure,
+}));
 
 vi.mock("../../firebase");
 
 vi.stubGlobal("fetch", mockFetch);
 
 import { deleteAccount } from "../auth";
+import { APPLE_CANCEL_MESSAGE } from "../auth.deleteAccount";
 import { auth } from "../../firebase";
 
 beforeEach(() => {
@@ -100,16 +107,63 @@ describe("deleteAccount — native shell", () => {
   // Face ID, timeout, REST error, or an unexpected throw) must not strand
   // the user in an account they asked to delete. The failure is logged (see
   // auth-apple-revoke.test.ts) and deletion continues either way.
-  it.each([
-    ["sheet is dismissed", () => mockAppleRevoke.mockResolvedValueOnce("cancelled")],
-    ["revoke throws", () => mockAppleRevoke.mockRejectedValueOnce(new Error("revoke blew up"))],
-  ])("still deletes the account when the Apple revoke %s (warn-and-proceed)", async (_label, arrange) => {
+  it("still deletes the account when the Apple revoke throws (warn-and-proceed)", async () => {
     vi.stubEnv("VITE_APP_URL", "https://skatehubba.com");
-    arrange();
+    mockAppleRevoke.mockRejectedValueOnce(new Error("revoke blew up"));
     mockFetch.mockResolvedValue(okAuthDeletedResponse());
 
     await expect(deleteAccount("u1")).resolves.toEqual({ authDeleted: true });
     expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockReportRevokeFailure.mock.calls).toEqual([["threw"]]);
+  });
+
+  describe("when the Apple sheet is closed", () => {
+    const cancelled = () => mockAppleRevoke.mockResolvedValueOnce("cancelled");
+    const rejectionOf = (p: Promise<unknown>) =>
+      p.then(
+        () => {
+          throw new Error("expected deleteAccount to stop");
+        },
+        (e: unknown) => e as Error & { code?: string },
+      );
+
+    beforeEach(() => {
+      vi.stubEnv("VITE_APP_URL", "https://skatehubba.com");
+      mockFetch.mockResolvedValue(okAuthDeletedResponse());
+    });
+
+    it("stops with nothing deleted every time, however often the sheet is closed", async () => {
+      const report = (sentryStub as unknown as { captureMessage: ReturnType<typeof vi.fn> }).captureMessage;
+      report.mockClear();
+      for (let i = 0; i < 3; i++) {
+        cancelled();
+        const err = await rejectionOf(deleteAccount("u1"));
+        expect(err.code).toBe("account-delete/cancelled");
+        expect(err.message).toBe(APPLE_CANCEL_MESSAGE);
+      }
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockSignOut).not.toHaveBeenCalled();
+      // A cancel is a user choice, not a revoke failure: its own tag, info level, no uid.
+      expect(mockReportRevokeFailure).not.toHaveBeenCalled();
+      expect(report.mock.calls).toEqual(
+        Array(3).fill(["apple_revoke_cancelled", { level: "info", tags: { apple_revoke: "cancelled" } }]),
+      );
+    });
+
+    it("deletes once the user confirms with Apple after a cancel", async () => {
+      cancelled();
+      expect((await rejectionOf(deleteAccount("u1"))).code).toBe("account-delete/cancelled");
+      mockAppleRevoke.mockResolvedValueOnce("revoked");
+      await expect(deleteAccount("u1")).resolves.toEqual({ authDeleted: true });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("tells the user how to finish on iPhone, and names no other platform", () => {
+      expect(APPLE_CANCEL_MESSAGE).toContain("Nothing was deleted");
+      expect(APPLE_CANCEL_MESSAGE).toContain("Try Again");
+      expect(APPLE_CANCEL_MESSAGE).toContain("Settings → your name → Sign in with Apple");
+      expect(APPLE_CANCEL_MESSAGE).not.toMatch(/android|google|play store|web/i);
+    });
   });
 
   it("refuses to call a URL that cannot resolve when VITE_APP_URL is unset", async () => {
