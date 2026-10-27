@@ -396,8 +396,8 @@ describe("userData service", () => {
       expect(bundle.truncatedSections).toEqual(["notifications"]);
       expect(bundle.capped).toBe(true);
       expect(bundle.notice).toBe(
-        "Some of your data is missing from this file. Your notifications has more than 5,000 items, so the " +
-          "file holds the first 5,000. If you need a complete copy, email privacy@skatehubba.com.",
+        "Some of your data is missing from this file. You have more than 5,000 items in your notifications, " +
+          "so the file holds the first 5,000. If you need a complete copy, email privacy@skatehubba.com.",
       );
       expect(mockLoggerWarn).toHaveBeenCalledWith("user_data_export_list_truncated", {
         section: "notifications",
@@ -615,11 +615,11 @@ describe("userData service", () => {
       expect(describeIncompleteExport([], [])).toBe("");
     });
 
-    it("covers failed reads and long lists together, with plural agreement", () => {
+    it("covers failed reads and several long lists together", () => {
       expect(describeIncompleteExport(["games"], ["notifications", "clipVotes"])).toBe(
         "We couldn't load all of your game history this time, so that part of the file may be empty or " +
-          "incomplete. Try again in a few minutes. Your notifications and clip votes have more than 5,000 " +
-          "items, so the file holds the first 5,000. If you need a complete copy, email privacy@skatehubba.com.",
+          "incomplete. Try again in a few minutes. You have more than 5,000 items in each of your notifications " +
+          "and clip votes, so the file holds the first 5,000 of each. If you need a complete copy, email privacy@skatehubba.com.",
       );
     });
   });

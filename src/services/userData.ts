@@ -176,10 +176,11 @@ export function describeIncompleteExport(
     );
   }
   if (truncatedSections.length > 0) {
+    const max = EXPORT_MAX_DOCS_PER_LIST.toLocaleString("en-US");
+    const many = truncatedSections.length > 1;
     parts.push(
-      `Your ${describeMissingSections(truncatedSections)} ${truncatedSections.length === 1 ? "has" : "have"} ` +
-        `more than ${EXPORT_MAX_DOCS_PER_LIST.toLocaleString("en-US")} items, so the file holds the first ` +
-        `${EXPORT_MAX_DOCS_PER_LIST.toLocaleString("en-US")}.`,
+      `You have more than ${max} items in ${many ? "each of " : ""}your ` +
+        `${describeMissingSections(truncatedSections)}, so the file holds the first ${max}${many ? " of each" : ""}.`,
     );
   }
   if (parts.length === 0) return "";
@@ -264,7 +265,6 @@ function dedupe(...lists: ExportedDoc[][]): ExportedDoc[] {
   return out;
 }
 
-/** One read: its value, whether it worked, and the error code if not. */
 /** One read's result. A failed read keeps what it got and its error code. */
 type Read<T> =
   | {

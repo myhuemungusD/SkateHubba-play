@@ -79,8 +79,8 @@ describe("AccountActions", () => {
       await userEvent.click(downloadBtn());
 
       expect(await screen.findByRole("alert")).toHaveTextContent(
-        "Your data file is ready, but some of it is missing. Your notifications has more than 5,000 items, " +
-          "so the file holds the first 5,000. If you need a complete copy, email privacy@skatehubba.com.",
+        "Your data file is ready, but some of it is missing. You have more than 5,000 items in your " +
+          "notifications, so the file holds the first 5,000. If you need a complete copy, email privacy@skatehubba.com.",
       );
     });
 
