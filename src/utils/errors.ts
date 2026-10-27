@@ -18,6 +18,19 @@ export function getErrorCode(err: unknown): string {
 }
 
 /**
+ * A short, secret-free label for a caught error, safe to log: a Firebase- or
+ * plugin-style `code` if it looks like one, otherwise the error's class name.
+ * Never the message, which is free text from a plugin, the platform, the
+ * network stack or the server, and can carry a uid, an email, a document
+ * path or an auth code. Use this, not `parseFirebaseError`, for logger data.
+ */
+export function errorKind(err: unknown): string {
+  const code = (err as { code?: unknown } | null)?.code;
+  if (typeof code === "string" && /^[\w/.-]{1,64}$/.test(code)) return code;
+  return err instanceof Error ? err.name : typeof err;
+}
+
+/**
  * Extract a human-readable message from a Firebase Auth error (or any unknown error).
  * Firebase errors may be plain objects with `code` + `message` fields rather than
  * Error instances, which causes `String(err)` to produce `[object Object]`.
