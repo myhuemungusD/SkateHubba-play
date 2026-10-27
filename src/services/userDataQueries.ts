@@ -1,14 +1,30 @@
-import { collection, limit, query, where, type Firestore, type Query } from "firebase/firestore";
+import {
+  collection,
+  limit,
+  query,
+  startAfter,
+  where,
+  type DocumentSnapshot,
+  type Firestore,
+  type Query,
+} from "firebase/firestore";
 
 /**
- * Per-surface cap for collection reads. High enough to cover any realistic
- * user while bounding read cost and memory. If a user truly has more than
- * this many docs in a surface, the export bundle's `capped` flag is `true`.
+ * Docs per page for each collection read. Reads page through with
+ * `startAfter` until a page comes back short.
  */
-export const EXPORT_QUERY_LIMIT = 500;
+export const EXPORT_PAGE_SIZE = 500;
 
 /**
- * The Firestore queries behind "Download my data", one per surface.
+ * Safety ceiling on pages per query (10 × 500 = 5,000 docs per list). A list
+ * that still has a full page at the ceiling is reported as incomplete in the
+ * export instead of being cut off silently.
+ */
+export const EXPORT_MAX_PAGES = 10;
+
+/**
+ * The Firestore queries behind "Download my data", one per surface. Each one
+ * returns the first page; {@link exportNextPage} builds the following pages.
  *
  * Kept free of app wiring (no `requireDb`, no logger) so the rules tests can
  * run these exact queries against the emulator as the signed-in owner.
@@ -22,31 +38,40 @@ export const EXPORT_QUERY_LIMIT = 500;
  *      `createdAt desc`) were never in firestore.indexes.json, so those reads
  *      failed and the export quietly left out the user's games, clips, spots
  *      and notifications. Ordering is done in memory instead
- *      (see `sortNewestFirst` in userData.ts).
+ *      (see `sortNewestFirst` in userData.ts). Paging with `startAfter` uses
+ *      the implicit document-id order, which needs no extra index either.
  *
  *   2. Rules are not filters. Each query has to carry the constraint its read
- *      rule checks, or the whole query is refused. Spots are only readable
- *      while `isActive == true`, so the spots query says so; a spot the user
- *      deleted (made inactive) can't be read back by its creator and is not
- *      part of the export.
+ *      rule checks, or the whole query is refused. Spot reads require
+ *      `isActive == true` (firestore.rules, spots `allow read`), so the spots
+ *      query says so. Users can't make a spot inactive: they can only
+ *      hard-delete their own spots, and a deleted spot no longer exists. The
+ *      filter therefore only leaves out spots an admin or moderator
+ *      deactivated. Those still reach the user through the privacy contact
+ *      named in the export notice.
  */
-export function exportCollectionQueries(db: Firestore, uid: string) {
-  const cap = limit(EXPORT_QUERY_LIMIT);
+export function exportCollectionQueries(db: Firestore, uid: string, pageSize: number = EXPORT_PAGE_SIZE) {
+  const page = limit(pageSize);
   return {
-    gamesAsPlayer1: query(collection(db, "games"), where("player1Uid", "==", uid), cap),
-    gamesAsPlayer2: query(collection(db, "games"), where("player2Uid", "==", uid), cap),
-    gamesAsJudge: query(collection(db, "games"), where("judgeId", "==", uid), cap),
-    clips: query(collection(db, "clips"), where("playerUid", "==", uid), cap),
-    clipVotes: query(collection(db, "clipVotes"), where("uid", "==", uid), cap),
-    spots: query(collection(db, "spots"), where("createdBy", "==", uid), where("isActive", "==", true), cap),
-    notifications: query(collection(db, "notifications"), where("recipientUid", "==", uid), cap),
-    nudgesSent: query(collection(db, "nudges"), where("senderUid", "==", uid), cap),
-    nudgesReceived: query(collection(db, "nudges"), where("recipientUid", "==", uid), cap),
-    blockedUsers: query(collection(db, "users", uid, "blocked_users"), cap),
-    reports: query(collection(db, "reports"), where("reporterUid", "==", uid), cap),
-    moderationStatements: query(collection(db, "moderationStatements"), where("subjectUid", "==", uid), cap),
-    appeals: query(collection(db, "appeals"), where("appellantUid", "==", uid), cap),
+    gamesAsPlayer1: query(collection(db, "games"), where("player1Uid", "==", uid), page),
+    gamesAsPlayer2: query(collection(db, "games"), where("player2Uid", "==", uid), page),
+    gamesAsJudge: query(collection(db, "games"), where("judgeId", "==", uid), page),
+    clips: query(collection(db, "clips"), where("playerUid", "==", uid), page),
+    clipVotes: query(collection(db, "clipVotes"), where("uid", "==", uid), page),
+    spots: query(collection(db, "spots"), where("createdBy", "==", uid), where("isActive", "==", true), page),
+    notifications: query(collection(db, "notifications"), where("recipientUid", "==", uid), page),
+    nudgesSent: query(collection(db, "nudges"), where("senderUid", "==", uid), page),
+    nudgesReceived: query(collection(db, "nudges"), where("recipientUid", "==", uid), page),
+    blockedUsers: query(collection(db, "users", uid, "blocked_users"), page),
+    reports: query(collection(db, "reports"), where("reporterUid", "==", uid), page),
+    moderationStatements: query(collection(db, "moderationStatements"), where("subjectUid", "==", uid), page),
+    appeals: query(collection(db, "appeals"), where("appellantUid", "==", uid), page),
   } satisfies Record<string, Query>;
 }
 
 export type ExportQueryName = keyof ReturnType<typeof exportCollectionQueries>;
+
+/** The page after `last`, with the same filters and page size as `first`. */
+export function exportNextPage(first: Query, last: DocumentSnapshot): Query {
+  return query(first, startAfter(last));
+}

@@ -1,23 +1,31 @@
-import { Timestamp, doc, getDoc, getDocs } from "firebase/firestore";
+import { Timestamp, doc, getDocFromServer, getDocsFromServer, type Query } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { logger } from "./logger";
-import { parseFirebaseError } from "../utils/helpers";
+import { captureMessage } from "../lib/sentry";
+import { getErrorCode } from "../utils/helpers";
 import type { SaveFileResult } from "./nativeBridge";
-import { EXPORT_QUERY_LIMIT, exportCollectionQueries } from "./userDataQueries";
+import { EXPORT_MAX_PAGES, EXPORT_PAGE_SIZE, exportCollectionQueries, exportNextPage } from "./userDataQueries";
 
 /**
  * Schema version for the GDPR Article 20 data export bundle. Increment when
  * the shape of `UserDataExport` changes so consumers can detect an
  * incompatible dump.
  *
- * v2: added `complete`, `missingSections` and `notice`, so a file that is
- * missing a section says so instead of looking like the user has no data.
+ * v2: added `complete`, `missingSections`, `truncatedSections` and `notice`,
+ * so a file that is missing data says so instead of looking like the user
+ * has none.
  */
 export const USER_DATA_EXPORT_SCHEMA_VERSION = 2 as const;
 
 /** Where to write if an export keeps coming back incomplete. */
-const PRIVACY_CONTACT_EMAIL = "privacy@skatehubba.com";
+export const PRIVACY_CONTACT_EMAIL = "privacy@skatehubba.com";
+
+/** Most docs one list can hold in the file (pages × page size). */
+export const EXPORT_MAX_DOCS_PER_LIST = EXPORT_MAX_PAGES * EXPORT_PAGE_SIZE;
+
+/** Shown when no section at all could be read, so no file is made. */
+export const EXPORT_FAILED_MESSAGE = "We couldn't load your data. Check your connection and try again.";
 
 /**
  * Shape of a single Firestore doc included in the export. The payload is
@@ -52,11 +60,11 @@ const SECTION_NAMES: Record<ExportSection, string> = {
   games: "game history",
   clips: "clips",
   clipVotes: "clip votes",
-  spots: "spots you added",
+  spots: "spots",
   notifications: "notifications",
   nudges: "nudges",
-  blockedUsers: "blocked users list",
-  reports: "reports you filed",
+  blockedUsers: "blocked list",
+  reports: "reports",
   moderationStatements: "moderation notices",
   appeals: "appeals",
 };
@@ -73,8 +81,11 @@ const SECTION_ORDER = Object.keys(SECTION_NAMES) as ExportSection[];
  *   - `games` (player1Uid|player2Uid|judgeId) — games they played or judged
  *   - `clips` (playerUid == uid)       — clips they authored
  *   - `clipVotes` (uid == uid)         — votes they cast
- *   - `spots` (createdBy == uid, isActive) — skate spots they added that are
- *                                        still live (rules hide removed ones)
+ *   - `spots` (createdBy == uid, isActive) — skate spots they added. Rules
+ *                                        only allow reading active spots, so
+ *                                        a spot an admin or moderator
+ *                                        deactivated is left out (users can
+ *                                        only hard-delete their own spots)
  *   - `notifications` (recipientUid)   — notifications received
  *   - `nudges` (senderUid|recipientUid) — nudges sent or received
  *   - `users/{uid}/blocked_users/*`    — people they have blocked
@@ -92,23 +103,29 @@ const SECTION_ORDER = Object.keys(SECTION_NAMES) as ExportSection[];
  *     is infeasible client-side. Spot comments are included transitively via
  *     the `spots` surface (the spot doc itself is exported).
  *
- * Each collection read is capped at {@link EXPORT_QUERY_LIMIT} docs. If any
- * surface hits the cap, `capped` is set to `true` so the consumer knows the
- * dump may be incomplete. Lists are newest first by `createdAt`.
+ * Every read goes to the server (`getDocFromServer` / `getDocsFromServer`),
+ * never the offline cache, so a file can't say "complete" while holding only
+ * what happened to be cached. Lists are read page by page up to
+ * {@link EXPORT_MAX_DOCS_PER_LIST} docs and sorted newest first by
+ * `createdAt`.
  *
- * If a read fails, its section is left empty AND named in `missingSections`,
- * `complete` is `false`, and `notice` explains it in plain words. An empty
+ * If a read fails, its section is named in `missingSections`. If a list is
+ * longer than the ceiling, it is named in `truncatedSections`. Either way
+ * `complete` is `false` and `notice` explains it in plain words. An empty
  * list in a complete file means "nothing stored", never "couldn't read it".
  */
 export interface UserDataExport {
   schemaVersion: typeof USER_DATA_EXPORT_SCHEMA_VERSION;
   exportedAt: string;
-  /** False when at least one section could not be read. */
+  /** False when a section could not be read or was too long to include in full. */
   complete: boolean;
-  /** Sections that could not be read this time (empty when complete). */
+  /** Sections that could not be read (in full) this time. */
   missingSections: ExportSection[];
+  /** Lists longer than {@link EXPORT_MAX_DOCS_PER_LIST}; the file holds the first part. */
+  truncatedSections: ExportSection[];
   /** Plain-words explanation, present only when the file is incomplete. */
   notice?: string;
+  /** Same as `truncatedSections.length > 0`; kept for v1 readers. */
   capped: boolean;
   subject: {
     uid: string;
@@ -135,6 +152,7 @@ export interface UserDataExport {
 export interface DataDownloadOutcome {
   saved: SaveFileResult;
   missingSections: ExportSection[];
+  truncatedSections: ExportSection[];
 }
 
 /** "game history", "game history and clips", "a, b and c". */
@@ -142,6 +160,44 @@ export function describeMissingSections(sections: readonly ExportSection[]): str
   const names = sections.map((s) => SECTION_NAMES[s]);
   if (names.length <= 1) return names.join("");
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/**
+ * Plain-words explanation of an incomplete export, shared by the file's
+ * `notice` and the on-screen warning. Empty when nothing is missing.
+ */
+export function describeIncompleteExport(
+  missingSections: readonly ExportSection[],
+  truncatedSections: readonly ExportSection[],
+): string {
+  const parts: string[] = [];
+  if (missingSections.length > 0) {
+    parts.push(
+      `We couldn't load all of your ${describeMissingSections(missingSections)} this time, ` +
+        "so that part of the file may be empty or incomplete. Try again in a few minutes.",
+    );
+  }
+  if (truncatedSections.length > 0) {
+    parts.push(
+      `Your ${describeMissingSections(truncatedSections)} ${truncatedSections.length === 1 ? "has" : "have"} ` +
+        `more than ${EXPORT_MAX_DOCS_PER_LIST.toLocaleString("en-US")} items, so the file holds the first ` +
+        `${EXPORT_MAX_DOCS_PER_LIST.toLocaleString("en-US")}.`,
+    );
+  }
+  if (parts.length === 0) return "";
+  parts.push(`If you need a complete copy, email ${PRIVACY_CONTACT_EMAIL}.`);
+  return parts.join(" ");
+}
+
+/** Thrown when no section at all could be read: there is no file worth saving. */
+export class UserDataExportError extends Error {
+  /** Firestore error code per failed read, for Sentry. No personal data. */
+  readonly codes: Record<string, string>;
+  constructor(codes: Record<string, string>) {
+    super(EXPORT_FAILED_MESSAGE);
+    this.name = "UserDataExportError";
+    this.codes = codes;
+  }
 }
 
 /**
@@ -210,10 +266,34 @@ function dedupe(...lists: ExportedDoc[][]): ExportedDoc[] {
   return out;
 }
 
-interface Read<T> {
-  value: T;
-  ok: boolean;
-}
+/** One read: its value, whether it worked, and the error code if not. */
+/** One read's result. A failed read keeps what it got and its error code. */
+type Read<T> =
+  | {
+      value: T;
+      ok: true;
+      /** True when a list hit {@link EXPORT_MAX_PAGES} with more still to read. */
+      truncated?: boolean;
+    }
+  | { value: T; ok: false; code: string };
+
+/** Labels for each read. Fixed strings only: never a uid, username or path. */
+type ReadLabel =
+  | "profile"
+  | "usernameReservation"
+  | "gamesAsPlayer1"
+  | "gamesAsPlayer2"
+  | "gamesAsJudge"
+  | "clips"
+  | "clipVotes"
+  | "spots"
+  | "notifications"
+  | "nudgesSent"
+  | "nudgesReceived"
+  | "blockedUsers"
+  | "reports"
+  | "moderationStatements"
+  | "appeals";
 
 /**
  * Collect every piece of personal data we hold about `uid`/`username` into a
@@ -223,7 +303,8 @@ interface Read<T> {
  * Each collection is queried independently: if one read fails the others
  * still land, and the failed section is named in `missingSections` (with a
  * plain `notice`) rather than silently exported as empty. The user can retry
- * to fill it in.
+ * to fill it in. If every read fails, this throws {@link UserDataExportError}
+ * instead of producing a near-empty file.
  *
  * Firestore security rules still apply; this function must be called while
  * authenticated AS `uid` so the same rules that protect normal reads also
@@ -252,29 +333,61 @@ export async function exportUserData(uid: string, username: string): Promise<Use
     moderationStatements,
     appeals,
   ] = await Promise.all([
-    readDoc(`users/${uid}`, () => getDoc(doc(db, "users", uid))),
+    readDoc("profile", `users/${uid}`, () => getDocFromServer(doc(db, "users", uid))),
     normalizedUsername
-      ? readDoc(`usernames/${normalizedUsername}`, () => getDoc(doc(db, "usernames", normalizedUsername)))
-      : Promise.resolve<Read<ExportedDoc | null>>({ value: null, ok: true }),
-    readCollection("games (player1)", () => getDocs(q.gamesAsPlayer1)),
-    readCollection("games (player2)", () => getDocs(q.gamesAsPlayer2)),
-    readCollection("games (judge)", () => getDocs(q.gamesAsJudge)),
-    readCollection("clips", () => getDocs(q.clips)),
-    readCollection("clipVotes", () => getDocs(q.clipVotes)),
-    readCollection("spots", () => getDocs(q.spots)),
-    readCollection("notifications", () => getDocs(q.notifications)),
-    readCollection("nudges (sent)", () => getDocs(q.nudgesSent)),
-    readCollection("nudges (received)", () => getDocs(q.nudgesReceived)),
-    readCollection("blocked_users", () => getDocs(q.blockedUsers)),
-    readCollection("reports", () => getDocs(q.reports)),
-    readCollection("moderationStatements", () => getDocs(q.moderationStatements)),
-    readCollection("appeals", () => getDocs(q.appeals)),
+      ? readDoc("usernameReservation", `usernames/${normalizedUsername}`, () =>
+          getDocFromServer(doc(db, "usernames", normalizedUsername)),
+        )
+      : null,
+    readCollection("gamesAsPlayer1", q.gamesAsPlayer1),
+    readCollection("gamesAsPlayer2", q.gamesAsPlayer2),
+    readCollection("gamesAsJudge", q.gamesAsJudge),
+    readCollection("clips", q.clips),
+    readCollection("clipVotes", q.clipVotes),
+    readCollection("spots", q.spots),
+    readCollection("notifications", q.notifications),
+    readCollection("nudgesSent", q.nudgesSent),
+    readCollection("nudgesReceived", q.nudgesReceived),
+    readCollection("blockedUsers", q.blockedUsers),
+    readCollection("reports", q.reports),
+    readCollection("moderationStatements", q.moderationStatements),
+    readCollection("appeals", q.appeals),
   ]);
 
-  // A section is missing if any read that feeds it failed.
+  // A blank username means there is no reservation to read: not a failure.
+  const reservation: Read<ExportedDoc | null> = usernameReservation ?? { value: null, ok: true };
+
+  const readsByLabel: Array<[ReadLabel, Read<unknown>]> = [
+    ["profile", profile],
+    ...(usernameReservation ? [["usernameReservation", usernameReservation] as [ReadLabel, Read<unknown>]] : []),
+    ["gamesAsPlayer1", gamesAsP1],
+    ["gamesAsPlayer2", gamesAsP2],
+    ["gamesAsJudge", gamesAsJudge],
+    ["clips", clips],
+    ["clipVotes", clipVotes],
+    ["spots", spots],
+    ["notifications", notifications],
+    ["nudgesSent", nudgesSent],
+    ["nudgesReceived", nudgesReceived],
+    ["blockedUsers", blocked],
+    ["reports", reports],
+    ["moderationStatements", moderationStatements],
+    ["appeals", appeals],
+  ];
+  const codes: Record<string, string> = {};
+  for (const [label, r] of readsByLabel) if (!r.ok) codes[label] = r.code;
+
+  // Nothing could be read at all (offline, signed out): no file is better
+  // than a near-empty one with every section flagged.
+  if (readsByLabel.every(([, r]) => !r.ok)) {
+    throw new UserDataExportError(codes);
+  }
+
+  // A section is missing if any read that feeds it failed, and truncated if
+  // any list that feeds it hit the page ceiling.
   const sectionReads: Record<ExportSection, Read<unknown>[]> = {
     profile: [profile],
-    usernameReservation: [usernameReservation],
+    usernameReservation: [reservation],
     games: [gamesAsP1, gamesAsP2, gamesAsJudge],
     clips: [clips],
     clipVotes: [clipVotes],
@@ -287,43 +400,31 @@ export async function exportUserData(uid: string, username: string): Promise<Use
     appeals: [appeals],
   };
   const missingSections = SECTION_ORDER.filter((s) => sectionReads[s].some((r) => !r.ok));
+  const truncatedSections = SECTION_ORDER.filter((s) => sectionReads[s].some((r) => r.ok && r.truncated));
 
-  // Flag if any surface hit the per-query cap.
-  const lists = [
-    gamesAsP1,
-    gamesAsP2,
-    gamesAsJudge,
-    clips,
-    clipVotes,
-    spots,
-    notifications,
-    nudgesSent,
-    nudgesReceived,
-    blocked,
-    reports,
-    moderationStatements,
-    appeals,
-  ];
-  const capped = lists.some((r) => r.value.length >= EXPORT_QUERY_LIMIT);
-
-  const complete = missingSections.length === 0;
+  const complete = missingSections.length === 0 && truncatedSections.length === 0;
+  if (!complete) {
+    // Ops signal for partial exports. Section names and error codes only.
+    captureMessage("user_data_export_partial", {
+      level: "warning",
+      extra: { missingSections, truncatedSections, codes },
+    });
+  }
   return {
     schemaVersion: USER_DATA_EXPORT_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     complete,
     missingSections,
+    truncatedSections,
     ...(complete
       ? {}
       : {
-          notice:
-            `Some of your data is missing from this file: your ${describeMissingSections(missingSections)}. ` +
-            "We couldn't load it this time, so those sections are empty even if you have data there. " +
-            `Download your data again in a few minutes. If it keeps happening, email ${PRIVACY_CONTACT_EMAIL}.`,
+          notice: `Some of your data is missing from this file. ${describeIncompleteExport(missingSections, truncatedSections)}`,
         }),
-    capped,
+    capped: truncatedSections.length > 0,
     subject: { uid, username: normalizedUsername },
     profile: profile.value,
-    usernameReservation: usernameReservation.value,
+    usernameReservation: reservation.value,
     // A user can be player1, player2 or judge on the same game doc.
     games: sortNewestFirst(dedupe(gamesAsP1.value, gamesAsP2.value, gamesAsJudge.value)),
     clips: sortNewestFirst(clips.value),
@@ -340,7 +441,13 @@ export async function exportUserData(uid: string, username: string): Promise<Use
   };
 }
 
+/** Error code for logs and Sentry; never the message, which can carry a path. */
+function codeOf(err: unknown): string {
+  return getErrorCode(err) || "unknown";
+}
+
 async function readDoc(
+  label: ReadLabel,
   path: string,
   fetcher: () => Promise<{ exists(): boolean; id: string; data(): unknown }>,
 ): Promise<Read<ExportedDoc | null>> {
@@ -349,21 +456,35 @@ async function readDoc(
     if (!snap.exists()) return { value: null, ok: true };
     return { value: toExportedDoc(snap.id, path, snap.data()), ok: true };
   } catch (err) {
-    logger.warn("user_data_export_doc_failed", { path, error: parseFirebaseError(err) });
-    return { value: null, ok: false };
+    const code = codeOf(err);
+    logger.warn("user_data_export_doc_failed", { section: label, code });
+    return { value: null, ok: false, code };
   }
 }
 
-async function readCollection(
-  label: string,
-  fetcher: () => Promise<{ docs: Array<{ id: string; ref: { path: string }; data(): unknown }> }>,
-): Promise<Read<ExportedDoc[]>> {
+/**
+ * Read every page of one export query from the server. Stops when a page
+ * comes back short, or at {@link EXPORT_MAX_PAGES} (then `truncated`). If a
+ * page fails, the docs read so far are kept and the read is marked failed.
+ */
+async function readCollection(label: ReadLabel, first: Query): Promise<Read<ExportedDoc[]>> {
+  const docs: ExportedDoc[] = [];
+  let page = first;
   try {
-    const snap = await withRetry(fetcher);
-    return { value: snap.docs.map((d) => toExportedDoc(d.id, d.ref.path, d.data())), ok: true };
+    for (let n = 1; ; n++) {
+      const snap = await withRetry(() => getDocsFromServer(page));
+      for (const d of snap.docs) docs.push(toExportedDoc(d.id, d.ref.path, d.data()));
+      if (snap.docs.length < EXPORT_PAGE_SIZE) return { value: docs, ok: true };
+      if (n >= EXPORT_MAX_PAGES) {
+        logger.warn("user_data_export_list_truncated", { section: label, pages: n });
+        return { value: docs, ok: true, truncated: true };
+      }
+      page = exportNextPage(first, snap.docs[snap.docs.length - 1]);
+    }
   } catch (err) {
-    logger.warn("user_data_export_collection_failed", { label, error: parseFirebaseError(err) });
-    return { value: [], ok: false };
+    const code = codeOf(err);
+    logger.warn("user_data_export_collection_failed", { section: label, code });
+    return { value: docs, ok: false, code };
   }
 }
 

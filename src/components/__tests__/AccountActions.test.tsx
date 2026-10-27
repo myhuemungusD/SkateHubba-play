@@ -15,7 +15,11 @@ import type { DataDownloadOutcome } from "../../services/userData";
  */
 
 /** A save that ended `saved` with nothing missing from the file. */
-const full = (saved: DataDownloadOutcome["saved"]): DataDownloadOutcome => ({ saved, missingSections: [] });
+const full = (saved: DataDownloadOutcome["saved"]): DataDownloadOutcome => ({
+  saved,
+  missingSections: [],
+  truncatedSections: [],
+});
 
 const downloadBtn = () => screen.getByRole("button", { name: /download my data/i });
 const deleteRow = () => screen.getByRole("button", { name: /^Delete account/ });
@@ -76,16 +80,20 @@ describe("AccountActions", () => {
     it.each(["shared", "downloaded"] as const)(
       "warns in plain words when the %s file is missing sections",
       async (saved) => {
-        const onDownloadData = vi
-          .fn()
-          .mockResolvedValue({ saved, missingSections: ["games", "clips"] } satisfies DataDownloadOutcome);
+        const onDownloadData = vi.fn().mockResolvedValue({
+          saved,
+          missingSections: ["games", "clips"],
+          truncatedSections: [],
+        } satisfies DataDownloadOutcome);
         render(<AccountActions onDownloadData={onDownloadData} />);
 
         await userEvent.click(downloadBtn());
 
         const warning = await screen.findByRole("alert");
         expect(warning).toHaveTextContent(
-          "Your file was saved, but it's missing your game history and clips. We couldn't load that part this time. Try again in a few minutes.",
+          "Your data file is ready, but some of it is missing. We couldn't load all of your game history and " +
+            "clips this time, so that part of the file may be empty or incomplete. Try again in a few minutes. " +
+            "If you need a complete copy, email privacy@skatehubba.com.",
         );
         // The full-success confirmation must not sit next to the warning.
         expect(screen.queryByRole("status")).not.toBeInTheDocument();
@@ -93,9 +101,11 @@ describe("AccountActions", () => {
     );
 
     it("does not warn about missing sections when the share sheet was closed", async () => {
-      const onDownloadData = vi
-        .fn()
-        .mockResolvedValue({ saved: "cancelled", missingSections: ["games"] } satisfies DataDownloadOutcome);
+      const onDownloadData = vi.fn().mockResolvedValue({
+        saved: "cancelled",
+        missingSections: ["games"],
+        truncatedSections: [],
+      } satisfies DataDownloadOutcome);
       render(<AccountActions onDownloadData={onDownloadData} />);
 
       await userEvent.click(downloadBtn());
@@ -108,16 +118,56 @@ describe("AccountActions", () => {
     it("clears an old missing-sections warning when a retry succeeds", async () => {
       const onDownloadData = vi
         .fn()
-        .mockResolvedValueOnce({ saved: "shared", missingSections: ["spots"] } satisfies DataDownloadOutcome)
+        .mockResolvedValueOnce({
+          saved: "shared",
+          missingSections: ["spots"],
+          truncatedSections: [],
+        } satisfies DataDownloadOutcome)
         .mockResolvedValueOnce(full("shared"));
       render(<AccountActions onDownloadData={onDownloadData} />);
 
       await userEvent.click(downloadBtn());
-      expect(await screen.findByRole("alert")).toHaveTextContent(/missing your spots you added/i);
+      expect(await screen.findByRole("alert")).toHaveTextContent(/all of your spots this time/i);
       await userEvent.click(downloadBtn());
 
       expect(await screen.findByRole("status")).toHaveTextContent(/your data file is ready/i);
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("says when a list was too long to fit in full", async () => {
+      const onDownloadData = vi.fn().mockResolvedValue({
+        saved: "downloaded",
+        missingSections: [],
+        truncatedSections: ["notifications"],
+      } satisfies DataDownloadOutcome);
+      render(<AccountActions onDownloadData={onDownloadData} />);
+
+      await userEvent.click(downloadBtn());
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "Your data file is ready, but some of it is missing. Your notifications has more than 5,000 items, " +
+          "so the file holds the first 5,000. If you need a complete copy, email privacy@skatehubba.com.",
+      );
+    });
+
+    it("keeps messages outside the button so screen readers announce them", async () => {
+      const onDownloadData = vi.fn().mockResolvedValue({
+        saved: "shared",
+        missingSections: ["games"],
+        truncatedSections: [],
+      } satisfies DataDownloadOutcome);
+      render(<AccountActions onDownloadData={onDownloadData} />);
+
+      await userEvent.click(downloadBtn());
+
+      const warning = await screen.findByRole("alert");
+      expect(downloadBtn()).not.toContainElement(warning);
+      // Tied to the button so it is read as the button's description.
+      const describedBy = downloadBtn().getAttribute("aria-describedby");
+      expect(describedBy).toBeTruthy();
+      expect(document.getElementById(describedBy as string)).toContainElement(warning);
+      expect(downloadBtn()).toHaveAccessibleName(/^Download my data/);
+      expect(downloadBtn()).not.toHaveAccessibleName(/missing/);
     });
 
     it("clears an old confirmation when a retry fails", async () => {

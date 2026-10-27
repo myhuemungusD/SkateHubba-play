@@ -615,12 +615,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clips: bundle.clips.length,
         reports: bundle.reports.length,
         missingSections: bundle.missingSections,
+        truncatedSections: bundle.truncatedSections,
         result,
       });
-      return { saved: result, missingSections: bundle.missingSections };
+      return { saved: result, missingSections: bundle.missingSections, truncatedSections: bundle.truncatedSections };
     } catch (err) {
       captureException(err, {
-        extra: { context: "download_data_failed", uidHash: hashUid(activeProfile.uid) },
+        extra: {
+          context: "download_data_failed",
+          uidHash: hashUid(activeProfile.uid),
+          // UserDataExportError (nothing could be read) carries per-read
+          // Firestore codes. Codes only, no personal data.
+          ...(err && typeof err === "object" && "codes" in err ? { codes: err.codes } : {}),
+        },
       });
       throw err; // Lobby still surfaces the message to the user
     }
