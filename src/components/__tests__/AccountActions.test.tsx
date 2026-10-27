@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AccountActions } from "../AccountActions";
 import { deferred } from "../../__tests__/harness/deferred";
+import type { DataDownloadOutcome } from "../../services/userData";
 
 /**
  * GDPR/CCPA account controls. Rehomed from the Lobby suite when the footer
@@ -12,6 +13,9 @@ import { deferred } from "../../__tests__/harness/deferred";
  * internals (backdrop/inner-click propagation, non-Error fallback, deleting
  * state); nothing here re-asserts those.
  */
+
+/** A save that ended `saved` with nothing missing from the file. */
+const full = (saved: DataDownloadOutcome["saved"]): DataDownloadOutcome => ({ saved, missingSections: [] });
 
 const downloadBtn = () => screen.getByRole("button", { name: /download my data/i });
 const deleteRow = () => screen.getByRole("button", { name: /^Delete account/ });
@@ -47,19 +51,19 @@ describe("AccountActions", () => {
     });
 
     it("confirms only after the native share sheet finishes", async () => {
-      const pending = deferred<"shared">();
+      const pending = deferred<DataDownloadOutcome>();
       render(<AccountActions onDownloadData={() => pending.promise} />);
 
       await userEvent.click(downloadBtn());
       expect(screen.queryByRole("status")).not.toBeInTheDocument();
-      pending.resolve("shared");
+      pending.resolve(full("shared"));
 
       expect(await screen.findByRole("status")).toHaveTextContent(/your data file is ready/i);
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
 
     it.each(["cancelled", "downloaded"] as const)("shows no confirmation when the save ends %s", async (result) => {
-      const onDownloadData = vi.fn().mockResolvedValue(result);
+      const onDownloadData = vi.fn().mockResolvedValue(full(result));
       render(<AccountActions onDownloadData={onDownloadData} />);
 
       await userEvent.click(downloadBtn());
@@ -69,8 +73,58 @@ describe("AccountActions", () => {
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
 
+    it.each(["shared", "downloaded"] as const)(
+      "warns in plain words when the %s file is missing sections",
+      async (saved) => {
+        const onDownloadData = vi
+          .fn()
+          .mockResolvedValue({ saved, missingSections: ["games", "clips"] } satisfies DataDownloadOutcome);
+        render(<AccountActions onDownloadData={onDownloadData} />);
+
+        await userEvent.click(downloadBtn());
+
+        const warning = await screen.findByRole("alert");
+        expect(warning).toHaveTextContent(
+          "Your file was saved, but it's missing your game history and clips. We couldn't load that part this time. Try again in a few minutes.",
+        );
+        // The full-success confirmation must not sit next to the warning.
+        expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      },
+    );
+
+    it("does not warn about missing sections when the share sheet was closed", async () => {
+      const onDownloadData = vi
+        .fn()
+        .mockResolvedValue({ saved: "cancelled", missingSections: ["games"] } satisfies DataDownloadOutcome);
+      render(<AccountActions onDownloadData={onDownloadData} />);
+
+      await userEvent.click(downloadBtn());
+
+      await waitFor(() => expect(downloadBtn()).not.toBeDisabled());
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+
+    it("clears an old missing-sections warning when a retry succeeds", async () => {
+      const onDownloadData = vi
+        .fn()
+        .mockResolvedValueOnce({ saved: "shared", missingSections: ["spots"] } satisfies DataDownloadOutcome)
+        .mockResolvedValueOnce(full("shared"));
+      render(<AccountActions onDownloadData={onDownloadData} />);
+
+      await userEvent.click(downloadBtn());
+      expect(await screen.findByRole("alert")).toHaveTextContent(/missing your spots you added/i);
+      await userEvent.click(downloadBtn());
+
+      expect(await screen.findByRole("status")).toHaveTextContent(/your data file is ready/i);
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
     it("clears an old confirmation when a retry fails", async () => {
-      const onDownloadData = vi.fn().mockResolvedValueOnce("shared").mockRejectedValueOnce(new Error("share failed"));
+      const onDownloadData = vi
+        .fn()
+        .mockResolvedValueOnce(full("shared"))
+        .mockRejectedValueOnce(new Error("share failed"));
       render(<AccountActions onDownloadData={onDownloadData} />);
 
       await userEvent.click(downloadBtn());

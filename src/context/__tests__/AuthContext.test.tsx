@@ -981,7 +981,7 @@ describe("handleDeleteAccount", () => {
 
 describe("handleDownloadData", () => {
   const profile = { uid: "u1", username: "sk8r" };
-  const bundle = { games: [{}], clips: [], reports: [] };
+  const bundle = { games: [{}], clips: [], reports: [], missingSections: [] as string[] };
 
   async function runDownload(): Promise<{ result: unknown; error: unknown }> {
     const ctxRef: { current: ReturnType<typeof useAuthContext> | null } = { current: null };
@@ -1026,7 +1026,7 @@ describe("handleDownloadData", () => {
     const { result, error } = await runDownload();
 
     expect(error).toBeUndefined();
-    expect(result).toBe("shared");
+    expect(result).toEqual({ saved: "shared", missingSections: [] });
     expect(mockSaveTextFile).toHaveBeenCalledWith({
       filename: "export.json",
       text: "{}",
@@ -1035,7 +1035,21 @@ describe("handleDownloadData", () => {
     });
     expect(mockLoggerInfo).toHaveBeenCalledWith(
       "download_data_done",
-      expect.objectContaining({ uid: "u1", games: 1, result: "shared" }),
+      expect.objectContaining({ uid: "u1", games: 1, missingSections: [], result: "shared" }),
+    );
+  });
+
+  it("hands back the sections the file is missing so the screen can say so", async () => {
+    const { exportUserData } = await import("../../services/userData");
+    vi.mocked(exportUserData).mockResolvedValueOnce({ ...bundle, missingSections: ["games", "clips"] } as never);
+    mockSaveTextFile.mockResolvedValueOnce("downloaded");
+    const { result, error } = await runDownload();
+
+    expect(error).toBeUndefined();
+    expect(result).toEqual({ saved: "downloaded", missingSections: ["games", "clips"] });
+    expect(mockLoggerInfo).toHaveBeenCalledWith(
+      "download_data_done",
+      expect.objectContaining({ missingSections: ["games", "clips"] }),
     );
   });
 
@@ -1043,7 +1057,7 @@ describe("handleDownloadData", () => {
     mockSaveTextFile.mockResolvedValueOnce("cancelled");
     const { result } = await runDownload();
 
-    expect(result).toBe("cancelled");
+    expect(result).toEqual({ saved: "cancelled", missingSections: [] });
     expect(mockCaptureException).not.toHaveBeenCalled();
   });
 
