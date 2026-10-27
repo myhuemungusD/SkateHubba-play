@@ -187,6 +187,7 @@ export interface UserDataServiceRefs {
   exportUserData: Mock;
   serializeUserData: Mock;
   userDataFilename: Mock;
+  describeMissingSections: Mock;
 }
 
 export interface UserDataServiceMocks {
@@ -197,8 +198,10 @@ export interface UserDataServiceMocks {
 export function createUserDataServiceMocks(): UserDataServiceMocks {
   const refs: UserDataServiceRefs = {
     exportUserData: vi.fn().mockResolvedValue({
-      schemaVersion: 1,
+      schemaVersion: 2,
       exportedAt: "2026-04-15T00:00:00.000Z",
+      complete: true,
+      missingSections: [],
       capped: false,
       subject: { uid: "u1", username: "sk8r" },
       profile: null,
@@ -216,6 +219,7 @@ export function createUserDataServiceMocks(): UserDataServiceMocks {
     }),
     serializeUserData: vi.fn(() => "{}"),
     userDataFilename: vi.fn(() => "export.json"),
+    describeMissingSections: vi.fn((sections: string[]) => sections.join(", ")),
   };
   return {
     refs,
@@ -223,6 +227,7 @@ export function createUserDataServiceMocks(): UserDataServiceMocks {
       exportUserData: (...args: unknown[]) => refs.exportUserData(...args),
       serializeUserData: (...args: unknown[]) => refs.serializeUserData(...args),
       userDataFilename: (...args: unknown[]) => refs.userDataFilename(...args),
+      describeMissingSections: (...args: unknown[]) => refs.describeMissingSections(...args),
     },
   };
 }

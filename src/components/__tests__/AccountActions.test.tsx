@@ -46,6 +46,42 @@ describe("AccountActions", () => {
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
 
+    it("stays quiet when the saved file is complete", async () => {
+      const onDownloadData = vi.fn().mockResolvedValue({ missingSections: [] });
+      render(<AccountActions onDownloadData={onDownloadData} />);
+
+      await userEvent.click(downloadBtn());
+
+      await waitFor(() => expect(onDownloadData).toHaveBeenCalledTimes(1));
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("warns in plain words when the saved file is missing sections", async () => {
+      const onDownloadData = vi.fn().mockResolvedValue({ missingSections: ["clips", "notifications"] });
+      render(<AccountActions onDownloadData={onDownloadData} />);
+
+      await userEvent.click(downloadBtn());
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(/your file was saved, but it's missing your clips and notifications/i);
+      expect(alert).toHaveTextContent(/try again in a few minutes/i);
+    });
+
+    it("clears an old missing-sections warning when the next export is complete", async () => {
+      const onDownloadData = vi
+        .fn()
+        .mockResolvedValueOnce({ missingSections: ["games"] })
+        .mockResolvedValueOnce({ missingSections: [] });
+      render(<AccountActions onDownloadData={onDownloadData} />);
+
+      await userEvent.click(downloadBtn());
+      await screen.findByRole("alert");
+      await userEvent.click(downloadBtn());
+
+      await waitFor(() => expect(onDownloadData).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    });
+
     it("surfaces the export error message", async () => {
       const onDownloadData = vi.fn().mockRejectedValueOnce(new Error("network down"));
       render(<AccountActions onDownloadData={onDownloadData} />);

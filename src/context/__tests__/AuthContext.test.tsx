@@ -960,3 +960,96 @@ describe("handleDeleteAccount", () => {
     });
   });
 });
+
+describe("handleDownloadData", () => {
+  const profile = { uid: "export-owner", username: "sk8r" };
+  const bundle = { games: [{}], clips: [], reports: [], missingSections: [] as string[] };
+
+  async function runDownload(): Promise<{ result: unknown; error: unknown }> {
+    const ctxRef: { current: ReturnType<typeof useAuthContext> | null } = { current: null };
+    function Harness() {
+      const ctx = useAuthContext();
+      ctxRef.current = ctx;
+      const seeded = useRef(false);
+      useEffect(() => {
+        if (!seeded.current) {
+          seeded.current = true;
+          ctx.setActiveProfile(profile as unknown as UserProfile);
+        }
+      }, [ctx]);
+      return null;
+    }
+    render(
+      <AuthProvider>
+        <Harness />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(ctxRef.current?.activeProfile).toBeTruthy());
+    const out: { result: unknown; error: unknown } = { result: undefined, error: undefined };
+    await act(async () => {
+      try {
+        out.result = await ctxRef.current?.handleDownloadData();
+      } catch (err) {
+        out.error = err;
+      }
+    });
+    return out;
+  }
+
+  const originalCreate = URL.createObjectURL;
+  const originalRevoke = URL.revokeObjectURL;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    URL.createObjectURL = vi.fn(() => "blob:export");
+    URL.revokeObjectURL = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    const { exportUserData } = await import("../../services/userData");
+    vi.mocked(exportUserData).mockResolvedValue(bundle as never);
+  });
+
+  afterEach(() => {
+    URL.createObjectURL = originalCreate;
+    URL.revokeObjectURL = originalRevoke;
+    vi.restoreAllMocks();
+  });
+
+  it("downloads the file and says nothing is missing when the export is complete", async () => {
+    const { result, error } = await runDownload();
+
+    expect(error).toBeUndefined();
+    expect(result).toEqual({ missingSections: [] });
+    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledTimes(1);
+    expect(mockLoggerInfo).toHaveBeenCalledWith(
+      "download_data_done",
+      expect.objectContaining({ uid: "export-owner", games: 1, missingSections: [] }),
+    );
+  });
+
+  it("hands back the sections the file is missing so the screen can say so", async () => {
+    const { exportUserData } = await import("../../services/userData");
+    vi.mocked(exportUserData).mockResolvedValueOnce({ ...bundle, missingSections: ["games", "clips"] } as never);
+    const { result, error } = await runDownload();
+
+    expect(error).toBeUndefined();
+    expect(result).toEqual({ missingSections: ["games", "clips"] });
+    expect(mockLoggerInfo).toHaveBeenCalledWith(
+      "download_data_done",
+      expect.objectContaining({ missingSections: ["games", "clips"] }),
+    );
+  });
+
+  it("reports a failed export to Sentry and rethrows so the screen can show it", async () => {
+    const { exportUserData } = await import("../../services/userData");
+    vi.mocked(exportUserData).mockRejectedValueOnce(new Error("offline"));
+    const { result, error } = await runDownload();
+
+    expect(result).toBeUndefined();
+    expect((error as Error).message).toBe("offline");
+    expect(mockCaptureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ extra: expect.objectContaining({ context: "download_data_failed" }) }),
+    );
+  });
+});

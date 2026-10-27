@@ -64,6 +64,7 @@ vi.mock("../logger", () => ({
 }));
 
 import {
+  describeMissingSections,
   exportUserData,
   serializeUserData,
   userDataFilename,
@@ -74,8 +75,10 @@ import {
 /** Convenience factory for test bundles with all required fields. */
 function emptyBundle(overrides?: Partial<UserDataExport>): UserDataExport {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     exportedAt: "2026-04-15T00:00:00.000Z",
+    complete: true,
+    missingSections: [],
     capped: false,
     subject: { uid: "u1", username: "sk8r" },
     profile: null,
@@ -146,6 +149,9 @@ describe("userData service", () => {
       const bundle = await exportUserData("u1", "SK8R");
 
       expect(bundle.schemaVersion).toBe(USER_DATA_EXPORT_SCHEMA_VERSION);
+      expect(bundle.complete).toBe(true);
+      expect(bundle.missingSections).toEqual([]);
+      expect(bundle).not.toHaveProperty("notice");
       expect(bundle.capped).toBe(false);
       expect(bundle.subject).toEqual({ uid: "u1", username: "sk8r" });
       expect(bundle.profile?.data).toEqual(profileData);
@@ -194,6 +200,9 @@ describe("userData service", () => {
       const bundle = await exportUserData("u1", "sk8r");
       expect(bundle.profile).toBeNull();
       expect(bundle.usernameReservation).toBeNull();
+      // Not there is not the same as couldn't read it.
+      expect(bundle.complete).toBe(true);
+      expect(bundle.missingSections).toEqual([]);
     });
 
     it("skips username reservation when username is blank", async () => {
@@ -280,19 +289,97 @@ describe("userData service", () => {
       expect(bundle.games).toHaveLength(500);
     });
 
-    it("returns empty list when a collection read fails", async () => {
+    it("names a section that failed to load instead of exporting it as silently empty", async () => {
       mockGetDoc.mockResolvedValueOnce(buildSingleDoc(false, null)).mockResolvedValueOnce(buildSingleDoc(false, null));
 
       mockGetDocs
-        .mockRejectedValueOnce(Object.assign(new Error("nope"), { code: "permission-denied" })) // games p1
+        .mockRejectedValueOnce(Object.assign(new Error("nope"), { code: "failed-precondition" })) // games p1
         .mockResolvedValue({ docs: [] }); // remaining surfaces
 
       const bundle = await exportUserData("u1", "sk8r");
       expect(bundle.games).toEqual([]);
+      expect(bundle.complete).toBe(false);
+      expect(bundle.missingSections).toEqual(["games"]);
+      expect(bundle.notice).toBe(
+        "Some of your data is missing from this file: your game history. We couldn't load it this time, " +
+          "so those sections are empty even if you have data there. Download your data again in a few " +
+          "minutes. If it keeps happening, email privacy@skatehubba.com.",
+      );
       expect(mockLoggerWarn).toHaveBeenCalledWith(
         "user_data_export_collection_failed",
         expect.objectContaining({ label: "games (player1)" }),
       );
+    });
+
+    it("lists every failed section once, in a fixed order", async () => {
+      mockGetDoc
+        .mockRejectedValueOnce(Object.assign(new Error("nope"), { code: "unavailable" })) // profile
+        .mockResolvedValueOnce(buildSingleDoc(false, null));
+      const fail = () => Promise.reject(Object.assign(new Error("nope"), { code: "permission-denied" }));
+      mockGetDocs
+        .mockImplementationOnce(fail) // games p1
+        .mockImplementationOnce(fail) // games p2 (same section, listed once)
+        .mockResolvedValueOnce({ docs: [] }) // games judge
+        .mockResolvedValueOnce({ docs: [] }) // clips
+        .mockResolvedValueOnce({ docs: [] }) // clipVotes
+        .mockImplementationOnce(fail) // spots
+        .mockResolvedValueOnce({ docs: [] }) // notifications
+        .mockResolvedValueOnce({ docs: [] }) // nudges sent
+        .mockImplementationOnce(fail) // nudges received
+        .mockResolvedValue({ docs: [] }); // the rest
+
+      const bundle = await exportUserData("u1", "sk8r");
+      expect(bundle.complete).toBe(false);
+      expect(bundle.missingSections).toEqual(["profile", "games", "spots", "nudges"]);
+      expect(bundle.notice).toContain("your profile, game history, spots you added and nudges.");
+    });
+
+    it("names the username section when its read fails", async () => {
+      mockGetDoc.mockResolvedValueOnce(buildSingleDoc(true, { uid: "u1" }, "u1"));
+      mockGetDoc.mockRejectedValueOnce(Object.assign(new Error("nope"), { code: "unavailable" }));
+      mockGetDocs.mockResolvedValue({ docs: [] });
+
+      const bundle = await exportUserData("u1", "sk8r");
+      expect(bundle.usernameReservation).toBeNull();
+      expect(bundle.missingSections).toEqual(["usernameReservation"]);
+    });
+
+    it("sorts each list newest first in memory (the queries have no orderBy)", async () => {
+      mockGetDoc.mockResolvedValueOnce(buildSingleDoc(false, null)).mockResolvedValueOnce(buildSingleDoc(false, null));
+      const at = (s: number) => new mockTimestampClass(s, 0);
+      mockGetDocs
+        .mockResolvedValueOnce({
+          docs: [
+            buildDoc("old", "games/old", { createdAt: at(1_700_000_000) }),
+            buildDoc("undated", "games/undated", {}),
+          ],
+        }) // games p1
+        .mockResolvedValueOnce({ docs: [buildDoc("new", "games/new", { createdAt: at(1_800_000_000) })] }) // p2
+        .mockResolvedValueOnce({ docs: [buildDoc("mid", "games/mid", { createdAt: at(1_750_000_000) })] }) // judge
+        .mockResolvedValueOnce({
+          docs: [
+            buildDoc("c-num", "clips/c-num", { createdAt: 1_600_000_000_000 }),
+            buildDoc("c-bad", "clips/c-bad", { createdAt: "not a date" }),
+            buildDoc("c-new", "clips/c-new", { createdAt: at(1_700_000_000) }),
+            buildDoc("c-tie", "clips/c-tie", { createdAt: at(1_700_000_000) }),
+          ],
+        }) // clips
+        .mockResolvedValue({ docs: [] });
+
+      const bundle = await exportUserData("u1", "sk8r");
+      expect(bundle.games.map((g) => g.id)).toEqual(["new", "mid", "old", "undated"]);
+      expect(bundle.clips.map((c) => c.id)).toEqual(["c-new", "c-tie", "c-num", "c-bad"]);
+    });
+
+    it("runs equality-only queries (no orderBy) and filters spots to the ones rules let the owner read", async () => {
+      mockGetDoc.mockResolvedValue(buildSingleDoc(false, null));
+      mockGetDocs.mockResolvedValue({ docs: [] });
+
+      await exportUserData("u1", "sk8r");
+      expect(mockOrderBy).not.toHaveBeenCalled();
+      expect(mockWhere).toHaveBeenCalledWith("createdBy", "==", "u1");
+      expect(mockWhere).toHaveBeenCalledWith("isActive", "==", true);
+      expect(mockLimitFn).toHaveBeenCalledWith(500);
     });
 
     it("returns null when profile read fails", async () => {
@@ -303,10 +390,22 @@ describe("userData service", () => {
 
       const bundle = await exportUserData("u1", "sk8r");
       expect(bundle.profile).toBeNull();
+      expect(bundle.missingSections).toEqual(["profile"]);
       expect(mockLoggerWarn).toHaveBeenCalledWith(
         "user_data_export_doc_failed",
         expect.objectContaining({ path: "users/u1" }),
       );
+    });
+  });
+
+  describe("describeMissingSections", () => {
+    it.each([
+      [[], ""],
+      [["games"], "game history"],
+      [["games", "clips"], "game history and clips"],
+      [["profile", "reports", "appeals"], "profile, reports you filed and appeals"],
+    ] as const)("%j reads as %j", (sections, expected) => {
+      expect(describeMissingSections(sections)).toBe(expected);
     });
   });
 

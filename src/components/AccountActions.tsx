@@ -1,10 +1,23 @@
 import { useCallback, useState } from "react";
 import { DeleteAccountModal } from "./DeleteAccountModal";
 import { ConfirmSheet } from "./ui/ConfirmSheet";
+import { describeMissingSections, type DataDownloadOutcome } from "../services/userData";
+
+/**
+ * Shown whenever a saved file is missing a section: the file itself carries
+ * the same warning, but nobody should have to open the JSON to learn it's
+ * incomplete.
+ */
+function missingMessage(outcome: DataDownloadOutcome): string {
+  return (
+    `Your file was saved, but it's missing your ${describeMissingSections(outcome.missingSections)}. ` +
+    "We couldn't load that part this time. Try again in a few minutes."
+  );
+}
 
 interface Props {
   /** Export-my-data handler. Row is hidden when omitted. */
-  onDownloadData?: () => Promise<void>;
+  onDownloadData?: () => Promise<DataDownloadOutcome | void>;
   /** Account deletion handler. Row (and its modal) is hidden when omitted. */
   onDeleteAccount?: () => Promise<void>;
   /** Sign-out handler. Row is hidden when omitted; asks before signing out. */
@@ -23,15 +36,18 @@ interface Props {
 export function AccountActions({ onDownloadData, onDeleteAccount, onSignOut }: Props): React.ReactElement {
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState("");
+  const [downloadWarning, setDownloadWarning] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
 
   const handleDownload = useCallback(async () => {
     if (!onDownloadData || downloading) return;
     setDownloadError("");
+    setDownloadWarning("");
     setDownloading(true);
     try {
-      await onDownloadData();
+      const outcome = await onDownloadData();
+      if (outcome && outcome.missingSections.length > 0) setDownloadWarning(missingMessage(outcome));
     } catch (err) {
       setDownloadError(err instanceof Error ? err.message : "Export failed — try again");
     } finally {
@@ -50,8 +66,15 @@ export function AccountActions({ onDownloadData, onDeleteAccount, onSignOut }: P
         >
           <p className="font-display text-sm text-white tracking-wide">Download my data</p>
           <p className="font-body text-xs text-faint mt-1">
-            {downloading ? "Preparing your data…" : "Exports your profile and game history as a file you can keep."}
+            {downloading
+              ? "Preparing your data…"
+              : "Exports your profile, games, clips and more as a file you can keep."}
           </p>
+          {downloadWarning && (
+            <p role="alert" className="font-body text-xs text-brand-orange mt-2">
+              {downloadWarning}
+            </p>
+          )}
           {downloadError && (
             <p role="alert" className="font-body text-xs text-brand-red mt-2">
               {downloadError}

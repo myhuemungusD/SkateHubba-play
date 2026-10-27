@@ -1,25 +1,22 @@
-import {
-  Timestamp,
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  limit as limitFn,
-  orderBy,
-  query,
-  where,
-} from "firebase/firestore";
+import { Timestamp, doc, getDoc, getDocs } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
+import { EXPORT_QUERY_LIMIT, exportCollectionQueries } from "./userDataQueries";
 
 /**
  * Schema version for the GDPR Article 20 data export bundle. Increment when
  * the shape of `UserDataExport` changes so consumers can detect an
  * incompatible dump.
+ *
+ * v2: added `complete`, `missingSections` and `notice`, so a file that is
+ * missing a section says so instead of looking like the user has no data.
  */
-export const USER_DATA_EXPORT_SCHEMA_VERSION = 1 as const;
+export const USER_DATA_EXPORT_SCHEMA_VERSION = 2 as const;
+
+/** Where to write if an export keeps coming back incomplete. */
+const PRIVACY_CONTACT_EMAIL = "privacy@skatehubba.com";
 
 /**
  * Shape of a single Firestore doc included in the export. The payload is
@@ -32,12 +29,39 @@ export interface ExportedDoc {
   data: Record<string, unknown>;
 }
 
-/**
- * Per-surface cap for collection reads. High enough to cover any realistic
- * user while bounding read cost and memory. If a user truly has more than
- * this many docs in a surface, the bundle's `capped` flag will be `true`.
- */
-const EXPORT_QUERY_LIMIT = 500;
+/** Bundle sections that hold the user's data (everything but metadata). */
+export type ExportSection =
+  | "profile"
+  | "usernameReservation"
+  | "games"
+  | "clips"
+  | "clipVotes"
+  | "spots"
+  | "notifications"
+  | "nudges"
+  | "blockedUsers"
+  | "reports"
+  | "moderationStatements"
+  | "appeals";
+
+/** Plain-words names for each section, used in the file notice and the UI. */
+const SECTION_NAMES: Record<ExportSection, string> = {
+  profile: "profile",
+  usernameReservation: "username",
+  games: "game history",
+  clips: "clips",
+  clipVotes: "clip votes",
+  spots: "spots you added",
+  notifications: "notifications",
+  nudges: "nudges",
+  blockedUsers: "blocked users list",
+  reports: "reports you filed",
+  moderationStatements: "moderation notices",
+  appeals: "appeals",
+};
+
+/** Fixed order so the missing list reads the same way every time. */
+const SECTION_ORDER = Object.keys(SECTION_NAMES) as ExportSection[];
 
 /**
  * Full GDPR Article 20 data bundle for one user.
@@ -46,9 +70,10 @@ const EXPORT_QUERY_LIMIT = 500;
  *   - `users/{uid}`                    — their profile
  *   - `usernames/{username}`           — their reservation
  *   - `games` (player1Uid|player2Uid|judgeId) — games they played or judged
- *   - `clips` (playerUid == uid)       — landed-trick clips they authored
- *   - `clipVotes` (uid == uid)         — upvotes they cast
- *   - `spots` (createdBy == uid)       — skate spots they added
+ *   - `clips` (playerUid == uid)       — clips they authored
+ *   - `clipVotes` (uid == uid)         — votes they cast
+ *   - `spots` (createdBy == uid, isActive) — skate spots they added that are
+ *                                        still live (rules hide removed ones)
  *   - `notifications` (recipientUid)   — notifications received
  *   - `nudges` (senderUid|recipientUid) — nudges sent or received
  *   - `users/{uid}/blocked_users/*`    — people they have blocked
@@ -68,11 +93,21 @@ const EXPORT_QUERY_LIMIT = 500;
  *
  * Each collection read is capped at {@link EXPORT_QUERY_LIMIT} docs. If any
  * surface hits the cap, `capped` is set to `true` so the consumer knows the
- * dump may be incomplete.
+ * dump may be incomplete. Lists are newest first by `createdAt`.
+ *
+ * If a read fails, its section is left empty AND named in `missingSections`,
+ * `complete` is `false`, and `notice` explains it in plain words. An empty
+ * list in a complete file means "nothing stored", never "couldn't read it".
  */
 export interface UserDataExport {
   schemaVersion: typeof USER_DATA_EXPORT_SCHEMA_VERSION;
   exportedAt: string;
+  /** False when at least one section could not be read. */
+  complete: boolean;
+  /** Sections that could not be read this time (empty when complete). */
+  missingSections: ExportSection[];
+  /** Plain-words explanation, present only when the file is incomplete. */
+  notice?: string;
   capped: boolean;
   subject: {
     uid: string;
@@ -90,6 +125,21 @@ export interface UserDataExport {
   reports: ExportedDoc[];
   moderationStatements: ExportedDoc[];
   appeals: ExportedDoc[];
+}
+
+/**
+ * What "Download my data" hands back to the screen: which sections the saved
+ * file is missing, so the UI can say so.
+ */
+export interface DataDownloadOutcome {
+  missingSections: ExportSection[];
+}
+
+/** "game history", "game history and clips", "a, b and c". */
+export function describeMissingSections(sections: readonly ExportSection[]): string {
+  const names = sections.map((s) => SECTION_NAMES[s]);
+  if (names.length <= 1) return names.join("");
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
 /**
@@ -124,15 +174,54 @@ function toExportedDoc(id: string, path: string, data: unknown): ExportedDoc {
   return { id, path, data: asObject };
 }
 
+/** Millisecond sort key for a doc's `createdAt` (ISO string after normalising). */
+function createdAtMillis(d: ExportedDoc): number {
+  const v = d.data.createdAt;
+  const ms = typeof v === "string" ? Date.parse(v) : typeof v === "number" ? v : NaN;
+  return Number.isFinite(ms) ? ms : Number.NEGATIVE_INFINITY;
+}
+
+/**
+ * Newest first by `createdAt`, done here because the queries can't `orderBy`
+ * without composite indexes (see userDataQueries.ts). Docs without a usable
+ * `createdAt` go last; ties keep query order.
+ */
+function sortNewestFirst(docs: ExportedDoc[]): ExportedDoc[] {
+  return [...docs].sort((x, y) => {
+    const a = createdAtMillis(x);
+    const b = createdAtMillis(y);
+    if (a === b) return 0;
+    return a > b ? -1 : 1;
+  });
+}
+
+/** Merge lists that can return the same doc, keeping the first copy. */
+function dedupe(...lists: ExportedDoc[][]): ExportedDoc[] {
+  const seen = new Set<string>();
+  const out: ExportedDoc[] = [];
+  for (const d of lists.flat()) {
+    if (!seen.has(d.id)) {
+      seen.add(d.id);
+      out.push(d);
+    }
+  }
+  return out;
+}
+
+interface Read<T> {
+  value: T;
+  ok: boolean;
+}
+
 /**
  * Collect every piece of personal data we hold about `uid`/`username` into a
  * single bundle suitable for GDPR Article 20 / CCPA data-portability
  * requests.
  *
- * Each collection is queried independently and best-effort: if one read
- * fails we log and return an empty list for that collection rather than
- * aborting the whole export. That keeps partial dumps valid — users can
- * retry to fill in missing surfaces.
+ * Each collection is queried independently: if one read fails the others
+ * still land, and the failed section is named in `missingSections` (with a
+ * plain `notice`) rather than silently exported as empty. The user can retry
+ * to fill it in.
  *
  * Firestore security rules still apply; this function must be called while
  * authenticated AS `uid` so the same rules that protect normal reads also
@@ -142,10 +231,7 @@ export async function exportUserData(uid: string, username: string): Promise<Use
   if (!uid) throw new Error("exportUserData requires a uid");
   const normalizedUsername = username.toLowerCase().trim();
   const db = requireDb();
-
-  const cap = EXPORT_QUERY_LIMIT;
-  const gamesCol = collection(db, "games");
-  const clipsCol = collection(db, "clips");
+  const q = exportCollectionQueries(db, uid);
 
   const [
     profile,
@@ -167,79 +253,41 @@ export async function exportUserData(uid: string, username: string): Promise<Use
     readDoc(`users/${uid}`, () => getDoc(doc(db, "users", uid))),
     normalizedUsername
       ? readDoc(`usernames/${normalizedUsername}`, () => getDoc(doc(db, "usernames", normalizedUsername)))
-      : Promise.resolve(null),
-    readCollection("games (player1)", () =>
-      getDocs(query(gamesCol, where("player1Uid", "==", uid), orderBy("createdAt", "desc"), limitFn(cap))),
-    ),
-    readCollection("games (player2)", () =>
-      getDocs(query(gamesCol, where("player2Uid", "==", uid), orderBy("createdAt", "desc"), limitFn(cap))),
-    ),
-    readCollection("games (judge)", () =>
-      getDocs(query(gamesCol, where("judgeId", "==", uid), orderBy("createdAt", "desc"), limitFn(cap))),
-    ),
-    readCollection("clips", () =>
-      getDocs(query(clipsCol, where("playerUid", "==", uid), orderBy("createdAt", "desc"), limitFn(cap))),
-    ),
-    readCollection("clipVotes", () =>
-      getDocs(query(collection(db, "clipVotes"), where("uid", "==", uid), limitFn(cap))),
-    ),
-    readCollection("spots", () =>
-      getDocs(
-        query(collection(db, "spots"), where("createdBy", "==", uid), orderBy("createdAt", "desc"), limitFn(cap)),
-      ),
-    ),
-    readCollection("notifications", () =>
-      getDocs(
-        query(
-          collection(db, "notifications"),
-          where("recipientUid", "==", uid),
-          orderBy("createdAt", "desc"),
-          limitFn(cap),
-        ),
-      ),
-    ),
-    readCollection("nudges (sent)", () =>
-      getDocs(query(collection(db, "nudges"), where("senderUid", "==", uid), limitFn(cap))),
-    ),
-    readCollection("nudges (received)", () =>
-      getDocs(query(collection(db, "nudges"), where("recipientUid", "==", uid), limitFn(cap))),
-    ),
-    readCollection("blocked_users", () => getDocs(collection(db, "users", uid, "blocked_users"))),
-    readCollection("reports", () =>
-      getDocs(query(collection(db, "reports"), where("reporterUid", "==", uid), limitFn(cap))),
-    ),
-    readCollection("moderationStatements", () =>
-      getDocs(query(collection(db, "moderationStatements"), where("subjectUid", "==", uid), limitFn(cap))),
-    ),
-    readCollection("appeals", () =>
-      getDocs(query(collection(db, "appeals"), where("appellantUid", "==", uid), limitFn(cap))),
-    ),
+      : Promise.resolve<Read<ExportedDoc | null>>({ value: null, ok: true }),
+    readCollection("games (player1)", () => getDocs(q.gamesAsPlayer1)),
+    readCollection("games (player2)", () => getDocs(q.gamesAsPlayer2)),
+    readCollection("games (judge)", () => getDocs(q.gamesAsJudge)),
+    readCollection("clips", () => getDocs(q.clips)),
+    readCollection("clipVotes", () => getDocs(q.clipVotes)),
+    readCollection("spots", () => getDocs(q.spots)),
+    readCollection("notifications", () => getDocs(q.notifications)),
+    readCollection("nudges (sent)", () => getDocs(q.nudgesSent)),
+    readCollection("nudges (received)", () => getDocs(q.nudgesReceived)),
+    readCollection("blocked_users", () => getDocs(q.blockedUsers)),
+    readCollection("reports", () => getDocs(q.reports)),
+    readCollection("moderationStatements", () => getDocs(q.moderationStatements)),
+    readCollection("appeals", () => getDocs(q.appeals)),
   ]);
 
-  // Deduplicate games — a user can appear as player1, player2, or judge on
-  // the same game doc.
-  const seenGames = new Set<string>();
-  const games: ExportedDoc[] = [];
-  for (const d of [...gamesAsP1, ...gamesAsP2, ...gamesAsJudge]) {
-    if (!seenGames.has(d.id)) {
-      seenGames.add(d.id);
-      games.push(d);
-    }
-  }
-
-  // Deduplicate nudges (user may be both sender and recipient of different
-  // nudges, but could theoretically appear in both queries for the same doc).
-  const seenNudges = new Set<string>();
-  const nudges: ExportedDoc[] = [];
-  for (const d of [...nudgesSent, ...nudgesReceived]) {
-    if (!seenNudges.has(d.id)) {
-      seenNudges.add(d.id);
-      nudges.push(d);
-    }
-  }
+  // A section is missing if any read that feeds it failed.
+  const sectionReads: Record<ExportSection, Read<unknown>[]> = {
+    profile: [profile],
+    usernameReservation: [usernameReservation],
+    games: [gamesAsP1, gamesAsP2, gamesAsJudge],
+    clips: [clips],
+    clipVotes: [clipVotes],
+    spots: [spots],
+    notifications: [notifications],
+    nudges: [nudgesSent, nudgesReceived],
+    blockedUsers: [blocked],
+    reports: [reports],
+    moderationStatements: [moderationStatements],
+    appeals: [appeals],
+  };
+  const missingSections = SECTION_ORDER.filter((s) => sectionReads[s].some((r) => !r.ok));
 
   // Flag if any surface hit the per-query cap.
-  const allSurfaces = [
+  const lists = [
     gamesAsP1,
     gamesAsP2,
     gamesAsJudge,
@@ -254,52 +302,66 @@ export async function exportUserData(uid: string, username: string): Promise<Use
     moderationStatements,
     appeals,
   ];
-  const capped = allSurfaces.some((s) => s.length >= cap);
+  const capped = lists.some((r) => r.value.length >= EXPORT_QUERY_LIMIT);
 
+  const complete = missingSections.length === 0;
   return {
     schemaVersion: USER_DATA_EXPORT_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
+    complete,
+    missingSections,
+    ...(complete
+      ? {}
+      : {
+          notice:
+            `Some of your data is missing from this file: your ${describeMissingSections(missingSections)}. ` +
+            "We couldn't load it this time, so those sections are empty even if you have data there. " +
+            `Download your data again in a few minutes. If it keeps happening, email ${PRIVACY_CONTACT_EMAIL}.`,
+        }),
     capped,
     subject: { uid, username: normalizedUsername },
-    profile,
-    usernameReservation,
-    games,
-    clips,
-    clipVotes,
-    spots,
-    notifications,
-    nudges,
-    blockedUsers: blocked,
-    reports,
-    moderationStatements,
-    appeals,
+    profile: profile.value,
+    usernameReservation: usernameReservation.value,
+    // A user can be player1, player2 or judge on the same game doc.
+    games: sortNewestFirst(dedupe(gamesAsP1.value, gamesAsP2.value, gamesAsJudge.value)),
+    clips: sortNewestFirst(clips.value),
+    clipVotes: sortNewestFirst(clipVotes.value),
+    spots: sortNewestFirst(spots.value),
+    notifications: sortNewestFirst(notifications.value),
+    // Sent and received can't overlap today, but dedupe keeps one copy if a
+    // self-nudge ever slips through.
+    nudges: sortNewestFirst(dedupe(nudgesSent.value, nudgesReceived.value)),
+    blockedUsers: blocked.value,
+    reports: sortNewestFirst(reports.value),
+    moderationStatements: sortNewestFirst(moderationStatements.value),
+    appeals: sortNewestFirst(appeals.value),
   };
 }
 
 async function readDoc(
   path: string,
   fetcher: () => Promise<{ exists(): boolean; id: string; data(): unknown }>,
-): Promise<ExportedDoc | null> {
+): Promise<Read<ExportedDoc | null>> {
   try {
     const snap = await withRetry(fetcher);
-    if (!snap.exists()) return null;
-    return toExportedDoc(snap.id, path, snap.data());
+    if (!snap.exists()) return { value: null, ok: true };
+    return { value: toExportedDoc(snap.id, path, snap.data()), ok: true };
   } catch (err) {
     logger.warn("user_data_export_doc_failed", { path, error: parseFirebaseError(err) });
-    return null;
+    return { value: null, ok: false };
   }
 }
 
 async function readCollection(
   label: string,
   fetcher: () => Promise<{ docs: Array<{ id: string; ref: { path: string }; data(): unknown }> }>,
-): Promise<ExportedDoc[]> {
+): Promise<Read<ExportedDoc[]>> {
   try {
     const snap = await withRetry(fetcher);
-    return snap.docs.map((d) => toExportedDoc(d.id, d.ref.path, d.data()));
+    return { value: snap.docs.map((d) => toExportedDoc(d.id, d.ref.path, d.data())), ok: true };
   } catch (err) {
     logger.warn("user_data_export_collection_failed", { label, error: parseFirebaseError(err) });
-    return [];
+    return { value: [], ok: false };
   }
 }
 

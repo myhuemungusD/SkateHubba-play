@@ -13,7 +13,7 @@ import { getMfaChallenge, type MfaChallenge } from "../services/mfa";
 import { removeCurrentFcmToken, refreshWebPushTokenIfGranted } from "../services/fcm";
 import { isPushSupported, registerPushTokenIfGranted, unregisterPushToken } from "../services/pushNotifications";
 import type { UserProfile } from "../services/users";
-import { exportUserData, serializeUserData, userDataFilename } from "../services/userData";
+import { exportUserData, serializeUserData, userDataFilename, type DataDownloadOutcome } from "../services/userData";
 import { getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { isBenignAuthCode, getAuthErrorMessage } from "../utils/authCodes";
 import { analytics } from "../services/analytics";
@@ -128,7 +128,7 @@ export interface AuthContextValue {
   clearMfaChallenge: () => void;
   handleSignOut: () => Promise<void>;
   handleDeleteAccount: () => Promise<void>;
-  handleDownloadData: () => Promise<void>;
+  handleDownloadData: () => Promise<DataDownloadOutcome | void>;
   /**
    * Uid with an account deletion that was started and has not finished (the
    * request failed, the sign-in was too old, or the app was killed mid-way).
@@ -610,7 +610,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         games: bundle.games.length,
         clips: bundle.clips.length,
         reports: bundle.reports.length,
+        missingSections: bundle.missingSections,
       });
+      return { missingSections: bundle.missingSections };
     } catch (err) {
       captureException(err, {
         extra: { context: "download_data_failed", uidHash: hashUid(activeProfile.uid) },
