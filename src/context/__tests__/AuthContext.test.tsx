@@ -963,7 +963,13 @@ describe("handleDeleteAccount", () => {
 
 describe("handleDownloadData", () => {
   const profile = { uid: "export-owner", username: "sk8r" };
-  const bundle = { games: [{}], clips: [], reports: [], missingSections: [] as string[] };
+  const bundle = {
+    games: [{}],
+    clips: [],
+    reports: [],
+    missingSections: [] as string[],
+    truncatedSections: [] as string[],
+  };
 
   async function runDownload(): Promise<{ result: unknown; error: unknown }> {
     const ctxRef: { current: ReturnType<typeof useAuthContext> | null } = { current: null };
@@ -1019,7 +1025,7 @@ describe("handleDownloadData", () => {
     const { result, error } = await runDownload();
 
     expect(error).toBeUndefined();
-    expect(result).toEqual({ missingSections: [] });
+    expect(result).toEqual({ missingSections: [], truncatedSections: [] });
     expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledTimes(1);
     expect(mockLoggerInfo).toHaveBeenCalledWith(
       "download_data_done",
@@ -1029,15 +1035,39 @@ describe("handleDownloadData", () => {
 
   it("hands back the sections the file is missing so the screen can say so", async () => {
     const { exportUserData } = await import("../../services/userData");
-    vi.mocked(exportUserData).mockResolvedValueOnce({ ...bundle, missingSections: ["games", "clips"] } as never);
+    vi.mocked(exportUserData).mockResolvedValueOnce({
+      ...bundle,
+      missingSections: ["games", "clips"],
+      truncatedSections: ["notifications"],
+    } as never);
     const { result, error } = await runDownload();
 
     expect(error).toBeUndefined();
-    expect(result).toEqual({ missingSections: ["games", "clips"] });
+    expect(result).toEqual({ missingSections: ["games", "clips"], truncatedSections: ["notifications"] });
     expect(mockLoggerInfo).toHaveBeenCalledWith(
       "download_data_done",
-      expect.objectContaining({ missingSections: ["games", "clips"] }),
+      expect.objectContaining({ missingSections: ["games", "clips"], truncatedSections: ["notifications"] }),
     );
+  });
+
+  it("saves nothing and reports the read codes when no data could be read", async () => {
+    const { exportUserData } = await import("../../services/userData");
+    const failure = Object.assign(new Error("We couldn't load your data."), {
+      codes: { profile: "unavailable", clips: "unavailable" },
+    });
+    vi.mocked(exportUserData).mockRejectedValueOnce(failure);
+    const { result, error } = await runDownload();
+
+    expect(result).toBeUndefined();
+    expect(error).toBe(failure);
+    expect(HTMLAnchorElement.prototype.click).not.toHaveBeenCalled();
+    expect(mockCaptureException).toHaveBeenCalledWith(failure, {
+      extra: {
+        context: "download_data_failed",
+        uidHash: expect.any(String),
+        codes: { profile: "unavailable", clips: "unavailable" },
+      },
+    });
   });
 
   it("reports a failed export to Sentry and rethrows so the screen can show it", async () => {
