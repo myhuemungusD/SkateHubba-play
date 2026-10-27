@@ -28,7 +28,11 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
               Your Attempt: {game.currentTrickName || "Trick"}
             </p>
             <TrickClip src={game.matchVideoUrl} label={`Your attempt at ${game.currentTrickName || "trick"}`} />
-            <ClipShareButtons videoUrl={game.matchVideoUrl} trickName={game.currentTrickName || "trick"} />
+            <ClipShareButtons
+              videoUrl={game.matchVideoUrl}
+              trickName={game.currentTrickName || "trick"}
+              ownerUid={profile.uid}
+            />
           </>
         )}
       </div>
@@ -44,7 +48,11 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
         {game.currentTrickVideoUrl && isFirebaseStorageUrl(game.currentTrickVideoUrl) ? (
           <>
             <TrickClip src={game.currentTrickVideoUrl} label={`Video of ${game.currentTrickName || "trick"} you set`} />
-            <ClipShareButtons videoUrl={game.currentTrickVideoUrl} trickName={game.currentTrickName || "trick"} />
+            <ClipShareButtons
+              videoUrl={game.currentTrickVideoUrl}
+              trickName={game.currentTrickName || "trick"}
+              ownerUid={profile.uid}
+            />
           </>
         ) : (
           <p className="font-body text-sm text-subtle text-center py-4">No video recorded</p>
@@ -71,7 +79,7 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
       <div className="mt-6 w-full">
         <p className="font-display text-sm tracking-wider text-brand-orange mb-2">{clipLabel}</p>
         <TrickClip src={clipUrl} label={clipLabel} />
-        <ClipShareButtons videoUrl={clipUrl} trickName={lastTurn.trickName} />
+        <ClipShareButtons videoUrl={clipUrl} trickName={lastTurn.trickName} ownerUid={profile.uid} />
       </div>
     );
   }

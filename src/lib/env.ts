@@ -144,6 +144,11 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === "true"),
+  // Share button on the Clips feed rail. DEFAULTS TO OFF (rail unchanged).
+  VITE_FEATURE_FEED_SHARE: z
+    .string()
+    .optional()
+    .transform((v) => v === "true"),
 
   // Sign in with Apple button. DEFAULTS TO OFF until the Firebase Apple
   // provider is enabled. Read via isAppleSignInEnabled() in featureFlags.ts.
