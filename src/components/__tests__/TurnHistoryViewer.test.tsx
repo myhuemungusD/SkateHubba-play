@@ -208,7 +208,10 @@ describe("TurnHistoryViewer", () => {
     await waitFor(() => {
       expect(screen.getByText("Shared!")).toBeInTheDocument();
     });
-    expect(writeText).toHaveBeenCalled();
+    // No file share: the copied text links to the setter's profile (the clip's owner), not the app root.
+    expect(writeText).toHaveBeenCalledWith(
+      expect.stringMatching(/^Check out my Kickflip 1 on SkateHubba!\n.+\/player\/u1$/),
+    );
 
     Object.defineProperty(navigator, "share", { value: origShare, configurable: true, writable: true });
     vi.restoreAllMocks();
@@ -371,12 +374,10 @@ describe("TurnHistoryViewer clip buttons: timers and outcomes", () => {
 
     expect(await screen.findByText("Save failed")).toHaveClass("text-brand-red");
     expect(captureException).toHaveBeenCalledWith(expect.objectContaining({ message: "Download failed" }), {
-      extra: {
-        context: "DownloadBtn",
-        url: "https://firebasestorage.googleapis.com/set1.webm",
-        baseName: "skatehubba-round1-set",
-      },
+      extra: { context: "DownloadBtn", baseName: "skatehubba-round1-set" },
     });
+    // The token-bearing download URL never reaches Sentry.
+    expect(JSON.stringify(vi.mocked(captureException).mock.calls)).not.toContain("firebasestorage");
     act(() => void vi.advanceTimersByTime(2000));
     expect(screen.getAllByText("Save clip")).toHaveLength(2);
   });
@@ -425,8 +426,10 @@ describe("TurnHistoryViewer clip buttons: timers and outcomes", () => {
     const label = await screen.findByText("Share failed");
     expect(label).toHaveClass("text-brand-red");
     expect(captureException).toHaveBeenCalledWith(failure, {
-      extra: { context: "ShareBtn", url: "https://firebasestorage.googleapis.com/set1.webm", trickName: "Kickflip 1" },
+      extra: { context: "ShareBtn", trickName: "Kickflip 1" },
     });
+    // The token-bearing download URL never reaches Sentry.
+    expect(JSON.stringify(vi.mocked(captureException).mock.calls)).not.toContain("firebasestorage");
 
     act(() => void vi.advanceTimersByTime(2000));
     expect(screen.getAllByText("Share clip")).toHaveLength(2);

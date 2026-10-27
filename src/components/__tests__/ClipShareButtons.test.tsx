@@ -14,6 +14,9 @@ vi.mock("../../services/nativeBridge", async (importOriginal) => ({
 }));
 vi.mock("../../lib/sentry", () => ({ captureException: vi.fn() }));
 
+// Real download URLs carry a Storage access token.
+const TOKEN_URL = "https://firebasestorage.googleapis.com/v0/b/x/o/clip.webm?alt=media&token=secret-token";
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -31,20 +34,20 @@ afterEach(() => {
 describe("ClipShareButtons", () => {
   it("hides Save in the iOS app, where downloads silently do nothing, and keeps Share", () => {
     const spy = vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(true);
-    render(<ClipShareButtons videoUrl="https://cdn/clip.webm" trickName="Kick Flip" />);
+    render(<ClipShareButtons videoUrl="https://cdn/clip.webm" trickName="Kick Flip" ownerUid="uid-me" />);
     expect(screen.queryByText("Save Clip")).not.toBeInTheDocument();
     expect(screen.getByText("Share Clip")).toBeInTheDocument();
     spy.mockRestore();
   });
 
   it("shows Save on the web", () => {
-    render(<ClipShareButtons videoUrl="https://cdn/clip.webm" trickName="Kick Flip" />);
+    render(<ClipShareButtons videoUrl="https://cdn/clip.webm" trickName="Kick Flip" ownerUid="uid-me" />);
     expect(screen.getByText("Save Clip")).toBeInTheDocument();
   });
 
   it("reports the method the bridge used and resets the label after 2s", async () => {
     vi.mocked(shareText).mockResolvedValue("clipboard");
-    render(<ClipShareButtons videoUrl="https://cdn/clip.webm" trickName="Kick Flip" />);
+    render(<ClipShareButtons videoUrl="https://cdn/clip.webm" trickName="Kick Flip" ownerUid="uid-me" />);
 
     await userEvent.click(screen.getByText("Share Clip"));
 
@@ -52,7 +55,10 @@ describe("ClipShareButtons", () => {
     expect(shareText).toHaveBeenCalledWith(
       expect.objectContaining({
         text: "Check out my Kick Flip on SkateHubba!",
-        textWithoutFiles: expect.stringContaining("Check out my Kick Flip on SkateHubba!\n"),
+        // No file share: the text links to the clip owner's public profile.
+        textWithoutFiles: expect.stringMatching(
+          /^Check out my Kick Flip on SkateHubba!\nhttps?:\/\/.+\/player\/uid-me$/,
+        ),
         // The iOS app shares the video file itself.
         nativeFile: { url: "https://cdn/clip.webm", filename: "skatehubba-kick-flip.webm" },
       }),
@@ -65,14 +71,16 @@ describe("ClipShareButtons", () => {
 
   it("shows a failure label and reports when the share really fails", async () => {
     vi.mocked(shareText).mockRejectedValue(new Error("No activity found"));
-    render(<ClipShareButtons videoUrl="https://cdn/clip.webm" trickName="Kick Flip" />);
+    render(<ClipShareButtons videoUrl={TOKEN_URL} trickName="Kick Flip" ownerUid="uid-me" />);
 
     await userEvent.click(screen.getByText("Share Clip"));
 
     expect(await screen.findByText("Share failed")).toBeInTheDocument();
+    // The token-bearing download URL never reaches Sentry.
     expect(captureException).toHaveBeenCalledWith(expect.any(Error), {
-      extra: { context: "ClipShareButtons.share", videoUrl: "https://cdn/clip.webm", trickName: "Kick Flip" },
+      extra: { context: "ClipShareButtons.share", trickName: "Kick Flip" },
     });
+    expect(JSON.stringify(vi.mocked(captureException).mock.calls)).not.toMatch(/secret-token|firebasestorage/);
     act(() => void vi.advanceTimersByTime(2000));
     expect(screen.getByText("Share Clip")).toBeInTheDocument();
   });
@@ -83,7 +91,7 @@ describe("ClipShareButtons", () => {
     ["plugin cancel as a plain object", { message: "Share cancelled", code: "UNKNOWN" }],
   ])("returns to idle with no failure and no report when the user closes the sheet (%s)", async (_label, err) => {
     vi.mocked(shareText).mockRejectedValue(err);
-    render(<ClipShareButtons videoUrl="https://cdn/clip.webm" trickName="Kick Flip" />);
+    render(<ClipShareButtons videoUrl="https://cdn/clip.webm" trickName="Kick Flip" ownerUid="uid-me" />);
 
     await userEvent.click(screen.getByText("Share Clip"));
 
@@ -99,7 +107,7 @@ describe("ClipShareButtons", () => {
       blob: () => Promise.resolve(new Blob(["v"], { type: "video/mp4" })),
     } as unknown as Response);
     vi.mocked(shareText).mockResolvedValue("native_share");
-    render(<ClipShareButtons videoUrl="https://cdn/clip.mp4" trickName="Tre Flip" />);
+    render(<ClipShareButtons videoUrl="https://cdn/clip.mp4" trickName="Tre Flip" ownerUid="uid-me" />);
 
     await userEvent.click(screen.getByText("Share Clip"));
     await screen.findByText("Shared!");
@@ -125,7 +133,7 @@ describe("ClipShareButtons", () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
       expect(this.download).toBe("skatehubba-tre-flip.mp4");
     });
-    render(<ClipShareButtons videoUrl="https://cdn/clip" trickName="Tre Flip" />);
+    render(<ClipShareButtons videoUrl="https://cdn/clip" trickName="Tre Flip" ownerUid="uid-me" />);
 
     await userEvent.click(screen.getByText("Save Clip"));
 
@@ -142,14 +150,16 @@ describe("ClipShareButtons", () => {
 
   it("shows a failure label and reports when the download fails", async () => {
     vi.mocked(fetch).mockResolvedValue({ ok: false } as unknown as Response);
-    render(<ClipShareButtons videoUrl="https://cdn/clip.webm" trickName="Kick Flip" />);
+    render(<ClipShareButtons videoUrl={TOKEN_URL} trickName="Kick Flip" ownerUid="uid-me" />);
 
     await userEvent.click(screen.getByText("Save Clip"));
 
     expect(await screen.findByText("Save failed")).toBeInTheDocument();
+    // The token-bearing download URL never reaches Sentry.
     expect(captureException).toHaveBeenCalledWith(expect.any(Error), {
-      extra: { context: "ClipShareButtons.save", videoUrl: "https://cdn/clip.webm", trickName: "Kick Flip" },
+      extra: { context: "ClipShareButtons.save", trickName: "Kick Flip" },
     });
+    expect(JSON.stringify(vi.mocked(captureException).mock.calls)).not.toMatch(/secret-token|firebasestorage/);
     act(() => void vi.advanceTimersByTime(2000));
     expect(screen.getByText("Save Clip")).toBeInTheDocument();
   });
@@ -159,7 +169,7 @@ describe("ClipShareButtons", () => {
       expect(this.download).toBe("skatehubba-kick-flip.webm");
     });
     vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:x"), revokeObjectURL: vi.fn() }));
-    render(<ClipShareButtons videoUrl="https://cdn/clip.webm" trickName="Kick Flip" />);
+    render(<ClipShareButtons videoUrl="https://cdn/clip.webm" trickName="Kick Flip" ownerUid="uid-me" />);
 
     await userEvent.click(screen.getByText("Save Clip"));
 

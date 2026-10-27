@@ -23,6 +23,22 @@ describe("clipFileName", () => {
   it("slugs the trick name", () => {
     expect(clipFileName("Tre  Flip", "mp4")).toBe("skatehubba-tre-flip.mp4");
   });
+
+  it("never puts a path separator or other punctuation in the name", () => {
+    expect(clipFileName("50/50", "mp4")).toBe("skatehubba-50-50.mp4");
+    expect(clipFileName("Back\\Side 5-0 (switch)", "mov")).toBe("skatehubba-back-side-5-0-switch.mov");
+    expect(clipFileName("../../etc", "webm")).toBe("skatehubba-etc.webm");
+  });
+
+  it("folds accents and drops what can't be spelled in ASCII", () => {
+    expect(clipFileName("Nollie Flîp", "mp4")).toBe("skatehubba-nollie-flip.mp4");
+    expect(clipFileName("Ollie 🛹", "mp4")).toBe("skatehubba-ollie.mp4");
+  });
+
+  it("falls back to 'clip' when nothing usable is left", () => {
+    expect(clipFileName("", "mp4")).toBe("skatehubba-clip.mp4");
+    expect(clipFileName("  🛹🔥  ", "mp4")).toBe("skatehubba-clip.mp4");
+  });
 });
 
 describe("clipExtFromUrl", () => {

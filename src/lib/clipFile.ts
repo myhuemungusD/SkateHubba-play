@@ -18,8 +18,21 @@ export function clipFileType(blobType: string | undefined): { mime: string; ext:
   return ext ? { mime, ext } : { mime: DEFAULT_CLIP_MIME, ext: "mp4" };
 }
 
+/**
+ * A flat, portable file name for a clip. Trick names are free text: "50/50"
+ * would put a path separator in the name, which share targets reject or cut
+ * short. Accents are folded ("Flîp" → "flip"), anything else that isn't a
+ * letter or digit becomes one dash, and a name with nothing usable left
+ * (emoji only, blank) falls back to "clip".
+ */
 export function clipFileName(trickName: string, ext: string): string {
-  return `skatehubba-${trickName.replace(/\s+/g, "-").toLowerCase()}.${ext}`;
+  const slug = trickName
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `skatehubba-${slug || "clip"}.${ext}`;
 }
 
 /**

@@ -3,7 +3,7 @@ import type { ClipDoc } from "../../services/clips";
 import { trackEvent } from "../../services/analytics";
 import { isShareCancel, shareText } from "../../services/nativeBridge";
 import { captureException } from "../../lib/sentry";
-import { clipExtFromUrl, clipFileName, clipFileType } from "../../lib/clipFile";
+import { ownClipShareOptions, publicProfileUrl } from "../../lib/clipShare";
 import { RAIL_BTN } from "./feedLayout";
 
 type ShareStatus = "idle" | "sharing" | "shared" | "failed";
@@ -31,44 +31,43 @@ export interface ShareClipButtonProps {
  */
 export function ShareClipButton({ clip, isOwnClip }: ShareClipButtonProps) {
   const [status, setStatus] = useState<ShareStatus>("idle");
-  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // A share can still be pending when the slide scrolls away (the web
+  // own-clip path downloads the video first). Once unmounted, settling
+  // must not start a new reset timer.
+  const unmountedRef = useRef(false);
 
-  useEffect(
-    () => () => {
-      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
-    },
-    [],
-  );
+  useEffect(() => {
+    // Set on mount too: StrictMode runs this cleanup once before the real mount.
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+      clearTimeout(resetTimerRef.current);
+    };
+  }, []);
 
   const settle = useCallback((next: "shared" | "failed") => {
+    if (unmountedRef.current) return;
     setStatus(next);
-    if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    clearTimeout(resetTimerRef.current);
     resetTimerRef.current = setTimeout(() => setStatus("idle"), RESET_MS);
   }, []);
 
+  const sharing = status === "sharing";
+
   const handleShare = useCallback(async () => {
+    // aria-disabled keeps VoiceOver focus on the button while the sheet is
+    // open, so the tap itself has to be ignored here.
+    if (sharing) return;
     const { trickName, playerUsername, playerUid, videoUrl } = clip;
-    const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
     setStatus("sharing");
     try {
       const method = isOwnClip
-        ? await shareText({
-            title: `SkateHubba — ${trickName}`,
-            text: `Check out my ${trickName} on SkateHubba!`,
-            loadFiles: async () => {
-              const res = await fetch(videoUrl);
-              if (!res.ok) throw new Error("Fetch failed");
-              const blob = await res.blob();
-              const { mime, ext } = clipFileType(blob.type);
-              return [new File([blob], clipFileName(trickName, ext), { type: mime })];
-            },
-            nativeFile: { url: videoUrl, filename: clipFileName(trickName, clipExtFromUrl(videoUrl)) },
-            textWithoutFiles: `Check out my ${trickName} on SkateHubba!\n${appUrl}`,
-          })
+        ? await shareText(ownClipShareOptions({ videoUrl, trickName, ownerUid: playerUid }))
         : await shareText({
             title: `SkateHubba — ${trickName}`,
             // Link in the text, not `url`, so the clipboard fallback keeps it.
-            text: `Check out @${playerUsername}'s ${trickName} on SkateHubba!\n${appUrl}/player/${playerUid}`,
+            text: `Check out @${playerUsername}'s ${trickName} on SkateHubba!\n${publicProfileUrl(playerUid)}`,
           });
       trackEvent("clip_shared", { method, context: "feed", own: isOwnClip });
       settle("shared");
@@ -81,7 +80,7 @@ export function ShareClipButton({ clip, isOwnClip }: ShareClipButtonProps) {
       captureException(err, { extra: { context: "ShareClipButton", own: isOwnClip } });
       settle("failed");
     }
-  }, [clip, isOwnClip, settle]);
+  }, [clip, isOwnClip, settle, sharing]);
 
   const who = isOwnClip ? "your" : `@${clip.playerUsername}'s`;
   const label = {
@@ -95,13 +94,7 @@ export function ShareClipButton({ clip, isOwnClip }: ShareClipButtonProps) {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={handleShare}
-        disabled={status === "sharing"}
-        aria-label={label}
-        className={RAIL_BTN}
-      >
+      <button type="button" onClick={handleShare} aria-disabled={sharing} aria-label={label} className={RAIL_BTN}>
         <span className={tone}>{status === "shared" ? <CheckGlyph /> : <ShareGlyph />}</span>
       </button>
       <span role="status" className="sr-only">

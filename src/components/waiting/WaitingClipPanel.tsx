@@ -34,7 +34,11 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
               aria-label={`Your attempt at ${game.currentTrickName || "trick"}`}
               className="trick-frame rounded-2xl bg-black object-contain border border-border"
             />
-            <ClipShareButtons videoUrl={game.matchVideoUrl} trickName={game.currentTrickName || "trick"} />
+            <ClipShareButtons
+              videoUrl={game.matchVideoUrl}
+              trickName={game.currentTrickName || "trick"}
+              ownerUid={profile.uid}
+            />
           </>
         )}
       </div>
@@ -56,7 +60,11 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
               aria-label={`Video of ${game.currentTrickName || "trick"} you set`}
               className="trick-frame rounded-2xl bg-black object-contain border border-border"
             />
-            <ClipShareButtons videoUrl={game.currentTrickVideoUrl} trickName={game.currentTrickName || "trick"} />
+            <ClipShareButtons
+              videoUrl={game.currentTrickVideoUrl}
+              trickName={game.currentTrickName || "trick"}
+              ownerUid={profile.uid}
+            />
           </>
         ) : (
           <p className="font-body text-sm text-subtle text-center py-4">No video recorded</p>
@@ -89,7 +97,7 @@ export function WaitingClipPanel({ game, profile, opponentName }: WaitingClipPan
           aria-label={clipLabel}
           className="trick-frame rounded-2xl bg-black object-contain border border-border"
         />
-        <ClipShareButtons videoUrl={clipUrl} trickName={lastTurn.trickName} />
+        <ClipShareButtons videoUrl={clipUrl} trickName={lastTurn.trickName} ownerUid={profile.uid} />
       </div>
     );
   }

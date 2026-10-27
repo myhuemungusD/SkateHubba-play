@@ -463,7 +463,10 @@ describe("WaitingScreen", () => {
       await userEvent.click(screen.getByText("Share Clip"));
 
       await waitFor(() => expect(screen.getByText("Shared!")).toBeInTheDocument());
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Kickflip"));
+      // The copied text links to the viewer's own public profile.
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringMatching(new RegExp(`Kickflip on SkateHubba!\\n.+/player/${profile.uid}$`)),
+      );
     });
 
     it("Share Clip still shares the text when the clip download fails", async () => {

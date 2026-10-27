@@ -6,7 +6,8 @@ import { trackEvent } from "../services/analytics";
 import { isShareCancel, shareText } from "../services/nativeBridge";
 import { captureException } from "../lib/sentry";
 import { ClipVideo } from "./TurnHistoryClipVideo";
-import { clipExtFromUrl, clipFileName, clipFileType } from "../lib/clipFile";
+import { clipFileType } from "../lib/clipFile";
+import { ownClipShareOptions } from "../lib/clipShare";
 
 interface TurnHistoryViewerProps {
   turns: TurnRecord[];
@@ -81,7 +82,12 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
                       <DownloadBtn url={turn.setVideoUrl} baseName={`skatehubba-round${turn.turnNumber}-set`} />
                     )}
                     {showShare && turn.setVideoUrl && isFirebaseStorageUrl(turn.setVideoUrl) && (
-                      <ShareBtn url={turn.setVideoUrl} trickName={turn.trickName} context="turn_history" />
+                      <ShareBtn
+                        url={turn.setVideoUrl}
+                        trickName={turn.trickName}
+                        ownerUid={turn.setterUid}
+                        context="turn_history"
+                      />
                     )}
                   </div>
 
@@ -98,7 +104,12 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
                       <DownloadBtn url={turn.matchVideoUrl} baseName={`skatehubba-round${turn.turnNumber}-match`} />
                     )}
                     {showShare && turn.matchVideoUrl && isFirebaseStorageUrl(turn.matchVideoUrl) && (
-                      <ShareBtn url={turn.matchVideoUrl} trickName={turn.trickName} context="turn_history" />
+                      <ShareBtn
+                        url={turn.matchVideoUrl}
+                        trickName={turn.trickName}
+                        ownerUid={turn.matcherUid}
+                        context="turn_history"
+                      />
                     )}
                   </div>
                 </div>
@@ -159,7 +170,8 @@ function DownloadBtn({ url, baseName }: { url: string; baseName: string }) {
       setStatus("saved");
       scheduleReset();
     } catch (err) {
-      captureException(err, { extra: { context: "DownloadBtn", url, baseName } });
+      // No url: it carries the clip's Storage access token.
+      captureException(err, { extra: { context: "DownloadBtn", baseName } });
       setStatus("failed");
       scheduleReset();
     }
@@ -190,7 +202,17 @@ function DownloadBtn({ url, baseName }: { url: string; baseName: string }) {
   );
 }
 
-function ShareBtn({ url, trickName, context }: { url: string; trickName: string; context: string }) {
+function ShareBtn({
+  url,
+  trickName,
+  ownerUid,
+  context,
+}: {
+  url: string;
+  trickName: string;
+  ownerUid: string;
+  context: string;
+}) {
   const [status, setStatus] = useState<"idle" | "sharing" | "shared" | "failed">("idle");
   // Same unmount-safety pattern as DownloadBtn.
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -210,22 +232,8 @@ function ShareBtn({ url, trickName, context }: { url: string; trickName: string;
   const handleShare = useCallback(async () => {
     setStatus("sharing");
     try {
-      const loadFiles = async () => {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error("Fetch failed");
-        const blob = await res.blob();
-        const { mime, ext } = clipFileType(blob.type);
-        return [new File([blob], clipFileName(trickName, ext), { type: mime })];
-      };
-      const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
-      const method = await shareText({
-        title: `SkateHubba — ${trickName}`,
-        text: `Check out my ${trickName} on SkateHubba!`,
-        loadFiles,
-        // iOS app: send the video itself, not just a link.
-        nativeFile: { url, filename: clipFileName(trickName, clipExtFromUrl(url)) },
-        textWithoutFiles: `Check out my ${trickName} on SkateHubba!\n${appUrl}`,
-      });
+      // iOS app: sends the video itself, not just a link.
+      const method = await shareText(ownClipShareOptions({ videoUrl: url, trickName, ownerUid }));
       trackEvent("clip_shared", { method, context });
       setStatus("shared");
       scheduleReset();
@@ -235,11 +243,12 @@ function ShareBtn({ url, trickName, context }: { url: string; trickName: string;
         setStatus("idle");
         return;
       }
-      captureException(err, { extra: { context: "ShareBtn", url, trickName } });
+      // No url: it carries the clip's Storage access token.
+      captureException(err, { extra: { context: "ShareBtn", trickName } });
       setStatus("failed");
       scheduleReset();
     }
-  }, [url, trickName, context]);
+  }, [url, trickName, ownerUid, context]);
 
   const label = {
     idle: "Share clip",

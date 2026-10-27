@@ -59,47 +59,37 @@ describe("ShareClipButton", () => {
     expect(props).not.toMatch(/alice|uid-alice|secret-token|http/);
   });
 
-  it("shares your own clip as the video file, with a text fallback", async () => {
+  it("shares your own clip as the video file, with a text fallback to your profile", async () => {
     vi.mocked(shareText).mockResolvedValue("native_share");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob(["v"], { type: "video/mp4" })) }),
-    );
     render(<ShareClipButton clip={clip} isOwnClip />);
 
     await userEvent.click(screen.getByRole("button", { name: "Share your 50/50" }));
 
+    // The option builder itself (loadFiles, file naming) is covered in lib/__tests__/clipShare.test.ts.
     const opts = lastShareOptions();
     expect(opts.text).toBe("Check out my 50/50 on SkateHubba!");
-    expect(opts.textWithoutFiles).toMatch(/^Check out my 50\/50 on SkateHubba!\nhttps?:\/\//);
-    expect(opts.nativeFile).toEqual({ url: TOKEN_URL, filename: "skatehubba-50/50.webm" });
-    const files = await opts.loadFiles!();
-    expect(fetch).toHaveBeenCalledWith(TOKEN_URL);
-    expect(files[0].name).toBe("skatehubba-50/50.mp4");
-    expect(files[0].type).toBe("video/mp4");
+    expect(opts.textWithoutFiles).toMatch(/^Check out my 50\/50 on SkateHubba!\nhttps?:\/\/.+\/player\/uid-alice$/);
+    expect(opts.nativeFile).toEqual({ url: TOKEN_URL, filename: "skatehubba-50-50.webm" });
+    expect(opts.loadFiles).toEqual(expect.any(Function));
     expect(trackEvent).toHaveBeenCalledWith("clip_shared", { method: "native_share", context: "feed", own: true });
   });
 
-  it("rejects loadFiles when the clip download fails, so the bridge falls back to text", async () => {
-    vi.mocked(shareText).mockResolvedValue("native_share_text");
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
-    render(<ShareClipButton clip={clip} isOwnClip />);
-
-    await userEvent.click(screen.getByRole("button", { name: "Share your 50/50" }));
-
-    await expect(lastShareOptions().loadFiles!()).rejects.toThrow("Fetch failed");
-  });
-
-  it("locks the button while the sheet is open", async () => {
+  it("ignores taps while the sheet is open but keeps the button focusable", async () => {
     let finish: (m: "native_share_text") => void = () => {};
     vi.mocked(shareText).mockReturnValue(new Promise((resolve) => (finish = resolve)));
     render(<ShareClipButton clip={clip} isOwnClip={false} />);
 
     await userEvent.click(screen.getByRole("button", { name: "Share @alice's 50/50" }));
-    expect(screen.getByRole("button", { name: "Sharing clip" })).toBeDisabled();
+    const busy = screen.getByRole("button", { name: "Sharing clip" });
+    // aria-disabled, not disabled: VoiceOver focus stays on the button.
+    expect(busy).toHaveAttribute("aria-disabled", "true");
+    expect(busy).toBeEnabled();
+    expect(busy).toHaveFocus();
+    await userEvent.click(busy);
+    expect(shareText).toHaveBeenCalledTimes(1);
 
     await act(async () => finish("native_share_text"));
-    expect(screen.getByRole("button", { name: "Clip shared" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Clip shared" })).toHaveAttribute("aria-disabled", "false");
   });
 
   it("goes quietly back to idle when the sheet is closed", async () => {
@@ -131,7 +121,7 @@ describe("ShareClipButton", () => {
     expect(screen.getByRole("button", { name: "Share your 50/50" })).toBeInTheDocument();
   });
 
-  it("restarts the reset timer on a second share and clears it on unmount", async () => {
+  it("restarts the reset timer on a second share and leaves no timer after unmount", async () => {
     vi.mocked(shareText).mockResolvedValue("native_share_text");
     const { unmount } = render(<ShareClipButton clip={clip} isOwnClip={false} />);
 
@@ -142,15 +132,24 @@ describe("ShareClipButton", () => {
     // The second share restarted the 2s window, so it still reads "shared".
     expect(screen.getByRole("button", { name: "Clip shared" })).toBeInTheDocument();
 
-    const clearSpy = vi.spyOn(globalThis, "clearTimeout");
     unmount();
-    expect(clearSpy).toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("unmounts cleanly before any share", () => {
-    const clearSpy = vi.spyOn(globalThis, "clearTimeout");
+  it("starts no reset timer when the slide unmounts mid-share", async () => {
+    let finish: (m: "native_share_text") => void = () => {};
+    vi.mocked(shareText).mockReturnValue(new Promise((resolve) => (finish = resolve)));
     const { unmount } = render(<ShareClipButton clip={clip} isOwnClip={false} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Share @alice's 50/50" }));
     unmount();
-    expect(clearSpy).not.toHaveBeenCalled();
+    await act(async () => finish("native_share_text"));
+
+    expect(trackEvent).toHaveBeenCalledWith("clip_shared", {
+      method: "native_share_text",
+      context: "feed",
+      own: false,
+    });
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

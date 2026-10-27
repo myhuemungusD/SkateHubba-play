@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { trackEvent } from "../../services/analytics";
 import { copyText, isShareAvailable, shareUrl } from "../../services/nativeBridge";
 import { hashUid } from "../../utils/pii";
+import { publicProfileUrl } from "../../lib/clipShare";
 
 /**
  * "Share my profile". Goes through the native bridge so the iPhone/Android
@@ -13,8 +14,7 @@ import { hashUid } from "../../utils/pii";
 export function useShareProfile(viewerUid: string, username: string | undefined) {
   const [copied, setCopied] = useState(false);
   const share = useCallback(async () => {
-    const origin = import.meta.env.VITE_APP_URL || window.location.origin;
-    const url = `${origin}/player/${viewerUid}`;
+    const url = publicProfileUrl(viewerUid);
     trackEvent("profile_share_my_profile_tapped", { uid: hashUid(viewerUid) });
     try {
       if (isShareAvailable()) {

@@ -3,9 +3,18 @@ import { Capacitor } from "@capacitor/core";
 import { trackEvent } from "../../services/analytics";
 import { isShareCancel, shareText } from "../../services/nativeBridge";
 import { captureException } from "../../lib/sentry";
-import { clipExtFromUrl, clipFileName, clipFileType } from "../../lib/clipFile";
+import { clipFileName, clipFileType } from "../../lib/clipFile";
+import { ownClipShareOptions } from "../../lib/clipShare";
 
-export function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; trickName: string }) {
+interface ClipShareButtonsProps {
+  /** Download URL. It carries a Storage access token: never log it. */
+  videoUrl: string;
+  trickName: string;
+  /** The viewer: every clip on the waiting screen is their own. */
+  ownerUid: string;
+}
+
+export function ClipShareButtons({ videoUrl, trickName, ownerUid }: ClipShareButtonsProps) {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "failed">("idle");
   const [shareStatus, setShareStatus] = useState<"idle" | "sharing" | "shared" | "failed">("idle");
   const timersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
@@ -43,7 +52,8 @@ export function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; tr
       trackEvent("clip_saved", { context: "waiting_screen" });
       safeTimeout(() => setSaveStatus("idle"), 2000);
     } catch (err) {
-      captureException(err, { extra: { context: "ClipShareButtons.save", videoUrl, trickName } });
+      // No videoUrl: it carries the clip's Storage access token.
+      captureException(err, { extra: { context: "ClipShareButtons.save", trickName } });
       setSaveStatus("failed");
       safeTimeout(() => setSaveStatus("idle"), 2000);
     }
@@ -52,22 +62,8 @@ export function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; tr
   const handleShare = useCallback(async () => {
     setShareStatus("sharing");
     try {
-      const loadFiles = async () => {
-        const res = await fetch(videoUrl);
-        if (!res.ok) throw new Error("Fetch failed");
-        const blob = await res.blob();
-        const { mime, ext } = clipFileType(blob.type);
-        return [new File([blob], clipFileName(trickName, ext), { type: mime })];
-      };
-      const url = import.meta.env.VITE_APP_URL || window.location.origin;
-      const method = await shareText({
-        title: `SkateHubba — ${trickName}`,
-        text: `Check out my ${trickName} on SkateHubba!`,
-        loadFiles,
-        // iOS app: send the video itself, not just a link.
-        nativeFile: { url: videoUrl, filename: clipFileName(trickName, clipExtFromUrl(videoUrl)) },
-        textWithoutFiles: `Check out my ${trickName} on SkateHubba!\n${url}`,
-      });
+      // iOS app: sends the video itself, not just a link.
+      const method = await shareText(ownClipShareOptions({ videoUrl, trickName, ownerUid }));
       trackEvent("clip_shared", { method, context: "waiting_screen" });
       setShareStatus("shared");
       safeTimeout(() => setShareStatus("idle"), 2000);
@@ -77,11 +73,12 @@ export function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; tr
         setShareStatus("idle");
         return;
       }
-      captureException(err, { extra: { context: "ClipShareButtons.share", videoUrl, trickName } });
+      // No videoUrl: it carries the clip's Storage access token.
+      captureException(err, { extra: { context: "ClipShareButtons.share", trickName } });
       setShareStatus("failed");
       safeTimeout(() => setShareStatus("idle"), 2000);
     }
-  }, [videoUrl, trickName, safeTimeout]);
+  }, [videoUrl, trickName, ownerUid, safeTimeout]);
 
   const saveLabel = { idle: "Save Clip", saving: "Saving...", saved: "Saved!", failed: "Save failed" }[saveStatus];
   const shareLabel = { idle: "Share Clip", sharing: "Sharing...", shared: "Shared!", failed: "Share failed" }[
