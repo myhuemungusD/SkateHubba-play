@@ -437,6 +437,17 @@ describe("ClipsFeed", () => {
     expect(screen.queryByRole("button", { name: /challenge/i })).not.toBeInTheDocument();
   });
 
+  it("puts Share on the rail for another player's clip and for your own", async () => {
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+    const { unmount } = render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    expect(await screen.findByRole("button", { name: "Share @alice's Kickflip" })).toBeEnabled();
+    unmount();
+
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip({ playerUid: profile.uid, playerUsername: profile.username })]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    expect(await screen.findByRole("button", { name: "Share your Kickflip" })).toBeEnabled();
+  });
+
   it("opens the report modal and skips the reported clip", async () => {
     const user = userEvent.setup();
     mockFetchClipsFeed.mockResolvedValueOnce([

@@ -2,7 +2,8 @@ import { memo } from "react";
 import type { ClipDoc } from "../../services/clips";
 import type { ClipVoteState } from "../../services/clips.upvotes";
 import { FlagIcon, SkateboardIcon, ThumbsDownIcon, ThumbsUpIcon } from "../icons";
-import { ABOVE_NAV, RAIL_BTN } from "./feedLayout";
+import { ABOVE_NAV, RAIL_BTN, RAIL_GAP } from "./feedLayout";
+import { ShareClipButton } from "./ShareClipButton";
 
 export interface ClipActionsProps {
   clip: ClipDoc;
@@ -18,9 +19,9 @@ export interface ClipActionsProps {
 }
 
 /**
- * Side rail on a community clip, Shorts-style. Thumbs, comments, challenge,
- * and report sit on the video instead of under it, so a vote never has to
- * finish before the viewer can swipe.
+ * Side rail on a community clip, Shorts-style. Thumbs, comments, share,
+ * challenge, and report sit on the video instead of under it, so a vote never
+ * has to finish before the viewer can swipe.
  *
  * Both thumbs are one persisted vote: tapping the thumb you already gave
  * withdraws it (`aria-pressed`), tapping the other flips it. Neither hides
@@ -41,8 +42,8 @@ export const ClipActions = memo(function ClipActions({
   const downPressed = vote.myVote === -1;
 
   return (
-    <div className={`absolute right-3 z-20 flex flex-col items-center gap-3 ${ABOVE_NAV}`}>
-      <div role="group" aria-label="Rate this clip" className="flex flex-col items-center gap-3">
+    <div className={`absolute right-3 z-20 flex flex-col items-center ${RAIL_GAP} ${ABOVE_NAV}`}>
+      <div role="group" aria-label="Rate this clip" className={`flex flex-col items-center ${RAIL_GAP}`}>
         <button
           type="button"
           onClick={() => onUpvote(clip)}
@@ -87,6 +88,8 @@ export const ClipActions = memo(function ClipActions({
       >
         <CommentGlyph />
       </button>
+
+      <ShareClipButton clip={clip} isOwnClip={isOwnClip} />
 
       {!isOwnClip && (
         <button
