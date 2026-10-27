@@ -11,7 +11,9 @@ import {
 
 /**
  * Docs per page for each collection read. Reads page through with
- * `startAfter` until a page comes back short.
+ * `startAfter` until a page comes back short. This is the only place the
+ * page size is set: the queries below use it and readCollection's "short
+ * page means done" check uses it, so the two can't disagree.
  */
 export const EXPORT_PAGE_SIZE = 500;
 
@@ -50,8 +52,8 @@ export const EXPORT_MAX_PAGES = 10;
  *      deactivated. Those still reach the user through the privacy contact
  *      named in the export notice.
  */
-export function exportCollectionQueries(db: Firestore, uid: string, pageSize: number = EXPORT_PAGE_SIZE) {
-  const page = limit(pageSize);
+export function exportCollectionQueries(db: Firestore, uid: string) {
+  const page = limit(EXPORT_PAGE_SIZE);
   return {
     gamesAsPlayer1: query(collection(db, "games"), where("player1Uid", "==", uid), page),
     gamesAsPlayer2: query(collection(db, "games"), where("player2Uid", "==", uid), page),

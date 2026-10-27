@@ -80,7 +80,8 @@ describe("user data export queries", () => {
   it.each(["spots", "notifications", "gamesAsPlayer1"] as const)(
     "the owner can page through the %s query with startAfter",
     async (name) => {
-      const first = exportCollectionQueries(ownerDb(), OWNER, 1)[name];
+      // limit(1) overrides the export page size so a few seeded docs span pages.
+      const first = query(exportCollectionQueries(ownerDb(), OWNER)[name], limit(1));
       const seen: string[] = [];
       let snap = await assertSucceeds(getDocsFromServer(first));
       while (snap.docs.length > 0) {
