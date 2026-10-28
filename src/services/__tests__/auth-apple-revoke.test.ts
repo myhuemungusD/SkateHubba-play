@@ -193,18 +193,42 @@ describe("revokeAppleTokensIfNeeded", () => {
     });
   });
 
-  it("reports cancel when the Apple sheet is dismissed", async () => {
-    mockSignInWithApple.mockRejectedValue(new Error("The operation couldn't be completed. (error 1001.)"));
+  // What the plugin really sends on iOS when the sheet is closed: no `code`,
+  // Apple's NSError domain + code in the message (see isAppleSheetCancel).
+  const IOS_SHEET_CLOSED =
+    "The operation couldn’t be completed. (com.apple.AuthenticationServices.AuthorizationError error 1001.)";
+
+  it("reports cancel when the Apple sheet is dismissed (iOS plugin shape: no code, NSError 1001)", async () => {
+    mockSignInWithApple.mockRejectedValue(new Error(IOS_SHEET_CLOSED));
     expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("cancelled");
     expect(mockFetch).not.toHaveBeenCalled();
     // A cancel is the user's choice, not a fault: breadcrumb only.
     expect(mockCaptureMessage).not.toHaveBeenCalled();
   });
 
-  it("reports cancel when the sheet error only says it was canceled", async () => {
-    mockSignInWithApple.mockRejectedValue(new Error("The user canceled the authorization attempt."));
+  it.each([
+    ["auth/popup-closed-by-user", { code: "auth/popup-closed-by-user", message: "The user closed the sheet." }],
+    ["auth/cancelled-popup-request", { code: "auth/cancelled-popup-request", message: "Already presented." }],
+    ["string code 1001", { code: "1001", message: "x" }],
+    ["numeric code 1001", { code: 1001, message: "x" }],
+  ])("reports cancel for error code %s", async (_label, err) => {
+    mockSignInWithApple.mockRejectedValue(err);
     expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("cancelled");
     expect(mockCaptureMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["free text that says canceled", new Error("The user canceled the authorization attempt.")],
+    ["a network request cancelled", new Error("The network request was cancelled.")],
+    ["a different Apple error code", new Error("(com.apple.AuthenticationServices.AuthorizationError error 1000.)")],
+    ["a bare 1001 in other text", new Error("error 1001")],
+    ["a different Firebase code", { code: "auth/network-request-failed", message: "cancel" }],
+    ["a non-object", "cancel 1001"],
+  ])("treats %s as a failed revoke, not a cancel", async (_label, err) => {
+    mockSignInWithApple.mockRejectedValue(err);
+    expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("failed");
+    expect(mockFetch).not.toHaveBeenCalled();
+    expectReported("sheet_error");
   });
 
   it("fails open when the sheet errors non-cancel", async () => {
