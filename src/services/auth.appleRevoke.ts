@@ -50,9 +50,10 @@ import { logger } from "./logger";
  *
  *     Only once the sheet hands back a code does a fresh budget start, and it
  *     covers everything that touches the network: refreshing the ID token
- *     and the REST revoke. The helper swallows its own errors — Apple or
- *     Firebase being slow, or a 4xx, must not strand the user in an account
- *     they asked to delete. The caller decides what each outcome means.
+ *     and the REST revoke. The helper swallows its own errors and returns
+ *     an outcome; the caller decides what each one means. The delete flow
+ *     (`auth.deleteAccount.ts`) stops with nothing deleted on both
+ *     "cancelled" and "failed", so the user can retry.
  */
 export type AppleRevokeOutcome = "not-apple" | "revoked" | "cancelled" | "failed";
 

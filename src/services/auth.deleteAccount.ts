@@ -27,10 +27,23 @@ export class CodedError extends Error {
  * iOS-only on purpose: the sheet only appears on iPhone/iPad, and this copy
  * must not mention any other platform (Guideline 2.3.10).
  */
+/** Where the user can disconnect SkateHubba from their Apple Account by hand. */
+export const APPLE_SETTINGS_PATH = "Settings → your name → Sign-In & Security → Sign in with Apple";
+
 export const APPLE_CANCEL_MESSAGE =
   "Deleting your account needs a quick confirmation with Apple. Nothing was deleted. " +
   "Tap Try Again and confirm with Apple to finish. " +
-  "You can also remove SkateHubba in Settings → your name → Sign in with Apple.";
+  `You can also remove SkateHubba in ${APPLE_SETTINGS_PATH}.`;
+
+/**
+ * Shown when Apple confirmed but the revoke itself didn't land (Apple or
+ * Firebase error, or the 8 s network budget ran out). Same rules as the
+ * cancel copy: iOS-only wording, nothing deleted, a way to finish.
+ */
+export const APPLE_REVOKE_FAILED_MESSAGE =
+  "We couldn't disconnect SkateHubba from your Apple Account, so nothing was deleted. " +
+  "Check your connection and tap Try Again. " +
+  `You can also remove SkateHubba in ${APPLE_SETTINGS_PATH}.`;
 
 /**
  * The user closed the Apple sheet: stop with nothing deleted, every time.
@@ -42,6 +55,17 @@ function stopOnAppleCancel(uid: string): never {
   logger.info("delete_account_apple_cancelled", { uid });
   captureMessage("apple_revoke_cancelled", { level: "info", tags: { apple_revoke: "cancelled" } });
   throw new CodedError("account-delete/cancelled", APPLE_CANCEL_MESSAGE);
+}
+
+/**
+ * The revoke didn't land: stop with nothing deleted. Deleting anyway would
+ * leave SkateHubba in the user's "Apps Using Apple ID" list with no account
+ * behind it (Guideline 5.1.1(v)). The helper already sent one Sentry warning
+ * with the reason, so this only logs. No "delete anyway" path (Jason, 2026-10-28).
+ */
+function stopOnAppleRevokeFailure(uid: string): never {
+  logger.warn("delete_account_apple_revoke_failed", { uid });
+  throw new CodedError("account-delete/apple-revoke-failed", APPLE_REVOKE_FAILED_MESSAGE);
 }
 
 const misconfigured = () =>
@@ -115,21 +139,21 @@ export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean
   logger.info("delete_account_attempt", { uid });
 
   // Guideline 5.1.1(v): revoke Sign in with Apple tokens before the account
-  // goes. Closing the Apple sheet stops here with nothing deleted, every
-  // time, until the user confirms with Apple (see stopOnAppleCancel). A timeout
-  // or a REST error must never strand the user in an account they asked to
-  // delete, so those are logged and the deletion continues. The revoke
-  // helper swallows its own errors, but we still wrap defensively — a thrown
-  // revoke must not break the delete contract.
+  // goes. Only "revoked" (or not an Apple account) lets the delete go ahead.
+  // Closing the Apple sheet stops here with nothing deleted (see
+  // stopOnAppleCancel), and so does a revoke that didn't land: a sheet error,
+  // no code, a REST error or the 8 s timeout (see stopOnAppleRevokeFailure).
+  // Deleting after a failed revoke would leave the app in the user's
+  // "Apps Using Apple ID" list. Nothing is deleted yet, so Try Again is safe.
+  // The revoke helper swallows its own errors, but we still wrap defensively:
+  // a thrown revoke counts as a failed one.
   const revoke = await revokeAppleTokensIfNeeded(user).catch((err: unknown) => {
     logger.warn("delete_account_apple_revoke_threw", { uid, error: errorKind(err) });
     reportRevokeFailure("threw");
     return "failed" as const;
   });
   if (revoke === "cancelled") stopOnAppleCancel(uid);
-  if (revoke !== "revoked" && revoke !== "not-apple") {
-    logger.warn("delete_account_apple_revoke_skipped", { uid, outcome: revoke });
-  }
+  if (revoke === "failed") stopOnAppleRevokeFailure(uid);
 
   const idToken = await user.getIdToken();
 

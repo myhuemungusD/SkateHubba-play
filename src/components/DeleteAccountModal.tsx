@@ -3,6 +3,12 @@ import { Btn } from "./ui/Btn";
 import { ErrorBanner } from "./ui/ErrorBanner";
 import { useFocusTrap } from "../hooks/useFocusTrap";
 
+/** Delete stopped at the Apple step with nothing deleted; retrying reopens the sheet. */
+const APPLE_RETRY_CODES: ReadonlySet<unknown> = new Set([
+  "account-delete/cancelled",
+  "account-delete/apple-revoke-failed",
+]);
+
 export function DeleteAccountModal({
   onClose,
   onDeleteAccount,
@@ -12,8 +18,9 @@ export function DeleteAccountModal({
 }) {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
-  // Set when the Apple sheet was closed: nothing was deleted, and the delete
-  // button becomes "Try Again", which re-runs the flow and reopens the sheet.
+  // Set when the Apple sheet was closed or the Apple revoke failed: nothing was
+  // deleted, and the delete button becomes "Try Again", which re-runs the flow
+  // and reopens the sheet.
   const [appleConfirmNeeded, setAppleConfirmNeeded] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(panelRef);
@@ -66,7 +73,7 @@ export function DeleteAccountModal({
                 await onDeleteAccount();
               } catch (err: unknown) {
                 setDeleteError(err instanceof Error ? err.message : "Deletion failed — try again");
-                setAppleConfirmNeeded((err as { code?: unknown } | null)?.code === "account-delete/cancelled");
+                setAppleConfirmNeeded(APPLE_RETRY_CODES.has((err as { code?: unknown } | null)?.code));
                 setDeleting(false);
               }
             }}

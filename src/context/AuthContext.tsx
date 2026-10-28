@@ -541,11 +541,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       result = await deleteAccount(uid);
     } catch (err) {
       const code = getErrorCode(err);
-      if (code === "account-delete/cancelled") {
-        // The user closed the Apple sheet; nothing was deleted, and nothing is
-        // until they confirm with Apple. Not an error, so no exception (the
-        // service reports it at info level), and no pending marker to leave
-        // behind. The message and the modal's Try Again tell them how to finish.
+      if (code === "account-delete/cancelled" || code === "account-delete/apple-revoke-failed") {
+        // The user closed the Apple sheet, or Apple didn't confirm the revoke;
+        // either way nothing was deleted, and nothing is until the revoke
+        // lands. No exception here (the service already reported it: info for
+        // a cancel, one warning for a failed revoke), and no pending marker to
+        // leave behind. The message and the modal's Try Again tell them how to finish.
         clearPendingDeleteUid();
         setPendingDeleteUid(null);
         // The push token was scrubbed above, before we knew the delete would

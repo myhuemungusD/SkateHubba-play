@@ -104,6 +104,23 @@ describe("DeleteAccountModal", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it("offers Try Again when the Apple revoke failed, since nothing was deleted", async () => {
+    const failErr = Object.assign(new Error("We couldn't disconnect SkateHubba from your Apple Account."), {
+      code: "account-delete/apple-revoke-failed",
+    });
+    onDeleteAccount.mockRejectedValueOnce(failErr).mockResolvedValueOnce(undefined);
+
+    render(<DeleteAccountModal onClose={onClose} onDeleteAccount={onDeleteAccount} />);
+    await userEvent.click(screen.getByText("Delete Forever"));
+    await waitFor(() => {
+      expect(screen.getByText(failErr.message)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/delete anyway/i)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("Try Again"));
+    expect(onDeleteAccount).toHaveBeenCalledTimes(2);
+  });
+
   it("shows fallback error message for non-Error exceptions", async () => {
     onDeleteAccount.mockRejectedValue("some string");
 
