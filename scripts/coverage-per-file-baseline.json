@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-23T23:03:17.664Z",
+  "generatedAt": "2026-10-27T23:33:51.788Z",
   "note": "Files under the per-file UI coverage floor when the gate was introduced. Each entry is the minimum coverage that file may have; the list only shrinks. Do not add files by hand — fix their coverage instead. Prune graduated entries with `node scripts/check-coverage-per-file.mjs --update-baseline`.",
   "floors": {
     "src/components/**": {
@@ -87,12 +87,6 @@
       "functions": 100,
       "branches": 40,
       "statements": 80
-    },
-    "src/components/waiting/ClipShareButtons.tsx": {
-      "lines": 100,
-      "functions": 76.92,
-      "branches": 100,
-      "statements": 94.73
     },
     "src/screens/GameOverScreen.tsx": {
       "lines": 91.42,
