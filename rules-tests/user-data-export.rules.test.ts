@@ -1,26 +1,23 @@
 /**
- * "Download my data" runs the reads in exportReadPlan
- * (src/services/userDataQueries.ts), built from FIRESTORE_EXPORT in
- * api/account/_userDataRegistry.ts, as the signed-in owner. Rules are not
- * filters: if a query can't prove every doc it might return is readable,
- * Firestore refuses the whole query and the export comes back missing that
- * section. This suite runs EVERY planned read as the owner against the
- * emulator, so a registry entry whose read the rules refuse fails here, and
- * checks it returns the owner's doc and not someone else's.
+ * "Download my data" runs these exact queries (src/services/userDataQueries.ts)
+ * as the signed-in owner. Rules are not filters: if a query can't prove every
+ * doc it might return is readable, Firestore refuses the whole query and the
+ * export comes back missing that section. This suite pins that each export
+ * query is allowed for the owner, returns the owner's docs, and is refused
+ * for someone else where the data is private.
  *
- * The seed is generated from the registry itself (one doc per read for the
- * owner, one decoy for OTHER), with fixed extra fields where a read rule
- * checks more than the owner field. Fake uids only.
+ * (The emulator doesn't enforce composite indexes, so the "no orderBy" half
+ * of the fix is pinned in src/services/__tests__/userData.test.ts instead.)
  *
- * (The emulator doesn't enforce composite indexes, so the "equality filters
- * only" half is pinned in src/services/__tests__/userData.test.ts.)
+ * Long lists are read a page at a time with startAfter; the paging test
+ * pins that a later page is allowed too (same constraints, same rule).
  *
  * Run via:  npm run test:rules
  */
 import { describe, it, expect } from "vitest";
 import { assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
 import {
-  collectionGroup,
+  collection,
   doc,
   getDocFromServer,
   getDocsFromServer,
@@ -30,67 +27,51 @@ import {
   where,
   type Firestore,
 } from "firebase/firestore";
-import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
 import { authedContext, setupRulesTestEnv } from "./_fixtures";
-import { FIRESTORE_EXPORT, type ExportIncluded, type ExportRead } from "../api/account/_userDataRegistry";
-import { exportNextPage, exportReadPlan, type ExportStep } from "../src/services/userDataQueries";
+import { exportCollectionQueries, exportNextPage, type ExportQueryName } from "../src/services/userDataQueries";
 
 const OWNER = "export-owner";
 const OTHER = "export-other";
-const NAME = "export-owner-name";
 
-/** Extra fields a read rule checks on the doc itself (gets, not queries). */
-const EXTRA: Record<string, Record<string, unknown>> = {};
+/** One owned doc per export surface, plus decoys that must not come back. */
+const SEED: Array<[string, Record<string, unknown>]> = [
+  ["games/g-p1", { player1Uid: OWNER, player2Uid: OTHER }],
+  ["games/g-p2", { player1Uid: OTHER, player2Uid: OWNER }],
+  ["games/g-judge", { player1Uid: OTHER, player2Uid: "export-third", judgeId: OWNER }],
+  ["clips/c1", { playerUid: OWNER, moderationStatus: "pending" }],
+  ["clipVotes/v1", { uid: OWNER, clipId: "c-elsewhere" }],
+  ["spots/s-live", { createdBy: OWNER, isActive: true }],
+  ["spots/s-live2", { createdBy: OWNER, isActive: true }],
+  ["spots/s-removed", { createdBy: OWNER, isActive: false }],
+  ["spots/s-other-live", { createdBy: OTHER, isActive: true }],
+  ["spots/s-other-removed", { createdBy: OTHER, isActive: false }],
+  ["notifications/n1", { recipientUid: OWNER }],
+  ["notifications/n2", { recipientUid: OWNER }],
+  ["notifications/n-other", { recipientUid: OTHER }],
+  ["nudges/nu-sent", { senderUid: OWNER, recipientUid: OTHER }],
+  ["nudges/nu-got", { senderUid: OTHER, recipientUid: OWNER }],
+  [`users/${OWNER}/blocked_users/${OTHER}`, { blockedUid: OTHER }],
+  ["reports/r1", { reporterUid: OWNER }],
+  ["moderationStatements/m1", { subjectUid: OWNER }],
+  ["appeals/a1", { appellantUid: OWNER }],
+];
 
-const INCLUDED = Object.entries(FIRESTORE_EXPORT).filter((e): e is [string, ExportIncluded] => "section" in e[1]);
-
-/** [path, data, ownedByOwner] seeds for one read of one registry key. */
-function seedsFor(key: string, read: ExportRead): Array<[string, Record<string, unknown>, boolean]> {
-  const extra = EXTRA[key] ?? {};
-  const [top, , sub] = key.split("/");
-  switch (read.kind) {
-    case "uidDoc":
-      return [
-        [`${key}/${OWNER}`, { ...extra, uid: OWNER }, true],
-        [`${key}/${OTHER}`, { ...extra, uid: OTHER }, false],
-      ];
-    case "ownDoc":
-      return [[`users/${OWNER}/${sub}/${read.id}`, { ...extra }, true]];
-    case "ownList":
-      return [
-        [`users/${OWNER}/${sub}/own-1`, { ...extra }, true],
-        [`users/${OTHER}/${sub}/decoy-1`, { ...extra }, false],
-      ];
-    case "usernameDoc":
-      return [[`${key}/${NAME}`, { ...extra, uid: OWNER }, true]];
-    case "where":
-      return [
-        [`${key}/own-${read.field}`, { ...extra, ...read.also, [read.field]: OWNER }, true],
-        [`${key}/decoy-${read.field}`, { ...extra, ...read.also, [read.field]: OTHER }, false],
-      ];
-    case "arrayContains":
-      return [
-        [`${key}/own-${read.field}`, { ...extra, [read.field]: [OWNER, OTHER] }, true],
-        [`${key}/decoy-${read.field}`, { ...extra, [read.field]: [OTHER] }, false],
-      ];
-    case "group":
-      return [
-        [`${top}/p-${OWNER}/${sub}/own-${top}`, { ...extra, [read.field]: OWNER }, true],
-        [`${top}/p-${OWNER}/${sub}/decoy-${top}`, { ...extra, [read.field]: OTHER }, false],
-      ];
-    case "underEachParent":
-      return [
-        [`${top}/p1`, {}, false],
-        [`${top}/p1/${sub}/${OWNER}`, { ...extra, uid: OWNER }, true],
-        [`${top}/p1/${sub}/${OTHER}`, { ...extra, uid: OTHER }, false],
-      ];
-  }
-}
-
-const SEED = INCLUDED.flatMap(([key, p]) => p.reads.flatMap((r) => seedsFor(key, r)));
-const OWNED = new Set(SEED.filter(([, , own]) => own).map(([path]) => path));
-const DECOYS = new Set(SEED.filter(([, , own]) => !own).map(([path]) => path));
+const EXPECTED: Record<ExportQueryName, string[]> = {
+  gamesAsPlayer1: ["g-p1"],
+  gamesAsPlayer2: ["g-p2"],
+  gamesAsJudge: ["g-judge"],
+  clips: ["c1"],
+  clipVotes: ["v1"],
+  spots: ["s-live", "s-live2"],
+  spotsInactive: ["s-removed"],
+  notifications: ["n1", "n2"],
+  nudgesSent: ["nu-sent"],
+  nudgesReceived: ["nu-got"],
+  blockedUsers: [OTHER],
+  reports: ["r1"],
+  moderationStatements: ["m1"],
+  appeals: ["a1"],
+};
 
 const getEnv = setupRulesTestEnv("demo-skatehubba-rules-user-data-export", async (env) => {
   await env.withSecurityRulesDisabled(async (ctx) => {
@@ -99,101 +80,76 @@ const getEnv = setupRulesTestEnv("demo-skatehubba-rules-user-data-export", async
   });
 });
 
-function dbFor(uid: string): Firestore {
-  return authedContext(getEnv(), uid).firestore() as unknown as Firestore;
+function ownerDb(): Firestore {
+  return authedContext(getEnv(), OWNER).firestore() as unknown as Firestore;
 }
 
-/** Runs one step the way exportUserData does; returns the doc paths read. */
-async function runStep(step: ExportStep): Promise<string[]> {
-  if (step.type === "doc") {
-    const snap = await getDocFromServer(step.ref);
-    return snap.exists() ? [snap.ref.path] : [];
-  }
-  if (step.type === "query") return (await getDocsFromServer(step.first)).docs.map((d) => d.ref.path);
-  const parents = await getDocsFromServer(step.parents);
-  const out: string[] = [];
-  for (const p of parents.docs) {
-    const snap = await getDocFromServer(step.child(p.id));
-    if (snap.exists()) out.push(snap.ref.path);
-  }
-  return out;
-}
-
-// Labels only: this instance never connects (the tests use dbFor instead).
-const LABEL_DB = getFirestore(initializeApp({ projectId: "demo-labels" }, "export-labels"));
-const OWNER_PLAN = exportReadPlan(LABEL_DB, OWNER, NAME).filter((r) => r.step);
-
-describe("user data export reads", () => {
-  it("plans a read for every included collection", () => {
-    expect(OWNER_PLAN.length).toBeGreaterThan(40);
+describe("user data export queries", () => {
+  it.each(Object.keys(EXPECTED) as ExportQueryName[])("the owner can run the %s query", async (name) => {
+    const snap = await assertSucceeds(getDocsFromServer(exportCollectionQueries(ownerDb(), OWNER)[name]));
+    expect(snap.docs.map((d) => d.id).sort()).toEqual(EXPECTED[name]);
   });
 
-  it.each(OWNER_PLAN.map((r) => r.label))("the owner can run the %s read and gets only their docs", async (label) => {
-    const read = exportReadPlan(dbFor(OWNER), OWNER, NAME).find((r) => r.label === label);
-    const paths = await assertSucceeds(runStep(read!.step!));
-    expect(paths.length).toBeGreaterThan(0);
-    for (const p of paths) {
-      expect(DECOYS.has(p)).toBe(false);
-      expect(OWNED.has(p)).toBe(true);
-    }
-  });
-
-  it.each(["games.player1Uid", "notifications", "group:comments.userId"])(
-    "the owner can page through the %s read with startAfter",
-    async (label) => {
-      const step = exportReadPlan(dbFor(OWNER), OWNER, NAME).find((r) => r.label === label)!.step!;
-      if (step.type !== "query") throw new Error("not a query");
-      // limit(1) overrides the export page size so a page boundary is crossed.
-      const first = query(step.first, limit(1));
-      let snap = await assertSucceeds(getDocsFromServer(first));
+  it.each(["spots", "spotsInactive", "notifications", "gamesAsPlayer1"] as const)(
+    "the owner can page through the %s query with startAfter",
+    async (name) => {
+      // limit(1) overrides the export page size so a few seeded docs span pages.
+      const first = query(exportCollectionQueries(ownerDb(), OWNER)[name], limit(1));
       const seen: string[] = [];
+      let snap = await assertSucceeds(getDocsFromServer(first));
       while (snap.docs.length > 0) {
-        seen.push(...snap.docs.map((d) => d.ref.path));
+        seen.push(...snap.docs.map((d) => d.id));
         snap = await assertSucceeds(getDocsFromServer(exportNextPage(first, snap.docs[snap.docs.length - 1])));
       }
-      expect(seen.length).toBeGreaterThan(0);
+      expect(seen.sort()).toEqual(EXPECTED[name]);
     },
   );
 
-  it("reads comments from both clips and spots in one group read", async () => {
-    const step = exportReadPlan(dbFor(OWNER), OWNER, NAME).find((r) => r.label === "group:comments.userId")!.step!;
-    const paths = await runStep(step);
-    expect(paths.map((p) => p.split("/")[0]).sort()).toEqual(["clips", "spots"]);
-  });
-});
+  describe("spots the owner created (1.2.1 creator rule)", () => {
+    function otherDb(): Firestore {
+      return authedContext(getEnv(), OTHER).firestore() as unknown as Firestore;
+    }
 
-describe("someone else can't read the owner's export", () => {
-  const PRIVATE = [
-    "group:comments.userId",
-    "group:messages.userId",
-    "group:here.uid",
-    "notifications",
-    "users/{}/blocked_users",
-    "users/{}/private",
-    "reports",
-    "moderationStatements",
-    "appeals",
-  ];
+    it("the creator can read their own inactive spot by id", async () => {
+      const snap = await assertSucceeds(getDocFromServer(doc(ownerDb(), "spots/s-removed")));
+      expect(snap.data()).toMatchObject({ createdBy: OWNER, isActive: false });
+    });
 
-  it.each(PRIVATE)("OTHER can't run the owner's %s read", async (label) => {
-    const read = exportReadPlan(dbFor(OTHER), OWNER, NAME).find((r) => r.label === label);
-    expect(read?.step).toBeTruthy();
-    await assertFails(runStep(read!.step!));
+    it("someone else can't read the owner's inactive spot, by id or by query", async () => {
+      await assertFails(getDocFromServer(doc(otherDb(), "spots/s-removed")));
+      await assertFails(getDocsFromServer(exportCollectionQueries(otherDb(), OWNER).spotsInactive));
+      await assertFails(
+        getDocsFromServer(query(collection(otherDb(), "spots"), where("createdBy", "==", OWNER), limit(500))),
+      );
+    });
+
+    it("the owner can't read someone else's inactive spot", async () => {
+      await assertFails(getDocFromServer(doc(ownerDb(), "spots/s-other-removed")));
+      await assertFails(
+        getDocsFromServer(query(collection(ownerDb(), "spots"), where("isActive", "==", false), limit(500))),
+      );
+    });
+
+    it("the original active-spots query still works, for the owner and for anyone signed in", async () => {
+      const own = await assertSucceeds(getDocsFromServer(exportCollectionQueries(ownerDb(), OWNER).spots));
+      expect(own.docs.map((d) => d.id).sort()).toEqual(["s-live", "s-live2"]);
+      const theirs = await assertSucceeds(getDocsFromServer(exportCollectionQueries(otherDb(), OWNER).spots));
+      expect(theirs.docs.map((d) => d.id).sort()).toEqual(["s-live", "s-live2"]);
+    });
+
+    it("the creator's own createdBy query no longer needs the isActive filter", async () => {
+      const snap = await assertSucceeds(
+        getDocsFromServer(query(collection(ownerDb(), "spots"), where("createdBy", "==", OWNER), limit(500))),
+      );
+      expect(snap.docs.map((d) => d.id).sort()).toEqual(["s-live", "s-live2", "s-removed"]);
+    });
   });
 
-  it.each([
-    ["comments", "userId"],
-    ["messages", "userId"],
-    ["here", "uid"],
-  ])("the %s group can't be read without the own-uid filter", async (group, field) => {
-    const db = dbFor(OTHER);
-    await assertFails(getDocsFromServer(query(collectionGroup(db, group), limit(10))));
-    await assertFails(getDocsFromServer(query(collectionGroup(db, group), where(field, "==", OWNER), limit(10))));
-    await assertFails(getDocsFromServer(query(collectionGroup(dbFor(OWNER), group), where(field, "==", OTHER))));
-  });
-
-  it("an unsigned visitor can't run a group read", async () => {
-    const db = getEnv().unauthenticatedContext().firestore() as unknown as Firestore;
-    await assertFails(getDocsFromServer(query(collectionGroup(db, "comments"), where("userId", "==", OWNER))));
-  });
+  it.each(["notifications", "nudgesReceived", "blockedUsers", "reports", "moderationStatements", "appeals"] as const)(
+    "someone else can't run the owner's %s query",
+    async (name) => {
+      const otherDb = authedContext(getEnv(), OTHER).firestore() as unknown as Firestore;
+      await assertFails(getDocsFromServer(exportCollectionQueries(otherDb, OWNER)[name]));
+    },
+  );
 });

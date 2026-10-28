@@ -1,24 +1,13 @@
 import {
   collection,
-  collectionGroup,
-  doc,
   limit,
   query,
   startAfter,
   where,
-  type DocumentReference,
   type DocumentSnapshot,
   type Firestore,
   type Query,
-  type QueryConstraint,
 } from "firebase/firestore";
-import {
-  FIRESTORE_EXPORT,
-  type ExportIncluded,
-  type ExportPlan,
-  type ExportRead,
-  type ExportSection,
-} from "../../api/account/_userDataRegistry";
 
 /**
  * Docs per page for each collection read. Reads page through with
@@ -35,126 +24,58 @@ export const EXPORT_PAGE_SIZE = 500;
  */
 export const EXPORT_MAX_PAGES = 10;
 
-/** How one planned read reaches Firestore. */
-export type ExportStep =
-  | { type: "doc"; ref: DocumentReference }
-  | { type: "query"; first: Query }
-  /** List every parent doc, then get `child(parentId)` under each. */
-  | { type: "eachParent"; parents: Query; child: (parentId: string) => DocumentReference };
-
-export interface PlannedRead {
-  /**
-   * Fixed string for logs and Sentry, built from the registry key and field
-   * (e.g. "games.player1Uid", "users/{}/wallet", or "group:comments.userId"
-   * for a collection-group read). Never a uid, username or real path.
-   */
-  label: string;
-  section: ExportSection;
-  redact: readonly string[];
-  /** Null when there is nothing to read (no username to look up). */
-  step: ExportStep | null;
-}
-
-export function isIncluded(plan: ExportPlan): plan is ExportIncluded {
-  return "section" in plan;
-}
-
-// Path shapes (ownDoc/ownList keys are `users/{}/<sub>`, uidDoc/where keys
-// are top-level, group/underEachParent keys are `<parent>/{}/<sub>`) are
-// enforced by user-data-export.coverage.test.ts, not at runtime.
-
-/** `users/{}/wallet` with the uid in place of `{}`, as path segments. */
-function ownPath(key: string, uid: string): [string, string, string] {
-  return ["users", uid, key.split("/")[2]];
-}
-
-function labelFor(key: string, read: ExportRead, many: boolean): string {
-  // Both comment collections are one collection group: same label, read once.
-  if (read.kind === "group") return `group:${key.split("/").pop()}.${read.field}`;
-  // A plan with several reads tells them apart by field (the coverage test
-  // requires one on each).
-  return many ? `${key}.${(read as { field: string }).field}` : key;
-}
-
-function stepFor(db: Firestore, key: string, read: ExportRead, uid: string, username: string): ExportStep | null {
-  const page = limit(EXPORT_PAGE_SIZE);
-  switch (read.kind) {
-    case "uidDoc":
-      return { type: "doc", ref: doc(db, key, uid) };
-    case "ownDoc":
-      return { type: "doc", ref: doc(db, ...ownPath(key, uid), read.id) };
-    case "ownList":
-      return { type: "query", first: query(collection(db, ...ownPath(key, uid)), page) };
-    case "usernameDoc":
-      return username ? { type: "doc", ref: doc(db, key, username) } : null;
-    case "where": {
-      const filters: QueryConstraint[] = [where(read.field, "==", uid)];
-      for (const [field, value] of Object.entries(read.also ?? {})) filters.push(where(field, "==", value));
-      return { type: "query", first: query(collection(db, key), ...filters, page) };
-    }
-    case "arrayContains":
-      return {
-        type: "query",
-        first: query(collection(db, key), where(read.field, "array-contains", uid), page),
-      };
-    case "group": {
-      const group = key.split("/").pop() as string;
-      return { type: "query", first: query(collectionGroup(db, group), where(read.field, "==", uid), page) };
-    }
-    case "underEachParent": {
-      const [parent, , sub] = key.split("/");
-      return {
-        type: "eachParent",
-        parents: query(collection(db, parent), page),
-        child: (parentId) => doc(db, parent, parentId, sub, uid),
-      };
-    }
-  }
-}
-
 /**
- * Every read behind "Download my data", built from `FIRESTORE_EXPORT` in
- * api/account/_userDataRegistry.ts, the single list of where user data
- * lives. Nothing here names a collection: adding one to the registry adds it
- * to the export.
+ * The Firestore queries behind "Download my data", one per surface. Each one
+ * returns the first page; {@link exportNextPage} builds the following pages.
  *
  * Kept free of app wiring (no `requireDb`, no logger) so the rules tests can
- * run these exact reads against the emulator as the signed-in owner.
+ * run these exact queries against the emulator as the signed-in owner.
  *
- * Two constraints every read here keeps:
+ * Two constraints every query here must keep:
  *
- *   1. Equality filters only (`==`, `array-contains`), no `orderBy`.
- *      Firestore serves those from its automatic single-field indexes (and,
- *      for the collection-group reads, the COLLECTION_GROUP field overrides
- *      in firestore.indexes.json). An `orderBy` on another field would need a
- *      composite index. Ordering is done in memory (`sortNewestFirst` in
- *      userData.ts); paging with `startAfter` uses the implicit document-id
- *      order, which needs no extra index.
+ *   1. Equality filters only, no `orderBy`. Firestore serves equality-only
+ *      queries from its automatic single-field indexes. An equality filter
+ *      plus `orderBy` on a different field needs a composite index, and the
+ *      ones this export used to rely on (e.g. games `player1Uid` +
+ *      `createdAt desc`) were never in firestore.indexes.json, so those reads
+ *      failed and the export quietly left out the user's games, clips, spots
+ *      and notifications. Ordering is done in memory instead
+ *      (see `sortNewestFirst` in userData.ts). Paging with `startAfter` uses
+ *      the implicit document-id order, which needs no extra index either.
  *
- *   2. Rules are not filters. Each read carries the constraint its read rule
- *      checks, or the whole query is refused (e.g. spots and privateSpots add
- *      `isActive == true`). rules-tests/user-data-export.rules.test.ts runs
- *      every read here as the owner against the emulator.
+ *   2. Rules are not filters. Each query has to carry the constraint its read
+ *      rule checks, or the whole query is refused. Spot reads require
+ *      `isActive == true` unless the reader is the spot's creator
+ *      (firestore.rules, spots `allow read`). So spots are read in two
+ *      queries that each carry an `isActive` filter: `spots` (active, readable
+ *      under the old rule too) and `spotsInactive` (the creator's own
+ *      deactivated spots, readable only under the 1.2.1 creator rule). Users
+ *      can't make a spot inactive themselves (they can only hard-delete), so
+ *      `spotsInactive` holds spots an admin or moderator deactivated. Until
+ *      the 1.2.1 rules are deployed that query is refused and the export
+ *      names "spots" as missing rather than calling the file complete.
  */
-export function exportReadPlan(db: Firestore, uid: string, username: string): PlannedRead[] {
-  const out: PlannedRead[] = [];
-  const seen = new Set<string>();
-  for (const [key, plan] of Object.entries(FIRESTORE_EXPORT) as [string, ExportPlan][]) {
-    if (!isIncluded(plan)) continue;
-    for (const read of plan.reads) {
-      const label = labelFor(key, read, plan.reads.length > 1);
-      if (seen.has(label)) continue;
-      seen.add(label);
-      out.push({
-        label,
-        section: plan.section as ExportSection,
-        redact: plan.redact ?? [],
-        step: stepFor(db, key, read, uid, username),
-      });
-    }
-  }
-  return out;
+export function exportCollectionQueries(db: Firestore, uid: string) {
+  const page = limit(EXPORT_PAGE_SIZE);
+  return {
+    gamesAsPlayer1: query(collection(db, "games"), where("player1Uid", "==", uid), page),
+    gamesAsPlayer2: query(collection(db, "games"), where("player2Uid", "==", uid), page),
+    gamesAsJudge: query(collection(db, "games"), where("judgeId", "==", uid), page),
+    clips: query(collection(db, "clips"), where("playerUid", "==", uid), page),
+    clipVotes: query(collection(db, "clipVotes"), where("uid", "==", uid), page),
+    spots: query(collection(db, "spots"), where("createdBy", "==", uid), where("isActive", "==", true), page),
+    spotsInactive: query(collection(db, "spots"), where("createdBy", "==", uid), where("isActive", "==", false), page),
+    notifications: query(collection(db, "notifications"), where("recipientUid", "==", uid), page),
+    nudgesSent: query(collection(db, "nudges"), where("senderUid", "==", uid), page),
+    nudgesReceived: query(collection(db, "nudges"), where("recipientUid", "==", uid), page),
+    blockedUsers: query(collection(db, "users", uid, "blocked_users"), page),
+    reports: query(collection(db, "reports"), where("reporterUid", "==", uid), page),
+    moderationStatements: query(collection(db, "moderationStatements"), where("subjectUid", "==", uid), page),
+    appeals: query(collection(db, "appeals"), where("appellantUid", "==", uid), page),
+  } satisfies Record<string, Query>;
 }
+
+export type ExportQueryName = keyof ReturnType<typeof exportCollectionQueries>;
 
 /** The page after `last`, with the same filters and page size as `first`. */
 export function exportNextPage(first: Query, last: DocumentSnapshot): Query {
