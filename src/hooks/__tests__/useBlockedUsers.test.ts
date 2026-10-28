@@ -113,7 +113,7 @@ describe("useBlockedUsersState", () => {
     expect(result.current.ready).toBe(false);
 
     act(() => push(new Set(["u2"])));
-    expect(result.current).toEqual({ blocked: new Set(["u2"]), ready: true });
+    expect(result.current).toMatchObject({ blocked: new Set(["u2"]), ready: true });
   });
 
   it("fails open (ready, nothing filtered) when the listener errors", () => {
@@ -125,7 +125,7 @@ describe("useBlockedUsersState", () => {
 
     const { result } = renderHook(() => useBlockedUsersState("u1"));
     act(() => fail());
-    expect(result.current).toEqual({ blocked: new Set(), ready: true });
+    expect(result.current).toMatchObject({ blocked: new Set(), ready: true, failed: true });
   });
 
   it("drops the previous viewer's list while the next one loads", () => {
@@ -142,6 +142,63 @@ describe("useBlockedUsersState", () => {
     expect(result.current.ready).toBe(true);
 
     rerender({ uid: "u2" });
-    expect(result.current).toEqual({ blocked: new Set(), ready: false });
+    expect(result.current).toMatchObject({ blocked: new Set(), ready: false });
+  });
+});
+
+describe("useBlockedUsersState — failed and retry", () => {
+  type Listener = (uid: string, onUpdate: (s: Set<string>) => void, onError?: () => void) => () => void;
+
+  it("is ready but failed when the listener errors before any snapshot", () => {
+    mockSubscribeToBlockedUsers.mockImplementation(((_uid, _onUpdate, onError) => {
+      onError?.();
+      return vi.fn();
+    }) as Listener);
+
+    const { result } = renderHook(() => useBlockedUsersState("u1"));
+
+    expect(result.current).toMatchObject({ ready: true, failed: true });
+    expect(result.current.blocked.size).toBe(0);
+  });
+
+  it("keeps the last list and is not failed when the listener errors after a snapshot", () => {
+    let fail: () => void = () => {};
+    mockSubscribeToBlockedUsers.mockImplementation(((_uid, onUpdate, onError) => {
+      onUpdate(new Set(["u2"]));
+      fail = () => onError?.();
+      return vi.fn();
+    }) as Listener);
+
+    const { result } = renderHook(() => useBlockedUsersState("u1"));
+    act(() => fail());
+
+    expect(result.current).toMatchObject({ ready: true, failed: false });
+    expect(result.current.blocked).toEqual(new Set(["u2"]));
+  });
+
+  it("retry drops the listener, goes back to loading, and subscribes again", () => {
+    const unsub = vi.fn();
+    let answer: (s: Set<string>) => void = () => {};
+    mockSubscribeToBlockedUsers
+      .mockImplementationOnce(((_uid, _onUpdate, onError) => {
+        onError?.();
+        return unsub;
+      }) as Listener)
+      .mockImplementationOnce(((_uid, onUpdate) => {
+        answer = onUpdate;
+        return vi.fn();
+      }) as Listener);
+
+    const { result } = renderHook(() => useBlockedUsersState("u1"));
+    expect(result.current.failed).toBe(true);
+
+    act(() => result.current.retry());
+    expect(unsub).toHaveBeenCalled();
+    expect(mockSubscribeToBlockedUsers).toHaveBeenCalledTimes(2);
+    expect(result.current).toMatchObject({ ready: false, failed: false });
+
+    act(() => answer(new Set(["u9"])));
+    expect(result.current).toMatchObject({ ready: true, failed: false });
+    expect(result.current.blocked).toEqual(new Set(["u9"]));
   });
 });

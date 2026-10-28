@@ -8,6 +8,7 @@ import type { ClipVoteState } from "../../services/clips.upvotes";
 import { deferred } from "../../__tests__/harness/deferred";
 import { makeGameClip } from "./clipFixtures.test-helpers";
 import { makeDispute } from "./disputeFixtures.test-helpers";
+import { answerBlockList, failBlockList } from "./blockList.test-helpers";
 
 const {
   mockFetchClipsFeed,
@@ -107,8 +108,11 @@ vi.mock("../../services/disputes", () => ({
   DisputeClosedError: class DisputeClosedError extends Error {},
 }));
 
-vi.mock("../../hooks/useBlockedUsers", () => ({
-  useBlockedUsers: () => new Set<string>(),
+// The real block-list hook runs over a stubbed listener: by default it
+// answers at once with nobody blocked; tests stage a failure or a list.
+const mockSubscribeToBlockedUsers = vi.hoisted(() => vi.fn());
+vi.mock("../../services/blocking", () => ({
+  subscribeToBlockedUsers: (...args: unknown[]) => mockSubscribeToBlockedUsers(...args),
 }));
 
 // Feed modes + Name It stay off unless a test flips them on.
@@ -254,6 +258,7 @@ beforeEach(() => {
   mockFetchOpenDisputes.mockResolvedValue([]);
   mockFetchDisputeViewerState.mockResolvedValue(new Map());
   mockCastDisputeVerdict.mockResolvedValue({ land: 0, bail: 0 });
+  mockSubscribeToBlockedUsers.mockImplementation(answerBlockList([]));
 });
 
 describe("ClipsFeed", () => {
@@ -1335,5 +1340,52 @@ describe("ClipsFeed — top stack", () => {
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     const alert = await screen.findByRole("button", { name: /try again|retry/i });
     expect(screen.getByTestId("feed-top-stack")).toContainElement(alert);
+  });
+});
+
+describe("ClipsFeed — block list", () => {
+  it("holds the loading skeleton until the block list has loaded", async () => {
+    mockSubscribeToBlockedUsers.mockImplementation(() => () => {});
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+
+    await waitFor(() => expect(mockFetchClipsFeed).toHaveBeenCalled());
+    await act(async () => {});
+    expect(screen.getByRole("status", { name: /loading clips/i })).toBeInTheDocument();
+    expect(screen.queryByText("Kickflip")).not.toBeInTheDocument();
+  });
+
+  it("never shows a blocked player's clip", async () => {
+    mockSubscribeToBlockedUsers.mockImplementation(answerBlockList(["p1"]));
+    mockFetchClipsFeed.mockResolvedValueOnce([
+      storageClip("c1", "Kickflip"),
+      storageClip("c2", "Tre Flip", { playerUid: "p2", playerUsername: "bob" }),
+    ]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+
+    await screen.findByText("Tre Flip");
+    expect(screen.queryByText("Kickflip")).not.toBeInTheDocument();
+  });
+
+  it("pauses the feed behind one Try again when the block list fails, then recovers", async () => {
+    const user = userEvent.setup();
+    // Both lanes subscribe on mount; both first attempts fail.
+    mockSubscribeToBlockedUsers.mockImplementationOnce(failBlockList).mockImplementationOnce(failBlockList);
+    mockFetchClipsFeed.mockResolvedValue([makeClip()]);
+    mockFetchOpenDisputes.mockResolvedValueOnce([makeDispute()]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+
+    // One banner: the dispute lane does not repeat the error as a slide.
+    expect(await screen.findAllByText(/Couldn't load your blocked players/i)).toHaveLength(1);
+    expect(screen.queryByText("Kickflip")).not.toBeInTheDocument();
+    expect(screen.queryByRole("article", { name: /community call/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/No clips yet\./i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /try again/i }));
+
+    await screen.findByText("Kickflip");
+    expect(screen.queryByText(/Couldn't load your blocked players/i)).not.toBeInTheDocument();
+    // Try again re-subscribed both lanes, not just the clips lane.
+    expect(mockSubscribeToBlockedUsers).toHaveBeenCalledTimes(4);
   });
 });

@@ -9,6 +9,11 @@ export function errorCodeFor(err: unknown): string | undefined {
     : undefined;
 }
 
+/** Shown when the viewer's block list can't be loaded: the feed won't guess who is blocked. */
+export const BLOCK_LIST_ERROR =
+  "Couldn't load your blocked players, so the feed is paused. Check your connection and try again.";
+export const BLOCK_LIST_ERROR_CODE = "block-list/unavailable";
+
 export function copyForError(code: string | undefined): string {
   if (code && SERVICE_ERROR_CODES.has(code)) {
     return "Feed temporarily unavailable — please try again in a moment.";

@@ -104,9 +104,15 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser, topAccessory
   }, [clips.loadingMore, clips.visibleClips.length, scrollToIndex]);
 
   const toggleMute = useCallback(() => setMuted((m) => !m), []);
+  const retryFeed = useCallback(() => {
+    if (clips.blockFailed) disputes.reload();
+    void clips.loadPool();
+  }, [clips, disputes]);
 
   const hasSlides = disputes.disputes.length > 0 || clips.visibleClips.length > 0;
-  const showSlides = !blocking && (hasSlides || Boolean(disputes.error));
+  // A failed block list pauses the whole feed behind one Try again banner;
+  // the dispute lane would otherwise repeat the same error as a slide.
+  const showSlides = !blocking && !clips.blockFailed && (hasSlides || Boolean(disputes.error));
   const showEmpty = !blocking && !clips.error && !disputes.error && !hasSlides && !clips.exhausted;
   const showExhausted =
     !blocking && !clips.error && !disputes.error && clips.exhausted && disputes.disputes.length === 0;
@@ -148,7 +154,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser, topAccessory
 
         {clips.error && !clips.loading && (
           <div className="pointer-events-auto mx-4 mt-2">
-            <ClipsFeedError error={clips.error} errorCode={clips.errorCode} onRetry={clips.loadPool} />
+            <ClipsFeedError error={clips.error} errorCode={clips.errorCode} onRetry={retryFeed} />
           </div>
         )}
       </div>
