@@ -93,6 +93,15 @@ export function scrubEvent(event: SentryErrorEvent): SentryErrorEvent {
     if (typeof exception.value === "string") exception.value = stripUrlQuery(exception.value);
   }
   if (event.extra) event.extra = redactPII(event.extra);
+  // Sentry.setContext() and setTag() values ride on every later event, so
+  // they get the same rules as extras (follow-up to #911's review). Tags are
+  // flat primitives, so only their URLs need stripping.
+  if (event.contexts) event.contexts = redactPII(event.contexts) as SentryErrorEvent["contexts"];
+  if (event.tags) {
+    for (const [key, value] of Object.entries(event.tags)) {
+      if (typeof value === "string") event.tags[key] = stripUrlQuery(value);
+    }
+  }
   // Crumbs were scrubbed by scrubBreadcrumb when recorded; this second pass
   // also covers any attached another way (e.g. a scope's crumbs).
   for (const crumb of event.breadcrumbs ?? []) scrubCrumbFields(crumb);

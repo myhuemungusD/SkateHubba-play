@@ -108,6 +108,40 @@ describe("scrubEvent", () => {
     expect(out.user).toEqual({ id: "uid_12345678" });
   });
 
+  it("scrubs setContext() values like extras and strips URL queries from string tag values", () => {
+    const event = {
+      contexts: {
+        share: { uid: "raw-uid", email: "a@b.co", detail: { error: CAPACITOR_ERROR } },
+        trace: { trace_id: "0123456789abcdef0123456789abcdef", span_id: "0123456789abcdef" },
+      },
+      tags: { op: "sendSpotMessage", clip: TOKEN_URL, retries: 2, cached: false },
+    } as unknown as SentryEvent;
+
+    const out = scrubEvent(event);
+
+    expect(JSON.stringify(out)).not.toContain("secret-token");
+    expect(out.contexts).toEqual({
+      share: {
+        uid: expect.stringMatching(/^uid_[0-9a-f]{8}$/),
+        email: "[REDACTED_EMAIL]",
+        detail: { error: `Error downloading file: ${STORAGE_PATH}` },
+      },
+      // The SDK's own trace context is kept as it is.
+      trace: { trace_id: "0123456789abcdef0123456789abcdef", span_id: "0123456789abcdef" },
+    });
+    expect(out.tags).toEqual({ op: "sendSpotMessage", clip: STORAGE_PATH, retries: 2, cached: false });
+  });
+
+  it("is idempotent, so a uid already hashed by lib/sentry's redactHint is not hashed again", () => {
+    const once = scrubEvent({
+      extra: { uid: "raw-uid", url: TOKEN_URL },
+      contexts: { share: { uid: "raw-uid" } },
+      tags: { clip: TOKEN_URL },
+    } as unknown as SentryEvent);
+    const snapshot = JSON.parse(JSON.stringify(once)) as unknown;
+    expect(scrubEvent(once)).toEqual(snapshot);
+  });
+
   it("leaves an event with none of those fields as it is", () => {
     const event = { request: {}, level: "error" } as unknown as SentryEvent;
     expect(scrubEvent(event)).toEqual({ request: {}, level: "error" });

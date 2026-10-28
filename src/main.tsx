@@ -70,7 +70,8 @@ if (import.meta.env.VITE_SENTRY_DSN) {
       // Strip PII and URL tokens (src/lib/sentryScrub.ts). Crumbs are
       // scrubbed as they are recorded, since the browser integrations pick up
       // console lines, fetches and navigation that can carry either; events
-      // get their request, user, message, exception text and extras scrubbed.
+      // get their request, user, message, exception text, extras, contexts and
+      // tags scrubbed.
       beforeBreadcrumb: scrubBreadcrumb,
       beforeSend: scrubEvent,
     }),

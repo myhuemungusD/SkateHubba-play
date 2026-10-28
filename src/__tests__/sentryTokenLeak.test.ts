@@ -7,7 +7,8 @@
  *   "Error downloading file: \(urlString)" (LegacyFilesystemImplementation.swift)
  * and urlString is the tokenised Firebase Storage URL. This runs that exact
  * string through the real logger, the real @sentry/react SDK and the hooks
- * main.tsx installs, then reads the envelope that would go to Sentry.
+ * main.tsx installs, then reads the envelope that would go to Sentry. It also
+ * covers Sentry.setContext()/setTag() values (contexts and tags).
  */
 import { describe, it, expect, afterAll } from "vitest";
 import * as Sentry from "@sentry/react";
@@ -40,6 +41,9 @@ describe("Storage token never reaches Sentry", () => {
     });
 
     logger.warn("share_file_download_failed", { error: CAPACITOR_ERROR });
+    // setContext/setTag values reach the event as contexts and tags.
+    Sentry.setContext("share", { error: CAPACITOR_ERROR, uid: "raw-uid" });
+    Sentry.setTag("clip", `${STORAGE_PATH}?alt=media&token=secret-token`);
     captureException(new Error(CAPACITOR_ERROR), { extra: { context: "share", detail: { error: CAPACITOR_ERROR } } });
     await Sentry.flush(2000);
 
@@ -51,7 +55,18 @@ describe("Storage token never reaches Sentry", () => {
     expect(envelope).toContain(`"value":"Error downloading file: ${STORAGE_PATH}"`);
     const event = JSON.parse(envelope)[1][0][1] as {
       breadcrumbs: { category?: string; message?: string; data?: Record<string, unknown> }[];
+      contexts: Record<string, Record<string, unknown>>;
+      tags: Record<string, unknown>;
     };
+    expect(event.contexts.share).toEqual({
+      error: `Error downloading file: ${STORAGE_PATH}`,
+      uid: expect.stringMatching(/^uid_[0-9a-f]{8}$/),
+    });
+    // The SDK's trace context still links the event to its trace.
+    expect(event.contexts.trace).toEqual(
+      expect.objectContaining({ trace_id: expect.stringMatching(/^[0-9a-f]{32}$/) }),
+    );
+    expect(event.tags.clip).toBe(STORAGE_PATH);
     expect(event.breadcrumbs.filter((c) => c.category === "console")).toEqual([]);
     expect(event.breadcrumbs).toContainEqual(
       expect.objectContaining({
