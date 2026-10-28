@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { PlayIcon } from "../icons";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
 import { withFirstFrame } from "../../lib/clipPoster";
-import { BELOW_HEADER, MUTE_SIDE, RAIL_BTN } from "./feedLayout";
+import { BELOW_HEADER, RAIL_BTN } from "./feedLayout";
 
 /**
  * Full-bleed clip player for one snapped page.
@@ -26,6 +26,13 @@ export interface SpotlightVideoProps {
   /** Shared across slides so unmuting sticks as you swipe. */
   muted?: boolean;
   onToggleMute?: () => void;
+  /**
+   * Horizontal placement classes for the mute toggle. Defaults to top-right.
+   * Only the clip card passes `MUTE_SIDE`, because only its five-button rail
+   * can reach the toggle on a short screen; a dispute card's info block owns
+   * the top-left corner, so moving its toggle there would bury it.
+   */
+  muteSide?: string;
 }
 
 function MuteGlyph({ muted }: { muted: boolean }) {
@@ -49,7 +56,14 @@ function MuteGlyph({ muted }: { muted: boolean }) {
   );
 }
 
-function SpotlightVideoImpl({ src, active = true, mediaLabel, muted: mutedProp, onToggleMute }: SpotlightVideoProps) {
+function SpotlightVideoImpl({
+  src,
+  active = true,
+  mediaLabel,
+  muted: mutedProp,
+  onToggleMute,
+  muteSide = "right-3",
+}: SpotlightVideoProps) {
   const [localMuted, setLocalMuted] = useState(true);
   const muted = mutedProp ?? localMuted;
   const reducedMotion = useReducedMotion();
@@ -81,7 +95,6 @@ function SpotlightVideoImpl({ src, active = true, mediaLabel, muted: mutedProp, 
 
   const handleRetry = useCallback(() => {
     const el = videoRef.current;
-    /* v8 ignore next -- the <video> always renders, so its ref is set before any handler or effect runs */
     if (!el) return;
     setFailedSrc(null);
     el.load();
@@ -96,7 +109,6 @@ function SpotlightVideoImpl({ src, active = true, mediaLabel, muted: mutedProp, 
     setLocalMuted((prev) => {
       const next = !prev;
       const el = videoRef.current;
-      /* v8 ignore next -- the <video> always renders, so its ref is set before any handler or effect runs */
       if (el) el.muted = next;
       return next;
     });
@@ -104,7 +116,6 @@ function SpotlightVideoImpl({ src, active = true, mediaLabel, muted: mutedProp, 
 
   const togglePlayback = useCallback(() => {
     const el = videoRef.current;
-    /* v8 ignore next -- the <video> always renders, so its ref is set before any handler or effect runs */
     if (!el) return;
     if (el.paused) {
       userPausedRef.current = false;
@@ -122,13 +133,11 @@ function SpotlightVideoImpl({ src, active = true, mediaLabel, muted: mutedProp, 
 
   useEffect(() => {
     const el = videoRef.current;
-    /* v8 ignore next -- the <video> always renders, so its ref is set before any handler or effect runs */
     if (el) el.muted = muted;
   }, [muted]);
 
   useEffect(() => {
     const video = videoRef.current;
-    /* v8 ignore next -- the <video> always renders, so its ref is set before any handler or effect runs */
     if (!video) return;
     if (!active) {
       userPausedRef.current = false;
@@ -216,7 +225,7 @@ function SpotlightVideoImpl({ src, active = true, mediaLabel, muted: mutedProp, 
           type="button"
           onClick={toggleMute}
           aria-label={muted ? "Unmute clip" : "Mute clip"}
-          className={`absolute z-20 ${MUTE_SIDE} ${BELOW_HEADER} ${RAIL_BTN}`}
+          className={`absolute z-20 ${muteSide} ${BELOW_HEADER} ${RAIL_BTN}`}
         >
           <MuteGlyph muted={muted} />
         </button>

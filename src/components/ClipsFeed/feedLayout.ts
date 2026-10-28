@@ -53,6 +53,10 @@ export const BELOW_HEADER = belowTopStack(Number(isFeedModesEnabled()) + Number(
  * at least 29px. The rail itself is unchanged, so every target stays 44px.
  * feedLayout.test.ts re-derives the 620px breakpoint from the rail, so adding
  * a rail button fails that test until this is re-sized.
+ *
+ * Clip (Spotlight) cards only. A dispute card has no five-button rail, and its
+ * info block (call pill, trick name, tally) spans the top-left from left-4 to
+ * right-20, so its toggle stays at SpotlightVideo's default top-right.
  */
 export const MUTE_SIDE = "right-3 [@media(max-height:620px)]:right-auto [@media(max-height:620px)]:left-3";
 

@@ -35,8 +35,16 @@ describe("mute toggle vs clip rail on short screens", () => {
   const BTN = 44;
   const rem = (cls: string, re: RegExp) => Number(cls.match(re)![1]) * REM;
 
-  /** Worst case: both optional top rows on (mode switcher + Pro Picks), as in the iOS build; safe area 20px. */
-  const muteBottom = 20 + rem(belowTopStack(2), /\+([\d.]+)rem\)\]$/) + BTN;
+  /**
+   * Pinned to the iPhone SE 1st gen, the only portrait iPhone 620px tall or
+   * less: no notch, so the top inset is the 1.25rem floor of
+   * max(env(safe-area-inset-top),1.25rem), and there is no home indicator.
+   */
+  const SE_SAFE_TOP = 20;
+  const SE_SAFE_BOTTOM = 0;
+
+  /** Worst case: both optional top rows on (mode switcher + Pro Picks), as in the iOS build. */
+  const muteBottom = SE_SAFE_TOP + rem(belowTopStack(2), /\+([\d.]+)rem\)\]$/) + BTN;
   const railBottomInset = rem(ABOVE_NAV, /calc\(([\d.]+)rem/);
   const breakpoint = Number(MUTE_SIDE.match(/max-height:(\d+)px/)![1]);
 
@@ -65,7 +73,8 @@ describe("mute toggle vs clip rail on short screens", () => {
     const buttons = rail.querySelectorAll("button").length;
     return { buttons, height: buttons * BTN + (buttons - 1) * gaps[0], gap: gaps[0] };
   }
-  const railTop = (viewportHeight: number, railHeight: number) => viewportHeight - railBottomInset - railHeight;
+  const railTop = (viewportHeight: number, railHeight: number) =>
+    viewportHeight - SE_SAFE_BOTTOM - railBottomInset - railHeight;
 
   it("models the five-button rail the feed renders today", () => {
     const { buttons, height, gap } = measureRail();
