@@ -87,6 +87,13 @@ describe("included collections", () => {
     ]);
   });
 
+  it("tags a read by its field and fixed filters, and a fieldless read as empty", () => {
+    expect(readTag({ kind: "uidDoc" })).toBe("");
+    expect(readTag({ kind: "group", field: "userId" })).toBe("userId");
+    expect(readTag({ kind: "where", field: "createdBy" })).toBe("createdBy");
+    expect(readTag({ kind: "where", field: "createdBy", also: { isActive: false } })).toBe("createdBy.isActive=false");
+  });
+
   it("gives every section one name", () => {
     const names = new Map<string, Set<string>>();
     for (const [, p] of INCLUDED) names.set(p.section, (names.get(p.section) ?? new Set()).add(p.name));
