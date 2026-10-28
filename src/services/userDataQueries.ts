@@ -45,12 +45,15 @@ export const EXPORT_MAX_PAGES = 10;
  *
  *   2. Rules are not filters. Each query has to carry the constraint its read
  *      rule checks, or the whole query is refused. Spot reads require
- *      `isActive == true` (firestore.rules, spots `allow read`), so the spots
- *      query says so. Users can't make a spot inactive: they can only
- *      hard-delete their own spots, and a deleted spot no longer exists. The
- *      filter therefore only leaves out spots an admin or moderator
- *      deactivated. Those still reach the user through the privacy contact
- *      named in the export notice.
+ *      `isActive == true` unless the reader is the spot's creator
+ *      (firestore.rules, spots `allow read`). So spots are read in two
+ *      queries that each carry an `isActive` filter: `spots` (active, readable
+ *      under the old rule too) and `spotsInactive` (the creator's own
+ *      deactivated spots, readable only under the 1.2.1 creator rule). Users
+ *      can't make a spot inactive themselves (they can only hard-delete), so
+ *      `spotsInactive` holds spots an admin or moderator deactivated. Until
+ *      the 1.2.1 rules are deployed that query is refused and the export
+ *      names "spots" as missing rather than calling the file complete.
  */
 export function exportCollectionQueries(db: Firestore, uid: string) {
   const page = limit(EXPORT_PAGE_SIZE);
@@ -61,6 +64,7 @@ export function exportCollectionQueries(db: Firestore, uid: string) {
     clips: query(collection(db, "clips"), where("playerUid", "==", uid), page),
     clipVotes: query(collection(db, "clipVotes"), where("uid", "==", uid), page),
     spots: query(collection(db, "spots"), where("createdBy", "==", uid), where("isActive", "==", true), page),
+    spotsInactive: query(collection(db, "spots"), where("createdBy", "==", uid), where("isActive", "==", false), page),
     notifications: query(collection(db, "notifications"), where("recipientUid", "==", uid), page),
     nudgesSent: query(collection(db, "nudges"), where("senderUid", "==", uid), page),
     nudgesReceived: query(collection(db, "nudges"), where("recipientUid", "==", uid), page),
