@@ -207,6 +207,19 @@ describe("revokeAppleTokensIfNeeded", () => {
   });
 
   it.each([
+    [
+      "German",
+      "Der Vorgang konnte nicht abgeschlossen werden. (com.apple.AuthenticationServices.AuthorizationError Fehler 1001.)",
+    ],
+    ["French", "L’opération n’a pas pu s’achever. (com.apple.AuthenticationServices.AuthorizationError erreur 1001.)"],
+    ["Japanese", "操作を完了できませんでした。（com.apple.AuthenticationServices.AuthorizationErrorエラー1001）"],
+  ])("reports cancel when the sheet-closed message is in %s", async (_label, message) => {
+    mockSignInWithApple.mockRejectedValue(new Error(message));
+    expect(await revokeAppleTokensIfNeeded(appleUser)).toBe("cancelled");
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([
     ["auth/popup-closed-by-user", { code: "auth/popup-closed-by-user", message: "The user closed the sheet." }],
     ["auth/cancelled-popup-request", { code: "auth/cancelled-popup-request", message: "Already presented." }],
     ["string code 1001", { code: "1001", message: "x" }],
@@ -222,6 +235,10 @@ describe("revokeAppleTokensIfNeeded", () => {
     ["a network request cancelled", new Error("The network request was cancelled.")],
     ["a different Apple error code", new Error("(com.apple.AuthenticationServices.AuthorizationError error 1000.)")],
     ["a bare 1001 in other text", new Error("error 1001")],
+    [
+      "a longer code that starts with 1001",
+      new Error("(com.apple.AuthenticationServices.AuthorizationError Fehler 10010.)"),
+    ],
     ["a different Firebase code", { code: "auth/network-request-failed", message: "cancel" }],
     ["a non-object", "cancel 1001"],
   ])("treats %s as a failed revoke, not a cancel", async (_label, err) => {

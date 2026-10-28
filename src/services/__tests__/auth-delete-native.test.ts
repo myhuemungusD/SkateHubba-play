@@ -158,6 +158,7 @@ describe("deleteAccount — native shell", () => {
       expect(APPLE_REVOKE_FAILED_MESSAGE).toContain("nothing was deleted");
       expect(APPLE_REVOKE_FAILED_MESSAGE).toContain("Try Again");
       expect(APPLE_REVOKE_FAILED_MESSAGE).toContain(APPLE_SETTINGS_PATH);
+      expect(APPLE_REVOKE_FAILED_MESSAGE).toContain("Email privacy@skatehubba.com");
       expect(APPLE_REVOKE_FAILED_MESSAGE).not.toMatch(/android|google|play store|web|anyway/i);
     });
   });

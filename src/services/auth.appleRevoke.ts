@@ -180,9 +180,11 @@ const APPLE_CANCEL_CODES: ReadonlySet<string> = new Set([
  * completed. (com.apple.AuthenticationServices.AuthorizationError error
  * 1001.)" is the only place the domain and code survive. This matches that
  * exact domain + code pair, not free text such as "cancel", so a network
- * "request cancelled" is never mistaken for the user closing the sheet.
+ * "request cancelled" is never mistaken for the user closing the sheet. The
+ * word between them is localized ("Fehler", "erreur", "エラー"), so any
+ * short non-digit run is allowed there.
  */
-const APPLE_CANCEL_NSERROR = /\bAuthorizationError error 1001\b/;
+const APPLE_CANCEL_NSERROR = /AuthorizationError\D{1,20}1001\b/;
 
 /**
  * True when the Apple sheet was closed by the user, judged by error code:

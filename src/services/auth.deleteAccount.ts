@@ -22,14 +22,14 @@ export class CodedError extends Error {
   }
 }
 
+/** Where the user can disconnect SkateHubba from their Apple Account by hand. */
+export const APPLE_SETTINGS_PATH = "Settings → your name → Sign-In & Security → Sign in with Apple";
+
 /**
  * Shown when the user closes the Apple sheet during a delete. Plain and
  * iOS-only on purpose: the sheet only appears on iPhone/iPad, and this copy
  * must not mention any other platform (Guideline 2.3.10).
  */
-/** Where the user can disconnect SkateHubba from their Apple Account by hand. */
-export const APPLE_SETTINGS_PATH = "Settings → your name → Sign-In & Security → Sign in with Apple";
-
 export const APPLE_CANCEL_MESSAGE =
   "Deleting your account needs a quick confirmation with Apple. Nothing was deleted. " +
   "Tap Try Again and confirm with Apple to finish. " +
@@ -43,7 +43,8 @@ export const APPLE_CANCEL_MESSAGE =
 export const APPLE_REVOKE_FAILED_MESSAGE =
   "We couldn't disconnect SkateHubba from your Apple Account, so nothing was deleted. " +
   "Check your connection and tap Try Again. " +
-  `You can also remove SkateHubba in ${APPLE_SETTINGS_PATH}.`;
+  `You can also remove SkateHubba in ${APPLE_SETTINGS_PATH}. ` +
+  "Still stuck? Email privacy@skatehubba.com to ask us to delete your account.";
 
 /**
  * The user closed the Apple sheet: stop with nothing deleted, every time.
