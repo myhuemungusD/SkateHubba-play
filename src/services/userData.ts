@@ -80,10 +80,11 @@ const SECTION_ORDER = Object.keys(SECTION_NAMES) as ExportSection[];
  *   - `games` (player1Uid|player2Uid|judgeId) — games they played or judged
  *   - `clips` (playerUid == uid)       — clips they authored
  *   - `clipVotes` (uid == uid)         — votes they cast
- *   - `spots` (createdBy == uid)       — skate spots they added, active or
- *                                        deactivated by an admin or moderator
- *                                        (two queries, one per isActive value;
- *                                        see userDataQueries.ts)
+ *   - `spots` (createdBy == uid, isActive) — skate spots they added. Rules
+ *                                        only allow reading active spots, so
+ *                                        a spot an admin or moderator
+ *                                        deactivated is left out (users can
+ *                                        only hard-delete their own spots)
  *   - `notifications` (recipientUid)   — notifications received
  *   - `nudges` (senderUid|recipientUid) — nudges sent or received
  *   - `users/{uid}/blocked_users/*`    — people they have blocked
@@ -284,7 +285,6 @@ type ReadLabel =
   | "clips"
   | "clipVotes"
   | "spots"
-  | "spotsInactive"
   | "notifications"
   | "nudgesSent"
   | "nudgesReceived"
@@ -323,7 +323,6 @@ export async function exportUserData(uid: string, username: string): Promise<Use
     clips,
     clipVotes,
     spots,
-    spotsInactive,
     notifications,
     nudgesSent,
     nudgesReceived,
@@ -344,7 +343,6 @@ export async function exportUserData(uid: string, username: string): Promise<Use
     readCollection("clips", q.clips),
     readCollection("clipVotes", q.clipVotes),
     readCollection("spots", q.spots),
-    readCollection("spotsInactive", q.spotsInactive),
     readCollection("notifications", q.notifications),
     readCollection("nudgesSent", q.nudgesSent),
     readCollection("nudgesReceived", q.nudgesReceived),
@@ -366,7 +364,6 @@ export async function exportUserData(uid: string, username: string): Promise<Use
     ["clips", clips],
     ["clipVotes", clipVotes],
     ["spots", spots],
-    ["spotsInactive", spotsInactive],
     ["notifications", notifications],
     ["nudgesSent", nudgesSent],
     ["nudgesReceived", nudgesReceived],
@@ -392,7 +389,7 @@ export async function exportUserData(uid: string, username: string): Promise<Use
     games: [gamesAsP1, gamesAsP2, gamesAsJudge],
     clips: [clips],
     clipVotes: [clipVotes],
-    spots: [spots, spotsInactive],
+    spots: [spots],
     notifications: [notifications],
     nudges: [nudgesSent, nudgesReceived],
     blockedUsers: [blocked],
@@ -430,8 +427,7 @@ export async function exportUserData(uid: string, username: string): Promise<Use
     games: sortNewestFirst(dedupe(gamesAsP1.value, gamesAsP2.value, gamesAsJudge.value)),
     clips: sortNewestFirst(clips.value),
     clipVotes: sortNewestFirst(clipVotes.value),
-    // Active and inactive can't overlap (one isActive value per doc).
-    spots: sortNewestFirst(dedupe(spots.value, spotsInactive.value)),
+    spots: sortNewestFirst(spots.value),
     notifications: sortNewestFirst(notifications.value),
     // Sent and received can't overlap today, but dedupe keeps one copy if a
     // self-nudge ever slips through.
