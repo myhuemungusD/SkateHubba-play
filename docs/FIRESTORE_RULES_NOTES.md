@@ -1169,3 +1169,46 @@ Note this is NOT status-gated: erasure must succeed on closed
 disputes too. A closed dispute's tally is "final" as a product
 statement; it must still shed the verdicts of a deleted account.
 ```
+
+<a id="r46"></a>
+
+## r46
+
+Precedes: `match /{path=**}/comments/{commentId}` (and the `messages`, `here` blocks after it)
+
+```text
+"Download my data" (src/services/userDataQueries.ts, built from
+FIRESTORE_EXPORT in api/account/_userDataRegistry.ts) reads the user's
+comments, spot chat messages and spot presence with collection-group
+queries: collectionGroup('comments').where('userId', '==', uid), and the
+same for messages (userId) and here (uid).
+
+Collection-group queries are matched against recursive rules only. The
+per-path rules (spots/{id}/comments, clips/{id}/comments,
+spots/{id}/messages, spotPresence/{id}/here, all "any signed-in user")
+never apply to them, so without these blocks the queries are refused and
+those export sections come back missing.
+
+These blocks grant READ ONLY, and only of docs whose owner field is the
+caller's uid, so a query must carry that equality filter (rules are not
+filters). Every doc they can match is already readable by any signed-in
+user through its per-path rule, so nothing becomes newly visible to
+anyone. They grant no write: writes still need a per-path allow.
+
+WARNING: any new collection named comments, messages or here, anywhere in
+the tree, is readable by the user its userId (comments, messages) or uid
+(here) field names, even if it has no rules block and only server code
+(Admin SDK) writes it. Pick another name for anything that must stay
+server-only. The export coverage test
+(src/services/__tests__/user-data-export.coverage.test.ts) fails if a group
+holds a collection the export registry doesn't plan for, checking both the
+rules blocks and the erasure registry keys, and if server code in api/ or
+functions/src/ names one of these collections in a file not already known.
+
+Indexes: the COLLECTION_GROUP single-field overrides for comments.userId,
+messages.userId and here.uid already exist in firestore.indexes.json.
+
+Red-team: rules-tests/user-data-export.rules.test.ts (another user, and a
+signed-out visitor, can't run the owner's group reads; nobody can run a
+group read without their own-uid filter).
+```

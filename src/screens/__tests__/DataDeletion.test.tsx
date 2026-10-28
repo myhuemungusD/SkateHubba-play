@@ -14,7 +14,15 @@ describe("DataDeletion", () => {
     render(<DataDeletion onBack={vi.fn()} />);
     const text = document.body.textContent ?? "";
     expect(text).toContain('under "Your data & sign out", tap "Download my data"');
+    expect(text).toContain("comments and spot chat");
+    expect(text).toContain("the spots you added, including ones no longer on the map");
+    expect(text).toContain("If any part can't be read, or is too long to fit in full, the file says which.");
+    // Not "everything": the file names what it leaves out, and how to get it.
+    expect(text).toContain("a machine-readable copy of your account data");
+    expect(text).not.toContain("everything we store");
+    expect(text).toContain("aren't in the file yet; the file lists them");
     expect(text).toContain('under "Your data & sign out", tap "Delete account"');
+    expect(text).not.toContain("under Account");
     expect(text.toLowerCase()).not.toContain("lobby");
   });
 
@@ -24,6 +32,8 @@ describe("DataDeletion", () => {
     expect(text).not.toContain("everything we store");
     expect(text).toContain("The file does not yet include everything we hold.");
     expect(text).toContain("To get a copy of those, email privacy@skatehubba.com.");
+    // Comments, spot chat and check-ins are in the file now (registry reads), so nothing says they're left out.
+    expect(text).not.toContain("are left out");
   });
 
   it("shows the same after-deletion facts as the Privacy Policy", () => {

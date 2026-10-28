@@ -1,22 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const {
-  mockGetDoc,
-  mockGetDocs,
-  mockCacheGetDoc,
-  mockCacheGetDocs,
-  mockStartAfter,
-  mockDoc,
-  mockCollection,
-  mockQuery,
-  mockWhere,
-  mockOrderBy,
-  mockLimitFn,
-  mockTimestampClass,
-} = vi.hoisted(() => {
-  // Minimal Timestamp stand-in — must be recognised by `instanceof` inside
-  // userData.ts so we re-export the same class from the firebase/firestore
-  // mock below.
+/**
+ * Unit tests for the registry-driven export. Firestore is replaced by a small
+ * in-memory router: `doc`, `collection`, `collectionGroup`, `where`, `limit`
+ * and `query` build plain descriptors, and the server reads look them up in
+ * `store` by a readable key, e.g. "games?player1Uid==u1" or "users/u1".
+ */
+const h = vi.hoisted(() => {
   class FakeTimestamp {
     constructor(
       public seconds: number,
@@ -26,659 +16,604 @@ const {
       return new Date(this.seconds * 1000 + this.nanoseconds / 1_000_000);
     }
   }
-
+  type Filter = { field: string; op: string; value: unknown };
+  type Q = { kind: "query"; source: string; filters: Filter[]; after?: string };
+  const toQuery = (base: unknown): Q => {
+    const b = base as { kind: string; path?: string } & Partial<Q>;
+    if (b.kind === "query") return { ...(b as Q), filters: [...(b as Q).filters] };
+    return { kind: "query", source: b.path as string, filters: [] };
+  };
   return {
-    // Server reads (getDocFromServer / getDocsFromServer): what the export uses.
+    FakeTimestamp,
     mockGetDoc: vi.fn(),
     mockGetDocs: vi.fn(),
-    // Cache-capable reads (getDoc / getDocs): the export must never use these.
     mockCacheGetDoc: vi.fn(),
     mockCacheGetDocs: vi.fn(),
-    mockStartAfter: vi.fn((d: { id: string }) => ({ startAfter: d.id })),
-    mockDoc: vi.fn((_db: unknown, ...pathSegments: string[]) => ({ path: pathSegments.join("/") })),
-    mockCollection: vi.fn((_db: unknown, ...pathSegments: string[]) => ({ path: pathSegments.join("/") })),
-    mockQuery: vi.fn((...args: unknown[]) => args),
+    mockOrderBy: vi.fn(),
     mockWhere: vi.fn((field: string, op: string, value: unknown) => ({ field, op, value })),
-    mockOrderBy: vi.fn((...args: unknown[]) => args),
-    mockLimitFn: vi.fn((...args: unknown[]) => args),
-    mockTimestampClass: FakeTimestamp,
+    doc: (_db: unknown, ...segs: string[]) => ({ kind: "doc", path: segs.join("/") }),
+    collection: (_db: unknown, ...segs: string[]) => ({ kind: "coll", path: segs.join("/") }),
+    collectionGroup: (_db: unknown, id: string) => ({ kind: "group", path: `**/${id}` }),
+    limit: (n: number) => ({ limit: n }),
+    startAfter: (d: { id: string }) => ({ startAfter: d.id }),
+    query: (base: unknown, ...cs: unknown[]) => {
+      const q = toQuery(base);
+      for (const c of cs) {
+        if (c && typeof c === "object" && "field" in c) q.filters.push(c as Filter);
+        if (c && typeof c === "object" && "startAfter" in c) q.after = (c as { startAfter: string }).startAfter;
+      }
+      return q;
+    },
+    keyOf: (q: Q) => `${q.source}${q.filters.map((f) => `?${f.field}${f.op}${String(f.value)}`).join("")}`,
   };
 });
 
 vi.mock("firebase/firestore", () => ({
-  Timestamp: mockTimestampClass,
-  collection: mockCollection,
-  doc: mockDoc,
-  getDoc: mockCacheGetDoc,
-  getDocs: mockCacheGetDocs,
-  getDocFromServer: mockGetDoc,
-  getDocsFromServer: mockGetDocs,
-  limit: mockLimitFn,
-  startAfter: mockStartAfter,
-  orderBy: mockOrderBy,
-  query: mockQuery,
-  where: mockWhere,
+  Timestamp: h.FakeTimestamp,
+  collection: h.collection,
+  collectionGroup: h.collectionGroup,
+  doc: h.doc,
+  getDoc: h.mockCacheGetDoc,
+  getDocs: h.mockCacheGetDocs,
+  getDocFromServer: h.mockGetDoc,
+  getDocsFromServer: h.mockGetDocs,
+  limit: h.limit,
+  startAfter: h.startAfter,
+  orderBy: h.mockOrderBy,
+  query: h.query,
+  where: h.mockWhere,
 }));
 
-vi.mock("../../firebase", () => ({
-  requireDb: () => ({}),
-}));
+vi.mock("../../firebase", () => ({ requireDb: () => ({}) }));
 
 // One attempt per read: retry timing is withRetry's own concern (retry.test.ts).
-const mockWithRetry = vi.fn((fn: () => Promise<unknown>) => fn());
-vi.mock("../../utils/retry", () => ({
-  withRetry: (fn: () => Promise<unknown>) => mockWithRetry(fn),
-}));
+vi.mock("../../utils/retry", () => ({ withRetry: (fn: () => Promise<unknown>) => fn() }));
 
 const mockCaptureMessage = vi.fn();
-vi.mock("../../lib/sentry", () => ({
-  captureMessage: (...args: unknown[]) => mockCaptureMessage(...args),
-}));
+vi.mock("../../lib/sentry", () => ({ captureMessage: (...args: unknown[]) => mockCaptureMessage(...args) }));
 
 const mockLoggerWarn = vi.fn();
 vi.mock("../logger", () => ({
-  logger: {
-    warn: (...args: unknown[]) => mockLoggerWarn(...args),
-    info: vi.fn(),
-    debug: vi.fn(),
-    error: vi.fn(),
-  },
+  logger: { warn: (...args: unknown[]) => mockLoggerWarn(...args), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 
 import {
   describeIncompleteExport,
   describeMissingSections,
   EXPORT_FAILED_MESSAGE,
+  EXPORT_NOT_INCLUDED,
+  NOT_INCLUDED_NOTICE,
   UserDataExportError,
   exportUserData,
   serializeUserData,
   userDataFilename,
   USER_DATA_EXPORT_SCHEMA_VERSION,
+  type ExportSection,
   type UserDataExport,
 } from "../userData";
+import { EXPORT_MAX_PAGES, EXPORT_PAGE_SIZE, exportReadPlan, isIncluded } from "../userDataQueries";
+import { FIRESTORE_EXPORT, type ExportPlan } from "../../../api/account/_userDataRegistry";
 
-/** Convenience factory for test bundles with all required fields. */
-function emptyBundle(overrides?: Partial<UserDataExport>): UserDataExport {
-  return {
-    schemaVersion: 2,
-    exportedAt: "2026-04-15T00:00:00.000Z",
-    complete: true,
-    missingSections: [],
-    truncatedSections: [],
-    capped: false,
-    subject: { uid: "u1", username: "sk8r" },
-    profile: null,
-    usernameReservation: null,
-    games: [],
-    clips: [],
-    clipVotes: [],
-    spots: [],
-    notifications: [],
-    nudges: [],
-    blockedUsers: [],
-    reports: [],
-    moderationStatements: [],
-    appeals: [],
-    ...overrides,
-  };
+const UID = "u1";
+
+type Docs = Array<{ id: string; path?: string; data: unknown }>;
+type ListAnswer = Docs | Error | ((page: number) => Docs | Error);
+
+/** Docs by path, and list answers by query key. Anything unset is empty. */
+let docs: Record<string, unknown | Error> = {};
+let lists: Record<string, ListAnswer> = {};
+
+function fsError(code: string): Error {
+  return Object.assign(new Error(`${code}: users/${UID} secret path`), { code });
 }
 
-function buildDoc(id: string, path: string, data: unknown) {
+function snapList(source: string, items: Array<{ id: string; path?: string; data: unknown }>) {
   return {
-    id,
-    ref: { path },
-    data: () => data,
-  };
-}
-
-function buildSingleDoc(exists: boolean, data: unknown, id = "doc") {
-  return {
-    id,
-    exists: () => exists,
-    data: () => data,
+    docs: items.map((d) => ({ id: d.id, ref: { path: d.path ?? `${source}/${d.id}` }, data: () => d.data })),
   };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockGetDoc.mockReset();
-  mockGetDocs.mockReset();
+  docs = {};
+  lists = {};
+  h.mockGetDoc.mockImplementation(async (ref: { path: string }) => {
+    const v = docs[ref.path];
+    if (v instanceof Error) throw v;
+    const id = ref.path.split("/").pop() as string;
+    return { id, exists: () => v !== undefined, data: () => v };
+  });
+  // A page's number: 1 without a cursor, else one more than the page that
+  // served the cursor doc.
+  const pageOfDoc = new Map<string, number>();
+  h.mockGetDocs.mockImplementation(async (q: Parameters<typeof h.keyOf>[0]) => {
+    const key = h.keyOf(q);
+    const page = q.after === undefined ? 1 : (pageOfDoc.get(`${key}#${q.after}`) as number) + 1;
+    const raw: ListAnswer | undefined = lists[key];
+    const a = typeof raw === "function" ? raw(page) : raw;
+    if (Array.isArray(a)) for (const d of a) pageOfDoc.set(`${key}#${d.id}`, page);
+    if (a instanceof Error) throw a;
+    return snapList(q.source, a ?? []);
+  });
 });
 
-/**
- * Which export query a mocked `query()` result is, e.g. "games:player1Uid" or
- * "users/u1/blocked_users", plus its page (1 = first page). The mocked
- * `query()` returns its arguments, so a next page is `[firstPage, startAfter]`.
- */
-function describeQuery(q: unknown): { key: string; page: number } {
-  let page = 1;
-  let args = q as unknown[];
-  while (Array.isArray(args[0])) {
-    page++;
-    args = args[0] as unknown[];
+function emptyBundle(overrides?: Partial<UserDataExport>): UserDataExport {
+  const sections: Record<string, unknown> = {};
+  for (const plan of Object.values(FIRESTORE_EXPORT) as ExportPlan[]) {
+    if (isIncluded(plan)) sections[plan.section] = [];
   }
-  const coll = (args[0] as { path: string }).path;
-  const firstWhere = args.find((a) => a && typeof a === "object" && "field" in (a as object)) as
-    { field: string } | undefined;
-  return { key: firstWhere ? `${coll}:${firstWhere.field}` : coll, page };
+  return {
+    ...(sections as unknown as UserDataExport),
+    schemaVersion: USER_DATA_EXPORT_SCHEMA_VERSION,
+    exportedAt: "2026-04-15T00:00:00.000Z",
+    complete: true,
+    missingSections: [],
+    truncatedSections: [],
+    capped: false,
+    notIncluded: [],
+    notIncludedNotice: "",
+    redactedFields: {},
+    subject: { uid: "u1", username: "sk8r" },
+    profile: null,
+    usernameReservation: null,
+    ...overrides,
+  };
 }
 
-/** n docs for a page of `coll`, ids `${prefix}${start}..`. */
-function docsPage(prefix: string, start: number, n: number) {
-  return Array.from({ length: n }, (_, i) => buildDoc(`${prefix}${start + i}`, `x/${prefix}${start + i}`, {}));
-}
+const ts = (sec: number) => new h.FakeTimestamp(sec, 0);
 
-describe("userData service", () => {
-  describe("exportUserData", () => {
-    it("throws when uid is missing", async () => {
-      await expect(exportUserData("", "sk8r")).rejects.toThrow("requires a uid");
-    });
+describe("exportReadPlan", () => {
+  let plan: ReturnType<typeof exportReadPlan>;
+  beforeEach(() => {
+    plan = exportReadPlan({} as never, UID, "sk8r");
+  });
 
-    it("bundles all surfaces into one export", async () => {
-      const profileData = { uid: "u1", username: "sk8r", wins: 5 };
-      const usernameData = { uid: "u1", reservedAt: new mockTimestampClass(1_700_000_000, 0) };
+  it("has one read per registry read, with unique labels", () => {
+    const labels = plan.map((p) => p.label);
+    expect(new Set(labels).size).toBe(labels.length);
+    // The two comment collections are one collection group, read once.
+    expect(labels.filter((l) => l === "group:comments.userId")).toHaveLength(1);
+  });
 
-      mockGetDoc
-        .mockResolvedValueOnce(buildSingleDoc(true, profileData, "u1")) // profile
-        .mockResolvedValueOnce(buildSingleDoc(true, usernameData, "sk8r")); // username reservation
+  it("covers every included section of the registry", () => {
+    const sections = new Set(plan.map((p) => p.section));
+    for (const p of Object.values(FIRESTORE_EXPORT) as ExportPlan[]) {
+      if (isIncluded(p)) expect(sections.has(p.section as ExportSection)).toBe(true);
+    }
+  });
 
-      mockGetDocs
-        .mockResolvedValueOnce({ docs: [buildDoc("g1", "games/g1", { player1Uid: "u1" })] }) // games p1
-        .mockResolvedValueOnce({ docs: [buildDoc("g2", "games/g2", { player2Uid: "u1" })] }) // games p2
-        .mockResolvedValueOnce({ docs: [] }) // games judge
-        .mockResolvedValueOnce({ docs: [buildDoc("c1", "clips/c1", { playerUid: "u1", trickName: "kickflip" })] })
-        .mockResolvedValueOnce({ docs: [buildDoc("cv1", "clipVotes/cv1", { uid: "u1" })] }) // clipVotes
-        .mockResolvedValueOnce({ docs: [buildDoc("s1", "spots/s1", { createdBy: "u1", isActive: true })] }) // spots
-        .mockResolvedValueOnce({ docs: [buildDoc("s0", "spots/s0", { createdBy: "u1", isActive: false })] }) // inactive
-        .mockResolvedValueOnce({ docs: [] }) // notifications
-        .mockResolvedValueOnce({ docs: [] }) // nudges sent
-        .mockResolvedValueOnce({ docs: [] }) // nudges received
-        .mockResolvedValueOnce({ docs: [buildDoc("b1", "users/u1/blocked_users/b1", { blockedUid: "b1" })] })
-        .mockResolvedValueOnce({ docs: [buildDoc("r1", "reports/r1", { reporterUid: "u1", reason: "spam" })] })
-        .mockResolvedValueOnce({ docs: [buildDoc("st1", "moderationStatements/st1", { subjectUid: "u1" })] })
-        .mockResolvedValueOnce({ docs: [buildDoc("ap1", "appeals/ap1", { appellantUid: "u1" })] });
+  it("never puts a uid or username in a log label", () => {
+    for (const p of plan) {
+      expect(p.label).not.toContain(UID);
+      expect(p.label).not.toContain("sk8r");
+    }
+  });
 
-      const bundle = await exportUserData("u1", "SK8R");
-
-      expect(bundle.schemaVersion).toBe(USER_DATA_EXPORT_SCHEMA_VERSION);
-      expect(bundle.complete).toBe(true);
-      expect(bundle.missingSections).toEqual([]);
-      expect(bundle.truncatedSections).toEqual([]);
-      expect(bundle).not.toHaveProperty("notice");
-      expect(bundle.capped).toBe(false);
-      // A complete export sends nothing to Sentry.
-      expect(mockCaptureMessage).not.toHaveBeenCalled();
-      expect(bundle.subject).toEqual({ uid: "u1", username: "sk8r" });
-      expect(bundle.profile?.data).toEqual(profileData);
-      expect(bundle.usernameReservation?.id).toBe("sk8r");
-      expect(bundle.games).toHaveLength(2);
-      expect(bundle.games[0].id).toBe("g1");
-      expect(bundle.clips).toHaveLength(1);
-      expect(bundle.clipVotes).toHaveLength(1);
-      // Active and admin-deactivated spots both land in the one section.
-      expect(bundle.spots.map((x) => x.id).sort()).toEqual(["s0", "s1"]);
-      expect(bundle.notifications).toHaveLength(0);
-      expect(bundle.nudges).toHaveLength(0);
-      expect(bundle.blockedUsers).toHaveLength(1);
-      expect(bundle.reports).toHaveLength(1);
-      expect(bundle.moderationStatements).toHaveLength(1);
-      expect(bundle.appeals).toHaveLength(1);
-      expect(() => new Date(bundle.exportedAt).toISOString()).not.toThrow();
-    });
-
-    it("deduplicates games that appear in both player1 and player2 queries", async () => {
-      mockGetDoc.mockResolvedValueOnce(buildSingleDoc(false, null)).mockResolvedValueOnce(buildSingleDoc(false, null));
-
-      const sharedGame = buildDoc("g1", "games/g1", { status: "complete" });
-      mockGetDocs
-        .mockResolvedValueOnce({ docs: [sharedGame] }) // games p1
-        .mockResolvedValueOnce({ docs: [sharedGame] }) // games p2
-        .mockResolvedValueOnce({ docs: [] }) // games judge
-        .mockResolvedValueOnce({ docs: [] }) // clips
-        .mockResolvedValueOnce({ docs: [] }) // clipVotes
-        .mockResolvedValueOnce({ docs: [] }) // spots
-        .mockResolvedValueOnce({ docs: [] }) // spots inactive
-        .mockResolvedValueOnce({ docs: [] }) // notifications
-        .mockResolvedValueOnce({ docs: [] }) // nudges sent
-        .mockResolvedValueOnce({ docs: [] }) // nudges received
-        .mockResolvedValueOnce({ docs: [] }) // blocks
-        .mockResolvedValueOnce({ docs: [] }) // reports
-        .mockResolvedValueOnce({ docs: [] }) // statements
-        .mockResolvedValueOnce({ docs: [] }); // appeals
-
-      const bundle = await exportUserData("u1", "sk8r");
-      expect(bundle.games).toHaveLength(1);
-    });
-
-    it("returns null profile when doc doesn't exist", async () => {
-      mockGetDoc.mockResolvedValueOnce(buildSingleDoc(false, null)).mockResolvedValueOnce(buildSingleDoc(false, null));
-      mockGetDocs.mockResolvedValue({ docs: [] });
-
-      const bundle = await exportUserData("u1", "sk8r");
-      expect(bundle.profile).toBeNull();
-      expect(bundle.usernameReservation).toBeNull();
-      // Not there is not the same as couldn't read it.
-      expect(bundle.complete).toBe(true);
-      expect(bundle.missingSections).toEqual([]);
-    });
-
-    it("skips username reservation when username is blank", async () => {
-      mockGetDoc.mockResolvedValueOnce(buildSingleDoc(false, null));
-      mockGetDocs.mockResolvedValue({ docs: [] });
-
-      const bundle = await exportUserData("u1", "   ");
-      expect(bundle.usernameReservation).toBeNull();
-      // Only one getDoc call — the profile. No username lookup.
-      expect(mockGetDoc).toHaveBeenCalledTimes(1);
-    });
-
-    it("normalises Firestore Timestamps to ISO strings", async () => {
-      const ts = new mockTimestampClass(1_700_000_000, 0);
-      const profileData = { uid: "u1", createdAt: ts };
-      mockGetDoc
-        .mockResolvedValueOnce(buildSingleDoc(true, profileData, "u1"))
-        .mockResolvedValueOnce(buildSingleDoc(false, null));
-      mockGetDocs.mockResolvedValue({ docs: [] });
-
-      const bundle = await exportUserData("u1", "sk8r");
-      expect(bundle.profile?.data.createdAt).toBe(new Date(1_700_000_000_000).toISOString());
-    });
-
-    it("coerces non-object doc data to an empty object", async () => {
-      // Firestore's data() shouldn't ever return a primitive, but the
-      // fallback keeps ExportedDoc.data well-typed if it does.
-      mockGetDoc
-        .mockResolvedValueOnce(buildSingleDoc(true, "not-an-object", "u1"))
-        .mockResolvedValueOnce(buildSingleDoc(false, null));
-      mockGetDocs.mockResolvedValue({ docs: [] });
-
-      const bundle = await exportUserData("u1", "sk8r");
-      expect(bundle.profile?.data).toEqual({});
-    });
-
-    it("normalises Timestamps nested in arrays", async () => {
-      const ts = new mockTimestampClass(1_700_000_000, 0);
-      const profileData = { uid: "u1", history: [{ when: ts, what: "login" }] };
-      mockGetDoc
-        .mockResolvedValueOnce(buildSingleDoc(true, profileData, "u1"))
-        .mockResolvedValueOnce(buildSingleDoc(false, null));
-      mockGetDocs.mockResolvedValue({ docs: [] });
-
-      const bundle = await exportUserData("u1", "sk8r");
-      const history = bundle.profile?.data.history as Array<Record<string, unknown>>;
-      expect(history[0].when).toBe(new Date(1_700_000_000_000).toISOString());
-    });
-
-    it("deduplicates nudges that appear in both sent and received queries", async () => {
-      mockGetDoc.mockResolvedValueOnce(buildSingleDoc(false, null)).mockResolvedValueOnce(buildSingleDoc(false, null));
-
-      const sharedNudge = buildDoc("n1", "nudges/n1", { senderUid: "u1", recipientUid: "u1" });
-      mockGetDocs
-        .mockResolvedValueOnce({ docs: [] }) // games p1
-        .mockResolvedValueOnce({ docs: [] }) // games p2
-        .mockResolvedValueOnce({ docs: [] }) // games judge
-        .mockResolvedValueOnce({ docs: [] }) // clips
-        .mockResolvedValueOnce({ docs: [] }) // clipVotes
-        .mockResolvedValueOnce({ docs: [] }) // spots
-        .mockResolvedValueOnce({ docs: [] }) // spots inactive
-        .mockResolvedValueOnce({ docs: [] }) // notifications
-        .mockResolvedValueOnce({ docs: [sharedNudge] }) // nudges sent
-        .mockResolvedValueOnce({ docs: [sharedNudge] }) // nudges received
-        .mockResolvedValueOnce({ docs: [] }) // blocks
-        .mockResolvedValueOnce({ docs: [] }) // reports
-        .mockResolvedValueOnce({ docs: [] }) // statements
-        .mockResolvedValueOnce({ docs: [] }); // appeals
-
-      const bundle = await exportUserData("u1", "sk8r");
-      expect(bundle.nudges).toHaveLength(1);
-    });
-
-    it("reads only from the server, never the offline cache", async () => {
-      mockGetDoc.mockResolvedValue(buildSingleDoc(false, null));
-      mockGetDocs.mockResolvedValue({ docs: [] });
-
-      await exportUserData("u1", "sk8r");
-      // Offline, getDoc/getDocs answer from cache and look like success; the
-      // server-only reads throw `unavailable` instead, so the gap is named.
-      expect(mockCacheGetDoc).not.toHaveBeenCalled();
-      expect(mockCacheGetDocs).not.toHaveBeenCalled();
-      expect(mockGetDoc).toHaveBeenCalledTimes(2);
-      expect(mockGetDocs).toHaveBeenCalledTimes(14);
-    });
-
-    it("names a section the server couldn't be reached for (offline) instead of calling the file complete", async () => {
-      mockGetDoc.mockResolvedValue(buildSingleDoc(true, { uid: "u1" }, "u1"));
-      mockGetDocs.mockImplementation(async (q: unknown) => {
-        if (describeQuery(q).key === "notifications:recipientUid") {
-          throw Object.assign(new Error("Failed to get documents from server."), { code: "unavailable" });
-        }
-        return { docs: [] };
+  it("uses equality filters only, and reads spots once per isActive value (#910)", () => {
+    expect(h.mockOrderBy).not.toHaveBeenCalled();
+    const ops = new Set(h.mockWhere.mock.calls.map(([, op]) => op));
+    expect([...ops].sort()).toEqual(["==", "array-contains"]);
+    const spots = plan.filter((p) => p.section === "spots");
+    expect(spots.map((p) => p.label)).toEqual(["spots.createdBy.isActive=true", "spots.createdBy.isActive=false"]);
+    for (const [read, active] of [
+      [spots[0], true],
+      [spots[1], false],
+    ] as const) {
+      expect(read.step).toMatchObject({
+        type: "query",
+        first: {
+          source: "spots",
+          filters: [
+            { field: "createdBy", value: UID },
+            { field: "isActive", value: active },
+          ],
+        },
       });
+    }
+  });
 
-      const bundle = await exportUserData("u1", "sk8r");
+  it("skips the username read when there is no username", () => {
+    const blank = exportReadPlan({} as never, UID, "");
+    expect(blank.find((p) => p.section === "usernameReservation")?.step).toBeNull();
+  });
+});
+
+describe("exportUserData", () => {
+  it("throws when uid is missing", async () => {
+    await expect(exportUserData("", "x")).rejects.toThrow(/requires a uid/);
+  });
+
+  it("bundles every kind of read into one file", async () => {
+    docs["users/u1"] = { username: "sk8r", createdAt: ts(1) };
+    docs["usernames/sk8r"] = { uid: UID };
+    docs["users/u1/profileCustom/main"] = { theme: "night" };
+    docs["diceStats/u1"] = { rating: 1200 };
+    docs["drops/d1/claims/u1"] = { claimedAt: ts(5) };
+    lists["games?player1Uid==u1"] = [{ id: "g1", data: { createdAt: ts(10) } }];
+    lists["games?judgeId==u1"] = [
+      { id: "g1", data: { createdAt: ts(10) } },
+      { id: "g2", data: { createdAt: ts(20) } },
+    ];
+    lists["users/u1/wallet"] = [{ id: "balance", data: { amount: 5 } }];
+    lists["diceGames?playerUidsarray-contains" + "u1"] = [{ id: "dg1", data: {} }];
+    lists["**/comments?userId==u1"] = [
+      { id: "c1", path: "spots/s1/comments/c1", data: {} },
+      { id: "c1", path: "clips/k1/comments/c1", data: {} },
+    ];
+    lists["drops"] = [
+      { id: "d1", data: { title: "drop" } },
+      { id: "d2", data: { title: "other drop" } },
+    ];
+
+    const bundle = await exportUserData(UID, "SK8R ");
+
+    expect(bundle.schemaVersion).toBe(4);
+    expect(bundle.complete).toBe(true);
+    expect(bundle.notice).toBeUndefined();
+    // complete means every read succeeded, not that the file holds it all:
+    // what the client can't read is named, with where to ask for it.
+    expect(bundle.notIncluded).toEqual([...EXPORT_NOT_INCLUDED]);
+    expect(bundle.notIncludedNotice).toBe(NOT_INCLUDED_NOTICE);
+    expect(bundle.subject).toEqual({ uid: UID, username: "sk8r" });
+    expect(bundle.profile).toMatchObject({
+      id: "u1",
+      path: "users/u1",
+      data: { createdAt: "1970-01-01T00:00:01.000Z" },
+    });
+    expect(bundle.usernameReservation?.path).toBe("usernames/sk8r");
+    expect(bundle.profileCustom?.data).toEqual({ theme: "night" });
+    expect(bundle.diceStats?.data).toEqual({ rating: 1200 });
+    expect(bundle.mapState).toBeNull();
+    // Played and judged the same game: one copy, newest first.
+    expect(bundle.games.map((g) => g.id)).toEqual(["g2", "g1"]);
+    expect(bundle.wallet.map((d) => d.path)).toEqual(["users/u1/wallet/balance"]);
+    expect(bundle.diceGames.map((d) => d.id)).toEqual(["dg1"]);
+    // Same id under two parents: both kept (deduped by path, not id).
+    expect(bundle.comments.map((d) => d.path)).toEqual(["spots/s1/comments/c1", "clips/k1/comments/c1"]);
+    // The user's claim under each drop; the drop docs themselves stay out.
+    expect(bundle.dropClaims.map((d) => d.path)).toEqual(["drops/d1/claims/u1"]);
+    expect(bundle.dropEntries).toEqual([]);
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
+  });
+
+  it("has a key for every section, a list or one doc", async () => {
+    const bundle = await exportUserData(UID, "sk8r");
+    for (const p of Object.values(FIRESTORE_EXPORT) as ExportPlan[]) {
+      if (isIncluded(p)) expect(bundle).toHaveProperty(p.section);
+    }
+    expect(bundle.games).toEqual([]);
+    expect(bundle.profile).toBeNull();
+  });
+
+  it("leaves out device tokens and staff uids, and says which fields it left out", async () => {
+    lists["users/u1/private"] = [{ id: "profile", data: { email: "a@b.c", fcmTokens: ["tok"] } }];
+    docs["bans/u1"] = { reason: "spam", bannedBy: "admin-uid" };
+    docs["users/u1"] = { username: "sk8r", verifiedBy: "admin-uid" };
+    lists["reports?reporterUid==u1"] = [{ id: "r1", data: { reason: "x", resolvedBy: "admin-uid" } }];
+    lists["moderationStatements?subjectUid==u1"] = [{ id: "m1", data: { reason: "y", createdBy: "admin-uid" } }];
+    lists["appeals?appellantUid==u1"] = [{ id: "a1", data: { status: "upheld", reviewedBy: "admin-uid" } }];
+    lists["disputes?setterUid==u1"] = [{ id: "d1", data: { adminRuling: "land", adminRuledBy: "admin-uid" } }];
+    lists["proBlessings?targetUid==u1"] = [{ id: "b1", data: { status: "revoked", revokedBy: "admin-uid" } }];
+
+    const bundle = await exportUserData(UID, "sk8r");
+    const json = serializeUserData(bundle);
+
+    expect(json).not.toContain("admin-uid");
+    expect(json).not.toContain("tok");
+    expect(bundle.privateProfile[0].data).toEqual({ email: "a@b.c" });
+    expect(bundle.ban?.data).toEqual({ reason: "spam" });
+    expect(bundle.redactedFields).toMatchObject({
+      profile: ["verifiedBy"],
+      privateProfile: ["fcmTokens"],
+      ban: ["bannedBy"],
+      reports: ["resolvedBy"],
+      moderationStatements: ["createdBy"],
+      appeals: ["reviewedBy"],
+      disputes: ["adminRuledBy"],
+      proBlessings: ["revokedBy"],
+    });
+  });
+
+  it("skips the username reservation when username is blank, without calling it missing", async () => {
+    docs["users/u1"] = { username: "" };
+    const bundle = await exportUserData(UID, "   ");
+    expect(bundle.usernameReservation).toBeNull();
+    expect(bundle.complete).toBe(true);
+    expect(h.mockGetDoc.mock.calls.some(([ref]) => (ref as { path: string }).path.startsWith("usernames/"))).toBe(
+      false,
+    );
+  });
+
+  it("normalises Timestamps, nested ones too, and coerces non-object data to {}", async () => {
+    docs["users/u1"] = { history: [{ at: ts(2) }], nested: { at: ts(3) } };
+    docs["diceStats/u1"] = "not an object";
+    const bundle = await exportUserData(UID, "sk8r");
+    expect(bundle.profile?.data).toEqual({
+      history: [{ at: "1970-01-01T00:00:02.000Z" }],
+      nested: { at: "1970-01-01T00:00:03.000Z" },
+    });
+    expect(bundle.diceStats?.data).toEqual({});
+  });
+
+  it("reads only from the server, never the offline cache", async () => {
+    await exportUserData(UID, "sk8r");
+    expect(h.mockGetDoc).toHaveBeenCalled();
+    expect(h.mockGetDocs).toHaveBeenCalled();
+    expect(h.mockCacheGetDoc).not.toHaveBeenCalled();
+    expect(h.mockCacheGetDocs).not.toHaveBeenCalled();
+  });
+
+  it("sorts each list newest first in memory; docs without createdAt go last", async () => {
+    lists["clips?playerUid==u1"] = [
+      { id: "none", data: {} },
+      { id: "old", data: { createdAt: ts(1) } },
+      { id: "mid", data: { createdAt: 5000 } },
+      { id: "new", data: { createdAt: ts(9) } },
+      { id: "bad", data: { createdAt: "not a date" } },
+      { id: "older", data: { createdAt: ts(0) } },
+    ];
+    const bundle = await exportUserData(UID, "sk8r");
+    expect(bundle.clips.map((c) => c.id)).toEqual(["new", "mid", "old", "older", "none", "bad"]);
+  });
+
+  describe("partial files", () => {
+    it("names a section that failed instead of exporting it as silently empty", async () => {
+      lists["games?player2Uid==u1"] = fsError("unavailable");
+      lists["games?player1Uid==u1"] = [{ id: "g1", data: {} }];
+      lists["clips?playerUid==u1"] = [{ id: "k1", data: {} }];
+
+      const bundle = await exportUserData(UID, "sk8r");
+
       expect(bundle.complete).toBe(false);
-      expect(bundle.missingSections).toEqual(["notifications"]);
-      expect(bundle.notice).toContain("We couldn't load all of your notifications this time");
+      expect(bundle.missingSections).toEqual(["games"]);
+      expect(bundle.games.map((g) => g.id)).toEqual(["g1"]);
+      expect(bundle.clips.map((c) => c.id)).toEqual(["k1"]);
+      expect(bundle.notice).toBe(
+        "Some of your data is missing from this file. We couldn't load all of your game history this time, so " +
+          "that part of the file may be empty or incomplete. Try again in a few minutes. If you need a complete " +
+          "copy, email privacy@skatehubba.com.",
+      );
+    });
+
+    it("puts active and deactivated spots in one section, newest first", async () => {
+      lists["spots?createdBy==u1?isActive==true"] = [{ id: "s1", data: { isActive: true, createdAt: ts(10) } }];
+      lists["spots?createdBy==u1?isActive==false"] = [{ id: "s0", data: { isActive: false, createdAt: ts(20) } }];
+      const bundle = await exportUserData(UID, "sk8r");
+      expect(bundle.complete).toBe(true);
+      expect(bundle.spots.map((d) => d.id)).toEqual(["s0", "s1"]);
+    });
+
+    it("keeps active spots and names spots as missing when the inactive read is refused (rules not deployed)", async () => {
+      lists["spots?createdBy==u1?isActive==true"] = [{ id: "s1", data: { isActive: true } }];
+      lists["spots?createdBy==u1?isActive==false"] = fsError("permission-denied");
+      const bundle = await exportUserData(UID, "sk8r");
+      expect(bundle.complete).toBe(false);
+      expect(bundle.missingSections).toEqual(["spots"]);
+      expect(bundle.spots.map((d) => d.id)).toEqual(["s1"]);
       expect(mockLoggerWarn).toHaveBeenCalledWith("user_data_export_collection_failed", {
-        section: "notifications",
+        section: "spots.createdBy.isActive=false",
+        code: "permission-denied",
+      });
+    });
+
+    it("lists failed sections once each, in registry order", async () => {
+      lists["appeals?appellantUid==u1"] = fsError("permission-denied");
+      lists["games?judgeId==u1"] = fsError("unavailable");
+      lists["games?player1Uid==u1"] = fsError("unavailable");
+      docs["users/u1"] = fsError("unavailable");
+      const bundle = await exportUserData(UID, "sk8r");
+      expect(bundle.missingSections).toEqual(["profile", "games", "appeals"]);
+    });
+
+    it("names the username section when its read fails", async () => {
+      docs["usernames/sk8r"] = fsError("unavailable");
+      const bundle = await exportUserData(UID, "sk8r");
+      expect(bundle.missingSections).toEqual(["usernameReservation"]);
+      expect(bundle.usernameReservation).toBeNull();
+    });
+
+    it("logs a failure without a Firestore code as unknown", async () => {
+      lists["clips?playerUid==u1"] = new Error("boom");
+      const bundle = await exportUserData(UID, "sk8r");
+      expect(bundle.missingSections).toEqual(["clips"]);
+      expect(mockLoggerWarn).toHaveBeenCalledWith("user_data_export_collection_failed", {
+        section: "clips",
+        code: "unknown",
+      });
+    });
+
+    it("sends partial files to Sentry and the log with labels and codes only", async () => {
+      lists["games?player1Uid==u1"] = fsError("unavailable");
+      docs["users/u1"] = fsError("permission-denied");
+
+      await exportUserData(UID, "sk8r");
+
+      expect(mockCaptureMessage).toHaveBeenCalledWith("user_data_export_partial", {
+        level: "warning",
+        extra: {
+          missingSections: ["profile", "games"],
+          truncatedSections: [],
+          codes: { users: "permission-denied", "games.player1Uid": "unavailable" },
+        },
+      });
+      expect(mockLoggerWarn).toHaveBeenCalledWith("user_data_export_doc_failed", {
+        section: "users",
+        code: "permission-denied",
+      });
+      expect(mockLoggerWarn).toHaveBeenCalledWith("user_data_export_collection_failed", {
+        section: "games.player1Uid",
         code: "unavailable",
       });
+      const logged = JSON.stringify([mockLoggerWarn.mock.calls, mockCaptureMessage.mock.calls]);
+      expect(logged).not.toContain(UID);
+      expect(logged).not.toContain("sk8r");
+      expect(logged).not.toContain("secret path");
     });
 
-    it("pages through a long list with startAfter until a page comes back short", async () => {
-      mockGetDoc.mockResolvedValue(buildSingleDoc(false, null));
-      mockGetDocs.mockImplementation(async (q: unknown) => {
-        const { key, page } = describeQuery(q);
-        if (key !== "games:player1Uid") return { docs: [] };
-        return { docs: page === 1 ? docsPage("g", 0, 500) : docsPage("g", 500, 3) };
+    it("throws instead of making a near-empty file when nothing could be read", async () => {
+      h.mockGetDoc.mockRejectedValue(fsError("unavailable"));
+      h.mockGetDocs.mockRejectedValue(fsError("unavailable"));
+      const err = await exportUserData(UID, "sk8r").catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(UserDataExportError);
+      expect((err as Error).message).toBe(EXPORT_FAILED_MESSAGE);
+      expect((err as UserDataExportError).codes).toMatchObject({
+        users: "unavailable",
+        "games.player1Uid": "unavailable",
       });
-
-      const bundle = await exportUserData("u1", "sk8r");
-      expect(bundle.games).toHaveLength(503);
-      expect(mockStartAfter).toHaveBeenCalledTimes(1);
-      expect(mockStartAfter).toHaveBeenCalledWith(expect.objectContaining({ id: "g499" }));
-      expect(bundle.complete).toBe(true);
-      expect(bundle.truncatedSections).toEqual([]);
-      expect(bundle.capped).toBe(false);
     });
 
-    it("stops at the page ceiling and marks the list incomplete instead of cutting it off silently", async () => {
-      mockGetDoc.mockResolvedValue(buildSingleDoc(false, null));
-      let notificationPages = 0;
-      mockGetDocs.mockImplementation(async (q: unknown) => {
-        const { key, page } = describeQuery(q);
-        if (key !== "notifications:recipientUid") return { docs: [] };
-        notificationPages++;
-        return { docs: docsPage("n", (page - 1) * 500, 500) };
+    it("still makes a file when only one read works", async () => {
+      h.mockGetDocs.mockRejectedValue(fsError("unavailable"));
+      h.mockGetDoc.mockImplementation(async (ref: { path: string }) => {
+        if (ref.path === "users/u1") return { id: "u1", exists: () => true, data: () => ({ a: 1 }) };
+        throw fsError("unavailable");
       });
-
-      const bundle = await exportUserData("u1", "sk8r");
-      expect(notificationPages).toBe(10);
-      expect(bundle.notifications).toHaveLength(5000);
+      const bundle = await exportUserData(UID, "");
+      expect(bundle.profile?.id).toBe("u1");
       expect(bundle.complete).toBe(false);
-      expect(bundle.missingSections).toEqual([]);
+    });
+  });
+
+  describe("paging", () => {
+    const fullPage = (prefix: string, page: number) =>
+      Array.from({ length: EXPORT_PAGE_SIZE }, (_, i) => ({ id: `${prefix}${page}-${i}`, data: {} }));
+
+    it("pages with startAfter until a page comes back short", async () => {
+      lists["notifications?recipientUid==u1"] = (page) => (page < 3 ? fullPage("n", page) : [{ id: "last", data: {} }]);
+      const bundle = await exportUserData(UID, "sk8r");
+      expect(bundle.notifications).toHaveLength(2 * EXPORT_PAGE_SIZE + 1);
+      expect(bundle.complete).toBe(true);
+    });
+
+    it("stops at the page ceiling and marks the list truncated instead of cutting it off silently", async () => {
+      lists["notifications?recipientUid==u1"] = (page) => fullPage("n", page);
+      const bundle = await exportUserData(UID, "sk8r");
+      expect(bundle.notifications).toHaveLength(EXPORT_MAX_PAGES * EXPORT_PAGE_SIZE);
       expect(bundle.truncatedSections).toEqual(["notifications"]);
       expect(bundle.capped).toBe(true);
-      expect(bundle.notice).toBe(
-        "Some of your data is missing from this file. You have more than 5,000 items in your notifications, " +
-          "so the file holds the first 5,000. If you need a complete copy, email privacy@skatehubba.com.",
-      );
       expect(mockLoggerWarn).toHaveBeenCalledWith("user_data_export_list_truncated", {
         section: "notifications",
-        pages: 10,
+        pages: EXPORT_MAX_PAGES,
       });
     });
 
     it("keeps the pages it got when a later page fails, and names the section", async () => {
-      mockGetDoc.mockResolvedValue(buildSingleDoc(false, null));
-      mockGetDocs.mockImplementation(async (q: unknown) => {
-        const { key, page } = describeQuery(q);
-        if (key !== "clips:playerUid") return { docs: [] };
-        if (page === 1) return { docs: docsPage("c", 0, 500) };
-        throw Object.assign(new Error("deadline"), { code: "deadline-exceeded" });
-      });
-
-      const bundle = await exportUserData("u1", "sk8r");
-      expect(bundle.clips).toHaveLength(500);
-      expect(bundle.missingSections).toEqual(["clips"]);
-      expect(bundle.complete).toBe(false);
-    });
-
-    it("sends partial exports to Sentry as a warning with section names and error codes only", async () => {
-      mockGetDoc
-        .mockResolvedValueOnce(buildSingleDoc(true, { uid: "u1", username: "sk8r", email: "a@b.test" }, "u1"))
-        .mockResolvedValueOnce(buildSingleDoc(true, { uid: "u1" }, "sk8r"));
-      mockGetDocs.mockImplementation(async (q: unknown) => {
-        if (describeQuery(q).key === "spots:createdBy") {
-          throw Object.assign(new Error("Missing or insufficient permissions on users/u1"), {
-            code: "permission-denied",
-          });
-        }
-        return { docs: [] };
-      });
-
-      await exportUserData("u1", "sk8r");
-      expect(mockCaptureMessage).toHaveBeenCalledTimes(1);
-      expect(mockCaptureMessage).toHaveBeenCalledWith("user_data_export_partial", {
-        level: "warning",
-        extra: {
-          missingSections: ["spots"],
-          truncatedSections: [],
-          codes: { spots: "permission-denied", spotsInactive: "permission-denied" },
-        },
-      });
-      // Nothing that identifies the user, and not the raw error message.
-      const sent = JSON.stringify([mockCaptureMessage.mock.calls, mockLoggerWarn.mock.calls]);
-      expect(sent).not.toContain("u1");
-      expect(sent).not.toContain("sk8r");
-      expect(sent).not.toContain("a@b.test");
-      expect(sent).not.toContain("insufficient");
-    });
-
-    it("keeps active spots and names spots as missing when the inactive-spots read is refused (rules not deployed yet)", async () => {
-      mockGetDoc.mockResolvedValue(buildSingleDoc(true, { uid: "u1" }, "u1"));
-      mockGetDocs.mockImplementation(async (q: unknown) => {
-        const args = q as unknown[];
-        const isSpots = describeQuery(q).key === "spots:createdBy";
-        const inactive = args.some((a) => a && typeof a === "object" && (a as { value?: unknown }).value === false);
-        if (isSpots && inactive) throw Object.assign(new Error("denied"), { code: "permission-denied" });
-        if (isSpots) return { docs: [buildDoc("s1", "spots/s1", { createdBy: "u1", isActive: true })] };
-        return { docs: [] };
-      });
-
-      const bundle = await exportUserData("u1", "sk8r");
-      expect(bundle.spots.map((x) => x.id)).toEqual(["s1"]);
-      expect(bundle.complete).toBe(false);
-      expect(bundle.missingSections).toEqual(["spots"]);
-      expect(mockLoggerWarn).toHaveBeenCalledWith("user_data_export_collection_failed", {
-        section: "spotsInactive",
-        code: "permission-denied",
-      });
-    });
-
-    it("throws instead of making a near-empty file when nothing could be read", async () => {
-      const offline = () => Promise.reject(Object.assign(new Error("offline"), { code: "unavailable" }));
-      mockGetDoc.mockImplementation(offline);
-      mockGetDocs.mockImplementation(offline);
-
-      const err = await exportUserData("u1", "sk8r").catch((e: unknown) => e);
-      expect(err).toBeInstanceOf(UserDataExportError);
-      expect((err as Error).message).toBe(EXPORT_FAILED_MESSAGE);
-      expect((err as UserDataExportError).codes).toMatchObject({
-        profile: "unavailable",
-        usernameReservation: "unavailable",
-        gamesAsPlayer1: "unavailable",
-        spotsInactive: "unavailable",
-        appeals: "unavailable",
-      });
-      expect(Object.keys((err as UserDataExportError).codes)).toHaveLength(16);
-      // The thrown error is reported by the caller; no extra partial event.
-      expect(mockCaptureMessage).not.toHaveBeenCalled();
-    });
-
-    it("still makes a file when only one read works", async () => {
-      mockGetDoc.mockResolvedValueOnce(buildSingleDoc(true, { uid: "u1" }, "u1"));
-      mockGetDoc.mockRejectedValueOnce(Object.assign(new Error("x"), { code: "unavailable" }));
-      mockGetDocs.mockRejectedValue(Object.assign(new Error("x"), { code: "unavailable" }));
-
-      const bundle = await exportUserData("u1", "sk8r");
-      expect(bundle.profile?.id).toBe("u1");
-      expect(bundle.complete).toBe(false);
-      expect(bundle.missingSections).toHaveLength(11);
-    });
-
-    it("throws when nothing could be read and there is no username to look up", async () => {
-      mockGetDoc.mockRejectedValue(Object.assign(new Error("x"), { code: "unavailable" }));
-      mockGetDocs.mockRejectedValue(new Error("no code"));
-
-      const err = await exportUserData("u1", "").catch((e: unknown) => e);
-      expect(err).toBeInstanceOf(UserDataExportError);
-      expect((err as UserDataExportError).codes).not.toHaveProperty("usernameReservation");
-      expect((err as UserDataExportError).codes.clips).toBe("unknown");
-    });
-
-    it("names a section that failed to load instead of exporting it as silently empty", async () => {
-      mockGetDoc.mockResolvedValueOnce(buildSingleDoc(false, null)).mockResolvedValueOnce(buildSingleDoc(false, null));
-
-      mockGetDocs
-        .mockRejectedValueOnce(Object.assign(new Error("nope"), { code: "failed-precondition" })) // games p1
-        .mockResolvedValue({ docs: [] }); // remaining surfaces
-
-      const bundle = await exportUserData("u1", "sk8r");
-      expect(bundle.games).toEqual([]);
-      expect(bundle.complete).toBe(false);
-      expect(bundle.missingSections).toEqual(["games"]);
-      expect(bundle.notice).toBe(
-        "Some of your data is missing from this file. We couldn't load all of your game history this time, " +
-          "so that part of the file may be empty or incomplete. Try again in a few minutes. If you need a " +
-          "complete copy, email privacy@skatehubba.com.",
-      );
-      expect(mockLoggerWarn).toHaveBeenCalledWith("user_data_export_collection_failed", {
-        section: "gamesAsPlayer1",
-        code: "failed-precondition",
-      });
-    });
-
-    it("lists every failed section once, in a fixed order", async () => {
-      mockGetDoc
-        .mockRejectedValueOnce(Object.assign(new Error("nope"), { code: "unavailable" })) // profile
-        .mockResolvedValueOnce(buildSingleDoc(false, null));
-      const fail = () => Promise.reject(Object.assign(new Error("nope"), { code: "permission-denied" }));
-      mockGetDocs
-        .mockImplementationOnce(fail) // games p1
-        .mockImplementationOnce(fail) // games p2 (same section, listed once)
-        .mockResolvedValueOnce({ docs: [] }) // games judge
-        .mockResolvedValueOnce({ docs: [] }) // clips
-        .mockResolvedValueOnce({ docs: [] }) // clipVotes
-        .mockImplementationOnce(fail) // spots
-        .mockImplementationOnce(fail) // spots inactive (same section, listed once)
-        .mockResolvedValueOnce({ docs: [] }) // notifications
-        .mockResolvedValueOnce({ docs: [] }) // nudges sent
-        .mockImplementationOnce(fail) // nudges received
-        .mockResolvedValue({ docs: [] }); // the rest
-
-      const bundle = await exportUserData("u1", "sk8r");
-      expect(bundle.complete).toBe(false);
-      expect(bundle.missingSections).toEqual(["profile", "games", "spots", "nudges"]);
-      expect(bundle.notice).toContain("all of your profile, game history, spots and nudges this time");
-    });
-
-    it("names the username section when its read fails", async () => {
-      mockGetDoc.mockResolvedValueOnce(buildSingleDoc(true, { uid: "u1" }, "u1"));
-      mockGetDoc.mockRejectedValueOnce(Object.assign(new Error("nope"), { code: "unavailable" }));
-      mockGetDocs.mockResolvedValue({ docs: [] });
-
-      const bundle = await exportUserData("u1", "sk8r");
-      expect(bundle.usernameReservation).toBeNull();
-      expect(bundle.missingSections).toEqual(["usernameReservation"]);
-    });
-
-    it("sorts each list newest first in memory (the queries have no orderBy)", async () => {
-      mockGetDoc.mockResolvedValueOnce(buildSingleDoc(false, null)).mockResolvedValueOnce(buildSingleDoc(false, null));
-      const at = (s: number) => new mockTimestampClass(s, 0);
-      mockGetDocs
-        .mockResolvedValueOnce({
-          docs: [
-            buildDoc("old", "games/old", { createdAt: at(1_700_000_000) }),
-            buildDoc("undated", "games/undated", {}),
-          ],
-        }) // games p1
-        .mockResolvedValueOnce({ docs: [buildDoc("new", "games/new", { createdAt: at(1_800_000_000) })] }) // p2
-        .mockResolvedValueOnce({ docs: [buildDoc("mid", "games/mid", { createdAt: at(1_750_000_000) })] }) // judge
-        .mockResolvedValueOnce({
-          docs: [
-            buildDoc("c-num", "clips/c-num", { createdAt: 1_600_000_000_000 }),
-            buildDoc("c-bad", "clips/c-bad", { createdAt: "not a date" }),
-            buildDoc("c-new", "clips/c-new", { createdAt: at(1_700_000_000) }),
-            buildDoc("c-tie", "clips/c-tie", { createdAt: at(1_700_000_000) }),
-          ],
-        }) // clips
-        .mockResolvedValue({ docs: [] });
-
-      const bundle = await exportUserData("u1", "sk8r");
-      expect(bundle.games.map((g) => g.id)).toEqual(["new", "mid", "old", "undated"]);
-      expect(bundle.clips.map((c) => c.id)).toEqual(["c-new", "c-tie", "c-num", "c-bad"]);
-    });
-
-    it("runs equality-only queries (no orderBy) and reads spots as one active and one inactive query", async () => {
-      mockGetDoc.mockResolvedValue(buildSingleDoc(false, null));
-      mockGetDocs.mockResolvedValue({ docs: [] });
-
-      await exportUserData("u1", "sk8r");
-      expect(mockOrderBy).not.toHaveBeenCalled();
-      expect(mockWhere).toHaveBeenCalledWith("createdBy", "==", "u1");
-      expect(mockWhere).toHaveBeenCalledWith("isActive", "==", true);
-      expect(mockWhere).toHaveBeenCalledWith("isActive", "==", false);
-      expect(mockLimitFn).toHaveBeenCalledWith(500);
-      expect(mockStartAfter).not.toHaveBeenCalled();
-    });
-
-    it("returns null when profile read fails", async () => {
-      mockGetDoc
-        .mockRejectedValueOnce(Object.assign(new Error("nope"), { code: "permission-denied" }))
-        .mockResolvedValueOnce(buildSingleDoc(false, null));
-      mockGetDocs.mockResolvedValue({ docs: [] });
-
-      const bundle = await exportUserData("u1", "sk8r");
-      expect(bundle.profile).toBeNull();
-      expect(bundle.missingSections).toEqual(["profile"]);
-      // A fixed section name, never the doc path (which holds the uid).
-      expect(mockLoggerWarn).toHaveBeenCalledWith("user_data_export_doc_failed", {
-        section: "profile",
-        code: "permission-denied",
-      });
+      lists["notifications?recipientUid==u1"] = (page) => (page === 1 ? fullPage("n", 1) : fsError("unavailable"));
+      const bundle = await exportUserData(UID, "sk8r");
+      expect(bundle.notifications).toHaveLength(EXPORT_PAGE_SIZE);
+      expect(bundle.missingSections).toEqual(["notifications"]);
     });
   });
 
-  describe("describeMissingSections", () => {
-    it.each([
-      [[], ""],
-      [["games"], "game history"],
-      [["games", "clips"], "game history and clips"],
-      [["profile", "reports", "appeals"], "profile, reports and appeals"],
-      [["spots", "blockedUsers"], "spots and blocked list"],
-    ] as const)("%j reads as %j", (sections, expected) => {
-      expect(describeMissingSections(sections)).toBe(expected);
+  describe("reads under each parent (drop claims and entries)", () => {
+    it("keeps the claims it got and names the section when one get fails", async () => {
+      lists["drops"] = [
+        { id: "d1", data: {} },
+        { id: "d2", data: {} },
+      ];
+      docs["drops/d1/claims/u1"] = { at: 1 };
+      docs["drops/d2/claims/u1"] = fsError("unavailable");
+      const bundle = await exportUserData(UID, "sk8r");
+      expect(bundle.dropClaims.map((d) => d.path)).toEqual(["drops/d1/claims/u1"]);
+      expect(bundle.missingSections).toEqual(["dropClaims"]);
+    });
+
+    it("names both drop sections when the drop list can't be read", async () => {
+      lists["drops"] = fsError("unavailable");
+      const bundle = await exportUserData(UID, "sk8r");
+      expect(bundle.missingSections).toEqual(["dropClaims", "dropEntries"]);
+    });
+
+    it("marks them truncated when the drop list hits the ceiling", async () => {
+      lists["drops"] = (page) =>
+        Array.from({ length: EXPORT_PAGE_SIZE }, (_, i) => ({ id: `d${page}-${i}`, data: {} }));
+      const bundle = await exportUserData(UID, "sk8r");
+      expect(bundle.truncatedSections).toEqual(["dropClaims", "dropEntries"]);
     });
   });
+});
 
-  describe("describeIncompleteExport", () => {
-    it("is empty when nothing is missing", () => {
-      expect(describeIncompleteExport([], [])).toBe("");
-    });
+describe("describeMissingSections", () => {
+  it.each([
+    [[], ""],
+    [["games"], "game history"],
+    [["games", "clips"], "game history and clips"],
+    [["profile", "reports", "appeals"], "profile, reports and appeals"],
+    [["spots", "blockedUsers"], "spots and blocked list"],
+    // Three cooldown sections share one plain name: said once.
+    [["notificationLimits", "reportLimits", "wallet"], "send and report cooldowns and Hubba Bucks balance"],
+  ] as const)("%j reads as %j", (sections, expected) => {
+    expect(describeMissingSections(sections)).toBe(expected);
+  });
+});
 
-    it("covers failed reads and several long lists together", () => {
-      expect(describeIncompleteExport(["games"], ["notifications", "clipVotes"])).toBe(
-        "We couldn't load all of your game history this time, so that part of the file may be empty or " +
-          "incomplete. Try again in a few minutes. You have more than 5,000 items in each of your notifications " +
-          "and clip votes, so the file holds the first 5,000 of each. If you need a complete copy, email privacy@skatehubba.com.",
-      );
-    });
+describe("what the file leaves out", () => {
+  it("names every left-out collection that holds the user's data, from the registry", () => {
+    expect(EXPORT_NOT_INCLUDED).toEqual([
+      "daily closet limits",
+      "dice game cooldown",
+      "nudge cooldowns",
+      "trick labels made from your clips",
+      "your trick-training consent withdrawal",
+      "your pro reviews",
+    ]);
   });
 
-  describe("serializeUserData", () => {
-    it("returns pretty-printed JSON", () => {
-      const bundle = emptyBundle();
-      const json = serializeUserData(bundle);
-      expect(json).toContain("\n  ");
-      expect(JSON.parse(json)).toEqual(bundle);
-    });
+  it("says so in plain words and points to the privacy contact", () => {
+    expect(NOT_INCLUDED_NOTICE).toBe(
+      "This file doesn't include daily closet limits, dice game cooldown, nudge cooldowns, trick labels made " +
+        "from your clips, your trick-training consent withdrawal and your pro reviews. To get a copy of those, " +
+        "email privacy@skatehubba.com.",
+    );
   });
 
-  describe("userDataFilename", () => {
-    it("uses username and date", () => {
-      const name = userDataFilename(emptyBundle({ exportedAt: "2026-04-15T12:34:56.000Z" }));
-      expect(name).toBe("skatehubba-data-sk8r-2026-04-15.json");
-    });
+  it("is in an incomplete file too", async () => {
+    lists["games?player2Uid==u1"] = fsError("unavailable");
+    const bundle = await exportUserData(UID, "sk8r");
+    expect(bundle.complete).toBe(false);
+    expect(bundle.notIncluded).toEqual([...EXPORT_NOT_INCLUDED]);
+  });
+});
 
-    it("falls back to 'user' when username is empty", () => {
-      const name = userDataFilename(emptyBundle({ subject: { uid: "u1", username: "" } }));
-      expect(name).toBe("skatehubba-data-user-2026-04-15.json");
-    });
+describe("describeIncompleteExport", () => {
+  it("is empty when nothing is missing", () => {
+    expect(describeIncompleteExport([], [])).toBe("");
+  });
 
-    it("strips illegal filesystem characters from username", () => {
-      const name = userDataFilename(emptyBundle({ subject: { uid: "u1", username: "sk8r/../etc" } }));
-      expect(name).toBe("skatehubba-data-sk8retc-2026-04-15.json");
-    });
+  it("covers failed reads and several long lists together", () => {
+    expect(describeIncompleteExport(["games"], ["notifications", "clipVotes"])).toBe(
+      "We couldn't load all of your game history this time, so that part of the file may be empty or " +
+        "incomplete. Try again in a few minutes. You have more than 5,000 items in each of your notifications " +
+        "and clip votes, so the file holds the first 5,000 of each. If you need a complete copy, email privacy@skatehubba.com.",
+    );
+  });
+});
+
+describe("serializeUserData", () => {
+  it("returns pretty-printed JSON", () => {
+    const bundle = emptyBundle();
+    const json = serializeUserData(bundle);
+    expect(json).toContain("\n  ");
+    expect(JSON.parse(json)).toEqual(bundle);
+  });
+});
+
+describe("userDataFilename", () => {
+  it("uses username and date", () => {
+    expect(userDataFilename(emptyBundle({ exportedAt: "2026-04-15T12:34:56.000Z" }))).toBe(
+      "skatehubba-data-sk8r-2026-04-15.json",
+    );
+  });
+
+  it("falls back to 'user' when username is empty", () => {
+    expect(userDataFilename(emptyBundle({ subject: { uid: "u1", username: "" } }))).toBe(
+      "skatehubba-data-user-2026-04-15.json",
+    );
+  });
+
+  it("strips illegal filesystem characters from username", () => {
+    expect(userDataFilename(emptyBundle({ subject: { uid: "u1", username: "sk8r/../etc" } }))).toBe(
+      "skatehubba-data-sk8retc-2026-04-15.json",
+    );
   });
 });

@@ -4109,5 +4109,17 @@ service cloud.firestore {
       allow update: if false;
       allow delete: if isSignedIn() && resource.data.proUid == request.auth.uid;
     }
+
+    // ── Download my data: own docs across a collection group (read only) ──
+    // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r46
+    match /{path=**}/comments/{commentId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+    match /{path=**}/messages/{messageId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+    match /{path=**}/here/{presenceId} {
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
   }
 }

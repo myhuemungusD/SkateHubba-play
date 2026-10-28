@@ -18,6 +18,6 @@
     "composite": true,
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsBuildInfo"
   },
-  "include": ["src"],
+  "include": ["src", "api/account/_userDataRegistry.ts"],
   "exclude": ["src/**/*.test.*", "src/**/*.spec.*", "src/**/__tests__/**", "src/__mocks__/**"]
 }

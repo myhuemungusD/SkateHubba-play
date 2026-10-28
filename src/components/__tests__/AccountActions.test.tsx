@@ -56,6 +56,29 @@ describe("AccountActions", () => {
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
 
+    it("says what the file leaves out and where to ask for it, even when it is complete", async () => {
+      const onDownloadData = vi.fn().mockResolvedValue({ missingSections: [], truncatedSections: [] });
+      render(<AccountActions onDownloadData={onDownloadData} />);
+
+      await userEvent.click(downloadBtn());
+
+      const note = await screen.findByRole("status");
+      expect(note).toHaveTextContent(/^This file doesn't include daily closet limits, .+ and your pro reviews\./);
+      expect(note).toHaveTextContent("To get a copy of those, email privacy@skatehubba.com.");
+      expect(downloadBtn()).not.toContainElement(note);
+      expect(document.getElementById(downloadBtn().getAttribute("aria-describedby") as string)).toContainElement(note);
+    });
+
+    it("shows no not-included note when the export fails", async () => {
+      const onDownloadData = vi.fn().mockRejectedValueOnce(new Error("network down"));
+      render(<AccountActions onDownloadData={onDownloadData} />);
+
+      await userEvent.click(downloadBtn());
+
+      await screen.findByRole("alert");
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+
     it("warns in plain words when the saved file is missing sections", async () => {
       const onDownloadData = vi
         .fn()
