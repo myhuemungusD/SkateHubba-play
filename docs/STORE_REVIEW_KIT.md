@@ -49,7 +49,7 @@ Run `review:seed` first so the screens have content. These are captures of the w
 
 ### App Store set, without touching production
 
-The App Store set is `ios-6.9` (1320×2868, the source set) and `ios-6.3` (1206×2622, the 6.3" size Apple lists as required). The app is iPhone-only, so there is no iPad set. Capture it from a local build with the iPhone launch flags (from `.github/workflows/ios-release.yml`: everything on except `VITE_FEATURE_DICE_ENABLED`, Skate Runner, the Closet (`VITE_FEATURE_CLOSET_ENABLED`, with drops, Studio and trading), pro blessing (`VITE_FEATURE_PRO_BLESSING`), Bucks purchase, SMS 2FA, the random challenger and What's That Trick), against the emulators:
+The App Store set is `ios-6.9` (1320×2868, the source set) and `ios-6.3` (1206×2622, the 6.3" size Apple lists as required). The app is iPhone-only, so there is no iPad set. Capture it from a local build with the iPhone launch flags (from `.github/workflows/ios-release.yml`: everything on except `VITE_FEATURE_DICE_ENABLED`, Skate Runner, the Closet (`VITE_FEATURE_CLOSET_ENABLED`, with drops, Studio and trading), pro blessing (`VITE_FEATURE_PRO_BLESSING`), Bucks purchase, SMS 2FA, the random challenger and What's That Trick), against the emulators. This 1.2.0 build has no Share button on the Clips feed: `VITE_FEATURE_FEED_SHARE` and `ShareClipButton` exist only on `main` (and are off in its store builds), so the 1.2.0 screenshots and review notes must not show or mention feed sharing:
 
 ```bash
 npm run emulators                                  # auth, firestore, storage
