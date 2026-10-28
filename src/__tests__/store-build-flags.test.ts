@@ -37,4 +37,11 @@ describe("store build flags", () => {
     expect(ios.get(TESTER_INPUT)).toContain("inputs.wtt");
     expect(android.get(TESTER_INPUT)).toBe('"false"');
   });
+
+  it("the feed Share button is off in every store build, Xcode Cloud included", () => {
+    expect(ios.get("VITE_FEATURE_FEED_SHARE")).toBe('"false"');
+    expect(android.get("VITE_FEATURE_FEED_SHARE")).toBe('"false"');
+    const xcodeCloud = readFileSync(resolve(__dirname, "../../ios/App/ci_scripts/ci_post_clone.sh"), "utf8");
+    expect(xcodeCloud).toMatch(/^export VITE_FEATURE_FEED_SHARE=false$/m);
+  });
 });

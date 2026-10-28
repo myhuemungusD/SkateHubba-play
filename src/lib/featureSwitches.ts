@@ -37,6 +37,7 @@ export const FEATURE_SWITCH_KEYS = [
   "VITE_FEATURE_TIPS",
   "VITE_FEATURE_TURN_LENGTH",
   "VITE_FEATURE_RANDOM_CHALLENGER",
+  "VITE_FEATURE_FEED_SHARE",
 ] as const;
 
 export interface FeatureSwitchState {

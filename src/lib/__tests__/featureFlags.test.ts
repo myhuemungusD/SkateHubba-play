@@ -537,6 +537,26 @@ describe("isRandomChallengerEnabled (VITE_FEATURE_RANDOM_CHALLENGER)", () => {
   });
 });
 
+describe("isFeedShareEnabled (VITE_FEATURE_FEED_SHARE)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    localStorage.removeItem(FEATURE_TESTER_STORAGE_KEY);
+  });
+  it("is off by default and on only for literal true", async () => {
+    const { isFeedShareEnabled } = await import("../featureFlags");
+    expect(isFeedShareEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_FEED_SHARE", "1");
+    expect(isFeedShareEnabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_FEED_SHARE", "true");
+    expect(isFeedShareEnabled()).toBe(true);
+  });
+  it("turns on for a web tester", async () => {
+    const { isFeedShareEnabled } = await import("../featureFlags");
+    localStorage.setItem(FEATURE_TESTER_STORAGE_KEY, "tester-uid");
+    expect(isFeedShareEnabled()).toBe(true);
+  });
+});
+
 describe("tester override in native store builds (App Store 2.3.1)", () => {
   afterEach(() => {
     localStorage.removeItem(FEATURE_TESTER_STORAGE_KEY);

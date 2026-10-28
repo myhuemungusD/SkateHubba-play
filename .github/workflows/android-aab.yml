@@ -123,6 +123,9 @@ jobs:
           VITE_FEATURE_SMS_2FA_ENABLED: "false"
           # "Find me a challenger" on Home stays off (button hidden).
           VITE_FEATURE_RANDOM_CHALLENGER: "false"
+          # Share button on the Clips feed rail stays off until it ships post-launch
+          # (matches ci_post_clone.sh for Xcode Cloud).
+          VITE_FEATURE_FEED_SHARE: "false"
           # iOS turns this on only for tester builds (its "wtt" input).
           VITE_FEATURE_WTT_ENABLED: "false"
           # Store builds must fail, not warn, when the service-worker Firebase
