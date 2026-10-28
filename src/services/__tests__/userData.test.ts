@@ -188,7 +188,8 @@ describe("userData service", () => {
         .mockResolvedValueOnce({ docs: [] }) // games judge
         .mockResolvedValueOnce({ docs: [buildDoc("c1", "clips/c1", { playerUid: "u1", trickName: "kickflip" })] })
         .mockResolvedValueOnce({ docs: [buildDoc("cv1", "clipVotes/cv1", { uid: "u1" })] }) // clipVotes
-        .mockResolvedValueOnce({ docs: [buildDoc("s1", "spots/s1", { createdBy: "u1" })] }) // spots
+        .mockResolvedValueOnce({ docs: [buildDoc("s1", "spots/s1", { createdBy: "u1", isActive: true })] }) // spots
+        .mockResolvedValueOnce({ docs: [buildDoc("s0", "spots/s0", { createdBy: "u1", isActive: false })] }) // inactive
         .mockResolvedValueOnce({ docs: [] }) // notifications
         .mockResolvedValueOnce({ docs: [] }) // nudges sent
         .mockResolvedValueOnce({ docs: [] }) // nudges received
@@ -214,7 +215,8 @@ describe("userData service", () => {
       expect(bundle.games[0].id).toBe("g1");
       expect(bundle.clips).toHaveLength(1);
       expect(bundle.clipVotes).toHaveLength(1);
-      expect(bundle.spots).toHaveLength(1);
+      // Active and admin-deactivated spots both land in the one section.
+      expect(bundle.spots.map((x) => x.id).sort()).toEqual(["s0", "s1"]);
       expect(bundle.notifications).toHaveLength(0);
       expect(bundle.nudges).toHaveLength(0);
       expect(bundle.blockedUsers).toHaveLength(1);
@@ -235,6 +237,7 @@ describe("userData service", () => {
         .mockResolvedValueOnce({ docs: [] }) // clips
         .mockResolvedValueOnce({ docs: [] }) // clipVotes
         .mockResolvedValueOnce({ docs: [] }) // spots
+        .mockResolvedValueOnce({ docs: [] }) // spots inactive
         .mockResolvedValueOnce({ docs: [] }) // notifications
         .mockResolvedValueOnce({ docs: [] }) // nudges sent
         .mockResolvedValueOnce({ docs: [] }) // nudges received
@@ -317,6 +320,7 @@ describe("userData service", () => {
         .mockResolvedValueOnce({ docs: [] }) // clips
         .mockResolvedValueOnce({ docs: [] }) // clipVotes
         .mockResolvedValueOnce({ docs: [] }) // spots
+        .mockResolvedValueOnce({ docs: [] }) // spots inactive
         .mockResolvedValueOnce({ docs: [] }) // notifications
         .mockResolvedValueOnce({ docs: [sharedNudge] }) // nudges sent
         .mockResolvedValueOnce({ docs: [sharedNudge] }) // nudges received
@@ -339,7 +343,7 @@ describe("userData service", () => {
       expect(mockCacheGetDoc).not.toHaveBeenCalled();
       expect(mockCacheGetDocs).not.toHaveBeenCalled();
       expect(mockGetDoc).toHaveBeenCalledTimes(2);
-      expect(mockGetDocs).toHaveBeenCalledTimes(13);
+      expect(mockGetDocs).toHaveBeenCalledTimes(14);
     });
 
     it("names a section the server couldn't be reached for (offline) instead of calling the file complete", async () => {
@@ -437,7 +441,11 @@ describe("userData service", () => {
       expect(mockCaptureMessage).toHaveBeenCalledTimes(1);
       expect(mockCaptureMessage).toHaveBeenCalledWith("user_data_export_partial", {
         level: "warning",
-        extra: { missingSections: ["spots"], truncatedSections: [], codes: { spots: "permission-denied" } },
+        extra: {
+          missingSections: ["spots"],
+          truncatedSections: [],
+          codes: { spots: "permission-denied", spotsInactive: "permission-denied" },
+        },
       });
       // Nothing that identifies the user, and not the raw error message.
       const sent = JSON.stringify([mockCaptureMessage.mock.calls, mockLoggerWarn.mock.calls]);
@@ -445,6 +453,27 @@ describe("userData service", () => {
       expect(sent).not.toContain("sk8r");
       expect(sent).not.toContain("a@b.test");
       expect(sent).not.toContain("insufficient");
+    });
+
+    it("keeps active spots and names spots as missing when the inactive-spots read is refused (rules not deployed yet)", async () => {
+      mockGetDoc.mockResolvedValue(buildSingleDoc(true, { uid: "u1" }, "u1"));
+      mockGetDocs.mockImplementation(async (q: unknown) => {
+        const args = q as unknown[];
+        const isSpots = describeQuery(q).key === "spots:createdBy";
+        const inactive = args.some((a) => a && typeof a === "object" && (a as { value?: unknown }).value === false);
+        if (isSpots && inactive) throw Object.assign(new Error("denied"), { code: "permission-denied" });
+        if (isSpots) return { docs: [buildDoc("s1", "spots/s1", { createdBy: "u1", isActive: true })] };
+        return { docs: [] };
+      });
+
+      const bundle = await exportUserData("u1", "sk8r");
+      expect(bundle.spots.map((x) => x.id)).toEqual(["s1"]);
+      expect(bundle.complete).toBe(false);
+      expect(bundle.missingSections).toEqual(["spots"]);
+      expect(mockLoggerWarn).toHaveBeenCalledWith("user_data_export_collection_failed", {
+        section: "spotsInactive",
+        code: "permission-denied",
+      });
     });
 
     it("throws instead of making a near-empty file when nothing could be read", async () => {
@@ -459,9 +488,10 @@ describe("userData service", () => {
         profile: "unavailable",
         usernameReservation: "unavailable",
         gamesAsPlayer1: "unavailable",
+        spotsInactive: "unavailable",
         appeals: "unavailable",
       });
-      expect(Object.keys((err as UserDataExportError).codes)).toHaveLength(15);
+      expect(Object.keys((err as UserDataExportError).codes)).toHaveLength(16);
       // The thrown error is reported by the caller; no extra partial event.
       expect(mockCaptureMessage).not.toHaveBeenCalled();
     });
@@ -521,6 +551,7 @@ describe("userData service", () => {
         .mockResolvedValueOnce({ docs: [] }) // clips
         .mockResolvedValueOnce({ docs: [] }) // clipVotes
         .mockImplementationOnce(fail) // spots
+        .mockImplementationOnce(fail) // spots inactive (same section, listed once)
         .mockResolvedValueOnce({ docs: [] }) // notifications
         .mockResolvedValueOnce({ docs: [] }) // nudges sent
         .mockImplementationOnce(fail) // nudges received
@@ -569,7 +600,7 @@ describe("userData service", () => {
       expect(bundle.clips.map((c) => c.id)).toEqual(["c-new", "c-tie", "c-num", "c-bad"]);
     });
 
-    it("runs equality-only queries (no orderBy) and filters spots to the ones rules let the owner read", async () => {
+    it("runs equality-only queries (no orderBy) and reads spots as one active and one inactive query", async () => {
       mockGetDoc.mockResolvedValue(buildSingleDoc(false, null));
       mockGetDocs.mockResolvedValue({ docs: [] });
 
@@ -577,6 +608,7 @@ describe("userData service", () => {
       expect(mockOrderBy).not.toHaveBeenCalled();
       expect(mockWhere).toHaveBeenCalledWith("createdBy", "==", "u1");
       expect(mockWhere).toHaveBeenCalledWith("isActive", "==", true);
+      expect(mockWhere).toHaveBeenCalledWith("isActive", "==", false);
       expect(mockLimitFn).toHaveBeenCalledWith(500);
       expect(mockStartAfter).not.toHaveBeenCalled();
     });
