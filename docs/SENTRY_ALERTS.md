@@ -171,15 +171,20 @@ Adjust `tracesSampleRate` in `src/main.tsx` as traffic grows.
 
 ## PII Scrubbing
 
-The `beforeSend` hook in `src/main.tsx` does considerably more than strip `email=`:
+`src/main.tsx` wires two hooks from `src/lib/sentryScrub.ts` into Sentry init, plus `sendDefaultPii: false`:
 
-- Scrubs `email`, `token`, `api_key`, `access_token`, `id_token`, `auth`, `authorization`, `password`, `phone`, `otp`, and `verification_code` from event URLs.
-- Deletes `event.request.headers` and `event.request.cookies` wholesale.
-- Deletes `event.user.email` and `event.user.ip_address`.
-- Scrubs breadcrumb `data.url` values.
-- `sendDefaultPii: false` is set at init.
+- `beforeBreadcrumb` (`scrubBreadcrumb`) runs as each crumb is recorded. It drops the console copies our own logger prints (the logger records its own redacted `app` crumb). On every other crumb, it strips the query and fragment from each http(s) URL in the message and in every data string, and redacts `email`, `*uid` and `*username` keys at any depth. On `url`, `from` and `to` it also redacts the named PII params listed below.
+- `beforeSend` (`scrubEvent`):
+  - Scrubs `email`, `token`, `api_key`, `access_token`, `id_token`, `auth`, `authorization`, `password`, `phone`, `otp` and `verification_code` from the request URL.
+  - Deletes `event.request.headers` and `event.request.cookies` wholesale.
+  - Deletes `event.user.email` and `event.user.ip_address`.
+  - Strips URL queries from the event message and exception values.
+  - Applies the same key and URL rules to `extra` and to `contexts` (`Sentry.setContext`), and strips URL queries from string `tags` (`Sentry.setTag`).
+  - Scrubs any attached breadcrumbs again.
 
-Separately, `src/services/logger.ts` redacts `email` and `*uid` keys on the breadcrumb path (`src/utils/pii.ts`). User context is a **hashed** UID plus the public username — never the raw UID, never an email address.
+Firebase Storage download URLs carry their access token in the query (`?alt=media&token=...`), which is why every URL loses its query, not just named params.
+
+Separately, `src/services/logger.ts` redacts the same keys and URL queries (`redactPII`, `src/utils/pii.ts`) on its breadcrumb and on its production console line. Dev console output stays raw. User context is a **hashed** UID plus the public username, never the raw UID and never an email address.
 
 ## Verifying the Setup
 

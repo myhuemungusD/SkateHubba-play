@@ -6,7 +6,8 @@
  * breadcrumb data, which silently ships PII to a third-party service on every
  * authenticated session. `redactPII` is applied inside the logger's breadcrumb
  * path so every current and future call site is covered without touching the
- * sites themselves. Console output remains raw for developer ergonomics.
+ * sites themselves. Dev console output remains raw for developer ergonomics;
+ * the production console line is redacted too (src/services/logger.ts).
  * Every http(s) URL inside a string also loses its query (see stripUrlQuery).
  */
 
