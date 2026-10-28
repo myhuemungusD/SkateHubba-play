@@ -21,9 +21,11 @@ export function DataDeletion({ onBack }: { onBack: () => void }) {
             Under the GDPR&apos;s right to data portability (Article 20) and CCPA, you can download a machine-readable
             copy of everything we store about you. When signed in, open Settings and, under{" "}
             <strong className="text-white">Account</strong>, tap{" "}
-            <strong className="text-white">&quot;Download my data&quot;</strong>. We package your profile, game history,
-            landed clips, reports you filed, and the list of users you blocked into a single JSON file that downloads to
-            your device.
+            <strong className="text-white">&quot;Download my data&quot;</strong>. We package the data tied to your
+            account (your profile and settings, games and dice games, clips, comments and spot chat, spots you added,
+            your closet, trades and drops, notifications, reports and appeals, and the list of users you blocked) into a
+            single JSON file that downloads to your device. Photos and videos are included as links. If any part
+            can&apos;t be read, the file says which.
           </p>
         </Section>
 

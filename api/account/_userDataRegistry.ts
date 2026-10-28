@@ -154,3 +154,332 @@ export const STORAGE_ERASURE: Readonly<Record<string, ErasureEntry>> = {
   userClips: { action: "delete", why: "private clip uploads" },
   approvedClips: { action: "delete", why: "approved clip videos" },
 };
+
+// ── Download my data ────────────────────────────────────────────────────────
+
+/**
+ * How "Download my data" reads one collection, as the signed-in owner, in the
+ * browser. Each read has to carry the constraint its read rule checks (rules
+ * are not filters), and uses equality filters only, so the automatic
+ * single-field indexes serve it (see src/services/userDataQueries.ts).
+ *
+ *   uidDoc          `<collection>/{uid}`
+ *   ownDoc          `users/{uid}/<sub>/<id>`, one fixed doc id
+ *   ownList         every doc in `users/{uid}/<sub>`
+ *   usernameDoc     `usernames/{username}`
+ *   where           `<collection>` where `field == uid` (plus fixed `also` filters)
+ *   arrayContains   `<collection>` where `field` array-contains uid
+ *   group           collection group `<last segment>` where `field == uid`
+ *   underEachParent `<parent>/{id}/<sub>/{uid}` for every parent doc
+ */
+export type ExportRead =
+  | { kind: "uidDoc" }
+  | { kind: "ownDoc"; id: string }
+  | { kind: "ownList" }
+  | { kind: "usernameDoc" }
+  | { kind: "where"; field: string; also?: Readonly<Record<string, string | boolean>> }
+  | { kind: "arrayContains"; field: string }
+  | { kind: "group"; field: string }
+  | { kind: "underEachParent" };
+
+/** One collection in the export: which file section it lands in and how it's read. */
+export interface ExportIncluded {
+  /** Key in the export file. Several collections can share one section. */
+  section: string;
+  /** Plain-words name for the file notice and the on-screen warning. */
+  name: string;
+  reads: readonly ExportRead[];
+  /**
+   * Top-level fields dropped before the doc goes in the file: device tokens
+   * and the uids of the admins or moderators who acted on the account.
+   */
+  redact?: readonly string[];
+}
+
+/** A collection left out of the export on purpose. */
+export interface ExportExcluded {
+  /** Why it is left out. Required: the coverage test rejects an empty reason. */
+  excluded: string;
+  /** What would let it be exported, when it holds the user's data but can't be read today. */
+  fix?: string;
+}
+
+export type ExportPlan = ExportIncluded | ExportExcluded;
+
+/**
+ * Admin and moderator identity fields that can sit on a doc the user is
+ * allowed to read. They name staff, not the user, so the file leaves them out.
+ */
+const STAFF_FIELDS = {
+  users: ["verifiedBy"],
+  reports: ["resolvedBy"],
+  moderationStatements: ["createdBy"],
+  appeals: ["reviewedBy"],
+  disputes: ["adminRuledBy"],
+  bans: ["bannedBy"],
+  proBlessings: ["revokedBy"],
+} as const;
+
+const RATE_LIMIT = "send and report cooldowns";
+
+/**
+ * What "Download my data" (GDPR Art. 15/20) does with every collection in
+ * {@link FIRESTORE_ERASURE}. Same keys, so a collection that deletion knows
+ * about can't be missing from the export: `user-data-export.coverage.test.ts`
+ * fails unless every key is either read here or excluded with a reason. The
+ * export in src/services/userData.ts is built from this table and nothing
+ * else.
+ */
+export const FIRESTORE_EXPORT = {
+  // ── Identity ──
+  users: { section: "profile", name: "profile", reads: [{ kind: "uidDoc" }], redact: STAFF_FIELDS.users },
+  "users/{}/private": {
+    section: "privateProfile",
+    name: "account details",
+    reads: [{ kind: "ownList" }],
+    redact: ["fcmTokens"],
+  },
+  "users/{}/achievements": { section: "achievements", name: "achievements", reads: [{ kind: "ownList" }] },
+  "users/{}/blocked_users": { section: "blockedUsers", name: "blocked list", reads: [{ kind: "ownList" }] },
+  "users/{}/xpMarkers": { section: "xpMarkers", name: "XP history", reads: [{ kind: "ownList" }] },
+  "users/{}/passport": { section: "passport", name: "spot passport", reads: [{ kind: "ownList" }] },
+  "users/{}/checkins": { section: "checkins", name: "check-ins", reads: [{ kind: "ownList" }] },
+  "users/{}/profileCustom": {
+    section: "profileCustom",
+    name: "profile customization",
+    reads: [{ kind: "ownDoc", id: "main" }],
+  },
+  usernames: { section: "usernameReservation", name: "username", reads: [{ kind: "usernameDoc" }] },
+
+  // ── Closet ──
+  "users/{}/locker": { section: "locker", name: "closet", reads: [{ kind: "ownList" }] },
+  "users/{}/wallet": { section: "wallet", name: "Hubba Bucks balance", reads: [{ kind: "ownList" }] },
+  "users/{}/ledger": { section: "ledger", name: "Hubba Bucks history", reads: [{ kind: "ownList" }] },
+  "users/{}/closetLimits": {
+    excluded: "daily closet counters written only by Cloud Functions; no rules block, so the client can't read them",
+    fix: "add `allow get: if isOwner(uid)` under users/{uid}/closetLimits, or export them server-side",
+  },
+  "users/{}/closetDesigns": { section: "closetDesigns", name: "Closet Studio designs", reads: [{ kind: "ownList" }] },
+  trades: {
+    section: "trades",
+    name: "trades",
+    reads: [
+      { kind: "where", field: "fromUid" },
+      { kind: "where", field: "toUid" },
+    ],
+  },
+  serials: {
+    section: "serials",
+    name: "numbered items",
+    // Items the user traded away name them only inside history[], which a
+    // query can't match. Those stay out; see the audit.
+    reads: [{ kind: "where", field: "ownerUid" }],
+  },
+  "drops/{}/claims": { section: "dropClaims", name: "drop claims", reads: [{ kind: "underEachParent" }] },
+  "drops/{}/entries": { section: "dropEntries", name: "drop entries", reads: [{ kind: "underEachParent" }] },
+  catalog: { excluded: "item definitions; no per-user data" },
+  drops: { excluded: "drop definitions; no per-user data (the user's claims and entries are exported)" },
+  closetAudit: { excluded: "operator custody log of admin mints and reversals; admin-only staff record" },
+
+  // ── Games ──
+  games: {
+    section: "games",
+    name: "game history",
+    reads: [
+      { kind: "where", field: "player1Uid" },
+      { kind: "where", field: "player2Uid" },
+      { kind: "where", field: "judgeId" },
+    ],
+  },
+  diceGames: {
+    section: "diceGames",
+    name: "dice games",
+    reads: [{ kind: "arrayContains", field: "playerUids" }],
+  },
+  diceStats: { section: "diceStats", name: "dice stats", reads: [{ kind: "uidDoc" }] },
+  diceCreateLimits: {
+    excluded: "one create-cooldown timestamp; rules deny every client read",
+    fix: "add `allow get: if isOwner(uid)` on diceCreateLimits/{uid}",
+  },
+  xpPairs: {
+    excluded:
+      "functions-only anti-farming counter {utcDay, count}; the uid appears only inside the pair id with another skater's uid, and there is no rules block",
+  },
+  nudges: {
+    section: "nudges",
+    name: "nudges",
+    reads: [
+      { kind: "where", field: "senderUid" },
+      { kind: "where", field: "recipientUid" },
+    ],
+  },
+  nudge_limits: {
+    excluded:
+      "nudge cooldowns; the read rule checks the doc id (`limitId.matches(uid + '_.+')`), which a query can't prove, so a list is refused",
+    fix: "change the nudge_limits read rule to `resource.data.senderUid == request.auth.uid` so a senderUid query passes",
+  },
+
+  // ── Clips, disputes, judging ──
+  clips: { section: "clips", name: "clips", reads: [{ kind: "where", field: "playerUid" }] },
+  "clips/{}/comments": { section: "comments", name: "comments", reads: [{ kind: "group", field: "userId" }] },
+  clipVotes: { section: "clipVotes", name: "clip votes", reads: [{ kind: "where", field: "uid" }] },
+  disputes: {
+    section: "disputes",
+    name: "disputes",
+    reads: [
+      { kind: "where", field: "setterUid" },
+      { kind: "where", field: "matcherUid" },
+    ],
+    redact: STAFF_FIELDS.disputes,
+  },
+  disputeVotes: { section: "disputeVotes", name: "dispute votes", reads: [{ kind: "where", field: "uid" }] },
+  trainingLabels: {
+    excluded: "trick labels derived from clips the user filmed; rules allow only admins to read them",
+    fix: "add an owner read on trainingLabels (resource.data.ownerUid == request.auth.uid), or export them server-side",
+  },
+  trainingRevocations: {
+    excluded: "one consent-withdrawal marker; rules deny every client read",
+    fix: "add `allow get: if isOwner(uid)` on trainingRevocations/{uid}",
+  },
+  wttVotes: { section: "wttVotes", name: "What's That Trick votes", reads: [{ kind: "where", field: "uid" }] },
+  wttItems: { excluded: "clip-level quiz items; no per-user data" },
+  wttGold: { excluded: "quiz answer keys; no per-user data, and secret by design" },
+
+  // ── Map and spots ──
+  spots: {
+    section: "spots",
+    name: "spots",
+    // Rules only let anyone read active spots. Spots a moderator turned off
+    // are a separate follow-up (owner read on own inactive spots).
+    reads: [{ kind: "where", field: "createdBy", also: { isActive: true } }],
+  },
+  "spots/{}/comments": { section: "comments", name: "comments", reads: [{ kind: "group", field: "userId" }] },
+  "spots/{}/messages": {
+    section: "spotMessages",
+    name: "spot chat messages",
+    reads: [{ kind: "group", field: "userId" }],
+  },
+  privateSpots: {
+    section: "privateSpots",
+    name: "private spots",
+    // Crew spots someone else created are their data, not this user's.
+    reads: [{ kind: "where", field: "createdBy", also: { isActive: true } }],
+  },
+  spotMessageReports: {
+    section: "spotMessageReports",
+    name: "spot chat reports",
+    reads: [{ kind: "where", field: "reportedBy" }],
+  },
+  "spotPresence/{}/here": { section: "spotPresence", name: "spot presence", reads: [{ kind: "group", field: "uid" }] },
+  mapState: { section: "mapState", name: "map state", reads: [{ kind: "uidDoc" }] },
+  passportSettings: { section: "passportSettings", name: "passport settings", reads: [{ kind: "uidDoc" }] },
+  skaterActivity: { section: "skaterActivity", name: "who's skating status", reads: [{ kind: "uidDoc" }] },
+  onlineStatus: { section: "onlineStatus", name: "online status", reads: [{ kind: "uidDoc" }] },
+
+  // ── Notifications and push ──
+  notifications: {
+    section: "notifications",
+    name: "notifications",
+    // Notifications the user SENT are readable only by their recipient, so
+    // they stay out; the user's side of them is in games, nudges and props.
+    reads: [{ kind: "where", field: "recipientUid" }],
+  },
+  notification_limits: {
+    section: "notificationLimits",
+    name: RATE_LIMIT,
+    reads: [{ kind: "where", field: "senderUid" }],
+  },
+  pushTargets: {
+    excluded:
+      "push device tokens; a credential for reaching the device, not something to put in a downloadable file, and rules deny list",
+  },
+  push_dispatch: {
+    excluded:
+      "queued pushes; each doc carries the recipient's device tokens, and the text is already in the notifications section",
+  },
+  push_dispatch_limits: {
+    section: "pushDispatchLimits",
+    name: RATE_LIMIT,
+    reads: [{ kind: "where", field: "senderUid" }],
+  },
+
+  // ── Moderation ──
+  reports: {
+    section: "reports",
+    name: "reports",
+    reads: [{ kind: "where", field: "reporterUid" }],
+    redact: STAFF_FIELDS.reports,
+  },
+  reports_limits: { section: "reportLimits", name: RATE_LIMIT, reads: [{ kind: "where", field: "reporterUid" }] },
+  moderationStatements: {
+    section: "moderationStatements",
+    name: "moderation notices",
+    reads: [{ kind: "where", field: "subjectUid" }],
+    redact: STAFF_FIELDS.moderationStatements,
+  },
+  appeals: {
+    section: "appeals",
+    name: "appeals",
+    reads: [{ kind: "where", field: "appellantUid" }],
+    redact: STAFF_FIELDS.appeals,
+  },
+  bans: { section: "ban", name: "ban record", reads: [{ kind: "uidDoc" }], redact: STAFF_FIELDS.bans },
+  adminAudit: { excluded: "append-only admin action log; admin-only staff record" },
+
+  // ── Pro community ──
+  proReviews: {
+    excluded: "a pro's reviews; rules deny every client read",
+    fix: "add an owner read on proReviews (resource.data.uid == request.auth.uid)",
+  },
+  proChallenges: { section: "proChallenges", name: "pro challenges", reads: [{ kind: "where", field: "proUid" }] },
+  proChallengeEntries: {
+    section: "proChallengeEntries",
+    name: "pro challenge entries",
+    reads: [{ kind: "where", field: "uid" }],
+  },
+  proProps: {
+    section: "proProps",
+    name: "props",
+    reads: [
+      { kind: "where", field: "fromUid" },
+      { kind: "where", field: "toUid" },
+    ],
+  },
+  proFeatured: { section: "proFeatured", name: "featured clips", reads: [{ kind: "where", field: "proUid" }] },
+  proGold: { excluded: "a pro's quiz answer key; secret by design and rules deny every client read" },
+  proAudit: { excluded: "append-only admin log of pro seeds; admin-only staff record" },
+  proBlessings: {
+    section: "proBlessings",
+    name: "pro blessings",
+    reads: [
+      { kind: "where", field: "blesserUid" },
+      { kind: "where", field: "targetUid" },
+    ],
+    redact: STAFF_FIELDS.proBlessings,
+  },
+
+  // ── App config ──
+  config: {
+    excluded:
+      "feature flags; config/featureTesters is a hand-managed list of every tester's uid, so exporting it would hand out other users' uids",
+  },
+  announcements: { excluded: "admin announcements; no per-user data" },
+  billingAlerts: { excluded: "ops alerts; no per-user data" },
+} as const satisfies Record<string, ExportPlan>;
+
+/** Every section name the export file can hold. */
+export type ExportSection = Extract<
+  (typeof FIRESTORE_EXPORT)[keyof typeof FIRESTORE_EXPORT],
+  ExportIncluded
+>["section"];
+
+type IncludedPlan = Extract<(typeof FIRESTORE_EXPORT)[keyof typeof FIRESTORE_EXPORT], ExportIncluded>;
+
+/** Sections filled by one doc read (the profile, a uid-keyed doc): one doc or null in the file. */
+export type ExportDocSection = Extract<
+  IncludedPlan,
+  { reads: readonly [{ kind: "uidDoc" | "ownDoc" | "usernameDoc" }] }
+>["section"];
+
+/** Sections filled by lists: an array in the file. */
+export type ExportListSection = Exclude<ExportSection, ExportDocSection>;

@@ -26,41 +26,7 @@ import { DELETED_NAME, DELETED_UID, scrubUid } from "../../../api/account/_anony
 import { TRADE_FEE } from "../../../api/account/_closetErasure";
 import { makeFakeStore, type DocData, type Seed } from "./account-delete.test-helpers";
 import { MEDIA, OTHER, RETAINED_SAMPLES, SAMPLES, UID } from "./account-delete.samples.test-helpers";
-
-// ── Rules parsing ──────────────────────────────────────────────────────────
-
-/**
- * Collection paths declared in a rules file, with every id segment written as
- * `{}`: `match /users/{uid}/wallet/{id}` becomes `users/{}/wallet`. Nested
- * `match` blocks are joined with their parents by tracking brace depth.
- */
-function rulesCollections(source: string): Set<string> {
-  const text = source.replace(/\/\/[^\n]*/g, "");
-  const stack: { depth: number; path: string }[] = [];
-  const out = new Set<string>();
-  let depth = 0;
-  for (const m of text.matchAll(/match\s+(\/\S+)\s*\{|\{|\}/g)) {
-    if (m[1] !== undefined) {
-      depth += 1;
-      stack.push({ depth, path: m[1] });
-      const full = stack.map((s) => s.path).join("");
-      const segs = full
-        .replace(/^\/databases\/\{database\}\/documents/, "")
-        .replace(/^\/b\/\{bucket\}\/o/, "")
-        .split("/")
-        .filter((s) => s.length > 0)
-        .map((s) => (s.startsWith("{") ? "{}" : s));
-      if (segs.length === 0) continue;
-      out.add((segs.length % 2 === 0 ? segs.slice(0, -1) : segs).join("/"));
-    } else if (m[0] === "{") {
-      depth += 1;
-    } else {
-      while (stack.length > 0 && stack[stack.length - 1].depth === depth) stack.pop();
-      depth -= 1;
-    }
-  }
-  return out;
-}
+import { rulesCollections } from "./rules-collections.test-helpers";
 
 /** Collections only the Cloud Functions write, so they have no rules block. */
 const FUNCTIONS_ONLY = ["xpPairs", "users/{}/closetLimits"];

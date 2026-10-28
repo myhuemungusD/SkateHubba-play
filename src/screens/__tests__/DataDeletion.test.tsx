@@ -14,6 +14,8 @@ describe("DataDeletion", () => {
     render(<DataDeletion onBack={vi.fn()} />);
     const text = document.body.textContent ?? "";
     expect(text).toContain('under Account, tap "Download my data"');
+    expect(text).toContain("comments and spot chat");
+    expect(text).toContain("If any part can't be read, the file says which.");
     expect(text).toContain('under Account, tap "Delete account"');
     expect(text.toLowerCase()).not.toContain("lobby");
   });
