@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { PlayIcon } from "../icons";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
-import { CLIP_POSTER } from "../../lib/clipPoster";
 import { BELOW_HEADER, RAIL_BTN } from "./feedLayout";
 import { ClipPlaybackError } from "./ClipPlaybackError";
 
@@ -16,7 +15,16 @@ import { ClipPlaybackError } from "./ClipPlaybackError";
  * Far slides unmount this entirely (see `isNearSlide`). The next slide stays
  * mounted and paused, with `preload="metadata"`. `NextClipPrefetcher` is what
  * pulls that clip's media bytes.
+ *
+ * No shared poster image: each clip shows its own first frame. The `#t`
+ * hint makes iOS Safari / WKWebView paint that frame for a paused,
+ * metadata-only slide instead of a black box.
  */
+
+/** Ask the browser to paint the clip's first frame before playback. */
+function withFirstFrame(src: string): string {
+  return src.includes("#") ? src : `${src}#t=0.001`;
+}
 
 export interface SpotlightVideoProps {
   src: string;
@@ -176,13 +184,12 @@ function SpotlightVideoImpl({ src, active = true, mediaLabel, muted: mutedProp, 
     <div ref={containerRef} className="absolute inset-0 bg-black">
       <video
         ref={videoRef}
-        src={src}
+        src={withFirstFrame(src)}
         aria-label={mediaLabel}
         autoPlay={active && !reducedMotion}
         muted={muted}
         loop
         playsInline
-        poster={CLIP_POSTER}
         preload={active ? "auto" : "metadata"}
         onPlay={handlePlay}
         onPause={handlePause}

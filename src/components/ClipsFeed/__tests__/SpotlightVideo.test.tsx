@@ -49,7 +49,9 @@ describe("SpotlightVideo reduced motion", () => {
     const video = container.querySelector("video") as HTMLVideoElement;
     expect(video.autoplay).toBe(true);
     expect(video).toHaveClass("object-contain");
-    expect(video.getAttribute("poster")).toBe("/sh-video-poster.webp");
+    // No shared cover image: the clip's own first frame is the cover.
+    expect(video.hasAttribute("poster")).toBe(false);
+    expect(video.getAttribute("src")).toBe("clip.webm#t=0.001");
     expect(video.getAttribute("preload")).toBe("auto");
     fireIntersect(video, true);
     expect(play).toHaveBeenCalled();
@@ -79,10 +81,18 @@ describe("SpotlightVideo reduced motion", () => {
     expect(video.loop).toBe(true);
     expect(video.autoplay).toBe(false);
     expect(video.getAttribute("preload")).toBe("metadata");
-    expect(video.getAttribute("poster")).toBe("/sh-video-poster.webp");
+    expect(video.hasAttribute("poster")).toBe(false);
+    expect(video.getAttribute("src")).toBe("clip.webm#t=0.001");
     expect(ioCallback).toBeNull();
     expect(play).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: /play clip/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("SpotlightVideo first-frame cover", () => {
+  it("keeps a src that already carries a fragment unchanged", () => {
+    const { container } = render(<SpotlightVideo src="clip.webm#t=2" />);
+    expect(container.querySelector("video")?.getAttribute("src")).toBe("clip.webm#t=2");
   });
 });
 
