@@ -6,12 +6,13 @@ Two commands that get SkateHubba ready for App Review and Google Play review: a 
 
 ```bash
 # PowerShell: $env:REVIEW_EMAIL="..."; $env:REVIEW_PASSWORD="..."
-REVIEW_EMAIL=review@skatehubba.com REVIEW_PASSWORD='a-long-password' npm run review:seed
+REVIEW_EMAIL=you@example.com REVIEW_PASSWORD='a-long-password' npm run review:seed
 npm run review:seed -- --dry-run      # list what it would write, change nothing
 npm run review:seed -- --emulator     # seed the local emulators instead (for screenshots)
 ```
 
 - Credentials come only from your environment. They are never committed or printed. Use the same email and password in App Store Connect → App Review Information and Play Console → App access.
+- The seed marks the email as verified, so App Review can sign in even if nothing reads that inbox. Still use an address you control, so a password reset or a store follow-up reaches someone.
 - It signs in to `sk8hub-d7806` (database `skatehubba`) with Application Default Credentials (`gcloud auth application-default login`, or `GOOGLE_APPLICATION_CREDENTIALS`), the same as the other admin scripts.
 - Set `REVIEW_STORAGE_BUCKET` too. The seed uploads the demo clip to `review-kit/sh-video-edit.mp4` in that bucket, because the game screen only plays videos stored in Firebase Storage. Without it the seed warns, and the in-progress game shows "No video recorded".
 - It creates the account, or resets its password if it already exists. Then it writes:
@@ -37,6 +38,7 @@ It signs in as the reviewer with Playwright (`npx playwright install chromium` o
 | id         | Store       | Device      | Pixels    |
 | ---------- | ----------- | ----------- | --------- |
 | ios-6.9    | App Store   | iPhone 6.9" | 1320×2868 |
+| ios-6.3    | App Store   | iPhone 6.3" | 1206×2622 |
 | ios-6.5    | App Store   | iPhone 6.5" | 1284×2778 |
 | ios-5.5    | App Store   | iPhone 5.5" | 1242×2208 |
 | play-phone | Google Play | Phone       | 1080×1920 |
@@ -47,7 +49,7 @@ Run `review:seed` first so the screens have content. These are captures of the w
 
 ### App Store set, without touching production
 
-The App Store set is `ios-6.9` (1320×2868, the source set) and `ios-6.3` (1206×2622, the 6.3" size Apple lists as required). The app is iPhone-only, so there is no iPad set. Capture it from a local build with the iPhone launch flags (from `.github/workflows/ios-release.yml`: everything on except `VITE_FEATURE_DICE_ENABLED`, Skate Runner, Bucks purchase and SMS 2FA), against the emulators:
+The App Store set is `ios-6.9` (1320×2868, the source set) and `ios-6.3` (1206×2622, the 6.3" size Apple lists as required). The app is iPhone-only, so there is no iPad set. Capture it from a local build with the iPhone launch flags (from `.github/workflows/ios-release.yml`: everything on except `VITE_FEATURE_DICE_ENABLED`, Skate Runner, the Closet (`VITE_FEATURE_CLOSET_ENABLED`, with drops, Studio and trading), pro blessing (`VITE_FEATURE_PRO_BLESSING`), Bucks purchase, SMS 2FA, the random challenger and What's That Trick), against the emulators:
 
 ```bash
 npm run emulators                                  # auth, firestore, storage
