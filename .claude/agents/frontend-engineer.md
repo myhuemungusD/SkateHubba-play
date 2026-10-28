@@ -41,8 +41,8 @@ user sees and interacts with.
 - All screen transitions go through `NavigationContext.setScreen`. New
   routes are declared in `src/App.tsx` only.
 - No `any`, no `as any`. Explicit return types on exported functions.
-- 100% coverage on `src/hooks/**`. 80% on screens/components (75%
-  branches).
+- 100% coverage on `src/hooks/**`. Screens/components have ratchet floors in
+  `vite.config.ts` (currently above 90%); read them there.
 - No `console.log`. `console.warn` for expected error paths, Sentry
   for everything else.
 - Respect `prefers-reduced-motion` (use `useReducedMotion`).

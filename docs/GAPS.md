@@ -265,7 +265,7 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 
 ### P3-3 · Release hygiene
 
-**2026-10-26 correction:** `package.json` is `1.2.0`, and CHANGELOG has a v1.2.0 entry dated 2026-10-21. Signed store artifacts and release-tag evidence still need to be recorded. The older claim was: The missing `[Unreleased]` section (dangling link at `:365`) and the stale referee-unshipped claims were fixed in the 2026-08-26 doc pass; the changelog now carries the ~4 months of merged work. **Still open:** cut an actual release tag.
+**2026-10-26 correction:** `package.json` is `1.2.0`, and CHANGELOG has a v1.2.0 entry dated 2026-10-21. Signed store artifacts and release-tag evidence still need to be recorded. The missing `[Unreleased]` section and the stale referee-unshipped claims were fixed in the 2026-08-26 doc pass. **Still open:** the repo has no git tags, so CHANGELOG's `v1.1.0...v1.2.0` compare link is dead until `v1.2.0` is tagged.
 
 ### P3-4 · File-length budget enforced nowhere; 10 files over
 

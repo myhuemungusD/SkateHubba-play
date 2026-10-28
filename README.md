@@ -199,6 +199,7 @@ For full setup including Firebase emulators, see [docs/DEVELOPMENT.md](docs/DEVE
 | `npm run cap:run:android`         | Build and run the app on an Android device/emulator                                               |
 | `npm run testers:sync`            | Match every server `*_TESTER_UIDS` list to `config/featureTesters` (dry run; `-- --apply` writes) |
 | `npm run check:testers`           | Fail if code has a `*_TESTER_UIDS` list that `testers:sync` doesn't know (PR gate)                |
+| `npm run check:doc-claims`        | Fail if a doc or store text contradicts the workflows, manifests or `docs/facts.json` (PR gate)   |
 | `npm run ios:preflight`           | Free Linux check of the iOS native patches before a paid Mac build                                |
 | `npm run deploy:functions`        | One-command Cloud Functions deploy (checks first; `-- --only a,b`, `-- --dry-run`)                |
 | `npm run deploy:rules`            | One-command Firestore + Storage rules deploy                                                      |
@@ -295,7 +296,7 @@ Copy `.env.example` to `.env.local` and fill in the values. The full template (w
 
 **Feature flags.** Every feature flag defaults to **off**: only the literal string `true` turns one on, and `VITE_*` values are baked in at build time, so a change needs a redeploy or a new app build. Web testers listed in `config/featureTesters` can enable flags through a runtime override. Native shells disable that override. The full list, what each flag shows, its server switch and where it is on today live in [docs/FEATURE_FLAGS.md](docs/FEATURE_FLAGS.md).
 
-Website flags are deployment settings and must be inspected in Vercel; the repository cannot establish their current values. Store workflows explicitly enable Extras, Map, feed and several other features. The launch freeze was lifted on 2026-10-10. A local build or fork without it falls back to the core game loop: those routes redirect to `/lobby` (signed in) or `/` (signed out). iPhone builds set `VITE_FEATURE_APPLE_SIGNIN_ENABLED`, `VITE_FEATURE_PRO_BLESSING` and `VITE_FEATURE_PRO_PROFILES` and leave extras off.
+The website's flags are set in the Vercel project, not in this repo; [docs/FEATURE_FLAGS.md](docs/FEATURE_FLAGS.md) lists what is on there. `VITE_FEATURE_EXTRAS_ENABLED` turns on the Map, Clips feed and Verified Pro. The launch freeze was lifted on 2026-10-10. A local build or fork without it falls back to the core game loop: those routes redirect to `/lobby` (signed in) or `/` (signed out). iPhone builds turn on `VITE_FEATURE_EXTRAS_ENABLED`, `VITE_FEATURE_APPLE_SIGNIN_ENABLED` and `VITE_FEATURE_PRO_PROFILES` (plus the pro showcase, calls, community and camera flags) and leave `VITE_FEATURE_PRO_BLESSING`, Dice and the Closet off. See `.github/workflows/ios-release.yml` and `ios/App/ci_scripts/ci_post_clone.sh` for the exact set.
 
 Server-side switches for the Cloud Functions (`MAP_*`, `SPOT_PRESENCE_*`, `XP_*`, `DICE_*`, `CLOSET_*`, `MODERATION_ENABLED`, `PRO_BLESSING_*`) live in the functions parameter file; see [docs/DEPLOY_FUNCTIONS.md](docs/DEPLOY_FUNCTIONS.md).
 

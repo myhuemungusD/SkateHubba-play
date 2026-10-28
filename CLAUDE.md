@@ -72,7 +72,7 @@ Never skip the type check. `tsc -b` catches what ESLint can't.
 ### Step 4: Prove Correctness
 
 - Run the full verification gate (see above)
-- For service changes: 100% test coverage is required on `src/services/` and `src/hooks/`. Coverage floors also apply elsewhere (`vite.config.ts` thresholds): `src/firebase.ts` at 93/100/80/93 and `src/components/**` / `src/screens/**` at 80/80/75/80 — a UI-only change can still fail the coverage gate
+- For service changes: 100% test coverage is required on `src/services/` and `src/hooks/`. Coverage floors also apply elsewhere (`vite.config.ts` thresholds): `src/firebase.ts`, `src/types/**` and `src/utils/**` at 100, and per-glob ratchets for `src/components/**`, `src/screens/**` and the rest (see `vite.config.ts`; numbers move, so don't copy them here) — a UI-only change can still fail the coverage gate
 - For UI changes: add or update smoke tests if behavior changed
 - For Firestore rule changes: test against emulators before merge
 
