@@ -112,6 +112,18 @@ export async function shareUrl(options: { title?: string; text: string; url: str
 }
 
 /**
+ * True when a share rejected because the user closed the sheet, not because
+ * it failed. Web Share rejects with a DOMException named `AbortError`;
+ * @capacitor/share rejects with "Share canceled" on iOS and Android. A cancel
+ * is a normal outcome: callers return to idle and report nothing.
+ */
+export function isShareCancel(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const { name, message } = err as { name?: unknown; message?: unknown };
+  return name === "AbortError" || (typeof message === "string" && /cancel/i.test(message));
+}
+
+/**
  * Copy text to the clipboard. Uses the native Clipboard plugin inside the
  * Capacitor shell, `navigator.clipboard` on web. Rejects on failure so call
  * sites can keep showing their "could not copy" affordance.

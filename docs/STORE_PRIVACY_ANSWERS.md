@@ -1,6 +1,6 @@
 # Store Privacy Questionnaire — Draft Answers (Evidence-Based)
 
-> **Oct 2026 update.** SMS two-step verification means the app now collects a **phone number**, and comments, bios and spot text count as **Other User Content**. Both are declared in `ios/App/App/PrivacyInfo.xcprivacy`. The App Store Connect App Privacy answers must match that manifest, including Precise Location as declared there.
+> **Oct 2026 update.** SMS two-step verification is off in the store builds (`VITE_FEATURE_SMS_2FA_ENABLED: "false"`) and its reCAPTCHA step cannot run inside the native app, so the iPhone and Android apps never ask for a phone number. The manifest still declares **Phone Number** because Google Sign-In's SDK declares it and because an account that turned on SMS two-step verification on the website keeps that number in Firebase Auth, which the app uses at sign-in (`src/services/mfa.ts`). Comments, bios and spot text count as **Other User Content**. Both are declared in `ios/App/App/PrivacyInfo.xcprivacy`. The App Store Connect App Privacy answers must match that manifest, including Precise Location as declared there.
 
 > **Oct 17, 2026 — map check-ins (supersedes the location rows below).** Spot check-ins (`functions/src/map/checkin.ts`) send the device GPS fix to the server to confirm you are within ~100 m of the spot, and the server keeps the last check-in position (`lastLat`/`lastLng`) and accuracy on the user's record for anti-spoofing. So location **is collected**:
 >
@@ -10,9 +10,8 @@
 
 > **Oct 18, 2026 — spot presence and online status (`VITE_FEATURE_SPOT_PRESENCE`, on in the iOS store build via `ios-release.yml` and `ci_post_clone.sh`).** After a check-in, while the app is open, it sends a location heartbeat to the `mapPresence` function (about every 2 minutes, or right away when you cross the ~500 ft line). The server keeps the last heartbeat position on the same owner-only anti-spoofing record (`mapState/{uid}`) and writes "here until" (username + expiry) to `spotPresence/{spotId}/here/{uid}`, which any signed-in user can read even when "Hide my online status" is on. Exact coordinates are never shown to peers. Who's skating (`skaterActivity`) shows spot name + exact `lastAt` only when visible. The online dot stores a last-seen server time in `onlineStatus/{uid}`, or null when hidden. Precise Location stays Collected, Linked, App Functionality and Fraud prevention, optional. **Product interaction** (App Store) / **App activity → Other actions** (Play): Linked, App Functionality + Analytics (last-seen). Still **While In Use only**: no background location, no `NSLocationAlwaysAndWhenInUseUsageDescription`, no `ACCESS_BACKGROUND_LOCATION`. When the app is in the background, presence simply lapses after 10 minutes.
 
-**Status: DRAFT for owner review — 2026-07-30.**
-Every row below is derived from what the code actually does on branch
-`claude/skatehubba-health-check-sjv064`, with file citations. Transcribe into
+**Status: DRAFT; documentation reconciled 2026-10-26, console answers not inspected.**
+The inventory originated on an older branch and has later amendments. Validate against the actual release binary and enabled services, with the current store review as the release gate. Transcribe into
 App Store Connect → App Privacy and Google Play Console → Data safety, then
 see the Per-Release Delta section below. Open questions that need an
 owner decision are flagged inline and summarized at the end.
@@ -31,7 +30,7 @@ IDFA/AAID access, and no data-broker integration anywhere in the repo
 | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | -------- | ----------------------------------------------------------------------- |
 | Email address                                                                                   | `src/services/auth.ts` (email/password signup, Google OAuth, password reset)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Firebase Authentication only — deliberately **not** mirrored to Firestore (`src/services/users.ts` `UserPrivateProfile` doc comment)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Yes                                                               | No       | Account creation, sign-in, email verification                           |
 | Google account name (displayName)                                                               | `src/screens/ProfileSetup.tsx` (`sanitizeDisplayName`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | **Stored by Firebase Auth** as the account's `displayName` (Google sign-in passes it; Apple's native flow sends only the identity token, so Apple users usually have none). The app reads it only to prefill a username suggestion and never writes it to Firestore; only the chosen username is saved there                                                                                                                                                                                                                                                                                                                                                                                                                                      | Yes (Firebase Auth)                                               | No       | UX convenience at profile setup                                         |
-| Google account photo (photoURL)                                                                 | No usage — `grep photoURL src/` matches nothing outside tests                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Not collected                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | —                                                                 | —        | —                                                                       |
+| Google account photo (photoURL)                                                                 | Not read or shown by the app (`grep photoURL src/` matches only tests). Firebase Auth stores it on the account when someone signs in with Google; the privacy policy says so (`src/components/legal/ContentDataList.tsx`)                                                                                                                                                                                                                                                                                                                                                                                             | **Stored by Firebase Auth** on the account (Google sign-in passes it). Never written to Firestore                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Yes (Firebase Auth)                                               | No       | None in the app (Firebase Auth keeps it with the Google profile)        |
 | Username + stance                                                                               | `src/services/users.ts` `createProfile` → `users/{uid}` (public profile: `get` is open to anyone, signed in or not; listing needs sign-in)                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Firestore                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Yes                                                               | No       | Public profile, opponent lookup, leaderboard                            |
 | Date of birth (+ parental-consent flag for 13–17)                                               | Age gate (`src/utils/age.ts`, `MIN_AGE = 13`, `ADULT_AGE = 18`); persisted by `createProfile` → `users/{uid}/private/profile` (owner-only per `firestore.rules`)                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Firestore (owner-only doc)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Yes                                                               | No       | COPPA/CCPA age verification                                             |
 | Game videos (user content, includes audio)                                                      | `src/services/storage.ts`, `src/services/nativeVideo.ts`; `storage.rules` `games/{gameId}/...` — **read requires auth** (not world-readable), 1KB–50MB, uploaderUid pinned                                                                                                                                                                                                                                                                                                                                                                                                                                            | Firebase Storage                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Yes                                                               | No       | Core gameplay (S.K.A.T.E. trick verification), clips feed               |
@@ -50,9 +49,9 @@ outside the app, advertising identifiers, third-party ad or attribution SDKs.
 
 Declared native permissions (context for both consoles):
 `ios/App/App/Info.plist` — Camera, Microphone, Photo Library (read+add),
-Location When In Use. `android/.../AndroidManifest.xml` — CAMERA,
-RECORD_AUDIO, ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION,
-POST_NOTIFICATIONS. No media or storage permissions: pickers use the Android
+Location When In Use. `android/.../AndroidManifest.xml` — INTERNET,
+CAMERA, RECORD_AUDIO, MODIFY_AUDIO_SETTINGS, ACCESS_FINE_LOCATION,
+ACCESS_COARSE_LOCATION, POST_NOTIFICATIONS. No media or storage permissions: pickers use the Android
 Photo Picker or system file chooser (Play Photo and Video Permissions policy).
 
 Deletion & export: in-app Settings → "Delete account" (`deleteAccount` in
@@ -114,7 +113,7 @@ Overview questions:
 
 - **Does your app collect or share any of the required user data types? → Yes (collects).**
 - **Is all of the user data collected by your app encrypted in transit? → Yes** (all backends — Firebase Auth/Firestore/Storage/FCM, Sentry, PostHog, Vercel, Mapbox — are HTTPS/TLS only; CSP in `vercel.json` allows only https hosts).
-- **Do you provide a way for users to request that their data is deleted? → Yes** — in-app Settings → Account → "Delete account" (server cascade in `api/account/_deleteUserData.ts`, which runs at once; daily Firestore backups expire after 7 days; the PostHog person and its events are deleted through PostHog's bulk-delete API (`api/account/_posthogErasure.ts`, best-effort, needs `POSTHOG_PERSONAL_API_KEY` and `POSTHOG_PROJECT_ID` on Vercel); Sentry events stay under the pseudonymous `hashIdentity(uid)`; `games/` videos may be purged 90 days after upload by `infra/storage-lifecycle.json` (defined but not applied to the prod bucket yet; see docs/GAPS.md, clips reuse game videos); ban records, reports filed about the user, admin and Closet audit logs, pro answer keys, and pro blessing records the user gave or received (with both usernames, publicly readable once accepted or revoked) are retained; trades, serials, spots, dice matches and refereed games are anonymized) plus email `privacy@skatehubba.com` and the public Data Deletion page (`src/screens/DataDeletion.tsx`). Download is the same Settings screen ("Download my data").
+- **Do you provide a way for users to request that their data is deleted? → Yes** — in-app Settings → "Your data & sign out" → "Delete account" (server cascade in `api/account/_deleteUserData.ts`, which runs at once; daily Firestore backups expire after 7 days; the PostHog person and its events are deleted through PostHog's bulk-delete API (`api/account/_posthogErasure.ts`, best-effort, needs `POSTHOG_PERSONAL_API_KEY` and `POSTHOG_PROJECT_ID` on Vercel); Sentry events stay under the pseudonymous `hashIdentity(uid)`; `games/` videos may be purged 90 days after upload by `infra/storage-lifecycle.json` (defined but not applied to the prod bucket yet; see docs/GAPS.md, clips reuse game videos); ban records, reports filed about the user, admin and Closet audit logs, pro answer keys, and pro blessing records the user gave or received (with both usernames, publicly readable once accepted or revoked) are retained; trades, serials, spots, dice matches and refereed games are anonymized) plus email `privacy@skatehubba.com` and the public Data Deletion page (`src/screens/DataDeletion.tsx`). Download is the same Settings screen ("Download my data").
 - **Data shared with third parties → None.** Play's definition excludes "service providers" processing on the developer's behalf; Firebase/Google Cloud, Sentry, PostHog, and Vercel all act as processors, and no data is sold or shared for advertising. (Confirm each processor's DPA is signed — owner action.)
 
 Per data type ("Collected" = yes, "Shared" = no, "Processed ephemerally" = no
@@ -150,37 +149,14 @@ in-app (`src/services/userData.ts`).
 
 ---
 
-## Open Questions for the Owner (do not guess — decide before submitting)
+## Remaining verification before submitting
 
-1. **Mapbox GL telemetry.** _Oct 22, 2026: declared rather than disabled. Both consoles now answer approximate location Collected (via Mapbox, not linked), and the Privacy Policy names Mapbox's usage events. Disabling telemetry later would let both answers go back to Not collected._ `vercel.json` CSP allowlists `events.mapbox.com`,
-   which is mapbox-gl's telemetry endpoint; the repo never disables Mapbox
-   telemetry. Mapbox may receive coarse usage/session data (and tile requests
-   inherently reveal the map viewport) when the map is open. Decide: (a)
-   disable telemetry and keep "Location: Not collected", or (b) keep it and
-   declare approximate location / usage data collected by a third party in
-   both consoles. This and item 1a are the items blocking a clean
-   "Location: Not collected" answer.
-
-1a. **Nearby-spots query (added 2026-09, #547).** Opening the map search with
-an empty query calls `getSpotsNearby` (`src/services/spots.ts`), which sends
-a Firestore range query on `latitude` spanning roughly ±10 km around the
-user's GPS fix. Longitude and the exact fix stay on the device, and nothing
-is written or logged by the app — but the query bounds do reach Google
-(Firebase) as a processor. The "never transmitted" wording in the tables
-above predates this. Decide whether a transient, unstored latitude band
-counts as collecting approximate location for the store forms. 2. **Sentry is not consent-gated** (`src/main.tsx` inits whenever
-`VITE_SENTRY_DSN` is set, before any banner). That is common and generally
-acceptable for diagnostics, but it means crash/diagnostic collection must
-be declared as non-optional in the Play form (drafted that way above).
-Confirm you're comfortable, or gate it behind consent. 3. **Are FNV-hashed uids "linked to identity"?** _Resolved Oct 22, 2026: answered **Linked: Yes** for Usage Data and Diagnostics (the tables above). `identify()` is now called with `hashIdentity(uid)` once a profile exists, so the conservative answer is also the accurate one._ `hashUid`/`hashIdentity`
-(`src/utils/pii.ts`) are deterministic hashes the developer could re-derive
-from a uid, so Linked: Yes is the accurate answer. 4. **Vercel Analytics on native builds.** `<Analytics />`/`<SpeedInsights />`
-load from the serving origin; confirm whether the Capacitor shell serves
-the Vercel-hosted bundle (analytics active on native) or a local bundle
-(web-only). Affects nothing in the draft — both are declared — but worth
-knowing for the Play "optional" framing. 5. **Processor DPAs.** Confirm signed data-processing agreements with Google
-(Firebase), Sentry (Functional Software, Inc.), PostHog, Vercel, and
-Mapbox so the "shared: none / processors only" position holds.
+- Console answers have not been inspected. The draft is not proof of submission.
+- Declare precise location for check-ins/presence and approximate location for Mapbox/nearby requests. Disabling one telemetry endpoint does not stop every location data flow.
+- Deterministic hashed user IDs remain linked to identity. Diagnostics run without analytics consent; opt-in product analytics is separate.
+- Capacitor bundles local `dist` assets; it is not a production remote-web wrapper (`capacitor.config.ts`). Verify which analytics endpoints actually receive events on devices.
+- Confirm processor agreements and sharing classifications against actual vendor use.
+- Verify SMS/provider-held data against the release configuration; see the current SMS section below.
 
 ---
 
@@ -200,28 +176,29 @@ The image is screened on-device by NSFWjs before upload and stored at
 **iOS permission strings** — verbatim, as they appear in `Info.plist`:
 
 - Usage strings live in `ios/App/App/Info.plist` (source of truth). As of
-  Oct 21, 2026, `NSPhotoLibraryUsageDescription` covers every library read:
-  profile photo or banner, Closet Studio image import, and choosing a video to
-  upload or edit. `NSPhotoLibraryAddUsageDescription` covers saving photos and
-  exported clips.
+  Oct 27, 2026, `NSPhotoLibraryUsageDescription` reads: "SkateHubba opens
+  your photo library only when you choose something from it: a profile photo
+  or banner, or a skate video to upload or edit in the clip editor." It does
+  not mention Closet Studio image import; the Closet is off in the store
+  builds, so add it to the string before the Closet ships on iPhone.
+  `NSPhotoLibraryAddUsageDescription` reads: "SkateHubba saves full-quality
+  clips you export from the clip editor to your camera roll."
 
-**Android permissions**: only `android.permission.CAMERA` (already declared for
-trick recording). Picking from the library goes through the Android Photo
+**Android permissions**: the app manifest declares `INTERNET`, `CAMERA`,
+`RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`, `ACCESS_FINE_LOCATION`,
+`ACCESS_COARSE_LOCATION` and `POST_NOTIFICATIONS`. None of them is a media or
+storage permission: picking from the library goes through the Android Photo
 Picker, which needs no permission.
 
 ### Native rebuild determination
 
-Avatar upload did **not** require an iOS or Android binary change beyond the
-plist copy update. The `@capacitor/camera` plugin registers JavaScript
-bindings only; native runtime support for camera and photo library was already
-present from the trick-recording feature. Run `npx cap sync` only if a native
-rebuild is queued for another reason.
+Permission-string or native dependency changes require a newly built and signed binary. Run `npm run build` and `npx cap sync` for the target platform before archiving; web deployment alone does not update the installed app.
 
 ---
 
 ## Owner Actions Checklist
 
-- [ ] Resolve Open Questions 1–3 above (they change three answers).
+- [ ] Verify all current data flows against the final binary; confirm processor agreements and actual console answers. Previously resolved questions are not new blockers.
 - [ ] App Store Connect → App Privacy: transcribe Section 2 (each data type,
       Linked, Tracking = No, Purposes).
 - [ ] Google Play Console → App content → Data safety: transcribe Section 3
@@ -234,22 +211,6 @@ rebuild is queued for another reason.
 
 ---
 
-## Addendum — SMS multi-factor auth and the "phone number" answer (2026-08-29 audit)
+## SMS multi-factor auth — current scope (2026-10-26)
 
-The "phone number: not collected" answers above need a footnote before either
-questionnaire is submitted. `src/services/mfa.ts` implements an **SMS second
-factor** — `PhoneAuthProvider.verifyPhoneNumber`, `PhoneMultiFactorGenerator`,
-and a `hintPhoneNumber` surfaced through `src/screens/AuthScreen.tsx` and
-`src/components/MfaVerifyCard.tsx`.
-
-The answer is still defensible: there is **no in-app enrolment path**, so the app
-never captures a phone number — enrolment happens outside it, and the number is
-held by Firebase Auth, not by any collection this app writes. But "verified
-absent" overstates it, because a phone number does exist in the identity system
-for enrolled users and an SMS is sent through it at sign-in.
-
-**Before submitting:** either state this explicitly under the third-party
-(Firebase Auth) disclosure, or confirm with the store reviewer that
-provider-held MFA phone numbers with no in-app collection fall outside the
-"data collected" definition. Do not answer from the tables above without
-resolving this.
+The old statement that no enrollment UI exists is superseded. `isSms2faEnabled()` gates enrollment; both store workflows set it false. Existing provider-held phone numbers and SMS challenge flows still require a data-flow review. Keep the conservative phone-number disclosure where that data is processed; do not infer "not collected" solely from a hidden enrollment button.

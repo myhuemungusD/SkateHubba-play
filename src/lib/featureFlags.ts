@@ -339,3 +339,8 @@ export function isTurnLengthEnabled(): boolean {
 export function isRandomChallengerEnabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_RANDOM_CHALLENGER);
 }
+
+/** Share button on the Clips feed rail (ShareClipButton). Literal "true" only; off by default (rail unchanged); tester override turns it on on the web. */
+export function isFeedShareEnabled(): boolean {
+  return flagOn(import.meta.env.VITE_FEATURE_FEED_SHARE);
+}

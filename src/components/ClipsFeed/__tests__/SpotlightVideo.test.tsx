@@ -49,7 +49,9 @@ describe("SpotlightVideo reduced motion", () => {
     const video = container.querySelector("video") as HTMLVideoElement;
     expect(video.autoplay).toBe(true);
     expect(video).toHaveClass("object-contain");
-    expect(video.getAttribute("poster")).toBe("/sh-video-poster.webp");
+    // No shared cover image: the clip's own first frame is the cover.
+    expect(video.hasAttribute("poster")).toBe(false);
+    expect(video.getAttribute("src")).toBe("clip.webm#t=0.001");
     expect(video.getAttribute("preload")).toBe("auto");
     fireIntersect(video, true);
     expect(play).toHaveBeenCalled();
@@ -79,10 +81,18 @@ describe("SpotlightVideo reduced motion", () => {
     expect(video.loop).toBe(true);
     expect(video.autoplay).toBe(false);
     expect(video.getAttribute("preload")).toBe("metadata");
-    expect(video.getAttribute("poster")).toBe("/sh-video-poster.webp");
+    expect(video.hasAttribute("poster")).toBe(false);
+    expect(video.getAttribute("src")).toBe("clip.webm#t=0.001");
     expect(ioCallback).toBeNull();
     expect(play).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: /play clip/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("SpotlightVideo first-frame cover", () => {
+  it("keeps a src that already carries a fragment unchanged", () => {
+    const { container } = render(<SpotlightVideo src="clip.webm#t=2" />);
+    expect(container.querySelector("video")?.getAttribute("src")).toBe("clip.webm#t=2");
   });
 });
 
@@ -147,5 +157,146 @@ describe("SpotlightVideo playback failure", () => {
 
     await user.click(screen.getByRole("button", { name: /pause clip/i }));
     expect(pause).toHaveBeenCalled();
+  });
+});
+
+describe("SpotlightVideo playback state", () => {
+  it("shows the play affordance again when the element pauses itself", () => {
+    const { container } = render(<SpotlightVideo src="clip.webm" />);
+    const video = container.querySelector("video") as HTMLVideoElement;
+    fireEvent.play(video);
+    expect(screen.getByRole("button", { name: /pause clip/i })).toBeInTheDocument();
+    fireEvent.pause(video);
+    expect(screen.getByRole("button", { name: /play clip/i })).toBeInTheDocument();
+  });
+
+  it("keeps the play affordance when a tap-to-play is refused", async () => {
+    reducedMotion.value = true;
+    play.mockRejectedValueOnce(new Error("NotAllowedError"));
+    render(<SpotlightVideo src="clip.webm" />);
+    await userEvent.click(screen.getByRole("button", { name: /play clip/i }));
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: /play clip/i })).toBeInTheDocument();
+  });
+
+  it("RETRY reloads without auto-playing when reduced motion is on", async () => {
+    reducedMotion.value = true;
+    const load = vi.spyOn(window.HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    const { container } = render(<SpotlightVideo src="clip.webm" />);
+    fireEvent.error(container.querySelector("video") as HTMLVideoElement);
+    await userEvent.click(screen.getByRole("button", { name: /retry clip/i }));
+    expect(load).toHaveBeenCalled();
+    expect(play).not.toHaveBeenCalled();
+    load.mockRestore();
+  });
+
+  it("hands mute to the parent when it owns the muted state", async () => {
+    const onToggleMute = vi.fn();
+    const { container } = render(<SpotlightVideo src="clip.webm" muted onToggleMute={onToggleMute} />);
+    const video = container.querySelector("video") as HTMLVideoElement;
+    await userEvent.click(screen.getByRole("button", { name: /unmute clip/i }));
+    expect(onToggleMute).toHaveBeenCalledTimes(1);
+    // The parent hasn't flipped its prop, so the clip stays muted.
+    expect(video.muted).toBe(true);
+    expect(screen.getByRole("button", { name: /unmute clip/i })).toBeInTheDocument();
+  });
+});
+
+describe("SpotlightVideo paging", () => {
+  it.each([
+    { outcome: "plays", settle: () => play.mockResolvedValueOnce(undefined), pauses: 1 },
+    // A refused play() is swallowed; it never played, so there is nothing to pause.
+    { outcome: "is refused", settle: () => play.mockRejectedValueOnce(new Error("NotAllowedError")), pauses: 0 },
+  ])(
+    "starts a slide as it becomes active and, when it $outcome, pauses on swipe-away $pauses time(s)",
+    async ({ settle, pauses }) => {
+      settle();
+      const { container, rerender } = render(<SpotlightVideo src="clip.webm" active={false} />);
+      const video = container.querySelector("video") as HTMLVideoElement;
+      const pause = vi.spyOn(video, "pause").mockImplementation(() => undefined);
+      rerender(<SpotlightVideo src="clip.webm" active />);
+      expect(play).toHaveBeenCalledTimes(1);
+      await Promise.resolve();
+      await Promise.resolve();
+      rerender(<SpotlightVideo src="clip.webm" active={false} />);
+      expect(pause).toHaveBeenCalledTimes(pauses);
+    },
+  );
+});
+
+describe("SpotlightVideo viewport observer", () => {
+  it("pauses a clip on scroll-out only once it has actually played", async () => {
+    const { container } = render(<SpotlightVideo src="clip.webm" />);
+    const video = container.querySelector("video") as HTMLVideoElement;
+    const pause = vi.spyOn(video, "pause").mockImplementation(() => undefined);
+    // The activation play() hasn't resolved yet: nothing to pause.
+    fireIntersect(video, false);
+    expect(pause).not.toHaveBeenCalled();
+    fireIntersect(video, true);
+    await Promise.resolve();
+    fireIntersect(video, false);
+    expect(pause).toHaveBeenCalledTimes(1);
+  });
+
+  it("swallows a rejected play() on scroll-in and then has nothing to pause", async () => {
+    play.mockRejectedValueOnce(new Error("NotAllowedError"));
+    const { container } = render(<SpotlightVideo src="clip.webm" />);
+    const video = container.querySelector("video") as HTMLVideoElement;
+    const pause = vi.spyOn(video, "pause").mockImplementation(() => undefined);
+    fireIntersect(video, true);
+    expect(play).toHaveBeenCalledTimes(1);
+    await Promise.resolve();
+    await Promise.resolve();
+    fireIntersect(video, false);
+    expect(pause).not.toHaveBeenCalled();
+  });
+
+  it("does not resume on scroll-in after the viewer paused it", async () => {
+    const { container } = render(<SpotlightVideo src="clip.webm" />);
+    const video = container.querySelector("video") as HTMLVideoElement;
+    const pause = vi.spyOn(video, "pause").mockImplementation(() => undefined);
+    Object.defineProperty(video, "paused", { configurable: true, value: false });
+    fireEvent.play(video);
+    await userEvent.click(screen.getByRole("button", { name: /pause clip/i }));
+    expect(pause).toHaveBeenCalledTimes(1);
+    play.mockClear();
+    fireIntersect(video, true);
+    expect(play).not.toHaveBeenCalled();
+  });
+
+  it("ignores an empty observer batch", () => {
+    render(<SpotlightVideo src="clip.webm" />);
+    play.mockClear();
+    ioCallback!([], {} as IntersectionObserver);
+    expect(play).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the autoplay attribute where IntersectionObserver is unavailable", () => {
+    // @ts-expect-error -- simulating an engine without IntersectionObserver
+    delete globalThis.IntersectionObserver;
+    const { container } = render(<SpotlightVideo src="clip.webm" />);
+    const video = container.querySelector("video") as HTMLVideoElement;
+    expect(video.autoplay).toBe(true);
+    expect(ioCallback).toBeNull();
+    expect(play).not.toHaveBeenCalled();
+  });
+});
+
+describe("SpotlightVideo mute toggle placement", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("defaults to top-right, flag or not, so a dispute card's toggle never moves", () => {
+    vi.stubEnv("VITE_FEATURE_FEED_SHARE", "true");
+    render(<SpotlightVideo src="clip.webm" />);
+    const cls = screen.getByRole("button", { name: /mute clip/i }).className.split(" ");
+    expect(cls).toContain("right-3");
+    expect(cls.some((c) => c.includes("left-3") || c.includes("right-auto"))).toBe(false);
+  });
+
+  it("uses the side classes its card passes", () => {
+    render(<SpotlightVideo src="clip.webm" muteSide="left-3" />);
+    const cls = screen.getByRole("button", { name: /mute clip/i }).className.split(" ");
+    expect(cls).toContain("left-3");
+    expect(cls).not.toContain("right-3");
   });
 });

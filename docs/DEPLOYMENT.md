@@ -737,7 +737,7 @@ Run `npx tsc -b` locally to see the errors. Fix type errors before pushing.
 
 ### Build fails on `npm test`
 
-Run `npm test` locally — the suite must pass and `npm run test:coverage` must clear **every** threshold in `vite.config.ts` before CI will approve the build: 100% on `src/services/**` and `src/hooks/**`, 93/100/80/93 on `src/firebase.ts`, and 80/80/75/80 on `src/components/**` and `src/screens/**`. A UI-only change can fail this gate without touching a single service.
+Run `npm test` locally — the suite must pass and `npm run test:coverage` must clear **every** threshold in `vite.config.ts` before CI will approve the build: 100% on `src/services/**`, `src/hooks/**`, `src/types/**`, `src/utils/**` and `src/firebase.ts`, plus ratchet floors on the other globs. A UI-only change can fail this gate without touching a single service.
 
 ### Firestore `permission-denied` error in production
 

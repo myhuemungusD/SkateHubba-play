@@ -1,6 +1,8 @@
 # Feature flags and testers
 
-Every new feature ships **off**. Testers (today Jason and Mike) see everything through one override, and nobody else sees a feature until its flag is turned on for real.
+> **Store baseline checked 2026-10-26:** `.github/workflows/ios-release.yml` and `android-aab.yml` explicitly enable many flags whose code defaults are off. Closet, drops, trading, Studio, Bucks purchases, Runner, dice, pro blessing, SMS enrollment and random challenger remain off; WTT is off for the public release. See [store readiness](STORE_READINESS_2026-10-26.md).
+
+Every new feature ships **off**. Web testers see default-off features through one override, and nobody else sees a feature until its flag is turned on for real.
 
 ## How a flag works
 
@@ -12,7 +14,7 @@ Every new feature ships **off**. Testers (today Jason and Mike) see everything t
 ## The tester override
 
 - Firestore doc `config/featureTesters` holds `{ uids: [...] }`. Only a listed uid (or an admin) can read it, so the list never leaks.
-- When a listed tester signs in, [`src/services/featureTesters.ts`](../src/services/featureTesters.ts) stores their uid in local storage (`sh_feature_tester_uid`) and reloads once. From then on every `VITE_FEATURE_*` flag reads as on in that browser or app. Signing out, or a non-tester signing in, clears it.
+- When a listed tester signs in, [`src/services/featureTesters.ts`](../src/services/featureTesters.ts) stores their uid in local storage (`sh_feature_tester_uid`) and reloads once. From then on every `VITE_FEATURE_*` flag reads as on in that web browser (never in the native iOS/Android shell). Signing out, or a non-tester signing in, clears it.
 - The doc is written only from the Firebase console or the Admin SDK. The app never writes it.
 - Server features keep their own `*_TESTER_UIDS` lists. `npm run testers:sync` keeps every one of them matched to `config/featureTesters` (dry run by default; `-- --apply` writes). The PR gate runs `node scripts/testers-sync.mjs --check`, so a new `*_TESTER_UIDS` list in code that the script doesn't know about fails CI.
 - Pros never get admin powers. Pro tools (`/pro`) only ever act as a verified pro. Admin screens need the admin claim, and the tester override does not grant it.
@@ -22,18 +24,19 @@ Every new feature ships **off**. Testers (today Jason and Mike) see everything t
 Rule (Jason, 2026-10-20): every finished feature is on for everyone. A flag stays off only when the feature is unfinished or needs something outside the code first.
 
 - **Code default:** everything off, so a brand-new feature never leaks before it's done.
-- **Website (Vercel Production + Preview), iPhone store/TestFlight build (`ios-release.yml`, Xcode Cloud `ci_post_clone.sh`) and server switches (`functions.sk8hub-d7806.env`):** every finished feature on. That covers Map, check-ins, spot presence, tips, Verified Pro (blessing, profiles, showcase, calls, community), Dice (website and server only), XP, referee, turn length, trick picker, clip editor, pro camera, clip moderation, feed modes, post makes, profile banner and custom profile, spot chats, Closet (drops, studio, 360 shoes, Hubba icons; trading is website only, off on iPhone until its screen is wired up and proven), and Apple Sign-In on iPhone.
+- **Website (Vercel Production + Preview), iPhone store/TestFlight build (`ios-release.yml`, Xcode Cloud `ci_post_clone.sh`) and server switches (`functions.sk8hub-d7806.env`):** every finished feature on. That covers Map, check-ins, spot presence, tips, Verified Pro (profiles, showcase, calls, community; blessing is website and server only), Dice (website and server only), XP, referee, turn length, trick picker, clip editor, pro camera, clip moderation, feed modes, post makes, profile banner and custom profile, spot chats, 360 shoes, Hubba icons, the Closet with drops, Studio and trading (website and server only; see below), and Apple Sign-In on iPhone.
 - **Still off for the public, and why:**
   - Skate Runner: waits for Jason's sign-off.
   - Roll Dice in the iPhone build (Jason, 2026-10-20): off for the App Store launch so the listing needs no Simulated Gambling rating. Still on for the website and the server. With it off the iOS app hides the lobby tile, profile Challenge button and `/dice` routes (they redirect), and drops dice toasts and bell rows. Turning it on later means an app update through review.
   - Pro blessing UI in the iPhone build (Jason, 2026-10-21): `VITE_FEATURE_PRO_BLESSING=false` in `ios-release.yml` and `ci_post_clone.sh`. Still on for the website and the server (`PRO_BLESSING_ENABLED`). With it off the iOS app hides the bless button on profiles, the "Put on by" line and the accept screen, and the Pro tools card shows only its preview state. Pro status, the gold handle and pro profiles still show on iPhone. A skater blessed from the website accepts there. Turning it on later means an app update through review.
+  - Closet in the iPhone build: `VITE_FEATURE_CLOSET_ENABLED=false` in `ios-release.yml` and `ci_post_clone.sh` until App Check is verified on a TestFlight device (claim, buy, equip), because its callables enforce App Check. Closet drops, Studio and trading go with it. The 360 shoe viewer and Hubba icons have their own flags and are on.
   - What's That Trick: its scoring jobs are still stubs.
   - Buying Hubba Bucks (`CLOSET_BUCKS_PURCHASE_ENABLED`): needs in-app purchase products set up in App Store Connect first.
   - SMS two-step sign-in: not built for iPhone yet.
   - Apple Sign-In on the website: needs a separate Apple web Service ID.
   - Admin screens: admin claim only, never a flag.
 - **Clip moderation** needs the Google Video Intelligence API on project `sk8hub-d7806` (enabled 2026-10-20). Without it every new clip waits for manual review.
-- **Testers:** everything, including the features above that are still off.
+- **Web testers:** the override can enable default-off client features; server authorization still applies. **Native testers:** only the flags baked into their binary. `isFeatureTesterOverrideActive()` returns false in native shells. A WTT tester build is a separate build and must not be submitted as the public release.
 
 ## Client flags
 
@@ -49,7 +52,7 @@ Rule (Jason, 2026-10-20): every finished feature is on for everyone. A flag stay
 | `VITE_FEATURE_DICE_ENABLED`                  | Roll Dice                                                                                                                                | `DICE_ENABLED` / `DICE_TESTER_UIDS`                                 | [DICE.md](DICE.md)                                   |
 | `VITE_FEATURE_XP_ENABLED`                    | XP, levels and the achievements ribbon                                                                                                   | `XP_ENABLED` / `XP_TESTER_UIDS` (functions and Vercel)              | [XP_LEVELS.md](XP_LEVELS.md)                         |
 | `VITE_FEATURE_REFEREE_ENABLED`               | Nominate a referee on a new game                                                                                                         | Read at create time only                                            | [GAME_MECHANICS.md](GAME_MECHANICS.md)               |
-| `VITE_FEATURE_TURN_LENGTH`                   | Turn length picker on a new challenge (24 hours, 3 days or 7 days). **Testers only** by default                                          | Read at create time; stored on the game doc                         | [GAME_MECHANICS.md](GAME_MECHANICS.md)               |
+| `VITE_FEATURE_TURN_LENGTH`                   | Turn length picker on a new challenge (24 hours, 3 days or 7 days). Off by default in code; on in the store builds                       | Read at create time; stored on the game doc                         | [GAME_MECHANICS.md](GAME_MECHANICS.md)               |
 | `VITE_FEATURE_TRICK_PICKER_ENABLED`          | Searchable trick picker when setting a trick                                                                                             |                                                                     |                                                      |
 | `VITE_FEATURE_CLIP_MODERATION_ENABLED`       | Hold public uploads until moderation clears them                                                                                         | `MODERATION_ENABLED`                                                | [CLIP_MODERATION.md](CLIP_MODERATION.md)             |
 | `VITE_FEATURE_CLIP_EDITOR`                   | Clip editor (speed ramps, trims, VX/VHS looks, music, skate sounds)                                                                      |                                                                     | [CLIP_EDITOR.md](CLIP_EDITOR.md)                     |
@@ -72,6 +75,7 @@ Rule (Jason, 2026-10-20): every finished feature is on for everyone. A flag stay
 | `VITE_FEATURE_SHOE_360`                      | 360 viewer for Mike White signature shoes                                                                                                |                                                                     | [MIKE_WHITE_COLLECTION.md](MIKE_WHITE_COLLECTION.md) |
 | `VITE_FEATURE_SMS_2FA_ENABLED`               | SMS as a second factor for email/password accounts                                                                                       |                                                                     | [MFA_TOTP.md](MFA_TOTP.md)                           |
 | `VITE_FEATURE_RANDOM_CHALLENGER`             | "Find me a challenger" button on Home. Picks a random skater client-side and opens the challenge form. Hidden while off                  | None. No server matchmaking yet                                     |                                                      |
+| `VITE_FEATURE_FEED_SHARE`                    | Share button on the Clips feed rail. Own clip shares the video, others share a profile link. Rail unchanged while off                    | None (client only)                                                  | `src/components/ClipsFeed/ShareClipButton.tsx`       |
 | `VITE_FEATURE_ADMIN_CONSOLE`                 | Admin: bans list, user search, feature switches viewer (admin claim only)                                                                | Admin claim                                                         |                                                      |
 | `VITE_FEATURE_ADMIN_OPS`                     | Admin: disputes queue with final ruling, audit log (admin claim only)                                                                    | Admin claim                                                         |                                                      |
 | `VITE_FEATURE_ADMIN_INSIGHTS`                | Admin: analytics and announcements (in-app banner + push)                                                                                | Admin claim (`adminAnalytics`, `announcementOnCreate`)              |                                                      |

@@ -1,11 +1,13 @@
 # Feature Completion Status Report
 
+> **2026-10-26 correction:** source version is v1.2.0. Historical test counts and production claims below are dated observations, not fresh results. Store builds enable Map, feed, check-ins/presence, chat, XP and referee; Closet and other deferred features remain off. Use [STORE_READINESS_2026-10-26.md](STORE_READINESS_2026-10-26.md) for current evidence and remaining gates.
+
 **Generated:** 2026-06-01 · **Last verified:** 2026-10-01
 **Source of truth:** `src/`, `firestore.rules`, `e2e/`, `rules-tests/`, `CHANGELOG.md`. Active debt is tracked in `docs/GAPS.md` and `docs/DECISIONS.md` (per CHARTER — the old `COMPREHENSIVE_GAP_ANALYSIS.md` is archived and no longer authoritative).
 
 Status legend:
 
-- **Done** — shipped to `main`, in production, covered by tests
+- **Done** — implementation exists in `main`; production deployment, feature exposure and device validation must be established separately
 - **In Review** — code on a branch / `[Unreleased]` in CHANGELOG, not yet released
 - **In Progress** — partial implementation in repo (code, types, or rules present but feature not user-facing)
 - **Deferred** — explicitly de-prioritized; pulled off the active roadmap pending a future revisit
@@ -66,8 +68,8 @@ Status legend:
 | In-app notification bell         | **Done** | `src/components/NotificationBell.tsx`, `src/services/notifications.ts`; hydrated from the initial `/notifications` snapshot so offline-delivered challenges leave an in-app record                                                                                                                                                                                                                                                                                                                                                                                 |
 | Game notification watcher        | **Done** | `src/components/GameNotificationWatcher.tsx`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | Deep-link from push → game       | **Done** | `src/App.tsx` — `useEffect` registers the `skatehubba:open-game` window listener and routes to the matching active game                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| Clip sharing (social platforms)  | **Done** | `src/components/ClipsFeed/`, `src/services/clips.ts` + `clip_shared`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| Clip save (local download)       | **Done** | `clip_saved` analytic, `ClipsFeed.tsx`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Clip sharing (social platforms)  | **Done** | `src/components/ClipsFeed/ShareClipButton.tsx` (feed, behind `VITE_FEATURE_FEED_SHARE`), `src/components/waiting/ClipShareButtons.tsx`, `src/components/TurnHistoryViewer.tsx`, shared options in `src/lib/clipShare.ts` + `clip_shared`                                                                                                                                                                                                                                                                                                                           |
+| Clip save (local download)       | **Done** | `src/components/waiting/ClipShareButtons.tsx`, `src/components/TurnHistoryViewer.tsx` (web only) + `clip_saved`                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | Game share (post-game)           | **Done** | `game_shared` analytic                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 **Phase 2 verdict:** All listed Phase 2 mechanics are shipped; README roadmap matches.
@@ -133,17 +135,17 @@ Status legend:
 
 ### 5b. Binding community disputes — shipped post-v1.1.0
 
-The honor-system path no longer resolves a "landed" claim instantly. It freezes the game into `pendingReview` (setter's 24 h accept/dispute window) and, if disputed, `communityReview` (24 h binding community vote). Recorded under `[Unreleased]` in CHANGELOG — not yet in a tagged release.
+The honor-system path no longer resolves a "landed" claim instantly. It freezes the game into `pendingReview` (setter's 24 h accept/dispute window) and, if disputed, `communityReview` (24 h binding community vote). Included in the current v1.2.0 source; signed store release evidence is tracked separately.
 
-| Feature                                      | Status                   | Evidence                                                                 |
-| -------------------------------------------- | ------------------------ | ------------------------------------------------------------------------ |
-| `pendingReview` / `communityReview` phases   | **Shipped** (unreleased) | `src/services/games.mappers.ts`, `src/services/games.match.ts`           |
-| `reviewFor` / `reviewDeadline` freeze fields | **Shipped** (unreleased) | `games.mappers.ts`; sweep skips frozen games (`turnForfeit.shared.ts`)   |
-| Raise dispute (setter-only)                  | **Shipped** (unreleased) | `src/services/disputes.raise.ts`, `firestore.rules` `/disputes`          |
-| Community land/bail voting, 1-vote quorum    | **Shipped** (unreleased) | `src/services/disputes.votes.ts`, `firestore.rules` `/disputeVotes`      |
-| Server-side dispute referee (expiry + tally) | **Shipped** (unreleased) | `api/cron/resolve-expired-disputes.ts`, `dispute.resolution.shared.ts`   |
-| Four public dispute counters on profiles     | **Shipped** (unreleased) | `src/services/users.ts`, zero-seeded + immutable in `firestore.rules`    |
-| Dispute lane UI + review panels              | **Shipped** (unreleased) | `src/components/ClipsFeed/DisputeLane.tsx`, `GamePlayScreen/components/` |
+| Feature                                      | Status          | Evidence                                                                 |
+| -------------------------------------------- | --------------- | ------------------------------------------------------------------------ |
+| `pendingReview` / `communityReview` phases   | **Implemented** | `src/services/games.mappers.ts`, `src/services/games.match.ts`           |
+| `reviewFor` / `reviewDeadline` freeze fields | **Implemented** | `games.mappers.ts`; sweep skips frozen games (`turnForfeit.shared.ts`)   |
+| Raise dispute (setter-only)                  | **Implemented** | `src/services/disputes.raise.ts`, `firestore.rules` `/disputes`          |
+| Community land/bail voting, 1-vote quorum    | **Implemented** | `src/services/disputes.votes.ts`, `firestore.rules` `/disputeVotes`      |
+| Server-side dispute referee (expiry + tally) | **Implemented** | `api/cron/resolve-expired-disputes.ts`, `dispute.resolution.shared.ts`   |
+| Four public dispute counters on profiles     | **Implemented** | `src/services/users.ts`, zero-seeded + immutable in `firestore.rules`    |
+| Dispute lane UI + review panels              | **Implemented** | `src/components/ClipsFeed/DisputeLane.tsx`, `GamePlayScreen/components/` |
 
 **Notifications:** both sides are notified — the setter when a land claim opens the review window (`1b98ec6`), and the matcher when their claim is disputed (`ed97049`, written in the same transaction as the dispute). GAPS.md P0-3 is closed.
 

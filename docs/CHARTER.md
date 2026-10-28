@@ -92,7 +92,7 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 
 **Still off in production:**
 
-- **Referee on new games** (`VITE_FEATURE_REFEREE_ENABLED`) — hidden for launch simplicity, so every dispute on a new game goes to the community vote. The challenge screen does not offer a referee, and `createGame` will not stamp one. Games already in flight keep their judge: invites, `disputable`, `setReview`, the Judge / No Judge badge, notifications, stats, and `api/cron` referee sweeps are unchanged. `firestore.rules` is unchanged.
+- **Referee on new games** (`VITE_FEATURE_REFEREE_ENABLED`) — code default is off, but current iOS/Android release workflows set it true. Store builds offer an optional referee; games without one use community review. Games already in flight keep their judge: invites, `disputable`, `setReview`, the Judge / No Judge badge, notifications, stats, and `api/cron` referee sweeps are unchanged. `firestore.rules` is unchanged.
 - **Roll Dice** (`VITE_FEATURE_DICE_ENABLED`) — built, but the `diceAction` / `diceSweep` server functions are not yet deployed. Goes to testers first. See `docs/DICE.md`.
 - **Skate Runner** (`VITE_FEATURE_RUNNER_ENABLED`) — board-only grind prototype at `/play/runner`. Testers only until Jason signs off. Scores stay in the run and are not S.K.A.T.E. letters. A personal best can stay on the device. No Firestore writes. See `docs/RUNNER.md`.
 - **Public clip moderation** (`VITE_FEATURE_CLIP_MODERATION_ENABLED`) — built, but `moderateNewClip`, `moderateClipReport`, and `decideClipModeration` are not deployed, and the Video Intelligence API is not enabled. Goes to testers first. See `docs/CLIP_MODERATION.md`.
@@ -102,7 +102,7 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 ### 2.3 Active focus
 
 - Custom Mapbox style for branded dark-base map (`VITE_MAPBOX_STYLE_URL`, no code change)
-- Cut the missing git tags — the repo has no `v1.0.0`/`v1.1.0` tag despite the CHANGELOG linking to both
+- Record a release candidate SHA, tag and signed artifacts together; source version is 1.2.0, and changelog links alone do not prove an uploaded release
 - Close the remaining partially-open P0 in [GAPS.md](GAPS.md) (P0-4, DSA controls — account-level items block store submission)
 
 ### 2.4 Known critical gaps
