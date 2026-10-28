@@ -19,22 +19,24 @@ export function DataDeletion({ onBack }: { onBack: () => void }) {
         <Section title="Download a Copy of Your Data">
           <p>
             Under the GDPR&apos;s right to data portability (Article 20) and CCPA, you can download a machine-readable
-            copy of your account data. When signed in, open Settings and, under{" "}
-            <strong className="text-white">Account</strong>, tap{" "}
-            <strong className="text-white">&quot;Download my data&quot;</strong>. We package the data tied to your
-            account (your profile and settings, games and dice games, clips, comments and spot chat, spots you added,
-            your closet, trades and drops, notifications, reports and appeals, and the list of users you blocked) into a
-            single JSON file that downloads to your device. Photos and videos are included as links. If any part
-            can&apos;t be read, the file says which. A few records tied to your account (such as cooldown counters,
-            trick labels made from your clips, and pro reviews) aren&apos;t in the file yet; the file lists them, and
-            you can get a copy by emailing <span className="text-brand-orange">{CONTACT_EMAIL}</span>.
+            copy of the main data tied to your account. When signed in, open Settings and, under{" "}
+            <strong className="text-white">&quot;Your data &amp; sign out&quot;</strong>, tap{" "}
+            <strong className="text-white">&quot;Download my data&quot;</strong>. We package your profile and username,
+            your games, the clips you posted and your votes on clips, the spots you added, including ones no longer on
+            the map, your notifications and nudges, the players you blocked, reports you filed, and moderation decisions
+            and appeals about your account into a single JSON file that downloads to your device.
+          </p>
+          <p>
+            The file does not yet include everything we hold. Your sign-in details, date of birth and parental consent,
+            comments, spot check-ins and spot chat messages are left out, for example. To get a copy of those, email{" "}
+            <span className="text-brand-orange">{CONTACT_EMAIL}</span>.
           </p>
         </Section>
 
         <Section title="Delete Your Account (In-App)">
           <p>
             The fastest way to delete your data is directly in the app, on the web or iPhone. When signed in, open
-            Settings and, under <strong className="text-white">Account</strong>, tap{" "}
+            Settings and, under <strong className="text-white">&quot;Your data &amp; sign out&quot;</strong>, tap{" "}
             <strong className="text-white">&quot;Delete account&quot;</strong>. Deletion runs on our servers as soon as
             you confirm. What happens to each kind of data is listed under &quot;What Happens After Deletion&quot;
             below.
