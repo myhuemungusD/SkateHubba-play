@@ -23,6 +23,7 @@ import { BlockedPlayersList } from "./settings/BlockedPlayersList";
 import { PresenceSettings } from "./settings/PresenceSettings";
 import { PushSettings } from "./settings/PushSettings";
 import { TipsSettings } from "./settings/TipsSettings";
+import type { DataDownloadOutcome } from "../services/userData";
 
 const LEGAL_LINKS = [
   { to: "/privacy", title: "Privacy Policy" },
@@ -42,7 +43,7 @@ export function Settings({
   profile: UserProfile;
   onBack: () => void;
   /** Data-export handler. Omit to hide the row (see {@link AccountActions}). */
-  onDownloadData?: () => Promise<void>;
+  onDownloadData?: () => Promise<DataDownloadOutcome | void>;
   /** Account-deletion handler. Omit to hide the row. */
   onDeleteAccount?: () => Promise<void>;
   /** Sign-out handler. Omit to hide the row; the row asks before signing out. */
