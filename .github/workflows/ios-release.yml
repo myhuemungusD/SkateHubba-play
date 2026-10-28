@@ -180,6 +180,9 @@ jobs:
           VITE_FEATURE_SMS_2FA_ENABLED: "false"
           # "Find me a challenger" on Home stays off (button hidden).
           VITE_FEATURE_RANDOM_CHALLENGER: "false"
+          # Share button on the Clips feed rail stays off until it ships post-launch
+          # (matches ci_post_clone.sh for Xcode Cloud).
+          VITE_FEATURE_FEED_SHARE: "false"
           # Tester build only: What's That Trick ("wtt" input).
           VITE_FEATURE_WTT_ENABLED: ${{ inputs.wtt && 'true' || 'false' }}
           # Map key required now that Map is public (and for testers).
@@ -199,7 +202,7 @@ jobs:
       - name: Show Xcode
         run: xcodebuild -version
 
-      - uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
+      - uses: ruby/setup-ruby@26e5b7d197ebf60545ee9667bcbace0be11ccaec # v1.334.0
         with:
           ruby-version: "3.3"
           bundler-cache: true

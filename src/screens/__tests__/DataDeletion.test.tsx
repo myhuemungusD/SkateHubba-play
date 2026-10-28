@@ -13,9 +13,17 @@ describe("DataDeletion", () => {
   it("points export and deletion at Settings", () => {
     render(<DataDeletion onBack={vi.fn()} />);
     const text = document.body.textContent ?? "";
-    expect(text).toContain('under Account, tap "Download my data"');
-    expect(text).toContain('under Account, tap "Delete account"');
+    expect(text).toContain('under "Your data & sign out", tap "Download my data"');
+    expect(text).toContain('under "Your data & sign out", tap "Delete account"');
     expect(text.toLowerCase()).not.toContain("lobby");
+  });
+
+  it("does not claim the export holds everything", () => {
+    render(<DataDeletion onBack={vi.fn()} />);
+    const text = (document.body.textContent ?? "").replace(/\s+/g, " ");
+    expect(text).not.toContain("everything we store");
+    expect(text).toContain("The file does not yet include everything we hold.");
+    expect(text).toContain("To get a copy of those, email privacy@skatehubba.com.");
   });
 
   it("shows the same after-deletion facts as the Privacy Policy", () => {

@@ -46,6 +46,75 @@ describe("AccountActions", () => {
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
 
+    it("stays quiet when the saved file is complete", async () => {
+      const onDownloadData = vi.fn().mockResolvedValue({ missingSections: [], truncatedSections: [] });
+      render(<AccountActions onDownloadData={onDownloadData} />);
+
+      await userEvent.click(downloadBtn());
+
+      await waitFor(() => expect(onDownloadData).toHaveBeenCalledTimes(1));
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("warns in plain words when the saved file is missing sections", async () => {
+      const onDownloadData = vi
+        .fn()
+        .mockResolvedValue({ missingSections: ["clips", "notifications"], truncatedSections: [] });
+      render(<AccountActions onDownloadData={onDownloadData} />);
+
+      await userEvent.click(downloadBtn());
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(
+        "Your data file is ready, but some of it is missing. We couldn't load all of your clips and " +
+          "notifications this time, so that part of the file may be empty or incomplete. Try again in a few " +
+          "minutes. If you need a complete copy, email privacy@skatehubba.com.",
+      );
+    });
+
+    it("says when a list was too long to fit in full", async () => {
+      const onDownloadData = vi.fn().mockResolvedValue({ missingSections: [], truncatedSections: ["notifications"] });
+      render(<AccountActions onDownloadData={onDownloadData} />);
+
+      await userEvent.click(downloadBtn());
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "Your data file is ready, but some of it is missing. You have more than 5,000 items in your " +
+          "notifications, so the file holds the first 5,000. If you need a complete copy, email privacy@skatehubba.com.",
+      );
+    });
+
+    it("keeps messages outside the button so screen readers announce them", async () => {
+      const onDownloadData = vi.fn().mockResolvedValue({ missingSections: ["games"], truncatedSections: [] });
+      render(<AccountActions onDownloadData={onDownloadData} />);
+
+      await userEvent.click(downloadBtn());
+
+      const warning = await screen.findByRole("alert");
+      expect(downloadBtn()).not.toContainElement(warning);
+      // Tied to the button so it is read as the button's description.
+      const describedBy = downloadBtn().getAttribute("aria-describedby");
+      expect(describedBy).toBeTruthy();
+      expect(document.getElementById(describedBy as string)).toContainElement(warning);
+      expect(downloadBtn()).toHaveAccessibleName(/^Download my data/);
+      expect(downloadBtn()).not.toHaveAccessibleName(/missing/);
+    });
+
+    it("clears an old missing-sections warning when the next export is complete", async () => {
+      const onDownloadData = vi
+        .fn()
+        .mockResolvedValueOnce({ missingSections: ["games"], truncatedSections: [] })
+        .mockResolvedValueOnce({ missingSections: [], truncatedSections: [] });
+      render(<AccountActions onDownloadData={onDownloadData} />);
+
+      await userEvent.click(downloadBtn());
+      await screen.findByRole("alert");
+      await userEvent.click(downloadBtn());
+
+      await waitFor(() => expect(onDownloadData).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    });
+
     it("surfaces the export error message", async () => {
       const onDownloadData = vi.fn().mockRejectedValueOnce(new Error("network down"));
       render(<AccountActions onDownloadData={onDownloadData} />);

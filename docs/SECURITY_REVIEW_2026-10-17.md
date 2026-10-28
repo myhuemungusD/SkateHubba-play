@@ -1,5 +1,7 @@
 # Security review — 2026-10-17
 
+> **Current release review: 2026-10-26.** See [STORE_READINESS_2026-10-26.md](STORE_READINESS_2026-10-26.md) for source-verified store gates and validation limits. Status claims below belong to their stated audit dates; they do not prove current deployments, console settings or signed builds.
+
 Scope: Firestore/Storage rules, Cloud Functions, Vercel API, auth, secrets,
 dependencies, web headers, Capacitor native config. Benchmarked against
 OWASP ASVS 4 / MASVS 2.

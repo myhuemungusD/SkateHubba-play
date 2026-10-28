@@ -2465,8 +2465,11 @@ service cloud.firestore {
     // (coordinates, createdBy, isVerified, isActive) after creation.
     match /spots/{spotId} {
       // Active spots: signed-in, or anyone when config/mapFlags.publicBrowse is on.
+      // A creator can also read their OWN spots when inactive, so "Download
+      // my data" includes spots an admin or moderator deactivated.
       // … full rationale: docs/FIRESTORE_RULES_NOTES.md#r27
-      allow read: if resource.data.isActive == true && (isSignedIn() || mapPublicBrowse());
+      allow read: if (resource.data.isActive == true && (isSignedIn() || mapPublicBrowse()))
+        || (isSignedIn() && resource.data.createdBy == request.auth.uid);
 
       // Create: signed-in + email-verified, owner-stamped, with full
       // field validation mirroring the shared Spot type. Rate-limited

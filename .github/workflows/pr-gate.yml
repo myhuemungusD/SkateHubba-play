@@ -116,6 +116,9 @@ jobs:
       - name: Every *_TESTER_UIDS list in code is known to testers:sync
         run: node scripts/testers-sync.mjs --check
 
+      - name: Docs and store text match the code (docs/facts.json)
+        run: node scripts/check-doc-claims.mjs
+
   guard-todo-fixme-hack:
     runs-on: ubuntu-latest
     timeout-minutes: 10

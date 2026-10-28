@@ -35,7 +35,7 @@ describe("iOS privacy manifest", () => {
 
   it.each([
     ["Name", true],
-    ["CoarseLocation", false],
+    ["CoarseLocation", true],
     ["GameplayContent", true],
   ])("declares %s linked=%s, App Functionality only", (type, linked) => {
     const block = manifest.split(`<string>NSPrivacyCollectedDataType${type}</string>`)[1]?.split("</dict>")[0] ?? "";
@@ -47,6 +47,19 @@ describe("iOS privacy manifest", () => {
   it("links Product Interaction to the user for App Functionality and Analytics", () => {
     const block = manifest.split("NSPrivacyCollectedDataTypeProductInteraction")[1]?.split("</dict>")[0] ?? "";
     expect(block).toMatch(/NSPrivacyCollectedDataTypeLinked[\s\S]*?<true\/>/);
+    expect(block).toContain("NSPrivacyCollectedDataTypePurposeAppFunctionality");
+    expect(block).toContain("NSPrivacyCollectedDataTypePurposeAnalytics");
+  });
+
+  // S5 (PR #886 review): match the ASC label, which ticks Analytics for both.
+  // Device ID: PostHog (consent-gated) persists a per-install anonymous id /
+  // $device_id for analytics, and Google Sign-In's manifest declares Device ID
+  // for Analytics. Other Data Types: our own DOB / consent flag is App
+  // Functionality only, but Google Sign-In's manifest declares Other Data
+  // Types, linked, for Analytics, and the label covers the whole app.
+  it.each(["DeviceID", "OtherDataTypes"])("declares %s, linked, for App Functionality and Analytics", (type) => {
+    const block = manifest.split(`<string>NSPrivacyCollectedDataType${type}</string>`)[1]?.split("</dict>")[0] ?? "";
+    expect(block).toMatch(/NSPrivacyCollectedDataTypeLinked<\/key>\s*<true\/>/);
     expect(block).toContain("NSPrivacyCollectedDataTypePurposeAppFunctionality");
     expect(block).toContain("NSPrivacyCollectedDataTypePurposeAnalytics");
   });

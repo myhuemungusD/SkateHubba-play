@@ -1,5 +1,7 @@
 # Testing Guide
 
+> **2026-10-26:** Firebase CLI now requires Java 21+ for emulators. Historical counts below are dated snapshots; see [current verification](STORE_READINESS_2026-10-26.md).
+
 ## Philosophy
 
 The test suite operates at four levels:

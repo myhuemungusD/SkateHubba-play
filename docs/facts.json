@@ -1,0 +1,108 @@
+{
+  "$comment": "Single source of truth for facts docs and store text repeat. Values that already live in code (versions, flags, permissions, manifest types, coverage floors, MIN_AGE) are NOT copied here: scripts/check-doc-claims.mjs reads them from the code. Add a claim below whenever a doc states a fact that can drift.",
+  "entity": "Design Mainline LLC",
+  "emails": [
+    "support@skatehubba.com",
+    "privacy@skatehubba.com",
+    "legal@skatehubba.com",
+    "security@skatehubba.com",
+    "noreply@skatehubba.com",
+    "info@skatehubba.com",
+    "jason@skatehubba.com"
+  ],
+  "entityMustAppearIn": [
+    { "file": "fastlane/metadata/copyright.txt", "severity": "error" },
+    { "file": "src/screens/TermsOfService.tsx", "severity": "warn" },
+    { "file": "src/screens/PrivacyPolicy.tsx", "severity": "warn" }
+  ],
+  "claims": [
+    {
+      "id": "readme-extras-ios",
+      "file": "README.md",
+      "mustNotMatch": "leave extras off",
+      "when": { "ios": { "VITE_FEATURE_EXTRAS_ENABLED": "true" } },
+      "why": "Extras is on in ios-release.yml"
+    },
+    {
+      "id": "readme-blessing-ios",
+      "file": "README.md",
+      "mustNotMatch": "iPhone builds (set|turn on)[^.]*VITE_FEATURE_PRO_BLESSING`? and",
+      "when": { "ios": { "VITE_FEATURE_PRO_BLESSING": "false" } },
+      "why": "Pro blessing is off in ios-release.yml"
+    },
+    {
+      "id": "flags-closet-ios",
+      "file": "docs/FEATURE_FLAGS.md",
+      "mustNotMatch": "Closet \\(drops, studio",
+      "when": { "ios": { "VITE_FEATURE_CLOSET_ENABLED": "false" } },
+      "why": "Closet is off in ios-release.yml"
+    },
+    {
+      "id": "flags-turn-length",
+      "file": "docs/FEATURE_FLAGS.md",
+      "mustNotMatch": "7 days\\)\\. \\*\\*Testers only\\*\\*",
+      "when": { "ios": { "VITE_FEATURE_TURN_LENGTH": "true" } },
+      "why": "Turn length is on in the store builds and the listing sells it"
+    },
+    {
+      "id": "listing-turn-length-ios",
+      "file": "fastlane/metadata/en-US/description.txt",
+      "mustNotMatch": "24 hours, 3 days or 7 days",
+      "when": { "ios": { "VITE_FEATURE_TURN_LENGTH": "false" } },
+      "why": "The listing may only sell turn lengths the build turns on"
+    },
+    {
+      "id": "listing-turn-length-android",
+      "file": "fastlane/metadata/android/en-US/full_description.txt",
+      "mustNotMatch": "24 hours, 3 days or 7 days",
+      "when": { "android": { "VITE_FEATURE_TURN_LENGTH": "false" } },
+      "why": "Same, for Play"
+    },
+    {
+      "id": "listing-referee",
+      "file": "fastlane/metadata/en-US/description.txt",
+      "mustNotMatch": "referee",
+      "when": { "ios": { "VITE_FEATURE_REFEREE_ENABLED": "false" } },
+      "why": "The listing may only sell the referee if the build turns it on"
+    },
+    {
+      "id": "listing-passport",
+      "file": "fastlane/metadata/en-US/description.txt",
+      "mustNotMatch": "passport",
+      "when": { "ios": { "VITE_FEATURE_MAP_CHECKINS": "false" } },
+      "why": "Spot passport needs map check-ins"
+    },
+    {
+      "id": "listing-clip-editor",
+      "file": "fastlane/metadata/en-US/description.txt",
+      "mustNotMatch": "clip editor",
+      "when": { "ios": { "VITE_FEATURE_CLIP_EDITOR": "false" } },
+      "why": "The listing may only sell the clip editor if the build turns it on"
+    },
+    {
+      "id": "sms-phone-wording",
+      "file": "docs/STORE_PRIVACY_ANSWERS.md",
+      "mustNotMatch": "SMS two-step verification means the app now collects",
+      "when": { "ios": { "VITE_FEATURE_SMS_2FA_ENABLED": "false" } },
+      "why": "SMS 2FA is off in store builds"
+    },
+    {
+      "id": "photourl-not-collected",
+      "file": "docs/STORE_PRIVACY_ANSWERS.md",
+      "mustNotMatch": "\\(photoURL\\)[^\\n]*\\|\\s*Not collected",
+      "why": "Firebase Auth stores the Google photo URL and the privacy policy says so"
+    },
+    {
+      "id": "readiness-r1-superseded",
+      "file": "docs/STORE_READINESS_2026-10-26.md",
+      "mustMatch": "Partly addressed on `release/1.2.0` by #901",
+      "why": "#901 fixed Apple cancel on release/1.2.0 only; the revoke-failure path still deletes without retry"
+    },
+    {
+      "id": "photo-string-closet",
+      "file": "docs/STORE_PRIVACY_ANSWERS.md",
+      "mustNotMatch": "covers every library read:\\s+profile photo or banner, Closet Studio",
+      "why": "NSPhotoLibraryUsageDescription does not mention Closet Studio"
+    }
+  ]
+}
