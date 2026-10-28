@@ -38,6 +38,7 @@ It signs in as the reviewer with Playwright (`npx playwright install chromium` o
 | id         | Store       | Device      | Pixels    |
 | ---------- | ----------- | ----------- | --------- |
 | ios-6.9    | App Store   | iPhone 6.9" | 1320×2868 |
+| ios-6.3    | App Store   | iPhone 6.3" | 1206×2622 |
 | ios-6.5    | App Store   | iPhone 6.5" | 1284×2778 |
 | ios-5.5    | App Store   | iPhone 5.5" | 1242×2208 |
 | play-phone | Google Play | Phone       | 1080×1920 |
