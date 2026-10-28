@@ -14,7 +14,7 @@ import { removeCurrentFcmToken, refreshWebPushTokenIfGranted } from "../services
 import { isPushSupported, registerPushTokenIfGranted, unregisterPushToken } from "../services/pushNotifications";
 import type { UserProfile } from "../services/users";
 import { exportUserData, serializeUserData, userDataFilename, type DataDownloadOutcome } from "../services/userData";
-import { saveTextFile } from "../services/nativeBridge";
+import { saveTextFile, type SaveFileResult } from "../services/nativeBridge";
 import { getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { isBenignAuthCode, getAuthErrorMessage } from "../utils/authCodes";
 import { analytics } from "../services/analytics";
