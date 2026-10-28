@@ -26,6 +26,13 @@ export interface SpotlightVideoProps {
   /** Shared across slides so unmuting sticks as you swipe. */
   muted?: boolean;
   onToggleMute?: () => void;
+  /**
+   * Horizontal placement classes for the mute toggle. Defaults to top-right.
+   * Only the clip card passes `MUTE_SIDE`, because only its five-button rail
+   * can reach the toggle on a short screen; a dispute card's info block owns
+   * the top-left corner, so moving its toggle there would bury it.
+   */
+  muteSide?: string;
 }
 
 function MuteGlyph({ muted }: { muted: boolean }) {
@@ -49,7 +56,14 @@ function MuteGlyph({ muted }: { muted: boolean }) {
   );
 }
 
-function SpotlightVideoImpl({ src, active = true, mediaLabel, muted: mutedProp, onToggleMute }: SpotlightVideoProps) {
+function SpotlightVideoImpl({
+  src,
+  active = true,
+  mediaLabel,
+  muted: mutedProp,
+  onToggleMute,
+  muteSide = "right-3",
+}: SpotlightVideoProps) {
   const [localMuted, setLocalMuted] = useState(true);
   const muted = mutedProp ?? localMuted;
   const reducedMotion = useReducedMotion();
@@ -211,7 +225,7 @@ function SpotlightVideoImpl({ src, active = true, mediaLabel, muted: mutedProp, 
           type="button"
           onClick={toggleMute}
           aria-label={muted ? "Unmute clip" : "Mute clip"}
-          className={`absolute z-20 right-3 ${BELOW_HEADER} ${RAIL_BTN}`}
+          className={`absolute z-20 ${muteSide} ${BELOW_HEADER} ${RAIL_BTN}`}
         >
           <MuteGlyph muted={muted} />
         </button>

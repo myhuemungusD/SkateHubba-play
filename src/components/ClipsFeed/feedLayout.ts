@@ -43,6 +43,23 @@ export function belowTopStack(extraRows: number): string {
  */
 export const BELOW_HEADER = belowTopStack(Number(isFeedModesEnabled()) + Number(isProCommunityEnabled()));
 
+/**
+ * Which side the mute toggle sits on. On short screens it would land on the
+ * clip rail: with the mode switcher and Pro Picks rows on (the iOS build), the
+ * toggle ends 220px down, and on a 568px-tall screen (iPhone SE 1st gen) the
+ * five-button rail (thumbs up, thumbs down, comments, challenge, report) starts
+ * at 196px. At 620px tall or less the toggle moves to the top-left corner, away
+ * from the rail. Taller screens keep it top-right, where the rail clears it by
+ * at least 29px. The rail itself is unchanged, so every target stays 44px.
+ * feedLayout.test.ts re-derives the 620px breakpoint from the rail, so adding
+ * a rail button fails that test until this is re-sized.
+ *
+ * Clip (Spotlight) cards only. A dispute card has no five-button rail, and its
+ * info block (call pill, trick name, tally) spans the top-left from left-4 to
+ * right-20, so its toggle stays at SpotlightVideo's default top-right.
+ */
+export const MUTE_SIDE = "right-3 [@media(max-height:620px)]:right-auto [@media(max-height:620px)]:left-3";
+
 /** 44px round control shared by the side rail and the mute toggle. */
 export const RAIL_BTN =
   "inline-flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-0.5 rounded-full border border-white/15 bg-black/55 text-white shadow-lg backdrop-blur-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-not-allowed disabled:opacity-40";

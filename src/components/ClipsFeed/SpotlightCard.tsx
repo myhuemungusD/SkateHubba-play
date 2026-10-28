@@ -3,7 +3,7 @@ import type { ClipDoc } from "../../services/clips";
 import type { ClipVoteState } from "../../services/clips.upvotes";
 import { ProUsername } from "../ProUsername";
 import { ClipActions } from "./ClipActions";
-import { ABOVE_NAV, FEED_SLIDE } from "./feedLayout";
+import { ABOVE_NAV, FEED_SLIDE, MUTE_SIDE } from "./feedLayout";
 import { CLIP_PLACEHOLDER } from "../../lib/clipPoster";
 import { SpotlightVideo } from "./SpotlightVideo";
 import { relativeClipTime } from "./utils";
@@ -89,6 +89,7 @@ export const SpotlightCard = memo(function SpotlightCard({
           active={active}
           muted={muted}
           onToggleMute={onToggleMute}
+          muteSide={MUTE_SIDE}
           mediaLabel={`${clip.playerUsername}'s ${clip.trickName}`}
         />
       ) : (
