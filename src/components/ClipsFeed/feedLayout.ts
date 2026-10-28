@@ -26,10 +26,13 @@ export const BELOW_HEADER = "top-[calc(max(env(safe-area-inset-top),1.25rem)+4.2
 export const MUTE_SIDE_WITH_SHARE = "right-3 [@media(max-height:600px)]:right-auto [@media(max-height:600px)]:left-3";
 
 /**
- * Where the mute toggle sits. With the flag off the rail is the five-button
- * one, which never reaches the toggle, so it stays top-right as before.
+ * Where a clip (Spotlight) card's mute toggle sits. With the flag off the rail
+ * is the five-button one, which never reaches the toggle, so it stays
+ * top-right as before. Clip cards only: a dispute card has no rail on that
+ * side, and its info block spans left-4 to right-20, so a top-left toggle
+ * would sit on it. Disputes keep SpotlightVideo's right-3 default.
  */
-export function muteSide(feedShare: boolean = isFeedShareEnabled()): string {
+export function clipMuteSide(feedShare: boolean = isFeedShareEnabled()): string {
   return feedShare ? MUTE_SIDE_WITH_SHARE : "right-3";
 }
 

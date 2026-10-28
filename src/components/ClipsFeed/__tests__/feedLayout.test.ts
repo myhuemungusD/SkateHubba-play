@@ -5,23 +5,23 @@ import { resolve } from "node:path";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ClipDoc } from "../../../services/clips";
 import { ClipActions } from "../ClipActions";
-import { ABOVE_NAV, BELOW_HEADER, MUTE_SIDE_WITH_SHARE, muteSide } from "../feedLayout";
+import { ABOVE_NAV, BELOW_HEADER, MUTE_SIDE_WITH_SHARE, clipMuteSide } from "../feedLayout";
 
 afterEach(() => {
   cleanup();
   vi.unstubAllEnvs();
 });
 
-describe("muteSide", () => {
+describe("clipMuteSide", () => {
   it("keeps the toggle top-right while VITE_FEATURE_FEED_SHARE is off", () => {
-    expect(muteSide()).toBe("right-3");
-    expect(muteSide(false)).toBe("right-3");
+    expect(clipMuteSide()).toBe("right-3");
+    expect(clipMuteSide(false)).toBe("right-3");
   });
 
   it("uses the short-screen placement while VITE_FEATURE_FEED_SHARE is on", () => {
     vi.stubEnv("VITE_FEATURE_FEED_SHARE", "true");
-    expect(muteSide()).toBe(MUTE_SIDE_WITH_SHARE);
-    expect(muteSide(true)).toBe(MUTE_SIDE_WITH_SHARE);
+    expect(clipMuteSide()).toBe(MUTE_SIDE_WITH_SHARE);
+    expect(clipMuteSide(true)).toBe(MUTE_SIDE_WITH_SHARE);
   });
 });
 

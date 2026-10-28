@@ -275,18 +275,18 @@ describe("SpotlightVideo viewport observer", () => {
 describe("SpotlightVideo mute toggle placement", () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it("stays top-right while VITE_FEATURE_FEED_SHARE is off", () => {
-    render(<SpotlightVideo src="clip.webm" />);
-    const cls = screen.getByRole("button", { name: /mute clip/i }).className;
-    expect(cls).toContain("right-3");
-    expect(cls).not.toContain("left-3");
-  });
-
-  it("moves top-left on short screens while VITE_FEATURE_FEED_SHARE is on", () => {
+  it("defaults to top-right, flag or not, so a dispute card's toggle never moves", () => {
     vi.stubEnv("VITE_FEATURE_FEED_SHARE", "true");
     render(<SpotlightVideo src="clip.webm" />);
-    const cls = screen.getByRole("button", { name: /mute clip/i }).className;
+    const cls = screen.getByRole("button", { name: /mute clip/i }).className.split(" ");
     expect(cls).toContain("right-3");
-    expect(cls).toContain("[@media(max-height:600px)]:left-3");
+    expect(cls.some((c) => c.includes("left-3") || c.includes("right-auto"))).toBe(false);
+  });
+
+  it("uses the side classes its card passes", () => {
+    render(<SpotlightVideo src="clip.webm" muteSide="left-3" />);
+    const cls = screen.getByRole("button", { name: /mute clip/i }).className.split(" ");
+    expect(cls).toContain("left-3");
+    expect(cls).not.toContain("right-3");
   });
 });
