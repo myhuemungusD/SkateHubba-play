@@ -4,6 +4,7 @@ import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
 import { ensureAppCheck, isAppCheckInitialized, requireAuth } from "../firebase";
 import { captureMessage } from "../lib/sentry";
 import { parseFirebaseError } from "../utils/helpers";
+import { errorKind } from "../utils/errors";
 import { logger } from "./logger";
 
 /**
@@ -185,17 +186,6 @@ export function reportRevokeFailure(
  */
 function apiErrorSymbol(message: string): string | undefined {
   return /^[A-Z][A-Z0-9_]{0,63}/.exec(message)?.[0];
-}
-
-/**
- * A short, secret-free label for a caught error: a Firebase/plugin-style
- * `code` if it looks like one, otherwise the error's class name. Never the
- * message, which is free text from a plugin, the platform or the server.
- */
-function errorKind(err: unknown): string {
-  const code = (err as { code?: unknown } | null)?.code;
-  if (typeof code === "string" && /^[\w/.-]{1,64}$/.test(code)) return code;
-  return err instanceof Error ? err.name : typeof err;
 }
 
 /**

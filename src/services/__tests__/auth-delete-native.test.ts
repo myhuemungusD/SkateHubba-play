@@ -75,6 +75,9 @@ vi.mock("../auth.appleRevoke", () => ({
   reportRevokeFailure: mockReportRevokeFailure,
 }));
 
+const mockLog = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }));
+vi.mock("../logger", () => ({ logger: mockLog, metrics: {} }));
+
 vi.mock("../../firebase");
 
 vi.stubGlobal("fetch", mockFetch);
@@ -204,5 +207,45 @@ describe("deleteAccount — native shell", () => {
 
     await expect(deleteAccount("u1")).resolves.toEqual({ authDeleted: true });
     expect(mockFetch.mock.calls[0][0]).toBe("/api/account/delete");
+  });
+
+  /**
+   * Permanent echo check: a caught error's message is free text (a plugin,
+   * the network stack or Firebase) and can carry a uid, an email, a path or
+   * an Apple code. Only a code or the error's class name may be logged.
+   */
+  describe("never logs a raw error message", () => {
+    const SECRET = "secret-echo-u1-a@b.com-code123";
+    const coded = (code: string) => Object.assign(new Error(SECRET), { code });
+
+    beforeEach(() => {
+      vi.stubEnv("VITE_APP_URL", "https://skatehubba.com");
+      mockFetch.mockResolvedValue(okAuthDeletedResponse());
+    });
+
+    afterEach(() => {
+      expect(JSON.stringify(Object.values(mockLog).map((fn) => fn.mock.calls))).not.toContain(SECRET);
+    });
+
+    it("when the Apple revoke throws", async () => {
+      mockAppleRevoke.mockRejectedValueOnce(new Error(SECRET));
+      await expect(deleteAccount("u1")).resolves.toEqual({ authDeleted: true });
+      expect(mockLog.warn).toHaveBeenCalledWith("delete_account_apple_revoke_threw", { uid: "u1", error: "Error" });
+    });
+
+    it("when the request never reaches the server", async () => {
+      mockFetch.mockRejectedValueOnce(new TypeError(SECRET));
+      await expect(deleteAccount("u1")).rejects.toMatchObject({ code: "account-delete/network" });
+      expect(mockLog.error).toHaveBeenCalledWith("delete_account_request_failed", { uid: "u1", error: "TypeError" });
+    });
+
+    it("when clearing the local session fails", async () => {
+      mockSignOut.mockRejectedValueOnce(coded("auth/network-request-failed"));
+      await expect(deleteAccount("u1")).resolves.toEqual({ authDeleted: true });
+      expect(mockLog.warn).toHaveBeenCalledWith("delete_account_signout_failed", {
+        uid: "u1",
+        error: "auth/network-request-failed",
+      });
+    });
   });
 });
