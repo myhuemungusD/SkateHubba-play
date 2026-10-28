@@ -11,16 +11,20 @@
  * 2. Every left-out collection states why; every read fits the shape of its
  *    path; sections that share a key share a name.
  * 3. Collection-group reads have the recursive rule they need, and that group
- *    holds no collection the table didn't plan for.
+ *    holds no collection the table didn't plan for, whether it has a rules
+ *    block or only exists in server code.
+ * 4. Left-out collections that hold the user's data have a plain name, so the
+ *    file can say what it doesn't include.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import {
   FIRESTORE_ERASURE,
   FIRESTORE_EXPORT,
   type ExportIncluded,
   type ExportPlan,
 } from "../../../api/account/_userDataRegistry";
+import { readTag } from "../userDataQueries";
 import { rulesCollectionGroups, rulesCollections } from "./rules-collections.test-helpers";
 
 const PLANS = Object.entries(FIRESTORE_EXPORT) as [string, ExportPlan][];
@@ -42,6 +46,21 @@ describe("every collection is classified for the export", () => {
     expect(p.excluded.trim().length).toBeGreaterThanOrEqual(20);
     if (p.fix !== undefined) expect(p.fix.trim().length).toBeGreaterThanOrEqual(10);
   });
+
+  it.each(PLANS.filter(([, p]) => "excluded" in p))(
+    "%s has a plain name exactly when it holds the user's data (a fix)",
+    (_key, plan) => {
+      const p = plan as { heldName?: string; fix?: string };
+      expect(p.heldName === undefined).toBe(p.fix === undefined);
+      if (p.heldName !== undefined) expect(p.heldName.trim().length).toBeGreaterThan(0);
+    },
+  );
+
+  it("names each left-out kind of data once", () => {
+    const held = PLANS.flatMap(([, p]) => ("heldName" in p && p.heldName ? [p.heldName] : []));
+    expect(held.length).toBeGreaterThan(0);
+    expect(new Set(held).size).toBe(held.length);
+  });
 });
 
 describe("included collections", () => {
@@ -51,10 +70,21 @@ describe("included collections", () => {
     expect(p.reads.length).toBeGreaterThan(0);
   });
 
-  it.each(INCLUDED.filter(([, p]) => p.reads.length > 1))("%s tells its reads apart by field", (_key, p) => {
-    const fields = p.reads.map((r) => ("field" in r ? r.field : ""));
-    expect(fields.every((f) => f.length > 0)).toBe(true);
-    expect(new Set(fields).size).toBe(fields.length);
+  it.each(INCLUDED.filter(([, p]) => p.reads.length > 1))(
+    "%s tells its reads apart by field and fixed filters",
+    (_key, p) => {
+      expect(p.reads.every((r) => "field" in r && r.field.length > 0)).toBe(true);
+      const tags = p.reads.map(readTag);
+      expect(new Set(tags).size).toBe(tags.length);
+    },
+  );
+
+  it("reads the creator's spots both active and deactivated (#910)", () => {
+    const spots = FIRESTORE_EXPORT.spots as ExportIncluded;
+    expect(spots.reads).toEqual([
+      { kind: "where", field: "createdBy", also: { isActive: true } },
+      { kind: "where", field: "createdBy", also: { isActive: false } },
+    ]);
   });
 
   it("gives every section one name", () => {
@@ -146,5 +176,42 @@ describe("collection-group reads", () => {
       expect(planned.map((g) => g.key).sort()).toEqual(members.sort());
       expect(new Set(planned.map((g) => JSON.stringify([g.read, g.section]))).size).toBe(1);
     }
+  });
+
+  it("reads each group from every collection deletion knows by that name", () => {
+    // A collection with no rules block (Admin SDK only) is still matched by
+    // the recursive rule, so check the erasure registry's keys too.
+    for (const group of new Set(groupReads.map((g) => g.group))) {
+      const members = Object.keys(FIRESTORE_ERASURE).filter((c) => c.split("/").at(-1) === group);
+      expect(
+        groupReads
+          .filter((g) => g.group === group)
+          .map((g) => g.key)
+          .sort(),
+      ).toEqual(members.sort());
+    }
+  });
+
+  it("finds the group names only where server code is already known to use them", () => {
+    // The recursive rules make ANY collection named like a group readable by
+    // the user its userId/uid names. Server code (Admin SDK) can create one
+    // without a rules block or a registry entry. A new file here means: check
+    // it doesn't add such a collection, then add it to this list.
+    const KNOWN = [
+      "api/account/_deleteUserData.ts",
+      "api/account/_ownedContent.ts",
+      "api/account/_userDataRegistry.ts",
+      "functions/src/index.ts",
+      "functions/src/map/presence.ts",
+    ];
+    const groups = [...new Set(groupReads.map((g) => g.group))].join("|");
+    const named = new RegExp(`["'\`/](${groups})["'\`/]`);
+    const found = ["api", "functions/src"].flatMap((dir) =>
+      (readdirSync(dir, { recursive: true }) as string[])
+        .map((f) => `${dir}/${f.split("\\").join("/")}`)
+        .filter((f) => /\.(ts|js)$/.test(f) && !/(__tests__|\.test\.)/.test(f))
+        .filter((f) => named.test(readFileSync(f, "utf8"))),
+    );
+    expect(found.sort()).toEqual(KNOWN);
   });
 });

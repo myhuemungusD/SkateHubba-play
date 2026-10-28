@@ -167,7 +167,8 @@ export const STORAGE_ERASURE: Readonly<Record<string, ErasureEntry>> = {
  *   ownDoc          `users/{uid}/<sub>/<id>`, one fixed doc id
  *   ownList         every doc in `users/{uid}/<sub>`
  *   usernameDoc     `usernames/{username}`
- *   where           `<collection>` where `field == uid` (plus fixed `also` filters)
+ *   where           `<collection>` where `field == uid` (plus fixed `also` filters;
+ *                   two reads on one field must differ in `also`)
  *   arrayContains   `<collection>` where `field` array-contains uid
  *   group           collection group `<last segment>` where `field == uid`
  *   underEachParent `<parent>/{id}/<sub>/{uid}` for every parent doc
@@ -200,7 +201,16 @@ export interface ExportIncluded {
 export interface ExportExcluded {
   /** Why it is left out. Required: the coverage test rejects an empty reason. */
   excluded: string;
-  /** What would let it be exported, when it holds the user's data but can't be read today. */
+  /**
+   * Plain-words name of the user's data it holds, when it holds some but the
+   * client can't read it today. Listed in the file's `notIncluded`, so the
+   * file says what it leaves out. Set together with `fix` (coverage test).
+   */
+  heldName?: string;
+  /**
+   * What would let it be exported. Planned: a server-side (Admin SDK) export
+   * for these, so the client rules stay closed.
+   */
   fix?: string;
 }
 
@@ -257,7 +267,8 @@ export const FIRESTORE_EXPORT = {
   "users/{}/ledger": { section: "ledger", name: "Hubba Bucks history", reads: [{ kind: "ownList" }] },
   "users/{}/closetLimits": {
     excluded: "daily closet counters written only by Cloud Functions; no rules block, so the client can't read them",
-    fix: "add `allow get: if isOwner(uid)` under users/{uid}/closetLimits, or export them server-side",
+    heldName: "daily closet limits",
+    fix: "export server-side (Admin SDK); or `allow get: if isOwner(uid)` under users/{uid}/closetLimits",
   },
   "users/{}/closetDesigns": { section: "closetDesigns", name: "Closet Studio designs", reads: [{ kind: "ownList" }] },
   trades: {
@@ -299,7 +310,8 @@ export const FIRESTORE_EXPORT = {
   diceStats: { section: "diceStats", name: "dice stats", reads: [{ kind: "uidDoc" }] },
   diceCreateLimits: {
     excluded: "one create-cooldown timestamp; rules deny every client read",
-    fix: "add `allow get: if isOwner(uid)` on diceCreateLimits/{uid}",
+    heldName: "dice game cooldown",
+    fix: "export server-side (Admin SDK); or `allow get: if isOwner(uid)` on diceCreateLimits/{uid}",
   },
   xpPairs: {
     excluded:
@@ -316,7 +328,8 @@ export const FIRESTORE_EXPORT = {
   nudge_limits: {
     excluded:
       "nudge cooldowns; the read rule checks the doc id (`limitId.matches(uid + '_.+')`), which a query can't prove, so a list is refused",
-    fix: "change the nudge_limits read rule to `resource.data.senderUid == request.auth.uid` so a senderUid query passes",
+    heldName: "nudge cooldowns",
+    fix: "export server-side (Admin SDK); or read rule `resource.data.senderUid == request.auth.uid` so a senderUid query passes",
   },
 
   // ── Clips, disputes, judging ──
@@ -335,11 +348,13 @@ export const FIRESTORE_EXPORT = {
   disputeVotes: { section: "disputeVotes", name: "dispute votes", reads: [{ kind: "where", field: "uid" }] },
   trainingLabels: {
     excluded: "trick labels derived from clips the user filmed; rules allow only admins to read them",
-    fix: "add an owner read on trainingLabels (resource.data.ownerUid == request.auth.uid), or export them server-side",
+    heldName: "trick labels made from your clips",
+    fix: "export server-side (Admin SDK); or an owner read on trainingLabels (resource.data.ownerUid == request.auth.uid)",
   },
   trainingRevocations: {
     excluded: "one consent-withdrawal marker; rules deny every client read",
-    fix: "add `allow get: if isOwner(uid)` on trainingRevocations/{uid}",
+    heldName: "your trick-training consent withdrawal",
+    fix: "export server-side (Admin SDK); or `allow get: if isOwner(uid)` on trainingRevocations/{uid}",
   },
   wttVotes: { section: "wttVotes", name: "What's That Trick votes", reads: [{ kind: "where", field: "uid" }] },
   wttItems: { excluded: "clip-level quiz items; no per-user data" },
@@ -349,9 +364,15 @@ export const FIRESTORE_EXPORT = {
   spots: {
     section: "spots",
     name: "spots",
-    // Rules only let anyone read active spots. Spots a moderator turned off
-    // are a separate follow-up (owner read on own inactive spots).
-    reads: [{ kind: "where", field: "createdBy", also: { isActive: true } }],
+    // Two reads, one per isActive value, because rules are not filters: the
+    // active read works for anyone signed in, and the inactive read works
+    // only under the creator rule from #910 (spots a moderator or admin
+    // deactivated). Until that rule is deployed the inactive read is refused
+    // and the file names "spots" as missing instead of calling itself complete.
+    reads: [
+      { kind: "where", field: "createdBy", also: { isActive: true } },
+      { kind: "where", field: "createdBy", also: { isActive: false } },
+    ],
   },
   "spots/{}/comments": { section: "comments", name: "comments", reads: [{ kind: "group", field: "userId" }] },
   "spots/{}/messages": {
@@ -429,7 +450,8 @@ export const FIRESTORE_EXPORT = {
   // ── Pro community ──
   proReviews: {
     excluded: "a pro's reviews; rules deny every client read",
-    fix: "add an owner read on proReviews (resource.data.uid == request.auth.uid)",
+    heldName: "your pro reviews",
+    fix: "export server-side (Admin SDK); or an owner read on proReviews (resource.data.uid == request.auth.uid)",
   },
   proChallenges: { section: "proChallenges", name: "pro challenges", reads: [{ kind: "where", field: "proUid" }] },
   proChallengeEntries: {

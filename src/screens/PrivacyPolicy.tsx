@@ -87,7 +87,8 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
           <ul>
             <li>
               Access the personal data we hold about you. In Settings, under Account, &quot;Download my data&quot; gives
-              you a copy as a file.
+              you a copy of your account data as a file. The file lists anything it doesn&apos;t include yet; email us
+              for those.
             </li>
             <li>Correct inaccurate data.</li>
             <li>Delete your account and associated data (in the app: Settings, then Account, then Delete account).</li>

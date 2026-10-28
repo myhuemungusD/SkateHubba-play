@@ -1195,10 +1195,15 @@ filters). Every doc they can match is already readable by any signed-in
 user through its per-path rule, so nothing becomes newly visible to
 anyone. They grant no write: writes still need a per-path allow.
 
-A future collection named comments, messages or here anywhere in the tree
-also falls under these blocks (own-doc reads only). The export coverage
-test (src/services/__tests__/user-data-export.coverage.test.ts) fails if a
-group holds a collection the export registry doesn't plan for.
+WARNING: any new collection named comments, messages or here, anywhere in
+the tree, is readable by the user its userId (comments, messages) or uid
+(here) field names, even if it has no rules block and only server code
+(Admin SDK) writes it. Pick another name for anything that must stay
+server-only. The export coverage test
+(src/services/__tests__/user-data-export.coverage.test.ts) fails if a group
+holds a collection the export registry doesn't plan for, checking both the
+rules blocks and the erasure registry keys, and if server code in api/ or
+functions/src/ names one of these collections in a file not already known.
 
 Indexes: the COLLECTION_GROUP single-field overrides for comments.userId,
 messages.userId and here.uid already exist in firestore.indexes.json.

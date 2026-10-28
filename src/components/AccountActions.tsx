@@ -1,7 +1,7 @@
 import { useCallback, useId, useState } from "react";
 import { DeleteAccountModal } from "./DeleteAccountModal";
 import { ConfirmSheet } from "./ui/ConfirmSheet";
-import { describeIncompleteExport, type DataDownloadOutcome } from "../services/userData";
+import { describeIncompleteExport, NOT_INCLUDED_NOTICE, type DataDownloadOutcome } from "../services/userData";
 
 /**
  * Shown whenever the file is missing data: the file itself carries the same
@@ -37,6 +37,9 @@ export function AccountActions({ onDownloadData, onDeleteAccount, onSignOut }: P
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState("");
   const [downloadWarning, setDownloadWarning] = useState("");
+  // After a download: what the file can't hold yet and where to ask for it,
+  // so "Download my data" never reads as everything we store.
+  const [downloadNote, setDownloadNote] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const feedbackId = useId();
@@ -45,9 +48,11 @@ export function AccountActions({ onDownloadData, onDeleteAccount, onSignOut }: P
     if (!onDownloadData || downloading) return;
     setDownloadError("");
     setDownloadWarning("");
+    setDownloadNote("");
     setDownloading(true);
     try {
       const outcome = await onDownloadData();
+      setDownloadNote(NOT_INCLUDED_NOTICE);
       if (outcome && (outcome.missingSections.length > 0 || outcome.truncatedSections.length > 0)) {
         setDownloadWarning(incompleteMessage(outcome));
       }
@@ -83,6 +88,11 @@ export function AccountActions({ onDownloadData, onDeleteAccount, onSignOut }: P
             {downloadWarning && (
               <p role="alert" className="font-body text-xs text-brand-orange mt-2">
                 {downloadWarning}
+              </p>
+            )}
+            {downloadNote && (
+              <p role="status" className="font-body text-xs text-faint mt-2">
+                {downloadNote}
               </p>
             )}
             {downloadError && (
