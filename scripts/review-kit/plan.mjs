@@ -270,11 +270,16 @@ export function buildSeedDocs({
     updatedAt: at(-6),
   });
 
+  // Feed clips are user posts: the feed, Pro Picks and profiles show only
+  // `source: "user"` clips, so a game clip (or one with no source) would
+  // never reach the reviewer's feed. The ids stay the same so running the
+  // seed again turns an older seed's game-shaped docs into posts.
   const clip = (gameId, turn, role, who, trick, upvotes) =>
     put(`clips/${gameId}_${turn}_${role}`, {
-      gameId,
-      turnNumber: turn,
-      role,
+      source: "user",
+      gameId: null,
+      turnNumber: null,
+      role: null,
       playerUid: who.uid,
       playerUsername: who.username,
       trickName: trick,
@@ -283,6 +288,7 @@ export function buildSeedDocs({
       createdAt: at(-2),
       moderationStatus: "active",
       upvoteCount: upvotes,
+      downvoteCount: 0,
     });
   const me = { uid, username };
   clip("review-demo-won", 1, "set", me, "Kickflip", 12);

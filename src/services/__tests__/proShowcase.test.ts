@@ -26,6 +26,7 @@ import { fetchProClipReel, fetchProSpots, PRO_SPOTS_LIMIT } from "../proShowcase
 const spot = (id: string, isActive = true) => ({ id, name: `Spot ${id}`, isActive });
 const clipDoc = (id: string, data: Record<string, unknown>) => ({ id, data: () => data });
 const clip = (spotId: unknown, extra: Record<string, unknown> = {}) => ({
+  source: "user",
   spotId,
   videoUrl: "v.mp4",
   trickName: "kickflip",
@@ -75,6 +76,10 @@ describe("fetchProSpots", () => {
         clipDoc("c8", clip("gone")),
         clipDoc("c9", clip("dead")),
         clipDoc("c10", clip("boom")),
+        // Game clips and legacy clips with no source never count toward a spot.
+        clipDoc("g1", clip("t1", { source: "game" })),
+        clipDoc("l1", clip("t1", { source: undefined })),
+        clipDoc("g2", clip("game-only", { source: "game" })),
       ],
     });
     h.getSpot.mockImplementation(async (id: string) => {

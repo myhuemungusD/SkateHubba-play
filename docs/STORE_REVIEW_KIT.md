@@ -19,7 +19,7 @@ npm run review:seed -- --emulator     # seed the local emulators instead (for sc
   - a profile (`@appreview`, or `REVIEW_USERNAME`) with stats, XP (level 11), the tutorial marked done, and badges that match the stats
   - six demo opponents
   - nine S.K.A.T.E. games, so Home is full: four on you (two to match, two to set), two waiting on them, and three finished (two wins, one loss)
-  - eight landed clips in the feed
+  - eight clips in the feed, written as user posts (the feed shows only `source: "user"` clips)
   - six spots near Apple Park, so the map has nearby pins while Apple reviews it, plus three public Spot Passport check-ins
   - four Mike White shoes in the Closet (one equipped). They show "Designed by Mike White" in the app. Closet is off in the 1.2.0 iPhone build, so these only appear once Closet ships, and the 1.2.0 listing and screenshots leave Closet out.
 - Every document has a fixed id, so running it again refreshes the account instead of duplicating it.

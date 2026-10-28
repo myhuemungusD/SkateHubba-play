@@ -43,6 +43,10 @@ describe("plan", () => {
     expect(new Set(paths).size).toBe(paths.length);
     const clip = docs.find(([p]: [string]) => p.startsWith("clips/"))[1];
     expect(clip.videoUrl).toBe("https://a/sh-video-edit.mp4");
+    // The feed shows user posts only, so every seeded clip must be one.
+    for (const [p, d] of docs.filter(([p]: [string]) => p.startsWith("clips/"))) {
+      expect(d, p).toMatchObject({ source: "user", gameId: null, turnNumber: null, role: null });
+    }
     const priv = docs.find(([p]: [string]) => p === "users/U/private/profile")[1];
     expect(priv.tipsDisabled).toBeUndefined();
   });
