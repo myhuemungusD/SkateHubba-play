@@ -437,6 +437,47 @@ describe("ClipsFeed", () => {
     expect(screen.queryByRole("button", { name: /challenge/i })).not.toBeInTheDocument();
   });
 
+  it("keeps Share off the rail while VITE_FEATURE_FEED_SHARE is off, so the rail is unchanged", async () => {
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    const rate = await screen.findByRole("group", { name: "Rate this clip" });
+    expect(screen.queryByRole("button", { name: /^Share/ })).not.toBeInTheDocument();
+    const rail = rate.parentElement!;
+    expect([...rail.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual([
+      "Thumbs up clip by @alice · current count 0",
+      "Thumbs down clip by @alice",
+      "Comments on @alice's clip",
+      "Challenge @alice",
+      "Report clip by @alice",
+    ]);
+    expect(screen.getByRole("button", { name: /mute clip/i }).className.split(" ")).not.toContain("left-3");
+  });
+
+  it("puts Share under comments for another player's clip and your own when VITE_FEATURE_FEED_SHARE is on", async () => {
+    vi.stubEnv("VITE_FEATURE_FEED_SHARE", "true");
+    try {
+      mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+      const { unmount } = render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+      const share = await screen.findByRole("button", { name: "Share @alice's Kickflip" });
+      expect(share).toBeEnabled();
+      const labels = [...share.parentElement!.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"));
+      expect(labels.indexOf("Share @alice's Kickflip")).toBe(labels.indexOf("Comments on @alice's clip") + 1);
+      // The mute toggle moves aside on short screens so the taller rail never covers it.
+      expect(screen.getByRole("button", { name: /mute clip/i }).className).toContain(
+        "[@media(max-height:600px)]:left-3",
+      );
+      unmount();
+
+      mockFetchClipsFeed.mockResolvedValueOnce([
+        makeClip({ playerUid: profile.uid, playerUsername: profile.username }),
+      ]);
+      render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+      expect(await screen.findByRole("button", { name: "Share your Kickflip" })).toBeEnabled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("opens the report modal and skips the reported clip", async () => {
     const user = userEvent.setup();
     mockFetchClipsFeed.mockResolvedValueOnce([

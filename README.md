@@ -392,7 +392,7 @@ All analytics flow through a single wrapper (`src/services/analytics.ts`) that f
 | `game_completed`                                   | Game reaches a final state (win/loss)          | `gameId`, `won` (bool)                                       |
 | `video_uploaded`                                   | Trick video successfully uploaded              | `durationMs`, `sizeBytes`                                    |
 | `invite_sent`                                      | Player shares an invite link                   | `method` (sms / copy / share)                                |
-| `clip_shared`                                      | Player shares a trick clip                     | `method`, `context`                                          |
+| `clip_shared`                                      | Player shares a trick clip                     | `method`, `context` (incl. `feed`), `own` (bool, feed only)  |
 | `clip_saved`                                       | Player saves a trick clip locally              | `context`                                                    |
 | `game_shared`                                      | Player shares a completed game                 | `context`, `method`                                          |
 | `map_viewed`                                       | Spots map screen mounts                        | —                                                            |

@@ -50,6 +50,7 @@ vi.mock("../logger", () => ({
 }));
 
 import {
+  isShareCancel,
   isShareAvailable,
   shareText,
   shareUrl,
@@ -231,6 +232,34 @@ describe("shareText on web", () => {
 });
 
 /* ── copyText ─────────────────────────────────── */
+
+describe("isShareCancel", () => {
+  it.each([
+    ["a web Share AbortError", new DOMException("The user aborted a request.", "AbortError"), true],
+    ["the plugin's cancel rejection", new Error("Share canceled"), true],
+    ["a plain object with a cancel message", { message: "User cancelled" }, true],
+    ["a real failure", new Error("No activity found to handle intent"), false],
+    ["an object with a non-string message", { message: 42 }, false],
+    ["null", null, false],
+    ["a string", "canceled", false],
+    ["undefined (nothing to inspect, so not a cancel)", undefined, false],
+    [
+      "a Web Share NotAllowedError from Chrome (no user gesture: a real failure, not a cancel)",
+      new DOMException("Must be handling a user gesture to perform a share request.", "NotAllowedError"),
+      false,
+    ],
+    [
+      "a Web Share NotAllowedError from Safari (blocked by the platform: a real failure, not a cancel)",
+      new DOMException(
+        "The request is not allowed by the user agent or the platform in the current context, possibly because the user denied permission.",
+        "NotAllowedError",
+      ),
+      false,
+    ],
+  ])("%s → %s", (_label, err, expected) => {
+    expect(isShareCancel(err)).toBe(expected);
+  });
+});
 
 describe("copyText", () => {
   it("uses navigator.clipboard on web", async () => {

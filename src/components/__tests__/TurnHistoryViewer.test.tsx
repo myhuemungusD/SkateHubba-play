@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TurnHistoryViewer } from "../TurnHistoryViewer";
 import type { TurnRecord } from "../../services/games";
+import { captureException } from "../../lib/sentry";
 
 vi.mock("../../utils/helpers", () => ({
   isFirebaseStorageUrl: (url: string) => url.startsWith("https://firebasestorage.googleapis.com/"),
@@ -10,6 +11,11 @@ vi.mock("../../utils/helpers", () => ({
 
 vi.mock("../../services/analytics", () => ({
   trackEvent: vi.fn(),
+}));
+
+vi.mock("../../lib/sentry", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/sentry")>()),
+  captureException: vi.fn(),
 }));
 
 const makeTurn = (n: number, overrides?: Partial<TurnRecord>): TurnRecord => ({
@@ -174,6 +180,11 @@ describe("TurnHistoryViewer", () => {
     await waitFor(() => {
       expect(screen.getByText("Save failed")).toBeInTheDocument();
     });
+    // The token-bearing download URL never reaches Sentry.
+    expect(captureException).toHaveBeenCalledWith(expect.any(Error), {
+      extra: { context: "DownloadBtn", filename: "skatehubba-round1-set.webm" },
+    });
+    expect(JSON.stringify(vi.mocked(captureException).mock.calls)).not.toContain("firebasestorage");
 
     vi.restoreAllMocks();
   });
@@ -195,10 +206,99 @@ describe("TurnHistoryViewer", () => {
     await waitFor(() => {
       expect(screen.getByText("Shared!")).toBeInTheDocument();
     });
-    expect(writeText).toHaveBeenCalled();
+    // No file share: the copied text links to the setter's profile (the clip's owner), not the app root.
+    expect(writeText).toHaveBeenCalledWith(
+      expect.stringMatching(/^Check out my Kickflip 1 on SkateHubba!\n.+\/player\/u1$/),
+    );
+
+    await userEvent.click(screen.getAllByText("Share clip")[0]);
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+    // The matcher's clip links to the matcher.
+    expect(writeText).toHaveBeenLastCalledWith(expect.stringMatching(/\/player\/u2$/));
 
     Object.defineProperty(navigator, "share", { value: origShare, configurable: true, writable: true });
     vi.restoreAllMocks();
+  });
+
+  it("save and share labels reset after 2s, the blob URL is revoked after 10s, and unmount clears pending resets", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        blob: () => Promise.resolve(new Blob(["vid"])),
+      } as Response);
+      vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
+      const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+      vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true, writable: true });
+      const clear = vi.spyOn(globalThis, "clearTimeout");
+
+      const { unmount } = render(
+        <TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showDownload showShare />,
+      );
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      await user.click(screen.getAllByText("Save clip")[0]);
+      await screen.findByText("Saved!");
+      // A second save before the reset fires replaces the pending reset.
+      await user.click(screen.getByText("Saved!"));
+      await waitFor(() => expect(screen.getAllByText("Saved!")).toHaveLength(1));
+      await user.click(screen.getAllByText("Share clip")[0]);
+      await screen.findByText("Shared!");
+
+      vi.advanceTimersByTime(2000);
+      await waitFor(() => expect(screen.queryByText("Saved!")).not.toBeInTheDocument());
+      expect(screen.queryByText("Shared!")).not.toBeInTheDocument();
+      vi.advanceTimersByTime(8000);
+      expect(revoke).toHaveBeenCalledWith("blob:test");
+
+      await user.click(screen.getAllByText("Save clip")[0]);
+      await user.click(screen.getAllByText("Share clip")[0]);
+      await screen.findByText("Shared!");
+      clear.mockClear();
+      unmount();
+      expect(clear.mock.calls.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("download button shows failure on a non-OK response", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: false } as Response);
+    render(<TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showDownload />);
+    await userEvent.click(screen.getAllByText("Save clip")[0]);
+    expect(await screen.findByText("Save failed")).toBeInTheDocument();
+    vi.restoreAllMocks();
+  });
+
+  it("offers save and share only for the clip that exists when the set clip is missing", () => {
+    render(
+      <TurnHistoryViewer
+        turns={[makeTurn(1, { setVideoUrl: "" })]}
+        currentUserUid="u1"
+        defaultExpanded
+        showDownload
+        showShare
+      />,
+    );
+    expect(screen.getAllByText("Save clip")).toHaveLength(1);
+    expect(screen.getAllByText("Share clip")).toHaveLength(1);
+  });
+
+  it("share failure is reported without the clip's download URL", async () => {
+    const failure = new Error("No activity found");
+    const share = vi.fn().mockRejectedValue(failure);
+    Object.defineProperty(navigator, "share", { value: share, configurable: true, writable: true });
+
+    render(<TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showShare />);
+    await userEvent.click(screen.getAllByText("Share clip")[0]);
+
+    expect(await screen.findByText("Share failed")).toBeInTheDocument();
+    expect(captureException).toHaveBeenCalledWith(failure, { extra: { context: "ShareBtn", trickName: "Kickflip 1" } });
+    expect(JSON.stringify(vi.mocked(captureException).mock.calls)).not.toContain("firebasestorage");
+
+    delete (navigator as { share?: unknown }).share;
   });
 
   it("share button attaches the downloaded clip when Web Share Level 2 is available", async () => {
