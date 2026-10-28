@@ -159,7 +159,7 @@ function DownloadBtn({ url, baseName }: { url: string; baseName: string }) {
       setStatus("saved");
       scheduleReset();
     } catch (err) {
-      captureException(err, { extra: { context: "DownloadBtn", url, baseName } });
+      captureException(err, { extra: { context: "DownloadBtn", baseName } });
       setStatus("failed");
       scheduleReset();
     }
@@ -235,7 +235,7 @@ function ShareBtn({ url, trickName, context }: { url: string; trickName: string;
         setStatus("idle");
         return;
       }
-      captureException(err, { extra: { context: "ShareBtn", url, trickName } });
+      captureException(err, { extra: { context: "ShareBtn", trickName } });
       setStatus("failed");
       scheduleReset();
     }

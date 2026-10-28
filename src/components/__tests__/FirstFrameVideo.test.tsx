@@ -11,7 +11,8 @@ vi.mock("../../lib/sentry", async (importOriginal) => ({
 import { CLIP_UNPLAYABLE_MESSAGE, FirstFrameVideo } from "../FirstFrameVideo";
 import { CLIP_PLACEHOLDER, FIRST_FRAME_SECONDS } from "../../lib/clipPoster";
 
-const URL = "https://firebasestorage.googleapis.com/v0/b/x/o/clip.webm?alt=media&token=abc";
+// Real download URLs carry a Storage access token.
+const URL = "https://firebasestorage.googleapis.com/v0/b/x/o/clip.webm?alt=media&token=secret-token";
 
 /** Fire a media error carrying a MediaError-like object. */
 function failWith(video: HTMLElement, code?: number) {
@@ -78,8 +79,10 @@ describe("FirstFrameVideo", () => {
     expect(onError).toHaveBeenCalledOnce();
     expect(captureException).toHaveBeenCalledWith(
       expect.any(Error),
-      expect.objectContaining({ extra: expect.objectContaining({ context: "FirstFrameVideo", code: 4, url: URL }) }),
+      expect.objectContaining({ extra: expect.objectContaining({ context: "FirstFrameVideo", code: 4 }) }),
     );
+    // The token-bearing download URL never reaches Sentry.
+    expect(JSON.stringify(captureException.mock.calls)).not.toMatch(/secret-token|firebasestorage/);
   });
 
   it("uses the same neutral message for other errors and a generic label when unlabelled", () => {

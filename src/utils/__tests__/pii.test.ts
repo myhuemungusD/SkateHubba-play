@@ -156,4 +156,54 @@ describe("URL query stripping (#886 review N2)", () => {
   it("leaves a URL without a query unchanged", () => {
     expect(stripUrlQuery("https://skatehubba.com/support")).toBe("https://skatehubba.com/support");
   });
+
+  it("strips the query of every URL anywhere in a string, e.g. a native error message", () => {
+    expect(
+      stripUrlQuery(
+        "Error downloading file: https://firebasestorage.googleapis.com/v0/b/x/o/a.webm?alt=media&token=secret-token",
+      ),
+    ).toBe("Error downloading file: https://firebasestorage.googleapis.com/v0/b/x/o/a.webm");
+    expect(stripUrlQuery("a HTTP://x/1?t=1 and https://y/2#frag, done")).toBe("a HTTP://x/1 and https://y/2 done");
+    expect(stripUrlQuery('{"src":"https://x/a.mp4?token=t","n":1}')).toBe('{"src":"https://x/a.mp4","n":1}');
+    expect(stripUrlQuery("no url ?token=keep")).toBe("no url ?token=keep");
+  });
+});
+
+describe("redactPII recursion", () => {
+  it("applies every rule inside nested objects and arrays", () => {
+    const out = redactPII({
+      meta: { email: "a@b.co", player: { uid: "raw-uid", username: "sk8r" } },
+      players: [{ uid: "raw-uid" }, "https://x/a?token=t"],
+      emails: ["a@b.co"],
+    });
+    expect(out).toEqual({
+      meta: {
+        email: "[REDACTED_EMAIL]",
+        player: { uid: hashUid("raw-uid"), username: expect.stringMatching(/^name-[0-9a-f]{8}$/) },
+      },
+      players: [{ uid: hashUid("raw-uid") }, "https://x/a"],
+      emails: ["a@b.co"],
+    });
+  });
+
+  it("passes non-plain objects through and walks null-prototype objects", () => {
+    const err = new Error("e");
+    const date = new Date(0);
+    const bare = Object.assign(Object.create(null) as Record<string, unknown>, { uid: "raw-uid" });
+    const out = redactPII({ err, date, bare, nothing: null }) as Record<string, unknown>;
+    expect(out.err).toBe(err);
+    expect(out.date).toBe(date);
+    expect(out.bare).toEqual({ uid: hashUid("raw-uid") });
+    expect(out.nothing).toBeNull();
+  });
+
+  it("replaces anything past the depth cap, so a cycle can't loop or ship raw", () => {
+    const cyclic: Record<string, unknown> = { uid: "raw-uid" };
+    cyclic.self = cyclic;
+    const list: unknown[] = [];
+    list.push(list);
+    const out = JSON.stringify(redactPII({ cyclic, list }));
+    expect(out).not.toContain("raw-uid");
+    expect(out.match(/\[REDACTED_DEPTH\]/g)).toHaveLength(2);
+  });
 });

@@ -17,6 +17,9 @@ vi.mock("../../services/analytics", () => ({
 
 vi.mock("../../lib/sentry", () => ({ captureException: vi.fn(), addBreadcrumb: vi.fn() }));
 
+// Real download URLs carry a Storage access token.
+const TOKEN_URL = "https://firebasestorage.googleapis.com/v0/b/x/o/set1.webm?alt=media&token=secret-token";
+
 const makeTurn = (n: number, overrides?: Partial<TurnRecord>): TurnRecord => ({
   turnNumber: n,
   trickName: `Kickflip ${n}`,
@@ -366,17 +369,22 @@ describe("TurnHistoryViewer clip buttons: timers and outcomes", () => {
   it("reports a download the server refused and resets the label after 2s", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: false } as Response);
 
-    render(<TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showDownload />);
+    render(
+      <TurnHistoryViewer
+        turns={[makeTurn(1, { setVideoUrl: TOKEN_URL })]}
+        currentUserUid="u1"
+        defaultExpanded
+        showDownload
+      />,
+    );
     await userEvent.click(screen.getAllByText("Save clip")[0]);
 
     expect(await screen.findByText("Save failed")).toHaveClass("text-brand-red");
     expect(captureException).toHaveBeenCalledWith(expect.objectContaining({ message: "Download failed" }), {
-      extra: {
-        context: "DownloadBtn",
-        url: "https://firebasestorage.googleapis.com/set1.webm",
-        baseName: "skatehubba-round1-set",
-      },
+      extra: { context: "DownloadBtn", baseName: "skatehubba-round1-set" },
     });
+    // The token-bearing download URL never reaches Sentry.
+    expect(JSON.stringify(vi.mocked(captureException).mock.calls)).not.toContain("secret-token");
     act(() => void vi.advanceTimersByTime(2000));
     expect(screen.getAllByText("Save clip")).toHaveLength(2);
   });
@@ -418,15 +426,22 @@ describe("TurnHistoryViewer clip buttons: timers and outcomes", () => {
     const clearSpy = vi.spyOn(globalThis, "clearTimeout");
 
     const { unmount } = render(
-      <TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showShare />,
+      <TurnHistoryViewer
+        turns={[makeTurn(1, { setVideoUrl: TOKEN_URL })]}
+        currentUserUid="u1"
+        defaultExpanded
+        showShare
+      />,
     );
     await userEvent.click(screen.getAllByText("Share clip")[0]);
 
     const label = await screen.findByText("Share failed");
     expect(label).toHaveClass("text-brand-red");
     expect(captureException).toHaveBeenCalledWith(failure, {
-      extra: { context: "ShareBtn", url: "https://firebasestorage.googleapis.com/set1.webm", trickName: "Kickflip 1" },
+      extra: { context: "ShareBtn", trickName: "Kickflip 1" },
     });
+    // The token-bearing download URL never reaches Sentry.
+    expect(JSON.stringify(vi.mocked(captureException).mock.calls)).not.toContain("secret-token");
 
     act(() => void vi.advanceTimersByTime(2000));
     expect(screen.getAllByText("Share clip")).toHaveLength(2);

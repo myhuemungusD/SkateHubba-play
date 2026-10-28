@@ -63,7 +63,7 @@ export function FirstFrameVideo({
     const mediaError = e.currentTarget.error;
     setFailedSrc(src);
     captureException(new Error("Video playback failed"), {
-      extra: { context: errorContext, url: src, label, mediaError: mediaError?.message, code: mediaError?.code },
+      extra: { context: errorContext, label, mediaError: mediaError?.message, code: mediaError?.code },
     });
     onError?.(e);
   };

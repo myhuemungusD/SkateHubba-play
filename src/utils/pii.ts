@@ -7,7 +7,7 @@
  * authenticated session. `redactPII` is applied inside the logger's breadcrumb
  * path so every current and future call site is covered without touching the
  * sites themselves. Console output remains raw for developer ergonomics.
- * http(s) URL values also lose their query string (see stripUrlQuery).
+ * Every http(s) URL inside a string also loses its query (see stripUrlQuery).
  */
 
 const EMAIL_PLACEHOLDER = "[REDACTED_EMAIL]";
@@ -76,29 +76,63 @@ const HASHED_USERNAME_RE = /^name-[0-9a-f]{8}$/;
 
 // Firebase Storage download URLs carry their access token in the query
 // (?alt=media&token=...), so anyone holding the URL can fetch the clip. The
-// path alone is enough to find the file when triaging, so http(s) URLs lose
-// their query and fragment before they reach Sentry.
-const HTTP_URL_RE = /^https?:\/\//i;
+// path alone is enough to find the file when triaging, so every http(s) URL in
+// a string loses its query and fragment before it reaches Sentry. "Anywhere in
+// the string" matters: native errors embed the URL in prose, e.g. the
+// Capacitor Filesystem reject "Error downloading file: https://...?token=...".
+// The URL ends at whitespace, a quote or an angle bracket, so a URL inside a
+// JSON string or HTML attribute keeps the text after it.
+// This is the backstop. Capture sites still leave clip URLs (url, src,
+// videoUrl) out of their extras: a label or context names the clip well
+// enough, and a URL that isn't sent can't leak.
+const HTTP_URL_QUERY_RE = /\b(https?:\/\/[^\s?#"'<>]+)[?#][^\s"'<>]*/gi;
 
 export function stripUrlQuery(value: string): string {
-  return HTTP_URL_RE.test(value) ? value.replace(/[?#].*$/s, "") : value;
+  return value.replace(HTTP_URL_QUERY_RE, "$1");
 }
 
+// Nested data is walked this deep, which is far past any real log payload.
+// Anything deeper (or a cycle) is replaced rather than shipped unredacted.
+const MAX_DEPTH = 8;
+const DEPTH_PLACEHOLDER = "[REDACTED_DEPTH]";
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+function redactValue(key: string, value: unknown, depth: number): unknown {
+  if (typeof value === "string") {
+    if (EMAIL_KEY_RE.test(key)) return EMAIL_PLACEHOLDER;
+    if (UID_KEY_RE.test(key)) return HASHED_UID_RE.test(value) ? value : hashUid(value);
+    if (USERNAME_KEY_RE.test(key)) return !value || HASHED_USERNAME_RE.test(value) ? value : `name-${fnv1a(value)}`;
+    return stripUrlQuery(value);
+  }
+  if (Array.isArray(value)) {
+    // Items take their array's key, so { uids: [...] } stays a plain list
+    // but { players: [{ uid }] } hashes each uid.
+    return depth >= MAX_DEPTH ? DEPTH_PLACEHOLDER : value.map((item) => redactValue(key, item, depth + 1));
+  }
+  if (isPlainObject(value)) {
+    return depth >= MAX_DEPTH ? DEPTH_PLACEHOLDER : redactObject(value, depth + 1);
+  }
+  return value;
+}
+
+function redactObject(data: Record<string, unknown>, depth: number): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) out[key] = redactValue(key, value, depth);
+  return out;
+}
+
+/**
+ * Redact one payload: email keys become a placeholder, uid and username keys
+ * are hashed, and URLs inside every other string lose their query. Plain
+ * objects and arrays are walked recursively (up to MAX_DEPTH); other objects
+ * (Error, Date, class instances) pass through as they are.
+ */
 export function redactPII(data: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
   if (!data) return data;
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(data)) {
-    if (typeof value === "string" && EMAIL_KEY_RE.test(key)) {
-      out[key] = EMAIL_PLACEHOLDER;
-    } else if (typeof value === "string" && UID_KEY_RE.test(key)) {
-      out[key] = HASHED_UID_RE.test(value) ? value : hashUid(value);
-    } else if (typeof value === "string" && USERNAME_KEY_RE.test(key)) {
-      out[key] = !value || HASHED_USERNAME_RE.test(value) ? value : `name-${fnv1a(value)}`;
-    } else if (typeof value === "string") {
-      out[key] = stripUrlQuery(value);
-    } else {
-      out[key] = value;
-    }
-  }
-  return out;
+  return redactObject(data, 0);
 }
