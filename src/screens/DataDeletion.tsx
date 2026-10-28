@@ -22,9 +22,9 @@ export function DataDeletion({ onBack }: { onBack: () => void }) {
             copy of the main data tied to your account. When signed in, open Settings and, under{" "}
             <strong className="text-white">Account</strong>, tap{" "}
             <strong className="text-white">&quot;Download my data&quot;</strong>. We package your profile and username,
-            your games, the clips you posted and your votes on clips, the spots you added that are on the map, your
-            notifications and nudges, the players you blocked, reports you filed, and moderation decisions and appeals
-            about your account into a single JSON file that downloads to your device.
+            your games, the clips you posted and your votes on clips, the spots you added, including ones no longer on
+            the map, your notifications and nudges, the players you blocked, reports you filed, and moderation decisions
+            and appeals about your account into a single JSON file that downloads to your device.
           </p>
           <p>
             The file does not yet include everything we hold. Your sign-in details, date of birth and parental consent,
