@@ -38,6 +38,7 @@ It signs in as the reviewer with Playwright (`npx playwright install chromium` o
 | id         | Store       | Device      | Pixels    |
 | ---------- | ----------- | ----------- | --------- |
 | ios-6.9    | App Store   | iPhone 6.9" | 1320×2868 |
+| ios-6.3    | App Store   | iPhone 6.3" | 1206×2622 |
 | ios-6.5    | App Store   | iPhone 6.5" | 1284×2778 |
 | ios-5.5    | App Store   | iPhone 5.5" | 1242×2208 |
 | play-phone | Google Play | Phone       | 1080×1920 |
@@ -48,7 +49,7 @@ Store screenshots come from the `--emulator` seed only (`review:seed -- --emulat
 
 ### App Store set, without touching production
 
-The App Store set is `ios-6.9` (1320×2868, the source set) and `ios-6.3` (1206×2622, the 6.3" size Apple lists as required). The app is iPhone-only, so there is no iPad set. Capture it from a local build with the iPhone launch flags (from `.github/workflows/ios-release.yml`: everything on except `VITE_FEATURE_DICE_ENABLED`, Skate Runner, the Closet (`VITE_FEATURE_CLOSET_ENABLED`), Bucks purchase and SMS 2FA), against the emulators:
+The App Store set is `ios-6.9` (1320×2868, the source set) and `ios-6.3` (1206×2622, the 6.3" size Apple lists as required). The app is iPhone-only, so there is no iPad set. Capture it from a local build with the iPhone launch flags (from `.github/workflows/ios-release.yml`: everything on except `VITE_FEATURE_DICE_ENABLED`, Skate Runner, the Closet (`VITE_FEATURE_CLOSET_ENABLED`, with drops, Studio and trading), pro blessing (`VITE_FEATURE_PRO_BLESSING`), Bucks purchase, SMS 2FA, the random challenger and What's That Trick), against the emulators:
 
 ```bash
 npm run emulators                                  # auth, firestore, storage
