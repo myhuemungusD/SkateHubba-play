@@ -1040,7 +1040,13 @@ describe("handleDeleteAccount", () => {
 
 describe("handleDownloadData", () => {
   const profile = { uid: "u1", username: "sk8r" };
-  const bundle = { games: [{}], clips: [], reports: [] };
+  const bundle = {
+    games: [{}],
+    clips: [],
+    reports: [],
+    missingSections: [] as string[],
+    truncatedSections: [] as string[],
+  };
 
   async function runDownload(): Promise<{ result: unknown; error: unknown }> {
     const ctxRef: { current: ReturnType<typeof useAuthContext> | null } = { current: null };
@@ -1085,7 +1091,7 @@ describe("handleDownloadData", () => {
     const { result, error } = await runDownload();
 
     expect(error).toBeUndefined();
-    expect(result).toBe("shared");
+    expect(result).toEqual({ saved: "shared", missingSections: [], truncatedSections: [] });
     expect(mockSaveTextFile).toHaveBeenCalledWith({
       filename: "export.json",
       text: "{}",
@@ -1094,7 +1100,29 @@ describe("handleDownloadData", () => {
     });
     expect(mockLoggerInfo).toHaveBeenCalledWith(
       "download_data_done",
-      expect.objectContaining({ uid: "u1", games: 1, result: "shared" }),
+      expect.objectContaining({ uid: "u1", games: 1, missingSections: [], result: "shared" }),
+    );
+  });
+
+  it("hands back the sections the file is missing so the screen can say so", async () => {
+    const { exportUserData } = await import("../../services/userData");
+    vi.mocked(exportUserData).mockResolvedValueOnce({
+      ...bundle,
+      missingSections: ["games", "clips"],
+      truncatedSections: ["notifications"],
+    } as never);
+    mockSaveTextFile.mockResolvedValueOnce("downloaded");
+    const { result, error } = await runDownload();
+
+    expect(error).toBeUndefined();
+    expect(result).toEqual({
+      saved: "downloaded",
+      missingSections: ["games", "clips"],
+      truncatedSections: ["notifications"],
+    });
+    expect(mockLoggerInfo).toHaveBeenCalledWith(
+      "download_data_done",
+      expect.objectContaining({ missingSections: ["games", "clips"] }),
     );
   });
 
@@ -1102,7 +1130,7 @@ describe("handleDownloadData", () => {
     mockSaveTextFile.mockResolvedValueOnce("cancelled");
     const { result } = await runDownload();
 
-    expect(result).toBe("cancelled");
+    expect(result).toEqual({ saved: "cancelled", missingSections: [], truncatedSections: [] });
     expect(mockCaptureException).not.toHaveBeenCalled();
   });
 
@@ -1114,6 +1142,25 @@ describe("handleDownloadData", () => {
     expect(error).toBe(failure);
     expect(mockCaptureException).toHaveBeenCalledWith(failure, {
       extra: { context: "download_data_failed", uidHash: hashUid("u1") },
+    });
+  });
+
+  it("rethrows when nothing could be read and sends only the error codes to Sentry", async () => {
+    const { exportUserData } = await import("../../services/userData");
+    const failure = Object.assign(new Error("We couldn't load your data. Check your connection and try again."), {
+      codes: { profile: "unavailable", gamesAsPlayer1: "unavailable" },
+    });
+    vi.mocked(exportUserData).mockRejectedValueOnce(failure);
+    const { error } = await runDownload();
+
+    expect(error).toBe(failure);
+    expect(mockSaveTextFile).not.toHaveBeenCalled();
+    expect(mockCaptureException).toHaveBeenCalledWith(failure, {
+      extra: {
+        context: "download_data_failed",
+        uidHash: hashUid("u1"),
+        codes: { profile: "unavailable", gamesAsPlayer1: "unavailable" },
+      },
     });
   });
 });

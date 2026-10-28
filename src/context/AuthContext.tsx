@@ -13,8 +13,8 @@ import { getMfaChallenge, type MfaChallenge } from "../services/mfa";
 import { removeCurrentFcmToken, refreshWebPushTokenIfGranted } from "../services/fcm";
 import { isPushSupported, registerPushTokenIfGranted, unregisterPushToken } from "../services/pushNotifications";
 import type { UserProfile } from "../services/users";
-import { exportUserData, serializeUserData, userDataFilename } from "../services/userData";
-import { saveTextFile, type SaveFileResult } from "../services/nativeBridge";
+import { exportUserData, serializeUserData, userDataFilename, type DataDownloadOutcome } from "../services/userData";
+import { saveTextFile } from "../services/nativeBridge";
 import { errorKind, getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { isBenignAuthCode, getAuthErrorMessage } from "../utils/authCodes";
 import { analytics } from "../services/analytics";
@@ -130,7 +130,7 @@ export interface AuthContextValue {
   handleSignOut: () => Promise<void>;
   handleDeleteAccount: () => Promise<void>;
   /** Resolves how the export ended; rejects with a user-facing message. */
-  handleDownloadData: () => Promise<SaveFileResult | void>;
+  handleDownloadData: () => Promise<DataDownloadOutcome | void>;
   /**
    * Uid with an account deletion that was started and has not finished (the
    * request failed, the sign-in was too old, or the app was killed mid-way).
@@ -619,12 +619,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         games: bundle.games.length,
         clips: bundle.clips.length,
         reports: bundle.reports.length,
+        missingSections: bundle.missingSections,
+        truncatedSections: bundle.truncatedSections,
         result,
       });
-      return result;
+      return { saved: result, missingSections: bundle.missingSections, truncatedSections: bundle.truncatedSections };
     } catch (err) {
       captureException(err, {
-        extra: { context: "download_data_failed", uidHash: hashUid(activeProfile.uid) },
+        extra: {
+          context: "download_data_failed",
+          uidHash: hashUid(activeProfile.uid),
+          // UserDataExportError (nothing could be read) carries per-read
+          // Firestore codes. Codes only, no personal data.
+          ...(err && typeof err === "object" && "codes" in err ? { codes: err.codes } : {}),
+        },
       });
       throw err; // Lobby still surfaces the message to the user
     }
