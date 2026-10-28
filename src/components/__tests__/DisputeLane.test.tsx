@@ -109,7 +109,7 @@ describe("DisputeLane", () => {
     expect(screen.getByText(/@bob says they landed @alice's trick\./i)).toBeInTheDocument();
     expect(screen.getByLabelText(/bob's attempt at Switch Heel/i)).toHaveAttribute(
       "src",
-      `${STORAGE_HOST}/match.webm?alt=media`,
+      `${STORAGE_HOST}/match.webm?alt=media#t=0.001`,
     );
     expect(screen.getByRole("button", { name: /^Land — @bob landed it$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Bail — @bob bailed$/i })).toBeInTheDocument();
