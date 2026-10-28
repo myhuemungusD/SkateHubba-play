@@ -27,6 +27,12 @@ export interface SpotlightVideoProps {
   /** Shared across slides so unmuting sticks as you swipe. */
   muted?: boolean;
   onToggleMute?: () => void;
+  /**
+   * Tailwind side classes for the mute toggle. Defaults to top-right, which
+   * is clear on a dispute card (its info block stops at right-20). Only clip
+   * cards pass clipMuteSide(), whose Share rail can reach the toggle.
+   */
+  muteSide?: string;
 }
 
 function MuteGlyph({ muted }: { muted: boolean }) {
@@ -50,14 +56,23 @@ function MuteGlyph({ muted }: { muted: boolean }) {
   );
 }
 
-function SpotlightVideoImpl({ src, active = true, mediaLabel, muted: mutedProp, onToggleMute }: SpotlightVideoProps) {
+function SpotlightVideoImpl({
+  src,
+  active = true,
+  mediaLabel,
+  muted: mutedProp,
+  onToggleMute,
+  muteSide = "right-3",
+}: SpotlightVideoProps) {
   const [localMuted, setLocalMuted] = useState(true);
   const muted = mutedProp ?? localMuted;
   const reducedMotion = useReducedMotion();
   const [paused, setPaused] = useState(true);
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const failed = failedSrc === src;
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  // The <video> renders unconditionally, so React has set this ref before any
+  // handler or effect below runs. They read it without a null check.
+  const videoRef = useRef<HTMLVideoElement>(null!);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hasPlayedRef = useRef(false);
   const userPausedRef = useRef(false);
@@ -82,7 +97,6 @@ function SpotlightVideoImpl({ src, active = true, mediaLabel, muted: mutedProp, 
 
   const handleRetry = useCallback(() => {
     const el = videoRef.current;
-    if (!el) return;
     setFailedSrc(null);
     el.load();
     if (active && !reducedMotion) el.play().catch(() => undefined);
@@ -93,17 +107,12 @@ function SpotlightVideoImpl({ src, active = true, mediaLabel, muted: mutedProp, 
       onToggleMute();
       return;
     }
-    setLocalMuted((prev) => {
-      const next = !prev;
-      const el = videoRef.current;
-      if (el) el.muted = next;
-      return next;
-    });
+    // The [muted] effect below writes el.muted, so the updater stays pure.
+    setLocalMuted((prev) => !prev);
   }, [onToggleMute]);
 
   const togglePlayback = useCallback(() => {
     const el = videoRef.current;
-    if (!el) return;
     if (el.paused) {
       userPausedRef.current = false;
       el.play().catch(() => undefined);
@@ -119,13 +128,11 @@ function SpotlightVideoImpl({ src, active = true, mediaLabel, muted: mutedProp, 
   }, [src]);
 
   useEffect(() => {
-    const el = videoRef.current;
-    if (el) el.muted = muted;
+    videoRef.current.muted = muted;
   }, [muted]);
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video) return;
     if (!active) {
       userPausedRef.current = false;
       if (hasPlayedRef.current) video.pause();
@@ -213,7 +220,7 @@ function SpotlightVideoImpl({ src, active = true, mediaLabel, muted: mutedProp, 
           type="button"
           onClick={toggleMute}
           aria-label={muted ? "Unmute clip" : "Mute clip"}
-          className={`absolute z-20 right-3 ${BELOW_HEADER} ${RAIL_BTN}`}
+          className={`absolute z-20 ${muteSide} ${BELOW_HEADER} ${RAIL_BTN}`}
         >
           <MuteGlyph muted={muted} />
         </button>

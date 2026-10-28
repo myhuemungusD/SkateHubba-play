@@ -3,6 +3,8 @@ import type { ClipDoc } from "../../services/clips";
 import type { ClipVoteState } from "../../services/clips.upvotes";
 import { FlagIcon, SkateboardIcon, ThumbsDownIcon, ThumbsUpIcon } from "../icons";
 import { ABOVE_NAV, RAIL_BTN } from "./feedLayout";
+import { isFeedShareEnabled } from "../../lib/featureFlags";
+import { ShareClipButton } from "./ShareClipButton";
 
 export interface ClipActionsProps {
   clip: ClipDoc;
@@ -20,7 +22,8 @@ export interface ClipActionsProps {
 /**
  * Side rail on a community clip, Shorts-style. Thumbs, comments, challenge,
  * and report sit on the video instead of under it, so a vote never has to
- * finish before the viewer can swipe.
+ * finish before the viewer can swipe. Share sits under comments while
+ * VITE_FEATURE_FEED_SHARE is on.
  *
  * Both thumbs are one persisted vote: tapping the thumb you already gave
  * withdraws it (`aria-pressed`), tapping the other flips it. Neither hides
@@ -88,6 +91,8 @@ export const ClipActions = memo(function ClipActions({
       >
         <CommentGlyph />
       </button>
+
+      {isFeedShareEnabled() && <ShareClipButton clip={clip} isOwnClip={isOwnClip} />}
 
       {!isOwnClip && (
         <div className="flex flex-col items-center gap-1">
