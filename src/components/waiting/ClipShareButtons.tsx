@@ -43,7 +43,8 @@ export function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; tr
       trackEvent("clip_saved", { context: "waiting_screen" });
       safeTimeout(() => setSaveStatus("idle"), 2000);
     } catch (err) {
-      captureException(err, { extra: { context: "ClipShareButtons.save", videoUrl, trickName } });
+      // No videoUrl: it carries the clip's Storage access token.
+      captureException(err, { extra: { context: "ClipShareButtons.save", trickName } });
       setSaveStatus("failed");
       safeTimeout(() => setSaveStatus("idle"), 2000);
     }
@@ -77,7 +78,8 @@ export function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; tr
         setShareStatus("idle");
         return;
       }
-      captureException(err, { extra: { context: "ClipShareButtons.share", videoUrl, trickName } });
+      // No videoUrl: it carries the clip's Storage access token.
+      captureException(err, { extra: { context: "ClipShareButtons.share", trickName } });
       setShareStatus("failed");
       safeTimeout(() => setShareStatus("idle"), 2000);
     }

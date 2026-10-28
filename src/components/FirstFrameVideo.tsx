@@ -62,8 +62,9 @@ export function FirstFrameVideo({
   const handleError = (e: SyntheticEvent<HTMLVideoElement>) => {
     const mediaError = e.currentTarget.error;
     setFailedSrc(src);
+    // No src: a clip's download URL carries its Storage access token.
     captureException(new Error("Video playback failed"), {
-      extra: { context: errorContext, url: src, label, mediaError: mediaError?.message, code: mediaError?.code },
+      extra: { context: errorContext, label, mediaError: mediaError?.message, code: mediaError?.code },
     });
     onError?.(e);
   };

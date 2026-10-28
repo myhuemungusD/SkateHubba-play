@@ -14,6 +14,9 @@ vi.mock("../../services/nativeBridge", async (importOriginal) => ({
 }));
 vi.mock("../../lib/sentry", () => ({ captureException: vi.fn() }));
 
+// Real download URLs carry a Storage access token.
+const TOKEN_URL = "https://firebasestorage.googleapis.com/v0/b/x/o/clip.webm?alt=media&token=secret-token";
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -65,14 +68,16 @@ describe("ClipShareButtons", () => {
 
   it("shows a failure label and reports when the share really fails", async () => {
     vi.mocked(shareText).mockRejectedValue(new Error("No activity found"));
-    render(<ClipShareButtons videoUrl="https://cdn/clip.webm" trickName="Kick Flip" />);
+    render(<ClipShareButtons videoUrl={TOKEN_URL} trickName="Kick Flip" />);
 
     await userEvent.click(screen.getByText("Share Clip"));
 
     expect(await screen.findByText("Share failed")).toBeInTheDocument();
     expect(captureException).toHaveBeenCalledWith(expect.any(Error), {
-      extra: { context: "ClipShareButtons.share", videoUrl: "https://cdn/clip.webm", trickName: "Kick Flip" },
+      extra: { context: "ClipShareButtons.share", trickName: "Kick Flip" },
     });
+    // The token-bearing download URL never reaches Sentry.
+    expect(JSON.stringify(vi.mocked(captureException).mock.calls)).not.toMatch(/secret-token|firebasestorage/);
     act(() => void vi.advanceTimersByTime(2000));
     expect(screen.getByText("Share Clip")).toBeInTheDocument();
   });
@@ -142,14 +147,16 @@ describe("ClipShareButtons", () => {
 
   it("shows a failure label and reports when the download fails", async () => {
     vi.mocked(fetch).mockResolvedValue({ ok: false } as unknown as Response);
-    render(<ClipShareButtons videoUrl="https://cdn/clip.webm" trickName="Kick Flip" />);
+    render(<ClipShareButtons videoUrl={TOKEN_URL} trickName="Kick Flip" />);
 
     await userEvent.click(screen.getByText("Save Clip"));
 
     expect(await screen.findByText("Save failed")).toBeInTheDocument();
     expect(captureException).toHaveBeenCalledWith(expect.any(Error), {
-      extra: { context: "ClipShareButtons.save", videoUrl: "https://cdn/clip.webm", trickName: "Kick Flip" },
+      extra: { context: "ClipShareButtons.save", trickName: "Kick Flip" },
     });
+    // The token-bearing download URL never reaches Sentry.
+    expect(JSON.stringify(vi.mocked(captureException).mock.calls)).not.toMatch(/secret-token|firebasestorage/);
     act(() => void vi.advanceTimersByTime(2000));
     expect(screen.getByText("Save Clip")).toBeInTheDocument();
   });

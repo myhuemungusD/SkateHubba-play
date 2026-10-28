@@ -25,8 +25,9 @@ export function ClipVideo({ url, label }: { url: string; label: string }) {
       aria-label={label}
       onError={(e) => {
         setFailed(true);
+        // No url: it carries the clip's Storage access token.
         captureException(new Error("Video playback failed"), {
-          extra: { context: "ClipVideo", url, label, mediaError: (e.target as HTMLVideoElement).error?.message },
+          extra: { context: "ClipVideo", label, mediaError: (e.target as HTMLVideoElement).error?.message },
         });
       }}
       className="w-full max-w-[280px] mx-auto aspect-[9/16] rounded-xl bg-black object-cover border border-border"
