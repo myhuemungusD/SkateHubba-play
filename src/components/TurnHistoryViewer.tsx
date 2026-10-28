@@ -159,7 +159,6 @@ function DownloadBtn({ url, baseName }: { url: string; baseName: string }) {
       setStatus("saved");
       scheduleReset();
     } catch (err) {
-      // No url: it carries the clip's Storage access token.
       captureException(err, { extra: { context: "DownloadBtn", baseName } });
       setStatus("failed");
       scheduleReset();
@@ -236,7 +235,6 @@ function ShareBtn({ url, trickName, context }: { url: string; trickName: string;
         setStatus("idle");
         return;
       }
-      // No url: it carries the clip's Storage access token.
       captureException(err, { extra: { context: "ShareBtn", trickName } });
       setStatus("failed");
       scheduleReset();
