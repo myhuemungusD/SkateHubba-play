@@ -4,7 +4,8 @@ import { Component, useEffect, useRef, type ReactNode } from "react";
 import { useAuthContext, AuthProvider } from "../AuthContext";
 import type { UserProfile } from "../../services/users";
 import { hashIdentity, hashUid } from "../../utils/pii";
-import { isPushSupported, registerPushTokenIfGranted } from "../../services/pushNotifications";
+import { isPushSupported, registerPushTokenIfGranted, unregisterPushToken } from "../../services/pushNotifications";
+import { logger } from "../../services/logger";
 import { refreshWebPushTokenIfGranted } from "../../services/fcm";
 
 // Widened return shape so mockReturnValue can swap user/profile to non-null
@@ -736,7 +737,65 @@ describe("handleDeleteAccount", () => {
       expect(mockCaptureException).not.toHaveBeenCalled();
       expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
       // The token scrubbed before the delete is put back: the account stays.
-      expect(registerPushTokenIfGranted).toHaveBeenLastCalledWith("u1");
+      await waitFor(() => expect(registerPushTokenIfGranted).toHaveBeenLastCalledWith("u1"));
+    });
+
+    describe("putting the push token back after a closed Apple sheet", () => {
+      const cancelErr = () => Object.assign(new Error("Nothing was deleted."), { code: "account-delete/cancelled" });
+
+      it("waits for the token removal to settle before re-registering", async () => {
+        // Run side by side, a late removal could land after the re-register
+        // and leave the device with no push token on a kept account.
+        let finishScrub!: () => void;
+        vi.mocked(unregisterPushToken).mockReturnValueOnce(
+          new Promise<void>((resolve) => {
+            finishScrub = resolve;
+          }),
+        );
+        mockDeleteAccount.mockRejectedValueOnce(cancelErr());
+
+        const { triggerDelete } = renderWithTrigger(profile);
+        await triggerDelete();
+        // Let any stray microtasks run: still nothing until the removal settles.
+        await act(async () => {
+          await new Promise((r) => setTimeout(r, 0));
+        });
+        expect(registerPushTokenIfGranted).not.toHaveBeenCalled();
+
+        finishScrub();
+        await waitFor(() => expect(registerPushTokenIfGranted).toHaveBeenCalledWith("u1"));
+        expect(vi.mocked(unregisterPushToken).mock.invocationCallOrder[0]).toBeLessThan(
+          vi.mocked(registerPushTokenIfGranted).mock.invocationCallOrder[0],
+        );
+      });
+
+      it("still re-registers, without crashing, when the removal fails", async () => {
+        const secret = "PERMISSION_DENIED users/u1/private/profile sk8r";
+        vi.mocked(unregisterPushToken).mockRejectedValueOnce(
+          Object.assign(new Error(secret), { code: "permission-denied" }),
+        );
+        mockDeleteAccount.mockRejectedValueOnce(cancelErr());
+
+        const { triggerDelete } = renderWithTrigger(profile);
+        expect((await triggerDelete())?.message).toBe("Nothing was deleted.");
+
+        await waitFor(() => expect(registerPushTokenIfGranted).toHaveBeenCalledWith("u1"));
+        // Logged by code only: the raw message never reaches the logger.
+        expect(logger.warn).toHaveBeenCalledWith("delete_account_push_scrub_failed", {
+          uid: "u1",
+          error: "permission-denied",
+        });
+        expect(JSON.stringify(vi.mocked(logger.warn).mock.calls)).not.toContain("PERMISSION_DENIED");
+      });
+
+      it("swallows a failed re-register", async () => {
+        vi.mocked(registerPushTokenIfGranted).mockRejectedValueOnce(new Error("no plugin"));
+        mockDeleteAccount.mockRejectedValueOnce(cancelErr());
+
+        const { triggerDelete } = renderWithTrigger(profile);
+        expect((await triggerDelete())?.message).toBe("Nothing was deleted.");
+        await waitFor(() => expect(registerPushTokenIfGranted).toHaveBeenCalledWith("u1"));
+      });
     });
 
     it("clears sessionStorage on fully successful first-attempt delete", async () => {

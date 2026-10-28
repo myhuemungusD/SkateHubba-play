@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  errorKind,
   getErrorCode,
   parseFirebaseError,
   EMAIL_RE,
@@ -28,6 +29,25 @@ describe("getErrorCode", () => {
 
   it("returns empty string for object without code", () => {
     expect(getErrorCode({ message: "no code" })).toBe("");
+  });
+});
+
+describe("errorKind", () => {
+  it("returns a code that looks like one", () => {
+    expect(errorKind(Object.assign(new Error("secret text"), { code: "auth/network-request-failed" }))).toBe(
+      "auth/network-request-failed",
+    );
+  });
+
+  it("falls back to the class name, never the message, when the code is free text or missing", () => {
+    expect(errorKind(Object.assign(new Error("secret text"), { code: "has spaces: secret" }))).toBe("Error");
+    expect(errorKind(new TypeError("Failed to fetch secret"))).toBe("TypeError");
+  });
+
+  it("names the type of a non-Error throw", () => {
+    expect(errorKind("secret string")).toBe("string");
+    expect(errorKind(null)).toBe("object");
+    expect(errorKind(undefined)).toBe("undefined");
   });
 });
 

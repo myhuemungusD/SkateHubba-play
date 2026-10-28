@@ -15,7 +15,7 @@ import { isPushSupported, registerPushTokenIfGranted, unregisterPushToken } from
 import type { UserProfile } from "../services/users";
 import { exportUserData, serializeUserData, userDataFilename } from "../services/userData";
 import { saveTextFile, type SaveFileResult } from "../services/nativeBridge";
-import { getErrorCode, parseFirebaseError } from "../utils/helpers";
+import { errorKind, getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { isBenignAuthCode, getAuthErrorMessage } from "../utils/authCodes";
 import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
@@ -523,9 +523,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // auth token is revoked, and the server cascade deletes the whole private
     // doc anyway. Fire-and-forget: errors here must never block deletion, and
     // we don't want an extra await boundary altering the observable ordering
-    // of the deleteAccount call.
-    void unregisterPushToken(uid).catch((err: unknown) => {
-      logger.warn("delete_account_push_scrub_failed", { uid, message: parseFirebaseError(err) });
+    // of the deleteAccount call. The promise is kept (already caught, so it
+    // always resolves) so an Apple-sheet cancel can put the token back only
+    // after this removal settles. Logged by code only, never the raw message.
+    const pushScrub = unregisterPushToken(uid).catch((err: unknown) => {
+      logger.warn("delete_account_push_scrub_failed", { uid, error: errorKind(err) });
     });
     let result: { authDeleted: boolean };
     try {
@@ -548,8 +550,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setPendingDeleteUid(null);
         // The push token was scrubbed above, before we knew the delete would
         // stop. The account stays, so put it back (a no-op off native or
-        // without permission). Best-effort: it logs its own failures.
-        void registerPushTokenIfGranted(uid).catch(() => {});
+        // without permission). Chained after the scrub: run side by side, a
+        // late removal could land after the re-register and leave the device
+        // with no token. The scrub never rejects, so a failed removal still
+        // re-registers. Best-effort: it logs its own failures.
+        void pushScrub.then(() => registerPushTokenIfGranted(uid)).catch(() => {});
         throw err;
       }
       logger.error("delete_account_auth_failed", { uid, code });
