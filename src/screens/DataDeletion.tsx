@@ -20,7 +20,7 @@ export function DataDeletion({ onBack }: { onBack: () => void }) {
           <p>
             Under the GDPR&apos;s right to data portability (Article 20) and CCPA, you can download a machine-readable
             copy of the main data tied to your account. When signed in, open Settings and, under{" "}
-            <strong className="text-white">Account</strong>, tap{" "}
+            <strong className="text-white">&quot;Your data &amp; sign out&quot;</strong>, tap{" "}
             <strong className="text-white">&quot;Download my data&quot;</strong>. We package your profile and username,
             your games, the clips you posted and your votes on clips, the spots you added, including ones no longer on
             the map, your notifications and nudges, the players you blocked, reports you filed, and moderation decisions
@@ -36,7 +36,7 @@ export function DataDeletion({ onBack }: { onBack: () => void }) {
         <Section title="Delete Your Account (In-App)">
           <p>
             The fastest way to delete your data is directly in the app, on the web or iPhone. When signed in, open
-            Settings and, under <strong className="text-white">Account</strong>, tap{" "}
+            Settings and, under <strong className="text-white">&quot;Your data &amp; sign out&quot;</strong>, tap{" "}
             <strong className="text-white">&quot;Delete account&quot;</strong>. Deletion runs on our servers as soon as
             you confirm. What happens to each kind of data is listed under &quot;What Happens After Deletion&quot;
             below.

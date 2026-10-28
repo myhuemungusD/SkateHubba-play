@@ -13,8 +13,8 @@ describe("DataDeletion", () => {
   it("points export and deletion at Settings", () => {
     render(<DataDeletion onBack={vi.fn()} />);
     const text = document.body.textContent ?? "";
-    expect(text).toContain('under Account, tap "Download my data"');
-    expect(text).toContain('under Account, tap "Delete account"');
+    expect(text).toContain('under "Your data & sign out", tap "Download my data"');
+    expect(text).toContain('under "Your data & sign out", tap "Delete account"');
     expect(text.toLowerCase()).not.toContain("lobby");
   });
 

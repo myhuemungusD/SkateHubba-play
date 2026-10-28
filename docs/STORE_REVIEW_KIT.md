@@ -49,7 +49,7 @@ Store screenshots come from the `--emulator` seed only (`review:seed -- --emulat
 
 ### App Store set, without touching production
 
-The App Store set is `ios-6.9` (1320×2868, the source set) and `ios-6.3` (1206×2622, the 6.3" size Apple lists as required). The app is iPhone-only, so there is no iPad set. Capture it from a local build with the iPhone launch flags (from `.github/workflows/ios-release.yml`: everything on except `VITE_FEATURE_DICE_ENABLED`, Skate Runner, the Closet (`VITE_FEATURE_CLOSET_ENABLED`, with drops, Studio and trading), pro blessing (`VITE_FEATURE_PRO_BLESSING`), Bucks purchase, SMS 2FA, the random challenger and What's That Trick), against the emulators:
+The App Store set is `ios-6.9` (1320×2868, the source set) and `ios-6.3` (1206×2622, the 6.3" size Apple lists as required). The app is iPhone-only, so there is no iPad set. Capture it from a local build with the iPhone launch flags (from `.github/workflows/ios-release.yml`: everything on except `VITE_FEATURE_DICE_ENABLED`, Skate Runner, the Closet (`VITE_FEATURE_CLOSET_ENABLED`, with drops, Studio and trading), pro blessing (`VITE_FEATURE_PRO_BLESSING`), Bucks purchase, SMS 2FA, the random challenger, the Clips feed Share button (`VITE_FEATURE_FEED_SHARE`), What's That Trick, and the admin screens: `VITE_FEATURE_ADMIN_CONSOLE`, `VITE_FEATURE_ADMIN_OPS` and `VITE_FEATURE_ADMIN_INSIGHTS` are not set there, so they are off, and so is the announcement banner that `VITE_FEATURE_ADMIN_INSIGHTS` gates), against the emulators:
 
 ```bash
 npm run emulators                                  # auth, firestore, storage
