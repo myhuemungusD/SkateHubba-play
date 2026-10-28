@@ -186,20 +186,31 @@ describe("spots — read", () => {
     expect(snap.docs.map((d) => d.id)).toEqual([SPOT_ID, "older-spot"]);
   });
 
-  it("rejects a createdBy list that does not constrain isActive", async () => {
+  it("rejects someone else's createdBy list that does not constrain isActive", async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), "spots", SPOT_ID), makeValidSpot());
     });
-    const listed = query(collection(asOwner().firestore(), "spots"), where("createdBy", "==", OWNER_UID));
+    const listed = query(collection(asOtherVerified().firestore(), "spots"), where("createdBy", "==", OWNER_UID));
     await assertFails(getDocs(listed));
   });
 
-  it("nobody can read an inactive (soft-deleted) spot", async () => {
+  it("lets the creator list their own spots without an isActive filter (1.2.1 creator rule)", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "spots", SPOT_ID), makeValidSpot());
+      await setDoc(doc(ctx.firestore(), "spots", "inactive-spot"), makeValidSpot({ isActive: false }));
+    });
+    const listed = query(collection(asOwner().firestore(), "spots"), where("createdBy", "==", OWNER_UID));
+    const snap = await assertSucceeds(getDocs(listed));
+    expect(snap.docs.map((d) => d.id).sort()).toEqual(["inactive-spot", SPOT_ID].sort());
+  });
+
+  it("only the creator can read an inactive (soft-deleted) spot", async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), "spots", SPOT_ID), makeValidSpot({ isActive: false }));
     });
     await assertFails(getDoc(doc(asAnonymous().firestore(), "spots", SPOT_ID)));
     await assertFails(getDoc(doc(asOtherVerified().firestore(), "spots", SPOT_ID)));
+    await assertSucceeds(getDoc(doc(asOwner().firestore(), "spots", SPOT_ID)));
   });
 });
 

@@ -659,7 +659,17 @@ the enforcement; do not add a client communityReview branch.
 
 ## r27
 
-Precedes: `allow read: if resource.data.isActive == true && (isSignedIn() || mapPublicBrowse());`
+Precedes: `allow read: if (resource.data.isActive == true && (isSignedIn() || mapPublicBrowse()))`
+
+Update (1.2.1, Oct 2026): a signed-in creator may also read their OWN spot
+when it is inactive (`createdBy == request.auth.uid`). Users can't make a
+spot inactive themselves (they can only hard-delete), so this only matters
+for spots an admin or moderator deactivated. Without it, "Download my data"
+left those spots out, because rules are not filters: the export's
+`createdBy == uid` query had to carry `isActive == true` or be refused.
+Everyone else still can't read inactive spots. A spot whose creator deleted
+their account has `createdBy: "deleted-user"`, which no signed-in uid can
+match. Pinned in rules-tests/user-data-export.rules.test.ts.
 
 Update (Map Phase 1, Oct 2026): signed-out reads are allowed only when the
 Admin-only doc `config/mapFlags` has `publicBrowse: true` (default absent =
