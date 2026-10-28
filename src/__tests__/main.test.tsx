@@ -230,3 +230,29 @@ describe("main entry — push ?game= link", () => {
     expect(sessionStorage.getItem("skate.pendingGameLink")).toBe("YqZNr8nWUabkLwpak0uU");
   });
 });
+
+describe("main entry — Sentry scrub hooks", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+    mockIsNativePlatform.mockReturnValue(false);
+    document.body.innerHTML = "";
+    vi.stubEnv("VITE_SENTRY_DSN", "https://public@sentry.example.invalid/1");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    document.body.innerHTML = "";
+  });
+
+  it("hands initSentry the tested beforeBreadcrumb and beforeSend from lib/sentryScrub", async () => {
+    await loadMain();
+    await vi.waitFor(() => expect(mockInitSentry).toHaveBeenCalledTimes(1));
+
+    const { scrubBreadcrumb, scrubEvent } = await import("../lib/sentryScrub");
+    const config = (mockInitSentry.mock.calls[0] as unknown as [Record<string, unknown>])[0];
+    expect(config.beforeBreadcrumb).toBe(scrubBreadcrumb);
+    expect(config.beforeSend).toBe(scrubEvent);
+    expect(config.sendDefaultPii).toBe(false);
+  });
+});
