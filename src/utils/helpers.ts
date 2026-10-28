@@ -8,7 +8,7 @@ import {
   type TrickCategoryId,
 } from "../constants/trickCategories";
 
-export { getErrorCode, parseFirebaseError, getUserMessage } from "./errors";
+export { errorKind, getErrorCode, parseFirebaseError, getUserMessage } from "./errors";
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 export const LETTERS = ["S", "K", "A", "T", "E"];

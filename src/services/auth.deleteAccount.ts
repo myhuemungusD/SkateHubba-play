@@ -2,7 +2,7 @@ import { signOut as fbSignOut } from "firebase/auth";
 import { Capacitor } from "@capacitor/core";
 import { requireAuth } from "../firebase";
 import { captureException, captureMessage } from "../lib/sentry";
-import { parseFirebaseError } from "../utils/helpers";
+import { errorKind } from "../utils/errors";
 import { hashUid } from "../utils/pii";
 import { logger } from "./logger";
 import { reportRevokeFailure, revokeAppleTokensIfNeeded } from "./auth.appleRevoke";
@@ -122,7 +122,7 @@ export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean
   // helper swallows its own errors, but we still wrap defensively — a thrown
   // revoke must not break the delete contract.
   const revoke = await revokeAppleTokensIfNeeded(user).catch((err: unknown) => {
-    logger.warn("delete_account_apple_revoke_threw", { uid, message: parseFirebaseError(err) });
+    logger.warn("delete_account_apple_revoke_threw", { uid, error: errorKind(err) });
     reportRevokeFailure("threw");
     return "failed" as const;
   });
@@ -147,7 +147,7 @@ export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean
     });
   } catch (err) {
     // Network-level failure: nothing was deleted, so this is cleanly retryable.
-    logger.error("delete_account_request_failed", { uid, error: parseFirebaseError(err) });
+    logger.error("delete_account_request_failed", { uid, error: errorKind(err) });
     throw new CodedError("account-delete/network", "Could not reach the server. Please try again.", err);
   }
 
@@ -202,7 +202,7 @@ export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean
   // The server deleted the Auth user, so the cached session is already dead.
   // Clear it explicitly rather than waiting for the next token refresh to fail.
   await fbSignOut(requireAuth()).catch((err: unknown) => {
-    logger.warn("delete_account_signout_failed", { uid, error: parseFirebaseError(err) });
+    logger.warn("delete_account_signout_failed", { uid, error: errorKind(err) });
   });
 
   logger.info("delete_account_success", { uid, authDeleted });
