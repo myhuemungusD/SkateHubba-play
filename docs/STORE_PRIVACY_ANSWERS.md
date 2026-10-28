@@ -10,9 +10,8 @@
 
 > **Oct 18, 2026 — spot presence and online status (`VITE_FEATURE_SPOT_PRESENCE`, on in the iOS store build via `ios-release.yml` and `ci_post_clone.sh`).** After a check-in, while the app is open, it sends a location heartbeat to the `mapPresence` function (about every 2 minutes, or right away when you cross the ~500 ft line). The server keeps the last heartbeat position on the same owner-only anti-spoofing record (`mapState/{uid}`) and writes "here until" (username + expiry) to `spotPresence/{spotId}/here/{uid}`, which any signed-in user can read even when "Hide my online status" is on. Exact coordinates are never shown to peers. Who's skating (`skaterActivity`) shows spot name + exact `lastAt` only when visible. The online dot stores a last-seen server time in `onlineStatus/{uid}`, or null when hidden. Precise Location stays Collected, Linked, App Functionality and Fraud prevention, optional. **Product interaction** (App Store) / **App activity → Other actions** (Play): Linked, App Functionality + Analytics (last-seen). Still **While In Use only**: no background location, no `NSLocationAlwaysAndWhenInUseUsageDescription`, no `ACCESS_BACKGROUND_LOCATION`. When the app is in the background, presence simply lapses after 10 minutes.
 
-**Status: DRAFT for owner review — 2026-07-30.**
-Every row below is derived from what the code actually does on branch
-`claude/skatehubba-health-check-sjv064`, with file citations. Transcribe into
+**Status: DRAFT; documentation reconciled 2026-10-26, console answers not inspected.**
+The inventory originated on an older branch and has later amendments. Validate against the actual release binary and enabled services, with the current store review as the release gate. Transcribe into
 App Store Connect → App Privacy and Google Play Console → Data safety, then
 see the Per-Release Delta section below. Open questions that need an
 owner decision are flagged inline and summarized at the end.
@@ -150,37 +149,14 @@ in-app (`src/services/userData.ts`).
 
 ---
 
-## Open Questions for the Owner (do not guess — decide before submitting)
+## Remaining verification before submitting
 
-1. **Mapbox GL telemetry.** _Oct 22, 2026: declared rather than disabled. Both consoles now answer approximate location Collected (via Mapbox, not linked), and the Privacy Policy names Mapbox's usage events. Disabling telemetry later would let both answers go back to Not collected._ `vercel.json` CSP allowlists `events.mapbox.com`,
-   which is mapbox-gl's telemetry endpoint; the repo never disables Mapbox
-   telemetry. Mapbox may receive coarse usage/session data (and tile requests
-   inherently reveal the map viewport) when the map is open. Decide: (a)
-   disable telemetry and keep "Location: Not collected", or (b) keep it and
-   declare approximate location / usage data collected by a third party in
-   both consoles. This and item 1a are the items blocking a clean
-   "Location: Not collected" answer.
-
-1a. **Nearby-spots query (added 2026-09, #547).** Opening the map search with
-an empty query calls `getSpotsNearby` (`src/services/spots.ts`), which sends
-a Firestore range query on `latitude` spanning roughly ±10 km around the
-user's GPS fix. Longitude and the exact fix stay on the device, and nothing
-is written or logged by the app — but the query bounds do reach Google
-(Firebase) as a processor. The "never transmitted" wording in the tables
-above predates this. Decide whether a transient, unstored latitude band
-counts as collecting approximate location for the store forms. 2. **Sentry is not consent-gated** (`src/main.tsx` inits whenever
-`VITE_SENTRY_DSN` is set, before any banner). That is common and generally
-acceptable for diagnostics, but it means crash/diagnostic collection must
-be declared as non-optional in the Play form (drafted that way above).
-Confirm you're comfortable, or gate it behind consent. 3. **Are FNV-hashed uids "linked to identity"?** _Resolved Oct 22, 2026: answered **Linked: Yes** for Usage Data and Diagnostics (the tables above). `identify()` is now called with `hashIdentity(uid)` once a profile exists, so the conservative answer is also the accurate one._ `hashUid`/`hashIdentity`
-(`src/utils/pii.ts`) are deterministic hashes the developer could re-derive
-from a uid, so Linked: Yes is the accurate answer. 4. **Vercel Analytics on native builds.** `<Analytics />`/`<SpeedInsights />`
-load from the serving origin; confirm whether the Capacitor shell serves
-the Vercel-hosted bundle (analytics active on native) or a local bundle
-(web-only). Affects nothing in the draft — both are declared — but worth
-knowing for the Play "optional" framing. 5. **Processor DPAs.** Confirm signed data-processing agreements with Google
-(Firebase), Sentry (Functional Software, Inc.), PostHog, Vercel, and
-Mapbox so the "shared: none / processors only" position holds.
+- Console answers have not been inspected. The draft is not proof of submission.
+- Declare precise location for check-ins/presence and approximate location for Mapbox/nearby requests. Disabling one telemetry endpoint does not stop every location data flow.
+- Deterministic hashed user IDs remain linked to identity. Diagnostics run without analytics consent; opt-in product analytics is separate.
+- Capacitor bundles local `dist` assets; it is not a production remote-web wrapper (`capacitor.config.ts`). Verify which analytics endpoints actually receive events on devices.
+- Confirm processor agreements and sharing classifications against actual vendor use.
+- Verify SMS/provider-held data against the release configuration; see the current SMS section below.
 
 ---
 
@@ -216,17 +192,13 @@ Picker, which needs no permission.
 
 ### Native rebuild determination
 
-Avatar upload did **not** require an iOS or Android binary change beyond the
-plist copy update. The `@capacitor/camera` plugin registers JavaScript
-bindings only; native runtime support for camera and photo library was already
-present from the trick-recording feature. Run `npx cap sync` only if a native
-rebuild is queued for another reason.
+Permission-string or native dependency changes require a newly built and signed binary. Run `npm run build` and `npx cap sync` for the target platform before archiving; web deployment alone does not update the installed app.
 
 ---
 
 ## Owner Actions Checklist
 
-- [ ] Resolve Open Questions 1–3 above (they change three answers).
+- [ ] Verify all current data flows against the final binary; confirm processor agreements and actual console answers. Previously resolved questions are not new blockers.
 - [ ] App Store Connect → App Privacy: transcribe Section 2 (each data type,
       Linked, Tracking = No, Purposes).
 - [ ] Google Play Console → App content → Data safety: transcribe Section 3

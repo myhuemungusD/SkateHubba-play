@@ -9,13 +9,13 @@ Every iPhone build runs on a rented Mac and costs money (about $0.50 a try on Gi
 - No merge starts a Mac build. `ios-release.yml` (TestFlight) and `ios-signing-bootstrap.yml` run only when someone clicks **Run workflow**. Xcode Cloud is set to **Manual Start** ([XCODE_CLOUD.md](XCODE_CLOUD.md)).
 - `ios-build.yml` (the unsigned simulator check) also runs when a GitHub release is published or a `v*` tag is pushed. Merging the release-please PR does both, so treat that merge as a paid build.
 - Batch changes and build rarely. Run `npm run ios:preflight` first: it checks the native patches for free on Linux and catches the mistakes that broke builds before. The TestFlight workflow runs it again before it rents the Mac, and `ios-preflight.yml` runs it on PRs that touch the patches.
-- Leave the workflow's What's That Trick tick box unticked. Testers in `config/featureTesters` already get every feature through the runtime override ([FEATURE_FLAGS.md](FEATURE_FLAGS.md)).
+- Leave the workflow's What's That Trick tick box unticked. The runtime tester override is web-only; native builds use only their baked-in flags ([FEATURE_FLAGS.md](FEATURE_FLAGS.md)).
 
 ## First-time setup
 
 Do the steps below in order. Do not run the workflows until the secrets exist. Each workflow stops immediately and prints the name of every secret that is still missing. It does not sign or upload until those secrets are present.
 
-The EU store deadline in [DSA_COMPLIANCE.md](./DSA_COMPLIANCE.md) has already passed. Items 1–5 there are still open. Finish them before you submit to the App Store, or the app can be pulled from EU storefronts.
+Check [DSA_COMPLIANCE.md](./DSA_COMPLIANCE.md) for EU distribution. The repo records D-U-N-S as complete and organization migration as in progress; current account state still needs console verification. Organization conversion and trader verification are separate tasks.
 
 ## 1. Create the App Store Connect API key
 
@@ -98,7 +98,7 @@ Open the SkateHubba repo → **Settings** → **Secrets and variables** → **Ac
 
 Leave `MATCH_GIT_URL` unset. The workflows already use `https://github.com/myhuemungusD/skatehubba-certs.git`. Set `MATCH_GIT_URL` only if you created the cert repo at a different address, and use an `https://` URL with no token in it.
 
-The TestFlight workflow turns every finished feature on (the full list is in [FEATURE_FLAGS.md](FEATURE_FLAGS.md)). Only Skate Runner, Roll Dice (website only for now), What's That Trick (tick box for testers), buying Hubba Bucks and SMS two-step sign-in stay off. Do not turn on Hubba Bucks purchases until the in-app purchase products exist in App Store Connect.
+The TestFlight workflow explicitly sets the public flags (see [FEATURE_FLAGS.md](FEATURE_FLAGS.md)). Closet, drops, trading, Studio, pro blessing, random challenger, Skate Runner, Roll Dice, What's That Trick, buying Hubba Bucks and SMS enrollment stay off. The WTT input is for a separate tester build. Do not turn on Hubba Bucks purchases until the in-app purchase products exist in App Store Connect.
 
 ## 6. Run the bootstrap once
 
@@ -137,13 +137,13 @@ These are website clicks. They do not need a Mac.
 
 ## Company paperwork (DSA)
 
-Do these before any store submission. They are the same items tracked in [DSA_COMPLIANCE.md](./DSA_COMPLIANCE.md). None of them can be done from the repo.
+Review these account tasks for the intended seller identity and territories. They are tracked in [DSA_COMPLIANCE.md](./DSA_COMPLIANCE.md). None of them can be done from the repo.
 
 1. Confirm the legal entity name and address exactly as they appear on the registration papers. Apple and Dun & Bradstreet match them character for character.
-2. Request a D-U-N-S number through Apple’s lookup tool. A lookup is about five business days. A new number can take up to 30 days.
-3. Open the Apple support case to convert the Developer account from Individual to Organization. Apple will wait on the D-U-N-S number. Conversion itself takes another two to four weeks, and App Store Connect is restricted while it is in progress. Do not ship a release during that window.
+2. D-U-N-S is recorded complete in DSA_COMPLIANCE.md. Verify the existing number and entity match; do not request a duplicate.
+3. Check the existing organization-migration case recorded in DSA_COMPLIANCE.md. Confirm account access and final entity status before scheduling submission.
 4. Stand up a role mailbox on the skatehubba.com domain (for example legal@ or support@), not a personal Gmail. Add SPF, DKIM, and DMARC so Apple and Google verification mail is not dropped. This address becomes public on the EU product page.
-5. After the account shows Organization, declare trader status in App Store Connect (Business → Digital Services Act) and in Google Play Console. Apple and Google each send a code to the address, phone, and email you enter, and they display those details publicly.
+5. Verify trader status separately from organization conversion; declare trader status in App Store Connect (Business → Digital Services Act) and in Google Play Console. Apple and Google each send a code to the address, phone, and email you enter, and they display those details publicly.
 
 ## App Store Connect details that are already done
 

@@ -73,7 +73,7 @@ ios` first is optional; it only matters for local builds.)
 5. Back on the Xcode Cloud tab, click **Start Build**, choose the workflow,
    branch `main`, **Start Build**.
 6. When it finishes (about 30 minutes), the build shows in TestFlight >
-   iOS Builds as 1.1.0 (11). Internal testers get it after Apple's
+   The source marketing version is 1.2.0; the build number comes from the build configuration. Internal testers get it after Apple's
    processing; answer the export compliance question if asked
    (the app uses no non-exempt encryption).
 
@@ -101,8 +101,7 @@ the eye icon) or from the Firebase console.
 Every finished feature is hard-coded on in `ci_post_clone.sh` (same list as
 `ios-release.yml`; see [FEATURE_FLAGS.md](FEATURE_FLAGS.md)). Skate Runner,
 Roll Dice, buying Hubba Bucks and SMS two-step sign-in stay off. `VITE_FEATURE_WTT_ENABLED`
-is the only optional toggle; leave it unset for store builds. Jason and Mike
-see every feature through the `config/featureTesters` override.
+is the only optional toggle; leave it unset for store builds. The `config/featureTesters` override is web-only. Native testers see only the flags baked into their binary.
 
 Not needed on Xcode Cloud: `ASC_KEY_*`, `MATCH_*`, `APPLE_TEAM_ID`. Apple
 signs with cloud-managed certificates and uploads with the team's own access.

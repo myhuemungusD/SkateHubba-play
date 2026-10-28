@@ -1,6 +1,8 @@
 # Feature flags and testers
 
-Every new feature ships **off**. Testers (today Jason and Mike) see everything through one override, and nobody else sees a feature until its flag is turned on for real.
+> **Store baseline checked 2026-10-26:** `.github/workflows/ios-release.yml` and `android-aab.yml` explicitly enable many flags whose code defaults are off. Closet, drops, trading, Studio, Bucks purchases, Runner, dice, pro blessing, SMS enrollment and random challenger remain off; WTT is off for the public release. See [store readiness](STORE_READINESS_2026-10-26.md).
+
+Every new feature ships **off**. Web testers see default-off features through one override, and nobody else sees a feature until its flag is turned on for real.
 
 ## How a flag works
 
@@ -12,7 +14,7 @@ Every new feature ships **off**. Testers (today Jason and Mike) see everything t
 ## The tester override
 
 - Firestore doc `config/featureTesters` holds `{ uids: [...] }`. Only a listed uid (or an admin) can read it, so the list never leaks.
-- When a listed tester signs in, [`src/services/featureTesters.ts`](../src/services/featureTesters.ts) stores their uid in local storage (`sh_feature_tester_uid`) and reloads once. From then on every `VITE_FEATURE_*` flag reads as on in that browser or app. Signing out, or a non-tester signing in, clears it.
+- When a listed tester signs in, [`src/services/featureTesters.ts`](../src/services/featureTesters.ts) stores their uid in local storage (`sh_feature_tester_uid`) and reloads once. From then on every `VITE_FEATURE_*` flag reads as on in that web browser (never in the native iOS/Android shell). Signing out, or a non-tester signing in, clears it.
 - The doc is written only from the Firebase console or the Admin SDK. The app never writes it.
 - Server features keep their own `*_TESTER_UIDS` lists. `npm run testers:sync` keeps every one of them matched to `config/featureTesters` (dry run by default; `-- --apply` writes). The PR gate runs `node scripts/testers-sync.mjs --check`, so a new `*_TESTER_UIDS` list in code that the script doesn't know about fails CI.
 - Pros never get admin powers. Pro tools (`/pro`) only ever act as a verified pro. Admin screens need the admin claim, and the tester override does not grant it.
@@ -34,7 +36,7 @@ Rule (Jason, 2026-10-20): every finished feature is on for everyone. A flag stay
   - Apple Sign-In on the website: needs a separate Apple web Service ID.
   - Admin screens: admin claim only, never a flag.
 - **Clip moderation** needs the Google Video Intelligence API on project `sk8hub-d7806` (enabled 2026-10-20). Without it every new clip waits for manual review.
-- **Testers:** everything, including the features above that are still off.
+- **Web testers:** the override can enable default-off client features; server authorization still applies. **Native testers:** only the flags baked into their binary. `isFeatureTesterOverrideActive()` returns false in native shells. A WTT tester build is a separate build and must not be submitted as the public release.
 
 ## Client flags
 

@@ -46,6 +46,7 @@
     "verify": "tsc -b && npm run lint && npm run check:coverage-ignores && npm run test:coverage && npm run build && npm run check:test-dup",
     "testers:sync": "node scripts/testers-sync.mjs",
     "check:testers": "node scripts/testers-sync.mjs --check",
+    "check:doc-claims": "node scripts/check-doc-claims.mjs",
     "ios:preflight": "node scripts/ios-preflight.mjs",
     "deploy:functions": "node scripts/deploy.mjs functions",
     "deploy:rules": "node scripts/deploy.mjs rules",

@@ -1,5 +1,7 @@
 <div align="center">
 
+> **Apple / Google Play readiness:** see the [2026-10-26 release audit](docs/STORE_READINESS_2026-10-26.md) and [Markdown review inventory](docs/MARKDOWN_REVIEW_2026-10-26.md). Source version and feature implementation do not establish store approval.
+
 <!-- GitHub dark mode: show white logo; light mode: show black logo -->
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/logo-white.webp">
@@ -96,7 +98,7 @@ No custom backend for core game logic: the client talks directly to Firebase, an
 - **Video tricks** — one-take recording in-browser (WebM) or native app (MP4)
 - **Real-time updates** — both players see state changes the moment they happen via Firestore snapshots
 - **24-hour turn timer** — games don't stall; expired turns auto-forfeit
-- **Optional referee** — nominate a neutral third player to rule on disputes and "Call BS" (off for new games behind `VITE_FEATURE_REFEREE_ENABLED`; disputes go to the community vote)
+- **Optional referee** — nominate a neutral third player to rule on disputes and "Call BS" (enabled in store workflows by `VITE_FEATURE_REFEREE_ENABLED`; games without a referee use community review)
 - **Binding community disputes** — on honor-system games a landed claim freezes the game for a 24 h accept/dispute window; a dispute goes to a binding community vote
 
 ### Identity & Trust
@@ -111,7 +113,7 @@ No custom backend for core game logic: the client talks directly to Firebase, an
 - **Two-step verification** — optional authenticator app (TOTP) or SMS second factor ([docs/MFA_TOTP.md](docs/MFA_TOTP.md))
 - **Avatar upload with NSFW screening** — client-side moderation via nsfwjs before an avatar goes live
 - **Age gating** — DOB collection with COPPA-compliant blocking for under-13 sign-ups
-- **Data export & account deletion** — self-service JSON export and in-app deletion (`/data-deletion`, `api/account/delete.ts`); deleting an Apple-linked account revokes the Sign in with Apple token as App Store rules require
+- **Data export & account deletion** — self-service JSON export and in-app deletion (`/data-deletion`, `api/account/delete.ts`); native deletion attempts Apple token revocation; failure recovery remains a release finding
 
 ### Social & Discovery
 
@@ -122,19 +124,19 @@ No custom backend for core game logic: the client talks directly to Firebase, an
 - **Leaderboard** — ranked players by wins
 - **Player profiles** — public per-user pages with full game history
 - **Spots map** — geo-tagged skate spots with gnar rating + bust risk, filters, a nearby-spots dropdown (closest spots within 10 km), and challenge-from-spot
-- **Map check-ins** _(testers only)_ — server-verified check-ins, a spot passport, legendary and seeded OpenStreetMap spots, crew-only and private spots ([docs/MAP_ROADMAP.md](docs/MAP_ROADMAP.md))
-- **Spot presence** _(testers only)_ — "Challenge here" lists only skaters checked in at that spot, a day pass re-checks you in automatically within about 500 ft (you can turn it off) while the app is open, and online dots on avatars. The presence record never stores a location, only "at this spot until"
-- **Spot chats** _(testers only)_ — a group chat per spot with report, block, word filter and rate limits
+- **Map check-ins** _(enabled in store builds)_ — server-verified check-ins, a spot passport, legendary and seeded OpenStreetMap spots, crew-only and private spots ([docs/MAP_ROADMAP.md](docs/MAP_ROADMAP.md))
+- **Spot presence** _(enabled in store builds)_ — "Challenge here" lists only skaters checked in at that spot, a day pass re-checks you in automatically within about 500 ft (you can turn it off) while the app is open, and online dots on avatars. Public presence shows the spot and expiry; private anti-spoofing state retains the latest coordinates
+- **Spot chats** _(enabled in store builds)_ — a group chat per spot with report, block, word filter and rate limits
 - **Achievements & badges** — earned badges (century club, streaks, OG, …) shown on profiles
 - **Hubba Locker** — collectible locker items with a profile showcase (economy Phase A)
 - **Closet** _(testers only)_ — earned and bought items, Drop Day, trading and Hubba Bucks, all server-authoritative. Includes the Mike White Signature collection with a 360 shoe viewer, and Closet Studio, a paint-style clothes editor that starts from Mike's designs ([docs/MIKE_WHITE_COLLECTION.md](docs/MIKE_WHITE_COLLECTION.md), [docs/CLOSET_STUDIO.md](docs/CLOSET_STUDIO.md))
-- **Customizable profiles** _(testers only)_ — banner photo, theme colors, section order, pinned clips, links and a theme song ([docs/PROFILE_CUSTOM.md](docs/PROFILE_CUSTOM.md))
+- **Customizable profiles** _(enabled in store builds)_ — banner photo, theme colors, section order, pinned clips, links and a theme song ([docs/PROFILE_CUSTOM.md](docs/PROFILE_CUSTOM.md))
 - **Verified Pro** — gold badge for professional skaters. Nobody can earn it: an existing pro has to bless you
 - **Bless a pro** — a verified pro offers the badge with a public reason, the skater accepts, and the lineage ("Blessed by") shows on the profile. Limits: 2 per pro per 30 days, target account at least 30 days old ([docs/PRO_BLESSING.md](docs/PRO_BLESSING.md))
 - **Pro profiles and `/pro` tools** — pro hero, bio, sponsors and signature tricks, edited by the pro on the Pro tools screen (public showcase behind `VITE_FEATURE_PRO_PROFILES`). Testers also get the Clip Reel and Pro Spots, a pro review queue, gold clip authoring, pro challenges, pro props and featured clips. Pro tools never carry admin powers
 - **Admin console** — in-app moderation surface for bans, badge awards, and dispute oversight; testers also get user search, a disputes queue with an audit log, analytics and announcements (admin claim only)
 
-### Extras (testers only)
+### Extras (build-dependent)
 
 - **Hesher tips** — Hesher, the SkateHubba mascot (formerly "Hubz"), shows one to three tip bubbles the first time you open each screen. Never while the camera is open. Settings has "Show tips" and "Replay tips"
 - **Skate Runner** — an endless three-lane street grind game at `/play/runner` ([docs/RUNNER.md](docs/RUNNER.md)). Off for everyone except testers until it's signed off
@@ -197,6 +199,7 @@ For full setup including Firebase emulators, see [docs/DEVELOPMENT.md](docs/DEVE
 | `npm run cap:run:android`         | Build and run the app on an Android device/emulator                                               |
 | `npm run testers:sync`            | Match every server `*_TESTER_UIDS` list to `config/featureTesters` (dry run; `-- --apply` writes) |
 | `npm run check:testers`           | Fail if code has a `*_TESTER_UIDS` list that `testers:sync` doesn't know (PR gate)                |
+| `npm run check:doc-claims`        | Fail if a doc or store text contradicts the workflows, manifests or `docs/facts.json` (PR gate)   |
 | `npm run ios:preflight`           | Free Linux check of the iOS native patches before a paid Mac build                                |
 | `npm run deploy:functions`        | One-command Cloud Functions deploy (checks first; `-- --only a,b`, `-- --dry-run`)                |
 | `npm run deploy:rules`            | One-command Firestore + Storage rules deploy                                                      |
@@ -291,7 +294,7 @@ Copy `.env.example` to `.env.local` and fill in the values. The full template (w
 | `VITE_USE_EMULATORS=true`      | Local-only — point the client at the Firebase emulator suite                 |
 | `VITE_FEATURE_*`               | Feature flags, all off by default (see below)                                |
 
-**Feature flags.** Every feature flag defaults to **off**: only the literal string `true` turns one on, and `VITE_*` values are baked in at build time, so a change needs a redeploy or a new app build. Testers listed in the Firestore doc `config/featureTesters` (Jason and Mike) get every flag on through a runtime override. The full list, what each flag shows, its server switch and where it is on today live in [docs/FEATURE_FLAGS.md](docs/FEATURE_FLAGS.md).
+**Feature flags.** Every feature flag defaults to **off**: only the literal string `true` turns one on, and `VITE_*` values are baked in at build time, so a change needs a redeploy or a new app build. Web testers listed in `config/featureTesters` can enable flags through a runtime override. Native shells disable that override. The full list, what each flag shows, its server switch and where it is on today live in [docs/FEATURE_FLAGS.md](docs/FEATURE_FLAGS.md).
 
 The website's flags are set in the Vercel project, not in this repo; [docs/FEATURE_FLAGS.md](docs/FEATURE_FLAGS.md) lists what is on there. `VITE_FEATURE_EXTRAS_ENABLED` turns on the Map, Clips feed and Verified Pro. The launch freeze was lifted on 2026-10-10. A local build or fork without it falls back to the core game loop: those routes redirect to `/lobby` (signed in) or `/` (signed out). iPhone builds turn on `VITE_FEATURE_EXTRAS_ENABLED`, `VITE_FEATURE_APPLE_SIGNIN_ENABLED` and `VITE_FEATURE_PRO_PROFILES` (plus the pro showcase, calls, community and camera flags) and leave `VITE_FEATURE_PRO_BLESSING`, Dice and the Closet off. See `.github/workflows/ios-release.yml` and `ios/App/ci_scripts/ci_post_clone.sh` for the exact set.
 

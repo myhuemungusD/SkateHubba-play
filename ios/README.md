@@ -138,7 +138,7 @@ native SDK inherits them via the sibling-SDK init pattern
 ## Version numbers
 
 `CFBundleShortVersionString` in `Info.plist` (and `MARKETING_VERSION` in
-`project.pbxproj`) is the marketing version, currently `1.1.0`. Both carry an
+`project.pbxproj`) is the marketing version, currently `1.2.0`. Both carry an
 `x-release-please-version` marker and are listed as `extra-files` in
 `release-please-config.json`, so release-please bumps them with `package.json`
 when a release PR merges. `CFBundleVersion`
