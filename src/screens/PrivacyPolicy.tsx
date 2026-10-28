@@ -86,11 +86,14 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
           <p>Depending on your location, you may have the right to:</p>
           <ul>
             <li>
-              Access the personal data we hold about you. In Settings, under Account, &quot;Download my data&quot; gives
-              you a copy as a file.
+              Access the personal data we hold about you. In Settings, under &quot;Your data &amp; sign out&quot;,
+              &quot;Download my data&quot; gives you a copy as a file.
             </li>
             <li>Correct inaccurate data.</li>
-            <li>Delete your account and associated data (in the app: Settings, then Account, then Delete account).</li>
+            <li>
+              Delete your account and associated data (in the app: Settings, then &quot;Your data &amp; sign out&quot;,
+              then Delete account).
+            </li>
             <li>Object to or restrict certain processing.</li>
             <li>Data portability (receive your data in a machine-readable format).</li>
             <li>Lodge a complaint with your local data protection authority.</li>
@@ -164,8 +167,8 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
             </li>
             <li>
               <strong className="text-white">Right to delete:</strong> You may request deletion of your personal
-              information. You can do this directly in the app (Settings, then Account, then Delete account) or by
-              emailing <span className="text-brand-orange">{CONTACT_EMAIL}</span>.
+              information. You can do this directly in the app (Settings, then &quot;Your data &amp; sign out&quot;,
+              then Delete account) or by emailing <span className="text-brand-orange">{CONTACT_EMAIL}</span>.
             </li>
             <li>
               <strong className="text-white">Right to opt-out of sale:</strong> SkateHubba does{" "}
