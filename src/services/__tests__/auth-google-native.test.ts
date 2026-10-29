@@ -77,6 +77,10 @@ vi.mock("@capacitor-firebase/authentication", () => ({
 }));
 
 vi.mock("../../firebase");
+vi.mock("../../lib/sentry", async (importOriginal) =>
+  (await import("./nativeSignIn.test-helpers")).sentryWithCaptureMessageSpy(importOriginal),
+);
+import { captureMessageSpy, unavailableWarning } from "./nativeSignIn.test-helpers";
 
 import { resolveGoogleRedirect, signInWithGoogle, signOut } from "../auth";
 
@@ -147,13 +151,35 @@ describe("signInWithGoogle (native)", () => {
     expect(mockSignInWithPopup).not.toHaveBeenCalled();
   });
 
-  it("rethrows errors from the native plugin (e.g. user cancelled)", async () => {
+  it("rethrows other errors from the native plugin unchanged", async () => {
     const err = Object.assign(new Error("canceled"), { code: "auth/cancelled" });
     mockNativeSignInWithGoogle.mockRejectedValueOnce(err);
 
     await expect(signInWithGoogle()).rejects.toBe(err);
     expect(mockSignInWithCredential).not.toHaveBeenCalled();
     expect(mockSignInWithPopup).not.toHaveBeenCalled();
+    expect(captureMessageSpy).not.toHaveBeenCalled();
+  });
+
+  it("turns Google's own cancel into the silent dismiss code", async () => {
+    // GIDSignIn's fixed kUserCanceledError string; the plugin passes no code.
+    const err = new Error("The user canceled the sign-in flow.");
+    mockNativeSignInWithGoogle.mockRejectedValueOnce(err);
+
+    await expect(signInWithGoogle()).rejects.toMatchObject({ code: "auth/popup-closed-by-user", cause: err });
+    expect(mockSignInWithCredential).not.toHaveBeenCalled();
+    expect(captureMessageSpy).not.toHaveBeenCalled();
+  });
+
+  it("turns 'Unable to open Safari.' into the use-Email error and one fixed Sentry warning", async () => {
+    const err = new Error("Unable to open Safari.");
+    mockNativeSignInWithGoogle.mockRejectedValueOnce(err);
+
+    await expect(signInWithGoogle()).rejects.toMatchObject({ code: "sign-in/google-unavailable", cause: err });
+    expect(mockSignInWithCredential).not.toHaveBeenCalled();
+    expect(mockSignInWithPopup).not.toHaveBeenCalled();
+    expect(captureMessageSpy).toHaveBeenCalledTimes(1);
+    expect(captureMessageSpy).toHaveBeenCalledWith(...unavailableWarning("google"));
   });
 });
 
