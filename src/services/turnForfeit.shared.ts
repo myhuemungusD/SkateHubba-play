@@ -23,6 +23,7 @@
 import { turnDurationMsFor } from "./turnDuration.js";
 import type { GameDoc, TurnRecord } from "./games.mappers.js";
 import { trickSnapshot } from "./trickFields.js";
+import { presetHandle, presetTrickName } from "./notificationPresets.js";
 
 /** The opponent of `playerUid` in a two-player game. Mirrors getOpponent. */
 function opponentOf(game: GameDoc, playerUid: string): string {
@@ -212,7 +213,7 @@ export function decideExpiredForfeit(game: GameDoc, nowMs: number, gameId: strin
         senderUid: game.currentSetter,
         type: "your_turn",
         title: "Your Turn to Set!",
-        body: `You landed @${setterUsername}'s ${trickName}. Set a trick!`,
+        body: `You landed @${presetHandle(setterUsername)}'s ${presetTrickName(trickName)}. Set a trick!`,
       },
     };
   }
@@ -240,7 +241,7 @@ export function decideExpiredForfeit(game: GameDoc, nowMs: number, gameId: strin
         senderUid: game.currentSetter,
         type: "your_turn",
         title: "Your Turn!",
-        body: `Match @${setterUsername}'s ${trickName}`,
+        body: `Match @${presetHandle(setterUsername)}'s ${presetTrickName(trickName)}`,
       },
     };
   }
