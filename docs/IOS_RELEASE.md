@@ -93,6 +93,7 @@ Open the SkateHubba repo → **Settings** → **Secrets and variables** → **Ac
 | `VITE_FIREBASE_MESSAGING_SENDER_ID` | Same web config                                                                                                                                                                             |
 | `VITE_FIREBASE_APP_ID`              | Same web config                                                                                                                                                                             |
 | `VITE_FIREBASE_VAPID_KEY`           | The same web push key the site already uses                                                                                                                                                 |
+| `VITE_MAPBOX_TOKEN`                 | The public Mapbox token (`pk.…`) the site already uses. Without it the Map tab only says "Map is temporarily unavailable." The Android workflow requires it too                             |
 
 `GOOGLE_SERVICE_INFO_PLIST_BASE64` is required because the plist is gitignored and is not in the repo. If a checkout ever already contains `ios/App/App/GoogleService-Info.plist`, the TestFlight workflow keeps that file and does not require the secret.
 

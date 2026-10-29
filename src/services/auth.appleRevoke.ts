@@ -3,7 +3,7 @@ import { Capacitor } from "@capacitor/core";
 import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
 import { ensureAppCheck, isAppCheckInitialized, requireAuth } from "../firebase";
 import { captureMessage } from "../lib/sentry";
-import { parseFirebaseError } from "../utils/helpers";
+import { getErrorCode } from "../utils/helpers";
 import { errorKind } from "../utils/errors";
 import { logger } from "./logger";
 
@@ -50,9 +50,10 @@ import { logger } from "./logger";
  *
  *     Only once the sheet hands back a code does a fresh budget start, and it
  *     covers everything that touches the network: refreshing the ID token
- *     and the REST revoke. The helper swallows its own errors — Apple or
- *     Firebase being slow, or a 4xx, must not strand the user in an account
- *     they asked to delete. The caller decides what each outcome means.
+ *     and the REST revoke. The helper swallows its own errors and returns
+ *     an outcome; the caller decides what each one means. The delete flow
+ *     (`auth.deleteAccount.ts`) stops with nothing deleted on both
+ *     "cancelled" and "failed", so the user can retry.
  */
 export type AppleRevokeOutcome = "not-apple" | "revoked" | "cancelled" | "failed";
 
@@ -81,8 +82,7 @@ export async function revokeAppleTokensIfNeeded(
     };
     code = result?.credential?.authorizationCode;
   } catch (err) {
-    const text = parseFirebaseError(err);
-    if (/\b1001\b/.test(text) || /cancel/i.test(text)) {
+    if (isAppleSheetCancel(err)) {
       logger.info("apple_revoke_cancelled", { uid: user.uid });
       return "cancelled";
     }
@@ -153,6 +153,50 @@ export async function revokeAppleTokensIfNeeded(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Error codes that mean the user closed the sheet. The Firebase web-context
+ * pair is what `@capacitor-firebase/authentication` maps
+ * `AuthErrorCode.webContextCancelled` / `webContextAlreadyPresented` to
+ * (FirebaseAuthenticationHelper.swift); "1001" is `ASAuthorizationError.canceled`
+ * if a bridge ever passes Apple's code through as a string.
+ */
+const APPLE_CANCEL_CODES: ReadonlySet<string> = new Set([
+  "auth/popup-closed-by-user",
+  "auth/cancelled-popup-request",
+  "1001",
+]);
+
+/**
+ * The NSError signature of `ASAuthorizationError.canceled` (domain
+ * `com.apple.AuthenticationServices.AuthorizationError`, code 1001).
+ *
+ * Why this one string match is still needed: the plugin (v8.5.2) rejects the
+ * sheet's `didCompleteWithError` with `call.reject(error.localizedDescription,
+ * createErrorCode(error))`, and `createErrorCode` only knows Firebase
+ * `AuthErrorCode` values (17xxx). Apple's 1001 has no entry, so the JS error
+ * arrives with NO `code`, and the message "The operation couldn’t be
+ * completed. (com.apple.AuthenticationServices.AuthorizationError error
+ * 1001.)" is the only place the domain and code survive. This matches that
+ * exact domain + code pair, not free text such as "cancel", so a network
+ * "request cancelled" is never mistaken for the user closing the sheet. The
+ * word between them is localized ("Fehler", "erreur", "エラー"), so any
+ * short non-digit run is allowed there.
+ */
+const APPLE_CANCEL_NSERROR = /AuthorizationError\D{1,20}1001\b/;
+
+/**
+ * True when the Apple sheet was closed by the user, judged by error code:
+ * a Firebase/Capacitor `code` string, a numeric `code` of 1001, or Apple's
+ * NSError domain + code as the plugin surfaces it (see above).
+ */
+export function isAppleSheetCancel(err: unknown): boolean {
+  if (APPLE_CANCEL_CODES.has(getErrorCode(err))) return true;
+  if (typeof err === "object" && err !== null && (err as { code?: unknown }).code === 1001) return true;
+  const message =
+    typeof (err as { message?: unknown } | null)?.message === "string" ? (err as { message: string }).message : "";
+  return APPLE_CANCEL_NSERROR.test(message);
 }
 
 /** Why a revoke didn't land. Short, fixed strings so Sentry can group them. */

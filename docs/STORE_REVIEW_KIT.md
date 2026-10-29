@@ -19,7 +19,7 @@ npm run review:seed -- --emulator     # seed the local emulators instead (for sc
   - a profile (`@appreview`, or `REVIEW_USERNAME`) with stats, XP (level 11), the tutorial marked done, and badges that match the stats
   - six demo opponents
   - nine S.K.A.T.E. games, so Home is full: four on you (two to match, two to set), two waiting on them, and three finished (two wins, one loss)
-  - eight landed clips in the feed
+  - eight clips in the feed, written as user posts (the feed shows only `source: "user"` clips)
   - six spots near Apple Park, so the map has nearby pins while Apple reviews it, plus three public Spot Passport check-ins
   - four Mike White shoes in the Closet (one equipped). They show "Designed by Mike White" in the app. Closet is off in the 1.2.0 iPhone build, so these only appear once Closet ships, and the 1.2.0 listing and screenshots leave Closet out.
 - Every document has a fixed id, so running it again refreshes the account instead of duplicating it.
@@ -49,7 +49,7 @@ Run `review:seed` first so the screens have content. These are captures of the w
 
 ### App Store set, without touching production
 
-The App Store set is `ios-6.9` (1320×2868, the source set) and `ios-6.3` (1206×2622, the 6.3" size Apple lists as required). The app is iPhone-only, so there is no iPad set. Capture it from a local build with the iPhone launch flags (from `.github/workflows/ios-release.yml`: everything on except `VITE_FEATURE_DICE_ENABLED`, Skate Runner, the Closet (`VITE_FEATURE_CLOSET_ENABLED`, with drops, Studio and trading), pro blessing (`VITE_FEATURE_PRO_BLESSING`), Bucks purchase, SMS 2FA, the random challenger and What's That Trick), against the emulators:
+The App Store set is `ios-6.9` (1320×2868, the source set) and `ios-6.3` (1206×2622, the 6.3" size Apple lists as required). The app is iPhone-only, so there is no iPad set. Capture it from a local build with the iPhone launch flags (from `.github/workflows/ios-release.yml`: everything on except `VITE_FEATURE_DICE_ENABLED`, Skate Runner, the Closet (`VITE_FEATURE_CLOSET_ENABLED`, with drops, Studio and trading), pro blessing (`VITE_FEATURE_PRO_BLESSING`), Bucks purchase, SMS 2FA, the random challenger and What's That Trick), against the emulators. This 1.2.0 build has no Share button on the Clips feed: `VITE_FEATURE_FEED_SHARE` and `ShareClipButton` exist only on `main` (and are off in its store builds), so the 1.2.0 screenshots and review notes must not show or mention feed sharing:
 
 ```bash
 npm run emulators                                  # auth, firestore, storage

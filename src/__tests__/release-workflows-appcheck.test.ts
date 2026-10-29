@@ -64,3 +64,34 @@ describe("iPhone builds with the Closet off", () => {
     for (const [, text] of prompts) expect(text).not.toMatch(/closet/i);
   });
 });
+
+/**
+ * Guard: both store workflows stop before the build when the Mapbox token
+ * secret is missing. The web build passes without it, and the reviewer then
+ * sees a Map tab that only says "Map is temporarily unavailable."
+ */
+describe("store builds require VITE_MAPBOX_TOKEN up front", () => {
+  it.each([".github/workflows/ios-release.yml", ".github/workflows/android-aab.yml"])(
+    "%s checks it before the web build",
+    (workflow) => {
+      const text = read(workflow);
+      const check = text.indexOf("require-github-secrets.sh");
+      expect(check, `${workflow} runs the secret check`).toBeGreaterThan(-1);
+      const before = text.slice(0, check);
+      const checkStep = before.slice(before.lastIndexOf("- name:"));
+      expect(checkStep).toMatch(/^\s+VITE_MAPBOX_TOKEN: \$\{\{ secrets\.VITE_MAPBOX_TOKEN \}\}$/m);
+      expect(check).toBeLessThan(text.indexOf("- name: Build web assets"));
+    },
+  );
+
+  it("Android passes it to the check", () => {
+    const text = read(".github/workflows/android-aab.yml");
+    expect(text).toMatch(/^\s+run: bash \.github\/scripts\/require-github-secrets\.sh VITE_MAPBOX_TOKEN$/m);
+  });
+
+  it("iOS lists it with the names the check requires", () => {
+    const text = read(".github/workflows/ios-release.yml");
+    const lists = [...text.matchAll(/names\+?=\(([\s\S]*?)\)/g)].map((m) => m[1]);
+    expect(lists.some((list) => /^\s+VITE_MAPBOX_TOKEN$/m.test(list))).toBe(true);
+  });
+});

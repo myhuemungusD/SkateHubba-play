@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { subscribeToBlockedUsers } from "../services/blocking";
 
 const EMPTY_SET: Set<string> = new Set();
@@ -13,18 +13,35 @@ export interface BlockedUsersState {
    * frame, wait for this before rendering.
    */
   ready: boolean;
+  /**
+   * True when the listener failed before the first snapshot, so the list is
+   * unknown (and `blocked` is empty). `ready` is still true then: surfaces
+   * that accept failing open (SpotChat) keep working. Surfaces that must
+   * not show a blocked player at all (the feed and the dispute lane) treat
+   * this as an error and offer `retry`.
+   */
+  failed: boolean;
 }
 
-const SIGNED_OUT: BlockedUsersState = { blocked: EMPTY_SET, ready: true };
-const PENDING: BlockedUsersState = { blocked: EMPTY_SET, ready: false };
+export interface BlockedUsersStateWithRetry extends BlockedUsersState {
+  /** Drop the current listener and subscribe again (Try again after `failed`). */
+  retry: () => void;
+}
+
+const SIGNED_OUT: BlockedUsersState = { blocked: EMPTY_SET, ready: true, failed: false };
+const PENDING: BlockedUsersState = { blocked: EMPTY_SET, ready: false, failed: false };
+const FAILED: BlockedUsersState = { blocked: EMPTY_SET, ready: true, failed: true };
 
 /**
  * Subscribe to the current user's blocked users list, with a `ready` flag.
  * Pass an empty string to skip subscription (e.g. when user is not logged in).
  */
-export function useBlockedUsersState(uid: string): BlockedUsersState {
+export function useBlockedUsersState(uid: string): BlockedUsersStateWithRetry {
   const storeRef = useRef<BlockedUsersState>(uid ? PENDING : SIGNED_OUT);
   const listenersRef = useRef(new Set<() => void>());
+  // Bumped by `retry` to tear the listener down and subscribe again.
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
   useEffect(() => {
     const publish = (next: BlockedUsersState) => {
@@ -38,16 +55,23 @@ export function useBlockedUsersState(uid: string): BlockedUsersState {
       return;
     }
 
-    // A different viewer's list must not leak into this one while it loads.
+    // A different viewer's list (or a failed attempt) must not leak into
+    // this one while it loads.
     if (storeRef.current !== PENDING) publish(PENDING);
+    let gotSnapshot = false;
     return subscribeToBlockedUsers(
       uid,
-      (uids) => publish({ blocked: uids, ready: true }),
-      () => publish({ blocked: storeRef.current.blocked, ready: true }),
+      (uids) => {
+        gotSnapshot = true;
+        publish({ blocked: uids, ready: true, failed: false });
+      },
+      // After a snapshot, keep the last known list. Before one, the list is
+      // unknown: say so, and let strict surfaces offer a retry.
+      () => publish(gotSnapshot ? { blocked: storeRef.current.blocked, ready: true, failed: false } : FAILED),
     );
-  }, [uid]);
+  }, [uid, attempt]);
 
-  return useSyncExternalStore(
+  const state = useSyncExternalStore(
     (onStoreChange) => {
       listenersRef.current.add(onStoreChange);
       /* v8 ignore start -- React-managed cleanup */
@@ -58,6 +82,7 @@ export function useBlockedUsersState(uid: string): BlockedUsersState {
     },
     () => storeRef.current,
   );
+  return { ...state, retry };
 }
 
 /**

@@ -314,7 +314,7 @@ See `firestore.rules` for the full type/length validation block (gnar/bust ratin
 
 ### `clips/{clipId}` and `clipVotes/{voteId}`
 
-Denormalized landed-trick feed. `clips` documents are written atomically inside the `submitMatchAttempt` / `resolveDispute` transactions (see `src/services/clips.ts#writeLandedClipsInTransaction`). The document id is deterministic — `${gameId}_${turnNumber}_${role}` — which is also enforced by the create rule and keeps transaction retries idempotent.
+Denormalized landed-trick feed. `clips` documents are written atomically inside the `submitMatchAttempt` / `resolveDispute` transactions (see `src/services/clips.ts#writeLandedClipsInTransaction`). The document id is deterministic — `${gameId}_${turnNumber}_${role}` — which is also enforced by the create rule and keeps transaction retries idempotent. These game clips (`source: "game"`, or no `source` on older docs) stay in the game and dispute screens: the public feed, Pro Picks and profiles show only user posts (`source: "user"`), filtered on the client by `isUserPostedClip` in `src/services/clipVisibility.ts`.
 
 `clipVotes/{voteId}` records single upvotes; the document id is `${uid}_${clipId}` and the rule enforces that shape so a client cannot impersonate another user's vote. Votes are immutable; only the voting user can delete their own vote (account-deletion cascade). Email verification is required to upvote.
 

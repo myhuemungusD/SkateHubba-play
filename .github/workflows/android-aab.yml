@@ -32,6 +32,13 @@ jobs:
         with:
           node-version: 22
           cache: 'npm'
+      # Fail in seconds, not after a 15-minute build: without the token the
+      # Map tab only says "Map is temporarily unavailable." (ios-release.yml
+      # and ios/App/ci_scripts/ci_post_clone.sh require it the same way).
+      - name: Require map secret
+        env:
+          VITE_MAPBOX_TOKEN: ${{ secrets.VITE_MAPBOX_TOKEN }}
+        run: bash .github/scripts/require-github-secrets.sh VITE_MAPBOX_TOKEN
       - name: Install dependencies
         run: npm ci
       # Runs before the web build so steps.version outputs are available to

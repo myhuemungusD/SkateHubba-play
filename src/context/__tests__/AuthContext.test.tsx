@@ -740,6 +740,19 @@ describe("handleDeleteAccount", () => {
       await waitFor(() => expect(registerPushTokenIfGranted).toHaveBeenLastCalledWith("u1"));
     });
 
+    it("treats a failed Apple revoke as a stop too: nothing deleted, no extra Sentry, no pending marker", async () => {
+      const failErr = Object.assign(new Error("Nothing was deleted."), { code: "account-delete/apple-revoke-failed" });
+      mockDeleteAccount.mockRejectedValueOnce(failErr);
+
+      const { triggerDelete } = renderWithTrigger(profile);
+      expect(await triggerDelete()).toBe(failErr);
+
+      // The revoke helper already sent its warning; no second event here.
+      expect(mockCaptureException).not.toHaveBeenCalled();
+      expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+      await waitFor(() => expect(registerPushTokenIfGranted).toHaveBeenLastCalledWith("u1"));
+    });
+
     describe("putting the push token back after a closed Apple sheet", () => {
       const cancelErr = () => Object.assign(new Error("Nothing was deleted."), { code: "account-delete/cancelled" });
 

@@ -117,7 +117,7 @@ No custom backend for core game logic: the client talks directly to Firebase, an
 
 - **Invite & share** — SMS, link copy, and native share for invites and trick clips
 - **Push notifications** — FCM "your turn" alerts that deep-link into the game
-- **Cross-game clips feed** — every landed trick rolls into a global, scrollable feed; the top slot autoplays muted with tap-to-unmute and rotates through visible clips
+- **Clips feed** — clips players post (`source: "user"`) roll into a global, scrollable feed; game clips stay in the game and dispute screens. The top slot autoplays muted with tap-to-unmute and rotates through visible clips
 - **Clip upvotes** — single-tap, no-undo upvotes; one vote per user per clip enforced by rules, with a Top/New toggle over upvote-ranked results
 - **Leaderboard** — ranked players by wins
 - **Player profiles** — public per-user pages with full game history
@@ -449,7 +449,7 @@ For the live, evidence-backed completion table, see [docs/STATUS_REPORT.md](docs
 - ✅ **Player profiles** — public game archives that double as social proof
 - ✅ **Challenge anyone** — search/invite by username, expanding beyond existing friend groups
 - ✅ **Block & report** — moderation tooling backed by Firestore rules
-- ✅ **Cross-game clips feed** — landed tricks become a discovery surface with an autoplaying top-slot that rotates through the visible clips
+- ✅ **Clips feed** — posted clips become a discovery surface with an autoplaying top-slot that rotates through the visible clips
 - ✅ **Clip upvotes** — single-tap, no-undo upvotes on every clip (per-vote rules + double-vote guard)
 - ✅ **Vote-driven clip ranking** — feed defaults to upvote-ranked with a Top/New toggle and a fallback to chronological if the composite index is missing
 - 🧊 **Spectator mode** — deferred; eligible for revisit now that ranked clips produce engagement data

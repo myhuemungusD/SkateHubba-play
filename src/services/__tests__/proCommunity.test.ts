@@ -112,17 +112,22 @@ describe("props", () => {
 describe("featured clips", () => {
   it("lists featured clips with clip info and fallbacks", async () => {
     h.getDocs.mockResolvedValueOnce({
-      docs: [qd("a", { proUid: "p", proUsername: "mike" }), qd("b", {}), qd("c", {})],
+      docs: [qd("a", { proUid: "p", proUsername: "mike" }), qd("b", {}), qd("c", {}), qd("g", {})],
     });
     h.getDoc.mockImplementation(async (p: string) => {
-      if (p === "clips/a") return { exists: () => true, data: () => ({ videoUrl: "v", trickName: "kf" }) };
+      if (p === "clips/a")
+        return { exists: () => true, data: () => ({ source: "user", videoUrl: "v", trickName: "kf" }) };
+      if (p === "clips/g")
+        return { exists: () => true, data: () => ({ source: "game", videoUrl: "vg", trickName: "g" }) };
       if (p === "clips/b") return { exists: () => false, data: () => undefined };
       throw new Error("denied");
     });
     expect(await listFeaturedClips()).toEqual([
-      { clipId: "a", proUid: "p", proUsername: "mike", videoUrl: "v", trickName: "kf" },
-      { clipId: "b", proUid: "", proUsername: "", videoUrl: null, trickName: "" },
-      { clipId: "c", proUid: "", proUsername: "", videoUrl: null, trickName: "" },
+      { clipId: "a", proUid: "p", proUsername: "mike", videoUrl: "v", trickName: "kf", userClip: true },
+      { clipId: "b", proUid: "", proUsername: "", videoUrl: null, trickName: "", userClip: false },
+      { clipId: "c", proUid: "", proUsername: "", videoUrl: null, trickName: "", userClip: false },
+      // A game clip is still listed (so the pro can unpin it), flagged as not a user post.
+      { clipId: "g", proUid: "", proUsername: "", videoUrl: "vg", trickName: "g", userClip: false },
     ]);
     h.getDocs.mockRejectedValueOnce(new Error("x"));
     expect(await listFeaturedClips()).toEqual([]);
