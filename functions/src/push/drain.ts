@@ -59,7 +59,7 @@ export interface DispatchPayload {
   createdAtMs: number | null;
 }
 
-export interface MulticastResult {
+interface MulticastResult {
   failureCount: number;
   responses: { success: boolean; error?: { code: string } }[];
 }

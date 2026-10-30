@@ -7,16 +7,15 @@
  * 50 = 57,624 in both places.
  */
 
-export const MAX_LEVEL = 50;
+const MAX_LEVEL = 50;
 export const DAILY_XP_CAP = 3000;
-export const FINISH_XP = 50;
-export const WIN_XP = 50;
-export const LAND_XP = 10;
+const FINISH_XP = 50;
+const WIN_XP = 50;
+const LAND_XP = 10;
 export const CALL_XP = 10;
-export const ACCOUNT_MIN_AGE_MS = 24 * 60 * 60 * 1000;
 
 /** 1st game vs this person today, then half, quarter, then nothing. */
-export const PAIR_MULTIPLIERS = [1, 0.5, 0.25, 0] as const;
+const PAIR_MULTIPLIERS = [1, 0.5, 0.25, 0] as const;
 
 export type AchievementTier = "bronze" | "silver" | "gold";
 
@@ -32,7 +31,7 @@ export interface AchievementDef {
   threshold: number;
 }
 
-export type XpCounter =
+type XpCounter =
   | "gamesPlayed"
   | "wins"
   | "bestWinStreak"
@@ -183,14 +182,6 @@ export function pairMultiplier(priorCount: number): number {
 export function scaleXp(amount: number, multiplier: number): number {
   if (amount <= 0 || multiplier <= 0) return 0;
   return Math.floor(amount * multiplier);
-}
-
-/** How much of `award` still fits under the 3,000 daily cap. */
-export function capXp(xpToday: number, award: number): number {
-  if (award <= 0) return 0;
-  const used = Number.isFinite(xpToday) && xpToday > 0 ? xpToday : 0;
-  const room = Math.max(0, DAILY_XP_CAP - used);
-  return Math.min(award, room);
 }
 
 export function utcDayFromMs(ms: number): string {

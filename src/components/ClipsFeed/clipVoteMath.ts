@@ -7,7 +7,7 @@
  * fully enumerated, unit-tested.
  */
 
-import type { ClipVoteState } from "../../services/clips.upvotes";
+import type { ClipVoteState } from "../../services/clips";
 
 /** The vote the viewer is asking for: thumbs up, thumbs down, or withdrawn. */
 export type VoteValue = 1 | -1 | null;

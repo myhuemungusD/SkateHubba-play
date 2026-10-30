@@ -9,8 +9,8 @@ import { logger } from "./logger";
  * reports, config/featureTesters), so a pro or player gets nothing.
  */
 
-export const BANS_LIST_LIMIT = 100;
-export const USER_SEARCH_LIMIT = 20;
+const BANS_LIST_LIMIT = 100;
+const USER_SEARCH_LIMIT = 20;
 
 export interface BanRow {
   uid: string;

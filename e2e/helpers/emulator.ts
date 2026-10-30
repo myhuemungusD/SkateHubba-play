@@ -20,7 +20,7 @@ const FS = `http://localhost:8080`;
 // ─── Clearing state ──────────────────────────────────────────────────────────
 
 /** Delete every user from the Auth emulator. */
-export async function clearAuth(): Promise<void> {
+async function clearAuth(): Promise<void> {
   const res = await fetch(`${AUTH}/emulator/v1/projects/${PROJECT_ID}/accounts`, {
     method: "DELETE",
   });
@@ -28,7 +28,7 @@ export async function clearAuth(): Promise<void> {
 }
 
 /** Delete every document from the named Firestore database. */
-export async function clearFirestore(): Promise<void> {
+async function clearFirestore(): Promise<void> {
   const res = await fetch(`${FS}/emulator/v1/projects/${PROJECT_ID}/databases/${DB_NAME}/documents`, {
     method: "DELETE",
   });

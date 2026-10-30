@@ -1,6 +1,6 @@
 import { useRef, type KeyboardEvent } from "react";
 
-export interface SegmentedTab<T extends string> {
+interface SegmentedTab<T extends string> {
   id: T;
   label: string;
 }

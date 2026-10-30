@@ -39,7 +39,7 @@ export interface View {
   panX: number;
   panY: number;
 }
-export const MIN_ZOOM = 1;
+const MIN_ZOOM = 1;
 export const MAX_ZOOM = 8;
 
 /** Two-finger gesture: scale by the change in finger distance, pan by the midpoint move. */

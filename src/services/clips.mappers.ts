@@ -13,16 +13,7 @@ import type { Clip, ClipModeration, ClipModerationStatus, ClipRole, ClipSource }
  * Types
  * ──────────────────────────────────────────── */
 
-export type {
-  Clip,
-  ClipComment,
-  ClipModeration,
-  ClipModerationStatus,
-  ClipRole,
-  ClipSource,
-  GameClip,
-  UserClip,
-} from "../types/clip";
+export type { ClipModerationStatus, ClipRole } from "../types/clip";
 
 /** Persisted clip document — alias retained for callers that already import this name. */
 export type ClipDoc = Clip;

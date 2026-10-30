@@ -37,7 +37,7 @@ interface Props {
 }
 
 /** "goofy" -> "Goofy"; empty -> "Not set". */
-export function formatStance(stance: string): string {
+function formatStance(stance: string): string {
   const s = stance.trim();
   return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : "Not set";
 }

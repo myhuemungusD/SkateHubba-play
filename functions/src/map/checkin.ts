@@ -10,26 +10,26 @@
 import { levelForXp } from "../applyGameStats.js";
 import type { DiceDb, DiceTx } from "../dice/store.js";
 
-export const CHECKIN_RADIUS_M = 100;
+const CHECKIN_RADIUS_M = 100;
 export const MAX_ACCURACY_M = 150;
 /** Faster than this between two check-ins is a teleport, not a car. 45 m/s ≈ 160 km/h. */
 export const MAX_SPEED_MPS = 45;
 /** Offline check-ins can be sent up to this long after they happened. */
 export const MAX_QUEUE_AGE_MS = 6 * 60 * 60 * 1000;
 export const MAX_CLOCK_SKEW_MS = 2 * 60 * 1000;
-export const HOURLY_CAP = 12;
+const HOURLY_CAP = 12;
 export const NEW_SPOT_XP = 50;
 export const REPEAT_XP = 5;
 export const PIONEER_XP = 50;
 export const PIONEER_IDLE_MS = 30 * 24 * 60 * 60 * 1000;
-export const DAILY_XP_CAP = 3000;
-export const STRIKES_TO_PAUSE = 3;
-export const STRIKE_RESET_MS = 30 * 24 * 60 * 60 * 1000;
-export const PAUSE_BASE_MS = 7 * 24 * 60 * 60 * 1000;
+const DAILY_XP_CAP = 3000;
+const STRIKES_TO_PAUSE = 3;
+const STRIKE_RESET_MS = 30 * 24 * 60 * 60 * 1000;
+const PAUSE_BASE_MS = 7 * 24 * 60 * 60 * 1000;
 export const PAUSE_MAX_MS = 90 * 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 
-export type CheckinScope = "public" | "private";
+type CheckinScope = "public" | "private";
 
 export interface CheckinRequest {
   spotId: string;
@@ -42,7 +42,7 @@ export interface CheckinRequest {
   mocked: boolean;
 }
 
-export type CheckinCode =
+type CheckinCode =
   | "ok"
   | "duplicate"
   | "cooldown_spot"

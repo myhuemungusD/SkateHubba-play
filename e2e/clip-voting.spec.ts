@@ -7,7 +7,7 @@
  * route behind the bottom nav's Clips tab, so these tests navigate there the
  * way a user does. The optimistic
  * UI flips `aria-pressed=true` and increments the count immediately, then
- * the transactional `upvoteClip` write reconciles the authoritative count
+ * the transactional `castClipVote` write reconciles the authoritative count
  * from Firestore.
  *
  * Seeds run via the emulator REST helpers so we don't need a second

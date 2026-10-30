@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { ClipsFeed } from "../ClipsFeed";
 import type { UserProfile } from "../../services/users";
 import type { ClipDoc } from "../../services/clips";
-import type { ClipVoteState } from "../../services/clips.upvotes";
+import type { ClipVoteState } from "../../services/clips";
 import { deferred } from "../../__tests__/harness/deferred";
 import { makeGameClip } from "./clipFixtures.test-helpers";
 import { makeDispute } from "./disputeFixtures.test-helpers";
@@ -39,12 +39,8 @@ vi.mock("../../services/clips", () => ({
     const result = await mockFetchClipsFeed(...args);
     return Array.isArray(result) ? { clips: result, cursor: null } : result;
   },
-}));
-
-// Votes moved to their own module when thumbs down became a real tally.
-vi.mock("../../services/clips.upvotes", () => ({
   fetchClipVoteState: (...args: unknown[]) => mockFetchClipVoteState(...args),
-  voteClip: (...args: unknown[]) => mockVoteClip(...args),
+  castClipVote: (...args: unknown[]) => mockVoteClip(...args),
   removeClipVote: (...args: unknown[]) => mockRemoveClipVote(...args),
 }));
 
@@ -195,7 +191,7 @@ function voteState(overrides: Partial<ClipVoteState> = {}): ClipVoteState {
 
 /**
  * Shared preamble for the vote tests: render the feed with one clip hydrated
- * at 2 upvotes / 0 downvotes and the named outcome staged on `voteClip`,
+ * at 2 upvotes / 0 downvotes and the named outcome staged on `castClipVote`,
  * then return the thumbs-up button so the test can drive the click + assert.
  */
 async function mountWithUpvoteSetup(

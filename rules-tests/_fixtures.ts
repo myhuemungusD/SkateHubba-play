@@ -331,7 +331,7 @@ const STORAGE_TEST_PREFIXES = ["games", "users", "userClips"] as const;
  * known prefix recursively clears the tree so no test (and no file) inherits
  * another's objects. Call this in both `beforeEach` AND `afterAll`.
  */
-export async function clearStorageDeep(env: RulesTestEnvironment): Promise<void> {
+async function clearStorageDeep(env: RulesTestEnvironment): Promise<void> {
   await env.withSecurityRulesDisabled(async (ctx) => {
     const root = ctx.storage().ref() as unknown as Reference;
     for (const prefix of STORAGE_TEST_PREFIXES) {
@@ -345,7 +345,7 @@ export async function clearStorageDeep(env: RulesTestEnvironment): Promise<void>
  * loading the repo's storage.rules. Mirrors the per-file boilerplate every
  * storage suite was reproducing by hand.
  */
-export async function bootStorageRulesTestEnv(projectId: string): Promise<RulesTestEnvironment> {
+async function bootStorageRulesTestEnv(projectId: string): Promise<RulesTestEnvironment> {
   setLogLevel("error");
   return initializeTestEnvironment({
     projectId,

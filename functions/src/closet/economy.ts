@@ -11,8 +11,8 @@ export const PRICE_BY_RARITY: Readonly<Record<"common" | "uncommon" | "rare", nu
   uncommon: 150,
   rare: 400,
 };
-export const LIMITED_PRICE_MIN = 800;
-export const LIMITED_PRICE_MAX = 2000;
+const LIMITED_PRICE_MIN = 800;
+const LIMITED_PRICE_MAX = 2000;
 
 /** Daily hard cap on earned Bucks, across every source. */
 export const DAILY_EARN_CAP = 200;
@@ -69,7 +69,7 @@ export const PREV_OWNERS_CAP = 10;
 export const SERIAL_HISTORY_CAP = 20;
 
 /** Rarity weight for the imbalance warning: each tier is worth ~3 of the one below. */
-export const RARITY_WEIGHT: Readonly<Record<Rarity, number>> = {
+const RARITY_WEIGHT: Readonly<Record<Rarity, number>> = {
   common: 1,
   uncommon: 3,
   rare: 9,
@@ -77,7 +77,7 @@ export const RARITY_WEIGHT: Readonly<Record<Rarity, number>> = {
   grail: 81,
 };
 /** Warn when one side carries more than this multiple of the other side's weight. */
-export const IMBALANCE_RATIO = 3;
+const IMBALANCE_RATIO = 3;
 
 export function rarityWeight(rarities: readonly Rarity[]): number {
   return rarities.reduce((sum, r) => sum + RARITY_WEIGHT[r], 0);

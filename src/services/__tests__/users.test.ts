@@ -291,7 +291,7 @@ describe("users service", () => {
     const VALID_DOB = "2000-01-15";
 
     it("rejects a blocked username", async () => {
-      await expect(createProfile("u1", "hitler_fan", "regular", false, VALID_DOB, undefined, true)).rejects.toThrow(
+      await expect(createProfile("u1", "hitler_fan", "regular", VALID_DOB, undefined, true)).rejects.toThrow(
         /isn't allowed/,
       );
     });
@@ -327,7 +327,7 @@ describe("users service", () => {
     it("runs a transaction that reserves the username and creates public + private docs", async () => {
       stubTransaction();
 
-      const result = await createProfile("u1", "SK8R", "regular", false, VALID_DOB, undefined, true);
+      const result = await createProfile("u1", "SK8R", "regular", VALID_DOB, undefined, true);
       expect(result).toMatchObject({
         uid: "u1",
         username: "sk8r",
@@ -346,7 +346,7 @@ describe("users service", () => {
     it("writes public doc without sensitive fields and private doc with dob only", async () => {
       const captured = stubTransaction();
 
-      await createProfile("u1", "sk8r", "regular", true, VALID_DOB, undefined, true);
+      await createProfile("u1", "sk8r", "regular", VALID_DOB, undefined, true);
 
       expect(captured.capturedPublic).toMatchObject({
         uid: "u1",
@@ -361,7 +361,7 @@ describe("users service", () => {
       expect(captured.capturedPublic).not.toHaveProperty("email");
 
       // Private doc carries dob only. `emailVerified` is intentionally
-      // NOT mirrored anymore — see the createProfile docstring: the
+      // NOT mirrored anymore (the createProfile parameter was removed): the
       // flag went stale for the majority of accounts, and Firebase Auth
       // (`auth.currentUser.emailVerified` + the JWT claim) is the
       // canonical source used by every reader.
@@ -369,21 +369,10 @@ describe("users service", () => {
       expect(captured.capturedPrivate).not.toHaveProperty("emailVerified");
     });
 
-    it("does not mirror emailVerified on the private doc regardless of the caller argument", async () => {
-      const captured = stubTransaction();
-
-      // Even when the caller passes `emailVerified: true`, nothing lands in
-      // Firestore — the private-profile mirror was silent tech debt and has
-      // been removed. The positional parameter is preserved for caller
-      // compat until the UX PR drops the argument.
-      await createProfile("u1", "sk8r", "regular", true, VALID_DOB, undefined, true);
-      expect(captured.capturedPrivate).not.toHaveProperty("emailVerified");
-    });
-
     it("includes parentalConsent on the private doc when provided", async () => {
       const captured = stubTransaction();
 
-      const result = await createProfile("u1", "sk8r", "regular", true, "2005-06-15", true, true);
+      const result = await createProfile("u1", "sk8r", "regular", "2005-06-15", true, true);
       expect(result).toMatchObject({
         uid: "u1",
         username: "sk8r",
@@ -399,7 +388,7 @@ describe("users service", () => {
     it("omits parentalConsent (but keeps dob) on the private doc when not provided", async () => {
       const captured = stubTransaction();
 
-      await createProfile("u1", "sk8r", "regular", false, VALID_DOB, undefined, true);
+      await createProfile("u1", "sk8r", "regular", VALID_DOB, undefined, true);
       expect(captured.capturedPrivate).toHaveProperty("dob", VALID_DOB);
       expect(captured.capturedPrivate).not.toHaveProperty("parentalConsent");
       expect(captured.capturedPrivate).not.toHaveProperty("emailVerified");
@@ -408,17 +397,17 @@ describe("users service", () => {
     it("stamps termsAcceptedAt with the server time on the private doc", async () => {
       const captured = stubTransaction();
 
-      await createProfile("u1", "sk8r", "regular", false, VALID_DOB, undefined, true);
+      await createProfile("u1", "sk8r", "regular", VALID_DOB, undefined, true);
       expect(captured.capturedPrivate).toHaveProperty("termsAcceptedAt");
       // Never on the public doc.
       expect(captured.capturedPublic).not.toHaveProperty("termsAcceptedAt");
     });
 
     it("throws TermsAcceptanceRequiredError and writes nothing when terms were not accepted", async () => {
-      await expect(createProfile("u1", "sk8r", "regular", false, VALID_DOB)).rejects.toMatchObject({
+      await expect(createProfile("u1", "sk8r", "regular", VALID_DOB)).rejects.toMatchObject({
         name: "TermsAcceptanceRequiredError",
       });
-      await expect(createProfile("u1", "sk8r", "regular", false, VALID_DOB, undefined, false)).rejects.toMatchObject({
+      await expect(createProfile("u1", "sk8r", "regular", VALID_DOB, undefined, false)).rejects.toMatchObject({
         name: "TermsAcceptanceRequiredError",
       });
       expect(mockRunTransaction).not.toHaveBeenCalled();
@@ -431,28 +420,28 @@ describe("users service", () => {
     });
 
     it("throws AgeVerificationRequiredError when dob is malformed", async () => {
-      await expect(createProfile("u1", "sk8r", "regular", false, "not-a-date")).rejects.toMatchObject({
+      await expect(createProfile("u1", "sk8r", "regular", "not-a-date")).rejects.toMatchObject({
         name: "AgeVerificationRequiredError",
       });
-      await expect(createProfile("u1", "sk8r", "regular", false, "2000/01/15")).rejects.toMatchObject({
+      await expect(createProfile("u1", "sk8r", "regular", "2000/01/15")).rejects.toMatchObject({
         name: "AgeVerificationRequiredError",
       });
     });
 
     it("throws when username is too short", async () => {
-      await expect(createProfile("u1", "ab", "regular", false, VALID_DOB, undefined, true)).rejects.toThrow(
+      await expect(createProfile("u1", "ab", "regular", VALID_DOB, undefined, true)).rejects.toThrow(
         "Username must be",
       );
     });
 
     it("throws when username is too long", async () => {
-      await expect(createProfile("u1", "a".repeat(21), "regular", false, VALID_DOB, undefined, true)).rejects.toThrow(
+      await expect(createProfile("u1", "a".repeat(21), "regular", VALID_DOB, undefined, true)).rejects.toThrow(
         "Username must be",
       );
     });
 
     it("throws when username has invalid characters", async () => {
-      await expect(createProfile("u1", "sk8r!", "regular", false, VALID_DOB, undefined, true)).rejects.toThrow(
+      await expect(createProfile("u1", "sk8r!", "regular", VALID_DOB, undefined, true)).rejects.toThrow(
         "Username may only contain lowercase letters, numbers, and underscores",
       );
     });
@@ -466,7 +455,7 @@ describe("users service", () => {
         return fn(tx);
       });
 
-      await expect(createProfile("u1", "sk8r", "regular", false, VALID_DOB, undefined, true)).rejects.toThrow(
+      await expect(createProfile("u1", "sk8r", "regular", VALID_DOB, undefined, true)).rejects.toThrow(
         "Username is already taken",
       );
     });

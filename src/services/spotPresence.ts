@@ -13,22 +13,22 @@
  * and the who's-here list leaves out anyone whose online status is hidden.
  *
  * Foreground only. iOS and Android pause the web view in the background, so
- * presence simply lapses after PRESENCE_TTL_MS without a heartbeat.
+ * presence simply lapses after the server TTL (`PRESENCE_TTL_MS` in
+ * functions/src/map/presence.ts) without a heartbeat.
  */
 import { collection, doc, getDoc, onSnapshot, query, Timestamp, where } from "firebase/firestore";
 import * as firebase from "../firebase";
 import { logger } from "./logger";
 import { getHideOnline } from "./onlineStatus";
 
-export const PRESENCE_RADIUS_M = 152;
-export const PRESENCE_TTL_MS = 10 * 60 * 1000;
+const PRESENCE_RADIUS_M = 152;
 /** Heartbeat while inside the radius. */
 export const BEAT_MS = 2 * 60 * 1000;
-export const AUTO_REJOIN_KEY = "sh_auto_recheckin";
+const AUTO_REJOIN_KEY = "sh_auto_recheckin";
 export const ACTIVE_SPOT_KEY = "sh_presence_spot";
 export const ACTIVE_SPOT_EVENT = "sh-presence-spot";
 
-export type PresenceCode =
+type PresenceCode =
   "here" | "away" | "hidden" | "no_pass" | "throttled" | "low_accuracy" | "stale" | "suspect" | "not_found";
 
 export interface PresenceResult {
@@ -50,11 +50,11 @@ export interface SpotSkater {
   username: string;
 }
 
-export function utcDay(ms: number): string {
+function utcDay(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-export function distanceM(aLat: number, aLng: number, bLat: number, bLng: number): number {
+function distanceM(aLat: number, aLng: number, bLat: number, bLng: number): number {
   const R = 6_371_000;
   const rad = Math.PI / 180;
   const dLat = (bLat - aLat) * rad;

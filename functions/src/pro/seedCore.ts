@@ -18,7 +18,7 @@
 import type { DiceDb } from "../dice/store.js";
 import type { SeedInput } from "./seedInput.js";
 
-export const PRO_AUDIT_COLLECTION = "proAudit";
+const PRO_AUDIT_COLLECTION = "proAudit";
 
 export type SeedSource = "callable" | "cli";
 

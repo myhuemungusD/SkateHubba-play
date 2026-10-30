@@ -27,7 +27,7 @@ interface GameStatsFields {
 }
 
 /** Per-player counters derived from a game's turnHistory in a single walk. */
-export interface PlayerDerived {
+interface PlayerDerived {
   lettersTaken: number;
   lettersGiven: number;
   /**

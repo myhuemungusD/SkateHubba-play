@@ -7,4 +7,3 @@ export * from "./closet.wallet";
 export * from "./closet.drops";
 export * from "./closet.trading";
 export * from "./closet.shop";
-export { fetchLockerItems, type LockerItem } from "./locker";

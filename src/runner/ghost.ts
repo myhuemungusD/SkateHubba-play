@@ -16,7 +16,7 @@ export interface PersonalBest {
 const KEY = "skatehubba.runner.best.v1";
 const MAX_SAMPLES = 600;
 
-export function emptyBest(): PersonalBest {
+function emptyBest(): PersonalBest {
   return { score: 0, distance: 0, samples: [] };
 }
 

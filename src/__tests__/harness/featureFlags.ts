@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, vi } from "vitest";
 
 /** Env var behind the feature-freeze switch — see src/lib/featureFlags.ts. */
-export const EXTRAS_FLAG = "VITE_FEATURE_EXTRAS_ENABLED";
+const EXTRAS_FLAG = "VITE_FEATURE_EXTRAS_ENABLED";
 
 /**
  * Registers hooks in the calling `describe` scope that run every test with

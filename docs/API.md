@@ -211,16 +211,16 @@ Normalizes the username (`toLowerCase().trim()`), validates format client-side, 
 
 ---
 
-### `createProfile(uid, username, stance, emailVerified?, dob?, parentalConsent?)`
+### `createProfile(uid, username, stance, dob?, parentalConsent?, termsAccepted?)`
 
 ```ts
 createProfile(
   uid: string,
   username: string,
   stance: string,
-  emailVerified?: boolean,
   dob?: string,
-  parentalConsent?: boolean
+  parentalConsent?: boolean,
+  termsAccepted?: boolean
 ): Promise<UserProfile>
 ```
 
@@ -235,13 +235,10 @@ The username is normalized (`toLowerCase().trim()`) before storage.
 `email` is not a parameter — Firebase Auth (`auth.currentUser.email`) is the
 canonical store, so nothing is passed through here.
 
-The `emailVerified` positional parameter is **deprecated — accepted for
-positional compatibility but ignored.** It is declared as `_emailVerified`
-with an `@deprecated` JSDoc tag and is never read inside the function body;
-passing a value persists nothing. Verification state is canonical only via
-Firebase Auth (`auth.currentUser.emailVerified`) and the JWT claim
-`request.auth.token.email_verified`. The argument is retained so existing
-callers keep compiling until the follow-up UX PR drops it.
+Email verification is not a parameter either: Firebase Auth
+(`auth.currentUser.emailVerified`) and the JWT claim
+`request.auth.token.email_verified` are the canonical sources, so nothing is
+mirrored into Firestore.
 
 `dob` is typed as optional but is **required at runtime**: `createProfile`
 throws `AgeVerificationRequiredError` (exported from the same module) when

@@ -104,21 +104,21 @@ export type DocData = Record<string, unknown>;
 /** Seed shape: collection path (`users/u1/achievements` for a subcollection) → id → data. */
 export type Seed = Record<string, Record<string, DocData>>;
 
-export interface WhereCall {
+interface WhereCall {
   collection: string;
   field: string;
   op: string;
   value: unknown;
 }
 
-export interface FakeDocSnap {
+interface FakeDocSnap {
   id: string;
   ref: FakeDocRef;
   exists: boolean;
   data(): DocData | undefined;
 }
 
-export interface FakeDocRef {
+interface FakeDocRef {
   path: string;
   id: string;
   get(): Promise<FakeDocSnap>;
@@ -126,13 +126,13 @@ export interface FakeDocRef {
   collection(name: string): FakeCollectionRef;
 }
 
-export interface FakeQuerySnap {
+interface FakeQuerySnap {
   docs: FakeDocSnap[];
   size: number;
   empty: boolean;
 }
 
-export interface FakeQuery {
+interface FakeQuery {
   where(field: string, op: string, value: unknown): FakeQuery;
   orderBy(field: unknown): FakeQuery;
   limit(n: number): FakeQuery;
@@ -140,25 +140,25 @@ export interface FakeQuery {
   get(): Promise<FakeQuerySnap>;
 }
 
-export interface FakeCollectionRef extends FakeQuery {
+interface FakeCollectionRef extends FakeQuery {
   doc(id: string): FakeDocRef;
 }
 
-export interface FakeTransaction {
+interface FakeTransaction {
   get(ref: FakeDocRef): Promise<FakeDocSnap>;
   delete(ref: FakeDocRef): void;
   update(ref: FakeDocRef, data: DocData): void;
   set(ref: FakeDocRef, data: DocData, options?: { merge?: boolean }): void;
 }
 
-export interface FakeBatch {
+interface FakeBatch {
   delete(ref: FakeDocRef): void;
   set(ref: FakeDocRef, data: DocData): void;
   update(ref: FakeDocRef, data: DocData): void;
   commit(): Promise<void>;
 }
 
-export interface FakeDb {
+interface FakeDb {
   collection(name: string): FakeCollectionRef;
   /** Every doc whose parent collection id is `name`, at any depth. */
   collectionGroup(name: string): FakeQuery;
@@ -166,18 +166,18 @@ export interface FakeDb {
   runTransaction<T>(fn: (tx: FakeTransaction) => Promise<T>): Promise<T>;
 }
 
-export interface FakeFile {
+interface FakeFile {
   name: string;
   delete(opts?: { ignoreNotFound?: boolean }): Promise<void>;
 }
 
-export interface FakeStorage {
+interface FakeStorage {
   bucket(name: string): {
     getFiles(opts: GetFilesOpts): Promise<[FakeFile[], { pageToken: string } | null]>;
   };
 }
 
-export interface GetFilesOpts {
+interface GetFilesOpts {
   prefix: string;
   autoPaginate?: boolean;
   maxResults?: number;

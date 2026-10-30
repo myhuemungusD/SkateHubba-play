@@ -17,7 +17,7 @@ export interface VideoAnnotation {
   labels: LabelHit[];
 }
 
-export type ModerationDecision = "approved" | "review" | "rejected";
+type ModerationDecision = "approved" | "review" | "rejected";
 
 export interface DecisionResult {
   decision: ModerationDecision;
