@@ -415,7 +415,7 @@ describe("admin bootstrap", () => {
     expect(out.code).toBe(200);
     const sa = h.certMock.mock.calls.at(-1)?.[0] as { privateKey: string };
     expect(sa.privateKey).toBe("-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n");
-    const lines = warnSpy.mock.calls.map((c) => String(c[0]));
+    const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
     expect(lines).toContain(JSON.stringify({ event: "service_account_json_repaired" }));
     expect(lines.join("\n")).not.toContain("PRIVATE KEY");
   });
