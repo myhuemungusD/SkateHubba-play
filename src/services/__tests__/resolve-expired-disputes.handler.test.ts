@@ -649,6 +649,7 @@ describe("resolve handler edge paths", () => {
   beforeEach(bootAdmin);
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.resetModules();
   });
 
@@ -699,27 +700,43 @@ describe("resolve handler edge paths", () => {
     warnSpy.mockRestore();
   });
 
-  it("reads dry-run from DRY_RUN=true, a repeated query value, or the raw URL, and auth from the first header value", async () => {
-    const pending = () => makeDb({ game: rawGame({ phase: "pendingReview" }) });
-    let current = pending();
-    getFirestoreMock.mockImplementation(() => current.db);
+  /** One pending-review game; returns the db so a test can check nothing was written. */
+  function onePending() {
+    const current = makeDb({ game: rawGame({ phase: "pendingReview" }) });
+    getFirestoreMock.mockReturnValue(current.db);
+    return current;
+  }
 
+  it("reads dry-run from DRY_RUN=true", async () => {
+    const { txUpdate } = onePending();
     process.env.DRY_RUN = "true";
     expect((await run()).body).toMatchObject({ dryRun: true, resolved: 1 });
-    delete process.env.DRY_RUN;
+    expect(txUpdate).not.toHaveBeenCalled();
+  });
 
+  it("reads dry-run from the first value of a repeated query param, and auth from the first header value", async () => {
+    const { txUpdate } = onePending();
     const repeated = makeReq({ query: { dryRun: ["1", "0"] } });
     repeated.headers.authorization = ["Bearer s3cret", "Bearer wrong!"];
-    expect((await run(handler, repeated)).body).toMatchObject({ dryRun: true });
+    const out = await run(handler, repeated);
+    expect(out.code).toBe(200);
+    expect(out.body).toMatchObject({ dryRun: true });
+    expect(txUpdate).not.toHaveBeenCalled();
+  });
 
+  it("401s when only a later authorization header value is correct", async () => {
+    const { txUpdate } = onePending();
     const wrongFirst = makeReq();
     wrongFirst.headers.authorization = ["Bearer wrong!", "Bearer s3cret"];
     expect((await run(handler, wrongFirst)).code).toBe(401);
+    expect(txUpdate).not.toHaveBeenCalled();
+  });
 
-    current = pending();
+  it("reads dry-run from the raw URL when the parsed query lacks it", async () => {
+    const { txUpdate } = onePending();
     const raw = makeReq({ authorization: "Bearer s3cret", url: "/api/cron/resolve-expired-disputes?dryRun=1" });
     expect((await run(handler, raw)).body).toMatchObject({ dryRun: true });
-    expect(current.txUpdate).not.toHaveBeenCalled();
+    expect(txUpdate).not.toHaveBeenCalled();
   });
 
   const leftReview = () => ({ phase: "setting" });
@@ -792,12 +809,17 @@ describe("resolve handler edge paths", () => {
     const out = await run();
     expect(out.body).toMatchObject({ resolved: 1 });
     expect(setsOfKind(txSet, "dispute")[0].data).toMatchObject({ verdict: "none", status: "closed" });
-    expect(setsOfKind(txSet, "clip").every((c) => c.data.role !== "match" || c.data.playerUid === "p2")).toBe(true);
+    const matchClips = setsOfKind(txSet, "clip").filter((c) => c.data.role === "match");
+    expect(matchClips.length).toBeGreaterThan(0);
+    expect(matchClips.every((c) => c.data.playerUid === "p2")).toBe(true);
   });
 
   it("pays only listed testers when XP is off: once each, skipping blank uids and missing profiles", async () => {
     process.env.XP_TESTER_UIDS = " fan , ghost ";
-    const today = new Date().toISOString().slice(0, 10);
+    // Pin the clock (Date only) so "today" can't roll over at UTC midnight mid-test.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-29T12:00:00.000Z"));
+    const today = "2026-10-29";
     const { db, txSet } = makeDb({
       game: rawGame({ phase: "communityReview" }),
       dispute: { status: "open", landVotes: 2, bailVotes: 1 },
