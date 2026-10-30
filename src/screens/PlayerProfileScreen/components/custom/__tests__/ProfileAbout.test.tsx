@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { ProfileAbout } from "../ProfileAbout";
 import { DEFAULT_PROFILE_CUSTOM, type ProfileCustom } from "../../../../../services/profileCustom";
 
@@ -18,5 +18,28 @@ describe("ProfileAbout link tooltips", () => {
     // foreign doc must still render.
     render(<ProfileAbout custom={withLinks([{ label: "Broken", url: "not a url" }])} />);
     expect(screen.getByRole("link", { name: "Broken" })).toHaveAttribute("title", "not a url");
+  });
+});
+
+describe("ProfileAbout theme song", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("drops back to the play state when the browser refuses playback", async () => {
+    let refuse: (e: Error) => void = () => {};
+    class RefusingAudio {
+      loop = false;
+      volume = 1;
+      pause = vi.fn();
+      play = () =>
+        new Promise<void>((_ok, no) => {
+          refuse = no;
+        });
+    }
+    vi.stubGlobal("Audio", RefusingAudio);
+    render(<ProfileAbout custom={{ ...DEFAULT_PROFILE_CUSTOM, themeSongId: "lofi-75" }} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Play theme song/ }));
+    expect(screen.getByRole("button", { name: /^Pause theme song/ })).toHaveAttribute("aria-pressed", "true");
+    await act(async () => refuse(new Error("NotAllowedError")));
+    expect(screen.getByRole("button", { name: /^Play theme song/ })).toHaveAttribute("aria-pressed", "false");
   });
 });
