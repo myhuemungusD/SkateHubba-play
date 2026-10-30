@@ -739,3 +739,29 @@ describe("dispatches without tokens (M1: courier looks them up)", () => {
     expect(rec.privateSets.map((w) => w.uid)).toEqual(["u1"]);
   });
 });
+
+// After the init block: these reach the authorized path, which caches the admin
+// app in module scope, so they must not run before the init tests.
+describe("repeated headers and query parameters", () => {
+  it("checks only the first value of a repeated Authorization header", async () => {
+    h.getFirestoreMock.mockReturnValue(makeDb([], rec));
+    const run = async (values: string[]) => {
+      const req = makeReq();
+      req.headers.authorization = values;
+      const { res, out } = makeRes();
+      await handler(req, res);
+      return out.code;
+    };
+    expect(await run([AUTH, "Bearer wrong"])).toBe(200);
+    expect(await run(["Bearer wrong-but-same-len", AUTH])).toBe(401);
+  });
+
+  it("reads the first value of a repeated dryRun query parameter", async () => {
+    h.getFirestoreMock.mockReturnValue(makeDb([makeFakeDoc("d1", dispatchDoc(), rec)], rec));
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: AUTH, query: { dryRun: ["true", "0"] } }), res);
+    expect(out.body).toMatchObject({ dryRun: true, sent: 1 });
+    expect(sendEachForMulticast).not.toHaveBeenCalled();
+    expect(rec.deletes).toEqual([]);
+  });
+});
