@@ -214,7 +214,7 @@ export function placeDeckGraphic(board: Object3D, graphic: Object3D): void {
   graphic.visible = true;
 }
 
-export function resetDeckGraphic(graphic: Object3D): void {
+function resetDeckGraphic(graphic: Object3D): void {
   graphic.position.set(0, 0.222, 0);
   graphic.rotation.set(Math.PI / 2, 0, 0);
   graphic.scale.set(0.48, 0.92, 1);
@@ -254,7 +254,7 @@ export async function loadRunnerModel(url: string, renderer: WebGLRenderer): Pro
   }
 }
 
-export const loadSkateboardModel = loadRunnerModel;
+const loadSkateboardModel = loadRunnerModel;
 
 export function wheelSpinRate(state: { duck: number; onGrind: boolean; airborne?: boolean }): number {
   if (state.duck >= 0) return 0.35;

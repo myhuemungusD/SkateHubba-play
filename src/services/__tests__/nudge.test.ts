@@ -233,9 +233,12 @@ describe("getServerNudgeCooldownMs", () => {
   });
 
   it("returns 0 once the window has elapsed", async () => {
+    // Capture the anchor once: reading Date.now() inside toMillis() would run
+    // after the service's own Date.now() and race it on a slow runner.
+    const expiredAt = Date.now() - NUDGE_COOLDOWN_MS - 1;
     mockGetDoc.mockResolvedValueOnce({
       exists: () => true,
-      data: () => ({ lastNudgedAt: { toMillis: () => Date.now() - NUDGE_COOLDOWN_MS - 1 } }),
+      data: () => ({ lastNudgedAt: { toMillis: () => expiredAt } }),
     });
     await expect(getServerNudgeCooldownMs("g1", "u1")).resolves.toBe(0);
   });

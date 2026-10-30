@@ -18,13 +18,13 @@ import { activityPath, isVisible, writeHere, writeLeft } from "./activity.js";
 import { CheckinInputError, distanceM, MAX_ACCURACY_M, MAX_CLOCK_SKEW_MS, MAX_SPEED_MPS, utcDay } from "./checkin.js";
 
 /** About 500 ft. */
-export const PRESENCE_RADIUS_M = 152;
+const PRESENCE_RADIUS_M = 152;
 /** No heartbeat for this long and you're away. */
 export const PRESENCE_TTL_MS = 10 * 60 * 1000;
 /** Heartbeats closer together than this are ignored (battery and write cost). */
 export const MIN_BEAT_MS = 20 * 1000;
 /** A heartbeat fix older than this is refused. */
-export const MAX_BEAT_AGE_MS = 2 * 60 * 1000;
+const MAX_BEAT_AGE_MS = 2 * 60 * 1000;
 
 export interface PresenceRequest {
   spotId: string;
@@ -36,7 +36,7 @@ export interface PresenceRequest {
   leave: boolean;
 }
 
-export type PresenceCode =
+type PresenceCode =
   "here" | "away" | "hidden" | "no_pass" | "throttled" | "low_accuracy" | "stale" | "suspect" | "not_found";
 
 export interface PresenceResult {

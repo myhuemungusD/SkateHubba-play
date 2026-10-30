@@ -1,7 +1,7 @@
 import type { ClipDoc } from "../../services/clips";
 
 /** Firestore error codes that map to "service-side issue, not your network". */
-export const SERVICE_ERROR_CODES = new Set(["permission-denied", "failed-precondition", "unauthenticated"]);
+const SERVICE_ERROR_CODES = new Set(["permission-denied", "failed-precondition", "unauthenticated"]);
 
 export function errorCodeFor(err: unknown): string | undefined {
   return typeof err === "object" && err && typeof (err as { code?: unknown }).code === "string"

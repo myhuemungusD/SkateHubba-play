@@ -5,7 +5,7 @@
  * from scripts/generate-skate-sfx.mjs (CC0). Credits: public/editor/CREDITS.md
  * and the in-editor credits line (SoundsPanel).
  */
-export type SfxCategory = "board" | "grind" | "slide" | "roll" | "crowd";
+type SfxCategory = "board" | "grind" | "slide" | "roll" | "crowd";
 
 export interface SkateSound {
   id: string;
@@ -27,7 +27,7 @@ export interface SoundCredit {
   license: string;
 }
 
-export const SOUNDBITER_CREDIT: SoundCredit = {
+const SOUNDBITER_CREDIT: SoundCredit = {
   author: "SoundBiterSFX",
   title: "Skateboarding Tricks",
   url: "https://freesound.org/s/746602/",

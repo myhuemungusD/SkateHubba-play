@@ -4,7 +4,7 @@ import type { Action, FlickGrade } from "./types";
 const FULL_FLICK: FlickGrade = { accuracy: 5, speed: 5 };
 
 /** Pixel threshold at a sensitivity of 0–100. 50 keeps the original 28px. */
-export function swipeThreshold(sensitivity = FLICK_SENSITIVITY): number {
+function swipeThreshold(sensitivity = FLICK_SENSITIVITY): number {
   const slider = Math.max(0, Math.min(100, sensitivity));
   return SWIPE_THRESHOLD_PX * (1.5 - slider / 100);
 }
@@ -44,7 +44,7 @@ export function gradeFlick(samples: readonly TimedPoint[]): FlickGrade {
 }
 
 /** Pixels of travel before a swipe commits. Felt on the way, not on release. */
-export const SWIPE_THRESHOLD_PX = 28;
+const SWIPE_THRESHOLD_PX = 28;
 
 /**
  * Touches that start this close to either screen edge are left for the
@@ -52,7 +52,7 @@ export const SWIPE_THRESHOLD_PX = 28;
  */
 export const EDGE_DEAD_ZONE_PX = 32;
 
-export interface PointerPoint {
+interface PointerPoint {
   x: number;
   y: number;
 }

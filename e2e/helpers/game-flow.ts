@@ -45,7 +45,7 @@ interface Credentials {
  * "Name your trick" input is visible (game created in the setting phase with
  * the caller as setter).
  */
-export async function challengeToSetter(page: Page, opponentHandle: string): Promise<void> {
+async function challengeToSetter(page: Page, opponentHandle: string): Promise<void> {
   await openChallengeForm(page);
   await page.getByPlaceholder("their_handle").fill(opponentHandle);
   await page.getByRole("button", { name: /Send Challenge/i }).click();
@@ -75,21 +75,6 @@ export async function signUpVerifiedAndChallenge(
   await page.reload();
   await forceTokenRefresh(page);
   await challengeToSetter(page, opponentHandle);
-}
-
-/**
- * Sign an existing player back in and open the active game they share with
- * `opponentHandle` straight from the lobby.
- *
- * The two steps are always paired in the multi-context game specs (a second
- * browser context signs in purely to take its turn), and the lobby half is no
- * longer a single click — a game the viewer can't move on hides behind the
- * "N waiting on them" disclosure — so the pair lives here rather than being
- * re-inlined per test.
- */
-export async function signInAndOpenGame(page: Page, player: Credentials, opponentHandle: string): Promise<void> {
-  await signInViaUI(page, player.email, player.password);
-  await openActiveGameFromLobby(page, opponentHandle);
 }
 
 /** A dedicated browser context plus its first page — one simulated device. */

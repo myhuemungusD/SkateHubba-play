@@ -566,7 +566,7 @@ describe("clips — upvoteCount aggregate (paired delta only)", () => {
 });
 
 /* ────────────────────────────────────────────
- * removeUpvote() write shapes (src/services/clips.upvotes.ts)
+ * removeClipVote() write shapes (src/services/clips.votes.ts)
  *
  * The un-upvote service emits exactly two write sets. Both are covered
  * here so a future rules edit can't silently break the withdraw path:
@@ -583,7 +583,7 @@ describe("clips — upvoteCount aggregate (paired delta only)", () => {
  * user's vote is destroyed while the count stays inflated.
  * ──────────────────────────────────────────── */
 
-describe("clipVotes — standalone delete (removeUpvote drift path)", () => {
+describe("clipVotes — standalone delete (removeClipVote drift path)", () => {
   const VOTER_UID = "voter-uid";
 
   function voteDocRef(ctx: RulesTestContext, voterUid: string, clipId: string) {
@@ -593,7 +593,7 @@ describe("clipVotes — standalone delete (removeUpvote drift path)", () => {
   const seedVote = seedVoteDoc;
 
   it("the voter CAN delete their own vote doc alone when the count is already 0", async () => {
-    // Drift path: upvoteCount is at its floor, so removeUpvote skips the
+    // Drift path: upvoteCount is at its floor, so removeClipVote skips the
     // clip update entirely and issues a bare vote delete.
     const id = await seedClip({ upvoteCount: 0 });
     await seedVote(id, VOTER_UID);
@@ -657,7 +657,7 @@ describe("clips — un-upvote atomicity (rejected update must not strand the vot
   });
 
   it("a -1 on a LEGACY clip lacking upvoteCount is rejected (0 - 1 < 0)", async () => {
-    // Why removeUpvote must treat a missing count as the drift path rather
+    // Why removeClipVote must treat a missing count as the drift path rather
     // than decrementing: the rule defaults the field to 0, so -1 trips the
     // `upvoteCount >= 0` floor and the whole transaction fails.
     const id = deterministicId();

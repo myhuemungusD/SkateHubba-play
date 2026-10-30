@@ -89,7 +89,7 @@ export function ClosetThumb({ item }: { item: LockerItem }) {
   );
 }
 
-export function ClosetCard({ item }: { item: LockerItem }) {
+function ClosetCard({ item }: { item: LockerItem }) {
   const rarity = stylesForRarity(item.rarity);
   const Icon = TYPE_ICONS[item.type] ?? Boxes;
   // `brand` and `provenanceReason` are both optional in practice — the service

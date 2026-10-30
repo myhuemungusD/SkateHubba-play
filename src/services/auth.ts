@@ -23,8 +23,6 @@ import { getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { verificationContinueHost } from "../utils/verificationEmail";
 import { logger } from "./logger";
 
-export type AuthUser = User;
-
 export { deleteAccount } from "./auth.deleteAccount";
 
 /**

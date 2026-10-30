@@ -26,12 +26,11 @@ export const authedUser = fixtures.authedUser;
 export const verifiedUser = fixtures.verifiedUser;
 export const testProfile = fixtures.testProfile;
 export const activeGame = fixtures.activeGame;
-export type MockAuthUser = fixtures.MockAuthUser;
 
 /* ── Pure UI helpers (no mock dependencies) ────── */
 
 /** Wait for React.lazy() Suspense boundary to resolve after navigation. */
-export async function flushLazy(): Promise<void> {
+async function flushLazy(): Promise<void> {
   await waitFor(() => {
     expect(screen.queryByRole("status", { name: "Loading" })).not.toBeInTheDocument();
   });

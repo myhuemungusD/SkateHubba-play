@@ -24,7 +24,7 @@ import { logger } from "./logger";
  * power, and props/shout-outs are never pro status: only a blessing is.
  */
 
-export const LIST_LIMIT = 30;
+const LIST_LIMIT = 30;
 export const MAX_FEATURED_PER_PRO = 3;
 export const PROP_STICKERS = ["fire", "steez", "gnarly", "clean", "respect"] as const;
 export type PropSticker = (typeof PROP_STICKERS)[number];

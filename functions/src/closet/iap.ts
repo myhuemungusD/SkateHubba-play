@@ -12,9 +12,9 @@ import { ClosetError, isId, paths, type ClosetActor } from "./model.js";
 import type { ClosetDb } from "./store.js";
 import { clawback, credit, ledgerExists, readWallet } from "./wallet.js";
 
-export type IapPlatform = "ios" | "android";
+type IapPlatform = "ios" | "android";
 
-export interface VerifiedReceipt {
+interface VerifiedReceipt {
   transactionId: string;
   productId: string;
   sandbox: boolean;
@@ -25,7 +25,7 @@ export interface ReceiptVerifier {
 }
 
 /** Placeholder product ids until the store listings exist. */
-export const BUCKS_PRODUCTS: Readonly<Record<string, number>> = {
+const BUCKS_PRODUCTS: Readonly<Record<string, number>> = {
   "com.skatehubba.bucks.500": 500,
   "com.skatehubba.bucks.1200": 1200,
   "com.skatehubba.bucks.2500": 2500,

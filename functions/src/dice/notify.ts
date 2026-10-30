@@ -14,7 +14,7 @@ import type { DiceMatch } from "./engine.js";
 import { MODE_RULES } from "./modes.js";
 import type { RollEffect } from "./play.js";
 
-export type DiceNoticeType = "dice_challenge" | "dice_turn" | "dice_result";
+type DiceNoticeType = "dice_challenge" | "dice_turn" | "dice_result";
 
 export interface DiceNotice {
   recipientUid: string;

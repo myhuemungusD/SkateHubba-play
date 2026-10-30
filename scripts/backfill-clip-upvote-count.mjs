@@ -4,7 +4,7 @@
  *
  * The `upvoteCount` aggregate field on `clips/{clipId}` is maintained going
  * forward by the same `runTransaction` that writes a `clipVotes/{uid_clipId}`
- * doc (see src/services/clips.ts → upvoteClip). Existing clips that pre-date
+ * doc (see src/services/clips.votes.ts → castClipVote). Existing clips that pre-date
  * the aggregate do not have the field set, so this script seeds it once by
  * counting each clip's matching `clipVotes` entries and writing the result.
  *

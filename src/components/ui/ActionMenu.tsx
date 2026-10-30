@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { MoreHorizontal } from "lucide-react";
 import { useSheetFocusTrap } from "../useSheetFocusTrap";
 
-export interface ActionMenuItem {
+interface ActionMenuItem {
   label: string;
   onSelect: () => void;
   /** Red text for Block / Report / Delete. */

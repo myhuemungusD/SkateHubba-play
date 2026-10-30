@@ -180,7 +180,7 @@ export function useDisputeLaneController(viewerUid: string): DisputeLaneControll
         // reconcile the card to what they imply and stay silent.
         if (err instanceof AlreadyRuledError) {
           // Our vote is already on record (retry replay, or another tab).
-          // Same reconciliation as AlreadyUpvotedError on clips: the
+          // Same reconciliation as AlreadyVotedError on clips: the
           // optimistic state IS the server state, so keep it.
           return;
         }

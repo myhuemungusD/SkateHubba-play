@@ -45,7 +45,7 @@ export function trackEmailAuthAttempt(isSignup: boolean): void {
   }
 }
 
-export function trackEmailAuthFailure(isSignup: boolean, code: string): void {
+function trackEmailAuthFailure(isSignup: boolean, code: string): void {
   if (isSignup) analytics.signUpFailure("email", code || "unknown");
   else analytics.signInFailure("email", code || "unknown");
   if (isSignup) metrics.signUpFailure("email", code || "unknown");

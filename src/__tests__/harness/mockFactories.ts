@@ -72,24 +72,3 @@ export function activeGame(overrides: Partial<GameDoc> = {}): GameDoc {
   };
   return { ...base, ...overrides };
 }
-
-/** Completed game (S.K.A.T.E. win condition reached). */
-export function completedGame(overrides: Partial<GameDoc> = {}): GameDoc {
-  return activeGame({ status: "complete", winner: "u1", p2Letters: 5, ...overrides });
-}
-
-/** Forfeited game (turn deadline elapsed). */
-export function forfeitGame(overrides: Partial<GameDoc> = {}): GameDoc {
-  return activeGame({ status: "forfeit", winner: "u1", p1Letters: 1, p2Letters: 2, ...overrides });
-}
-
-/** Active game currently in the matching phase. */
-export function matchingGame(overrides: Partial<GameDoc> = {}): GameDoc {
-  return activeGame({
-    phase: "matching",
-    currentTurn: "u1",
-    currentSetter: "u2",
-    currentTrickName: "Kickflip",
-    ...overrides,
-  });
-}

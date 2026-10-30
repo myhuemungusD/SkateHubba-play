@@ -240,5 +240,3 @@ export function LandingMap({ onSignUpPrompt }: LandingMapProps) {
     </div>
   );
 }
-
-export default LandingMap;

@@ -5,7 +5,7 @@
 import { TRADE_MAX_ITEMS } from "./economy.js";
 import { asRarity, ClosetError, isId, num, str, toMillis, type Rarity } from "./model.js";
 
-export const NOTE_MAX = 140;
+const NOTE_MAX = 140;
 
 const LINK = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|io|gg|me|co|app|ly|xyz|link)\b)/i;
 const EMAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/;

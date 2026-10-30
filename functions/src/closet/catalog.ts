@@ -81,7 +81,7 @@ function editionFor(rarity: Rarity, kind: EditionKind, rawSupply: unknown): numb
 }
 
 /** Validate an admin's item input into the stored catalog shape. Pure. */
-export function buildDefDoc(raw: Record<string, unknown>, actor: ClosetActor): Record<string, unknown> {
+function buildDefDoc(raw: Record<string, unknown>, actor: ClosetActor): Record<string, unknown> {
   const rarity = asRarity(raw.rarity);
   const slot = asSlot(raw.slot);
   const source = asSource(raw.source);

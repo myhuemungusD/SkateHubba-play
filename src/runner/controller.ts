@@ -37,7 +37,7 @@ export interface HudSnapshot {
   streamlined: boolean;
 }
 
-export interface RenderFrame {
+interface RenderFrame {
   distance: number;
   x: number;
   y: number;
@@ -136,7 +136,7 @@ function sameHud(a: HudSnapshot, b: HudSnapshot): boolean {
   );
 }
 
-export function frameFrom(state: RunnerState): RenderFrame {
+function frameFrom(state: RunnerState): RenderFrame {
   const pose = boardPose(state);
   return {
     distance: state.distance,

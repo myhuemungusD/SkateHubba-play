@@ -21,18 +21,18 @@ import skateparkUrl from "./assets/skatepark-obstacles.glb?url";
  * A null model URL keeps the fallback mesh and does not fetch decoders.
  */
 
-export const CUSTOM_BOARD_GRAPHIC: string | null = boardLogoUrl;
-export const CUSTOM_LOGO_DECAL: string | null = boardLogoUrl;
-export const MIKE_WHITE_BOARD: string | null = null;
+const CUSTOM_BOARD_GRAPHIC: string | null = boardLogoUrl;
+const CUSTOM_LOGO_DECAL: string | null = boardLogoUrl;
+const MIKE_WHITE_BOARD: string | null = null;
 
 /** Compressed Skateboard_01 glb. */
-export const SKATEBOARD_01_MODEL: string | null = skateboardUrl;
+const SKATEBOARD_01_MODEL: string | null = skateboardUrl;
 
 /** Compressed Low Rail glb. */
-export const LOW_RAIL_MODEL: string | null = lowRailUrl;
+const LOW_RAIL_MODEL: string | null = lowRailUrl;
 
 /** Compressed Skatepark Obstacles glb. Spec-gloss is already metal-rough. */
-export const SKATEPARK_MODEL: string | null = skateparkUrl;
+const SKATEPARK_MODEL: string | null = skateparkUrl;
 
 /** Set true if the file's nose points toward +Z after the fit. */
 export const SKATEBOARD_01_NOSE_FLIP = false;

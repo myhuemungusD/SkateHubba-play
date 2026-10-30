@@ -8,10 +8,10 @@ import * as firebase from "../firebase";
 import { logger } from "./logger";
 import { setActivityVisible } from "./whosSkating";
 
-export const HIDE_ONLINE_KEY = "sh_hide_online";
+const HIDE_ONLINE_KEY = "sh_hide_online";
 export const ONLINE_BEAT_MS = 2 * 60 * 1000;
-export const ONLINE_WINDOW_MS = 4 * 60 * 1000;
-export const RECENT_WINDOW_MS = 30 * 60 * 1000;
+const ONLINE_WINDOW_MS = 4 * 60 * 1000;
+const RECENT_WINDOW_MS = 30 * 60 * 1000;
 
 export type OnlineState = "online" | "recent" | "offline";
 

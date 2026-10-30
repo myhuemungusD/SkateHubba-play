@@ -68,7 +68,7 @@ export function trickAngles(trick: Trick): BoardAngles {
 }
 
 /** How far the board is from a flat landing. Yaw counts less than pitch and roll. */
-export function landingAngle(sample: LandingSample): number {
+function landingAngle(sample: LandingSample): number {
   const pitch = Math.abs(sample.pitch - RIDE_PITCH);
   const roll = Math.abs(sample.roll);
   const yaw = Math.abs(sample.yaw) * 0.35;

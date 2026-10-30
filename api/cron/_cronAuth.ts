@@ -19,8 +19,3 @@ export function matchesCronSecret(value: string | undefined): boolean {
   if (actual.length !== expected.length) return false;
   return timingSafeEqual(actual, expected);
 }
-
-/** Cron auth for handlers that use the Web `Request` signature (the WTT stubs). */
-export function isCronAuthorized(req: Request): boolean {
-  return matchesCronSecret(req.headers.get("authorization") ?? undefined);
-}

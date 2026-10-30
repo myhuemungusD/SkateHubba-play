@@ -13,11 +13,11 @@ import { Capacitor } from "@capacitor/core";
  * Native iOS only: desktop Safari resolves the same keyword to a fixed 13px,
  * which would shrink the app, and Android has its own text zoom.
  */
-export const IOS_DEFAULT_BODY_PX = 17;
+const IOS_DEFAULT_BODY_PX = 17;
 /** Keep huge Accessibility sizes from breaking fixed-height chrome. */
-export const MAX_SCALE = 1.5;
+const MAX_SCALE = 1.5;
 /** Never shrink below the default: smaller iOS Text Size would push 12px labels under the type floor. */
-export const MIN_SCALE = 1;
+const MIN_SCALE = 1;
 
 /** Root font-size (px) for a measured `-apple-system-body` size. */
 export function rootFontSizeFor(bodyPx: number): number {
