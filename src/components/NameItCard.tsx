@@ -7,6 +7,8 @@
 import { useCallback, useState } from "react";
 import type { WttChoice, WttItem } from "../services/wtt.types";
 import { TRICKS } from "../constants/tricks";
+import { logger } from "../services/logger";
+import { errorLogFields } from "../utils/errors";
 
 interface Props {
   item: WttItem;
@@ -35,7 +37,7 @@ export function NameItCard({ item, onAnswer, onSkip, disabled = false }: Props) 
           setSubmitting(false);
         }, 2000);
       } catch (error) {
-        console.error("Failed to submit WTT vote:", error);
+        logger.error("wtt_vote_submit_failed", errorLogFields(error));
         setSubmitting(false);
       }
     },

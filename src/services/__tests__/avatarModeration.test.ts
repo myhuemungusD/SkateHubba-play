@@ -134,7 +134,10 @@ describe("avatarModeration service", () => {
 
     const result = await isAvatarSafe(makeBlob());
     expect(result).toEqual({ ok: true, score: 0 });
-    expect(warnSpy).toHaveBeenCalledWith("[avatarModeration] model_load_failed", expect.any(Error));
+    expect(warnSpy).toHaveBeenCalledWith("[WARN]", "avatar_moderation_model_load_failed", {
+      error: "network_down",
+      stack: expect.stringContaining("Error: network_down"),
+    });
   });
 
   it("retries the model load on a subsequent call after a load failure", async () => {

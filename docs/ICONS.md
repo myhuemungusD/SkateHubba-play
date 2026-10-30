@@ -57,7 +57,7 @@ Preview: ![HubbaIcons preview](icons/preview.png)
 - `src/components/map/BustRisk.tsx`: ShieldAlert
 - `src/components/map/AddSpotSheet.tsx`: X, ChevronLeft
 - `src/components/map/AddSpotPhotosStep.tsx`: X
-- `src/components/LockerShowcase.tsx`: Boxes, CircleDot, Footprints, HardHat, Layers, Shirt, Sticker, Wrench
+- `src/components/ClosetShowcase.tsx`: ChevronRight
 - `src/components/map/SpotPreviewCard.tsx`: X, Navigation, BadgeCheck, ImageOff, Flag
 - `src/components/map/SpotMapOverlays.tsx`: MapPinOff, X
 - `src/components/map/SpotFilterPanel.tsx`: BadgeCheck
@@ -74,7 +74,6 @@ Preview: ![HubbaIcons preview](icons/preview.png)
 - `src/screens/PlayerProfileScreen/components/ProfileIdentityCard.tsx`
 - `src/screens/PlayerProfileScreen/components/AchievementsRibbon.tsx`
 - `src/components/onboarding/MascotBubble.tsx`
-- `src/components/onboarding/HubzMascot.tsx`
 - `src/components/map/LandingMap.tsx`
 - `src/screens/Lobby/components/EmptyLobbyState.tsx`
 - `src/components/iconBase.tsx`

@@ -20,6 +20,8 @@ import {
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import type { ProReview, WttChoice, WttItem, WttReliability, WttVote } from "./wtt.types";
+import { logger } from "./logger";
+import { errorLogFields } from "../utils/errors";
 
 const WTT_ITEMS_COLLECTION = "wttItems";
 const WTT_VOTES_COLLECTION = "wttVotes";
@@ -142,7 +144,7 @@ export function subscribeToWttReliability(
       });
     },
     (error) => {
-      console.error("Error subscribing to WTT reliability:", error);
+      logger.error("wtt_reliability_subscribe_failed", errorLogFields(error));
       callback(null);
     },
   );

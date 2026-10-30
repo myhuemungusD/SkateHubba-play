@@ -4,10 +4,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // `isValidStyleUrl` block also gets the stub — otherwise that import would
 // pull in the real lib/sentry and trigger an unmocked dynamic SDK load.
 const mockCaptureMessage = vi.hoisted(() => vi.fn());
+const mockAddBreadcrumb = vi.hoisted(() => vi.fn());
 vi.mock("../sentry", () => ({
   captureMessage: mockCaptureMessage,
   captureException: vi.fn(),
-  addBreadcrumb: vi.fn(),
+  addBreadcrumb: mockAddBreadcrumb,
 }));
 
 import { isValidStyleUrl, DEFAULT_MAP_STYLE } from "../mapbox";
@@ -41,6 +42,7 @@ describe("MAP_STYLE module-level resolver + reportMapStyleConfig", () => {
   beforeEach(() => {
     vi.resetModules();
     mockCaptureMessage.mockClear();
+    mockAddBreadcrumb.mockClear();
   });
 
   afterEach(() => {
@@ -83,17 +85,31 @@ describe("MAP_STYLE module-level resolver + reportMapStyleConfig", () => {
     expect(mockCaptureMessage).not.toHaveBeenCalled();
   });
 
-  it("warns and reports to Sentry with the offending URL when reportMapStyleConfig is called", async () => {
+  it("warns and reports to Sentry with the env var name, never its value", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    vi.stubEnv("VITE_MAPBOX_STYLE_URL", "not-a-valid-url");
+    const rejected = "http://tiles.example.com/style.json?access_token=not-a-real-token";
+    vi.stubEnv("VITE_MAPBOX_STYLE_URL", rejected);
     const { MAP_STYLE, DEFAULT_MAP_STYLE: defaultStyle, reportMapStyleConfig } = await import("../mapbox");
     expect(MAP_STYLE).toBe(defaultStyle);
     reportMapStyleConfig();
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("VITE_MAPBOX_STYLE_URL"));
+    expect(warn).toHaveBeenCalledWith("[WARN]", "map_style_invalid", {
+      envVar: "VITE_MAPBOX_STYLE_URL",
+      fallback: defaultStyle,
+    });
     expect(mockCaptureMessage).toHaveBeenCalledWith("map_style_invalid", {
       level: "warning",
-      extra: { styleUrl: "not-a-valid-url" },
+      extra: { envVar: "VITE_MAPBOX_STYLE_URL", fallback: defaultStyle },
     });
+    // The logger's Sentry breadcrumb is a third path to Sentry; it carries the same details.
+    expect(mockAddBreadcrumb).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "map_style_invalid",
+        data: { envVar: "VITE_MAPBOX_STYLE_URL", fallback: defaultStyle },
+      }),
+    );
+    const reported = JSON.stringify([warn.mock.calls, mockCaptureMessage.mock.calls, mockAddBreadcrumb.mock.calls]);
+    expect(reported).not.toContain("tiles.example.com");
+    expect(reported).not.toContain("not-a-real-token");
   });
 
   it("is idempotent — repeated calls only emit once per module load", async () => {

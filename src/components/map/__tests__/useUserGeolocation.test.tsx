@@ -94,4 +94,49 @@ describe("useUserGeolocation autoStart=false (map check-ins)", () => {
     expect(result.current.isTrackingUser).toBe(true);
     unmount();
   });
+
+  it("maps each GPS error code to a readable banner message", () => {
+    const { result, unmount } = renderHook(() =>
+      useUserGeolocation({ map: makeMapRef() as unknown as React.MutableRefObject<MapboxMap | null> }),
+    );
+    const onError = (watchPosition.mock.calls[0] as unknown[])[1] as (err: { code: number }) => void;
+    const cases: Array<[number, string]> = [
+      [1, "Location permission denied. Enable in browser settings."],
+      [2, "Location unavailable. Check your location services."],
+      [3, "Location request timed out. Try again."],
+      [99, "Unable to get location"],
+    ];
+    for (const [code, message] of cases) {
+      act(() => onError({ code }));
+      expect(result.current.gpsError).toBe(message);
+    }
+    unmount();
+  });
+
+  it("recenters on a known fix, waits without one, and is a no-op once the map is gone", () => {
+    const mapRef = makeMapRef();
+    const { result, unmount } = renderHook(() =>
+      useUserGeolocation({ map: mapRef as unknown as React.MutableRefObject<MapboxMap | null> }),
+    );
+    const onWaiting = vi.fn();
+    act(() => result.current.handleRecenter(onWaiting));
+    expect(onWaiting).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      lastSuccessCb?.({ coords: { latitude: 40, longitude: -73 } });
+    });
+    act(() => result.current.setIsTrackingUser(false));
+    mapRef.current.flyTo.mockClear();
+    act(() => result.current.handleRecenter(onWaiting));
+    expect(onWaiting).toHaveBeenCalledTimes(1);
+    expect(result.current.isTrackingUser).toBe(true);
+    expect(mapRef.current.flyTo).toHaveBeenCalledWith({ center: [-73, 40], zoom: 15 });
+
+    act(() => result.current.setIsTrackingUser(false));
+    (mapRef as { current: FakeMap | null }).current = null;
+    act(() => result.current.handleRecenter(onWaiting));
+    expect(result.current.isTrackingUser).toBe(false);
+    expect(onWaiting).toHaveBeenCalledTimes(1);
+    unmount();
+  });
 });

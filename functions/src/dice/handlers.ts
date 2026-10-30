@@ -399,15 +399,21 @@ export function bankDice(db: DiceDb, actor: Actor, gameId: string, keep: readonl
   return moveDice(db, actor, gameId, { kind: "bank", keep });
 }
 
+/**
+ * End-of-match transaction shared by quit, decline and timeout. `nextOf`
+ * returns the ended state, or null when nothing ends (an unexpired timeout
+ * claim), in which case the game is returned unchanged.
+ */
 async function endMatch(
   db: DiceDb,
   actor: Actor,
   gameId: string,
-  nextOf: (state: DiceMatch) => DiceMatch,
+  nextOf: (state: DiceMatch, data: Record<string, unknown>) => DiceMatch | null,
 ): Promise<DiceActionResult> {
   const committed = await db.runTransaction(async (tx) => {
     const loaded = await loadGame(tx, gameId, actor.uid);
-    const after = guard(() => nextOf(loaded.state));
+    const after = guard(() => nextOf(loaded.state, loaded.data));
+    if (!after) return { result: resultOf(gameId, loaded.state, false), notices: [] as DiceNotice[] };
     const rep = await writeStats(tx, after, actor.nowMs);
     const built = noticesForEnd(gameId, after, actor.uid, namesFrom(loaded.data, loaded.state), rep);
     stageNotices(tx, built);
@@ -430,25 +436,12 @@ export function declineDice(db: DiceDb, actor: Actor, gameId: string): Promise<D
   return endMatch(db, actor, gameId, (state) => applyDecline(state, actor.uid));
 }
 
-export async function claimDiceTimeout(db: DiceDb, actor: Actor, gameId: string): Promise<DiceActionResult> {
-  const committed = await db.runTransaction(async (tx) => {
-    const loaded = await loadGame(tx, gameId, actor.uid);
-    const deadline = loaded.data.turnDeadline;
+export function claimDiceTimeout(db: DiceDb, actor: Actor, gameId: string): Promise<DiceActionResult> {
+  return endMatch(db, actor, gameId, (state, data) => {
+    const deadline = data.turnDeadline;
     const deadlineMs = typeof deadline === "number" ? deadline : Number.POSITIVE_INFINITY;
-    const after = guard(() => applyTimeout(loaded.state, actor.nowMs, deadlineMs));
-    if (!after) return { result: resultOf(gameId, loaded.state, false), notices: [] as DiceNotice[] };
-    const rep = await writeStats(tx, after, actor.nowMs);
-    const built = noticesForEnd(gameId, after, actor.uid, namesFrom(loaded.data, loaded.state), rep);
-    stageNotices(tx, built);
-    tx.update(`diceGames/${gameId}`, {
-      ...stateFields(after, actor.nowMs),
-      remindAt: null,
-      ...(Object.keys(rep).length > 0 ? { repChange: rep } : {}),
-    });
-    return { result: resultOf(gameId, after, true), notices: built };
+    return applyTimeout(state, actor.nowMs, deadlineMs);
   });
-  await deliverDicePushes(db, committed.notices);
-  return committed.result;
 }
 
 /** The waiting player pokes the roller. One nudge per match per hour. */

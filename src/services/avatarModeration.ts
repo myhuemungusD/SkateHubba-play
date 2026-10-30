@@ -19,6 +19,10 @@
  *   - <0.5 → allow silently
  */
 
+import { decodeImage } from "../utils/decodeImage";
+import { errorLogFields } from "../utils/errors";
+import { logger } from "./logger";
+
 /** Outcome of `isAvatarSafe`. Score is the maximum unsafe-class probability. */
 export interface AvatarSafetyResult {
   /** False if the image should be rejected outright. */
@@ -67,27 +71,8 @@ async function loadModel(): Promise<NsfwModel | null> {
   } catch (err) {
     // Fail-open: storage rules + the size/MIME pre-checks are the real
     // boundary. Surface the failure to ops without breaking the user.
-    console.warn("[avatarModeration] model_load_failed", err);
+    logger.warn("avatar_moderation_model_load_failed", errorLogFields(err));
     return null;
-  }
-}
-
-/**
- * Decode a Blob into something NSFWjs can classify. Uses the browser's
- * native image decoder via an Object URL → HTMLImageElement bridge so we
- * don't pull in another dependency.
- */
-async function decodeImage(blob: Blob): Promise<HTMLImageElement> {
-  const url = URL.createObjectURL(blob);
-  try {
-    return await new Promise<HTMLImageElement>((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error("avatar_decode_failed"));
-      img.src = url;
-    });
-  } finally {
-    URL.revokeObjectURL(url);
   }
 }
 
@@ -111,7 +96,7 @@ export async function isAvatarSafe(blob: Blob): Promise<AvatarSafetyResult> {
   try {
     img = await decodeImage(blob);
   } catch (err) {
-    console.warn("[avatarModeration] decode_failed", err);
+    logger.warn("avatar_moderation_decode_failed", errorLogFields(err));
     return { ok: true, score: 0 };
   }
 
@@ -119,7 +104,7 @@ export async function isAvatarSafe(blob: Blob): Promise<AvatarSafetyResult> {
   try {
     predictions = await model.classify(img);
   } catch (err) {
-    console.warn("[avatarModeration] classify_failed", err);
+    logger.warn("avatar_moderation_classify_failed", errorLogFields(err));
     return { ok: true, score: 0 };
   }
 

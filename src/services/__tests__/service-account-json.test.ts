@@ -9,7 +9,7 @@
  * repair must never fabricate a credential a correct paste couldn't have
  * produced.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { describeInitFailure, parseServiceAccountJson } from "../../../api/cron/_serviceAccount.js";
 import { MALFORMED_KEY_JSON } from "./cron.test-helpers";
 
@@ -103,6 +103,17 @@ describe("repair path — escape expansion", () => {
   });
 });
 
+describe("repair path — pasted tabs", () => {
+  it("re-escapes a raw tab inside a string as \\t rather than \\u0009", () => {
+    const text = JSON.stringify({ type: "aXb", ...ACCOUNT }).replace("aXb", "a\tb");
+    const out = parseServiceAccountJson(text);
+    expect(out).toEqual({
+      account: { projectId: "demo", clientEmail: ACCOUNT.client_email, privateKey: PEM },
+      repaired: true,
+    });
+  });
+});
+
 describe("repair path — smart punctuation", () => {
   it("repairs a curly closing quote that swallowed the rest of the document", () => {
     // The error class the production 500 actually reported ("Expected ','
@@ -157,6 +168,18 @@ describe("failure modes stay loud", () => {
     // the control character; the repair attempt's error would point at the
     // unexpected end of input. The operator must see the former.
     expect(() => parseServiceAccountJson('{"a":"x\ny"')).toThrow(/Bad control character/);
+  });
+
+  it("wraps a non-Error parse failure and rethrows it without attempting repair", () => {
+    const spy = vi.spyOn(JSON, "parse").mockImplementationOnce(() => {
+      throw "parser exploded";
+    });
+    try {
+      expect(() => parseServiceAccountJson(JSON.stringify(ACCOUNT))).toThrow(new Error("parser exploded"));
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("appends safe structural diagnostics when repair cannot help", () => {
