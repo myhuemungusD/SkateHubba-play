@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, applyLean, createRun, stepRun } from "../logic";
-import { gradeTouchdown, integrateMotion, timeToGround } from "../physics";
+import { gradeTouchdown, integrateMotion, timeToGround, trickAngles } from "../physics";
 import {
   ARM_RANGE,
   BALANCE_NUDGE,
@@ -172,13 +172,21 @@ describe("stepRun edges", () => {
   });
 
   it("adds flip slop once when a sloppy flick finishes its flip in the air", () => {
-    const air = run({ airborne: true, y: 2, vy: 1, popV0: 6, popAge: 0.1, flip: FLIP_DURATION, flickAccuracy: 1 });
-    const tick = stepRun(air, FIXED_DT);
-    expect(tick.state.flipSlopApplied).toBe(true);
-    expect(tick.state.roll).not.toBe(0);
-    const again = stepRun(tick.state, FIXED_DT);
-    expect(again.state.flipSlopApplied).toBe(true);
-    expect(FLIP_SLOP).toBeGreaterThan(0);
+    const air = (flickAccuracy: number) =>
+      run({ airborne: true, y: 2, vy: 1, popV0: 6, popAge: 0.1, flip: FLIP_DURATION, flickAccuracy });
+    const sloppy = stepRun(air(1), FIXED_DT);
+    const perfect = stepRun(air(5), FIXED_DT);
+    expect(sloppy.state.flipSlopApplied).toBe(true);
+    expect(perfect.state.flipSlopApplied).toBe(true);
+    // Accuracy 1 is the sloppiest flick: it adds 0.8 of FLIP_SLOP to roll,
+    // which the roll spring then eases back a little within the same step.
+    const offset = sloppy.state.roll - perfect.state.roll;
+    expect(offset).toBeGreaterThan(0.75 * FLIP_SLOP);
+    expect(offset).toBeLessThanOrEqual(0.8 * FLIP_SLOP);
+    // The next step only springs the offset back; it does not add slop again.
+    const offsetAgain = stepRun(sloppy.state, FIXED_DT).state.roll - stepRun(perfect.state, FIXED_DT).state.roll;
+    expect(offsetAgain).toBeGreaterThan(0);
+    expect(offsetAgain).toBeLessThan(offset);
   });
 
   it("bails a pending landing that touches down on a wild angle", () => {
@@ -245,9 +253,13 @@ describe("physics edges", () => {
   });
 
   it("holds the crooked pose on a grind with no recorded trick", () => {
-    const state = grinding({ grindTrick: null });
-    integrateMotion(state, FIXED_DT);
-    expect(state.airborne).toBe(false);
+    const crooked = trickAngles("crooked");
+    expect(crooked).not.toEqual(trickAngles("nose"));
+    const state = grinding({ grindTrick: null, pitch: 1, yaw: 1, roll: 1, vy: 3, vx: 2 });
+    expect(integrateMotion(state, FIXED_DT)).toEqual({ touched: false });
+    expect({ pitch: state.pitch, yaw: state.yaw, roll: state.roll }).toEqual(crooked);
+    expect(state.vy).toBe(0);
+    expect(state.vx).toBe(0);
   });
 
   it("lets the grind magnet lift a grounded, armed board toward a rail just ahead", () => {

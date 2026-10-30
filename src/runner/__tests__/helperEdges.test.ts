@@ -52,12 +52,23 @@ describe("gradeFlick", () => {
 });
 
 describe("gesture recognizer guards", () => {
-  it("ignores samples it does not own and has no lean before a swipe or on a vertical hold", () => {
-    const recognize = createGestureRecognizer();
-    recognize.sample({ x: 1, y: 1 }, 5);
-    expect(recognize.down({ x: 2, y: 100 }, 400)).toBe(false);
-    recognize.sample({ x: 3, y: 100 }, 5);
+  it("ignores samples taken before any press or during an edge press it does not own", () => {
+    const swipe = (recognize: ReturnType<typeof createGestureRecognizer>) => {
+      expect(recognize.down({ x: 200, y: 200 }, 400)).toBe(true);
+      recognize.sample({ x: 230, y: 200 }, 30);
+      return { action: recognize.move({ x: 260, y: 200 }, 60), grade: recognize.grade() };
+    };
+    const noisy = createGestureRecognizer();
+    noisy.sample({ x: 1, y: 1 }, 5);
+    expect(noisy.down({ x: 2, y: 100 }, 400)).toBe(false);
+    noisy.sample({ x: 3, y: 100 }, 5);
+    expect(noisy.move({ x: 90, y: 100 }, 10)).toBeNull();
 
+    expect(swipe(noisy)).toEqual(swipe(createGestureRecognizer()));
+  });
+
+  it("has no lean before a swipe fires or on a vertical hold", () => {
+    const recognize = createGestureRecognizer();
     recognize.down({ x: 200, y: 200 }, 400);
     recognize.sample({ x: 201, y: 200 }, 4);
     expect(recognize.lean({ x: 240, y: 200 })).toBe(0);

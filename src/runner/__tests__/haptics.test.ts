@@ -103,5 +103,12 @@ describe("runner haptics", () => {
     Object.defineProperty(navigator, "vibrate", { configurable: true, value: undefined });
     expect(() => playRunnerHaptic("pop", null, 6000)).not.toThrow();
     expect(() => pulseGrindHaptic(6100)).not.toThrow();
+    // No vibration API and not native: nothing falls through to the native haptic either.
+    expect(playHaptic).not.toHaveBeenCalled();
+    // Once vibration exists again the same grind pulse buzzes, so the silence above came from the guard.
+    const vibrate = vi.fn(() => true);
+    Object.defineProperty(navigator, "vibrate", { configurable: true, value: vibrate });
+    pulseGrindHaptic(6200);
+    expect(vibrate).toHaveBeenCalledExactlyOnceWith(8);
   });
 });

@@ -206,7 +206,11 @@ describe("buffered trick input", () => {
     nextAction(() => ({ status: "paused" }));
     for (let i = 0; i < 120 && run.getState().status === "playing"; i += 1) run.step(FIXED_DT);
     expect(run.getState().status).toBe("paused");
-    expect(actionMock).toHaveBeenCalledTimes(3);
+    // Once the run has stopped, further steps never retry the buffered tap.
+    const tapsWhenStopped = actionMock.mock.calls.filter(([, action]) => action === "tap").length;
+    for (let i = 0; i < 30; i += 1) run.step(FIXED_DT);
+    expect(actionMock.mock.calls.filter(([, action]) => action === "tap")).toHaveLength(tapsWhenStopped);
+    expect(run.getState().status).toBe("paused");
   });
 });
 

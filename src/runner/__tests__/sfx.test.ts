@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MixSnapshot } from "../audioMix";
-import { SFX_VOLUME } from "../tune";
+import { PITCH_JITTER, SFX_VOLUME } from "../tune";
 
 /** A minimal Web Audio stand-in that records every node it hands out. */
 class FakeAudioContext {
@@ -184,11 +184,14 @@ describe("playRunnerSfx", () => {
     }
   });
 
-  it("wanders pop pitch across plays", async () => {
+  it("wanders pop pitch across plays on a fixed, repeatable walk", async () => {
     const { sfx, audio } = await loadedSfx();
     for (let i = 0; i < 12; i += 1) sfx.playRunnerSfx("pop");
-    const rates = new Set(audio.sources.map((s) => s.playbackRate.value));
-    expect(rates.size).toBeGreaterThan(1);
+    // A fresh module walks the same ±5 jitter steps every time (no Math.random).
+    const steps = [4, 3, -2, -2, -1, -3, -3, -1, 1, -5, 2, 1];
+    const rates = audio.sources.map((s) => s.playbackRate.value);
+    expect(rates).toHaveLength(steps.length);
+    rates.forEach((rate, i) => expect(rate).toBeCloseTo(1 + steps[i] * (PITCH_JITTER / 5), 10));
   });
 
   it("tries to resume a suspended context and swallows a refusal", async () => {
