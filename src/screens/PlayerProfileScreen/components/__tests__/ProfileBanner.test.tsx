@@ -47,6 +47,21 @@ describe("ProfileBanner", () => {
     expect(screen.queryByRole("button", { name: "Change background picture" })).not.toBeInTheDocument();
   });
 
+  it("frames the cover on the custom crop's focal point and zoom", () => {
+    render(
+      <ProfileBanner
+        uid="u1"
+        bannerImageUrl="https://x/b.webp"
+        isOwnProfile={false}
+        crop={{ x: 20, y: 70, zoom: 150 }}
+      />,
+    );
+    const img = screen.getByTestId("profile-banner").querySelector("img")!;
+    expect(img.style.objectPosition).toBe("20% 70%");
+    expect(img.style.transform).toBe("scale(1.5)");
+    expect(img.style.transformOrigin).toBe("20% 70%");
+  });
+
   it("owner uploads a new banner and sees it right away", async () => {
     mockUpload.mockResolvedValueOnce("https://x/new.webp");
     render(<ProfileBanner uid="u1" isOwnProfile />);
