@@ -207,6 +207,9 @@ export default defineConfig({
         "src/types/**": { lines: 100, functions: 100, branches: 100, statements: 100 },
         "src/utils/**": { lines: 100, functions: 100, branches: 100, statements: 100 },
         "src/firebase.ts": { lines: 100, functions: 100, branches: 100, statements: 100 },
+        // api/ (the Vercel serverless side) is measured since D3; this keeps it
+        // from slipping unseen behind the src/ mass in the global floor.
+        "api/**": { lines: 97.2, functions: 100, branches: 95, statements: 96.7 },
         // Ratchet floors for everything not at 100 yet. These are AGGREGATE
         // floors: a single file can sit at 0% and still pass. The per-file
         // rule lives in scripts/check-coverage-per-file.mjs (run by
