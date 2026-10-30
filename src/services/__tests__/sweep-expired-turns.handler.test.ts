@@ -953,6 +953,10 @@ describe("sweep handler edge paths", () => {
     expect(out.code).toBe(500);
     expect(out.body).toEqual({ error: "init_failed", message: "Server misconfiguration." });
     expect(getFirestoreMock).not.toHaveBeenCalled();
+    // The log names the reason without echoing the env or any key material.
+    expect(warnSpy).toHaveBeenCalledWith(
+      JSON.stringify({ event: "init_failed", errorName: "Error", reason: "service account env not set" }),
+    );
     warnSpy.mockRestore();
   });
 
