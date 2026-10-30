@@ -4,10 +4,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // `isValidStyleUrl` block also gets the stub — otherwise that import would
 // pull in the real lib/sentry and trigger an unmocked dynamic SDK load.
 const mockCaptureMessage = vi.hoisted(() => vi.fn());
+const mockAddBreadcrumb = vi.hoisted(() => vi.fn());
 vi.mock("../sentry", () => ({
   captureMessage: mockCaptureMessage,
   captureException: vi.fn(),
-  addBreadcrumb: vi.fn(),
+  addBreadcrumb: mockAddBreadcrumb,
 }));
 
 import { isValidStyleUrl, DEFAULT_MAP_STYLE } from "../mapbox";
@@ -41,6 +42,7 @@ describe("MAP_STYLE module-level resolver + reportMapStyleConfig", () => {
   beforeEach(() => {
     vi.resetModules();
     mockCaptureMessage.mockClear();
+    mockAddBreadcrumb.mockClear();
   });
 
   afterEach(() => {
@@ -98,7 +100,14 @@ describe("MAP_STYLE module-level resolver + reportMapStyleConfig", () => {
       level: "warning",
       extra: { envVar: "VITE_MAPBOX_STYLE_URL", fallback: defaultStyle },
     });
-    const reported = JSON.stringify([warn.mock.calls, mockCaptureMessage.mock.calls]);
+    // The logger's Sentry breadcrumb is a third path to Sentry; it carries the same details.
+    expect(mockAddBreadcrumb).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "map_style_invalid",
+        data: { envVar: "VITE_MAPBOX_STYLE_URL", fallback: defaultStyle },
+      }),
+    );
+    const reported = JSON.stringify([warn.mock.calls, mockCaptureMessage.mock.calls, mockAddBreadcrumb.mock.calls]);
     expect(reported).not.toContain("tiles.example.com");
     expect(reported).not.toContain("not-a-real-token");
   });
