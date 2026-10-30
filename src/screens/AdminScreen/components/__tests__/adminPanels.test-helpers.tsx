@@ -11,7 +11,7 @@ export const ADMIN_UID = "admin1";
  * specs assert the toast an operator actually sees rather than reaching into
  * the notification context.
  */
-export function ToastWrapper({ children }: { children: ReactNode }) {
+function ToastWrapper({ children }: { children: ReactNode }) {
   return (
     <NotificationProvider uid={ADMIN_UID}>
       {children}

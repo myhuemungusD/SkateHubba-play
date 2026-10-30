@@ -331,7 +331,7 @@ function widePreset(): MediaTrackConstraints {
 }
 
 /** What the camera actually opened, so a grainy/zoomed report can be diagnosed. */
-export function logCameraSettings(track: MediaStreamTrack): void {
+function logCameraSettings(track: MediaStreamTrack): void {
   const settings = track.getSettings();
   logger.info("camera_track_settings", {
     width: settings.width ?? null,

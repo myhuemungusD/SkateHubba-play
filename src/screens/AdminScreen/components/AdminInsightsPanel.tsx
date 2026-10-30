@@ -25,7 +25,7 @@ function pct(n: number, d: number): string {
   return d === 0 ? "—" : `${Math.round((n / d) * 100)}%`;
 }
 
-export function AnalyticsSection() {
+function AnalyticsSection() {
   const [data, setData] = useState<AnalyticsSnapshot | null>(null);
   const [error, setError] = useState("");
   const load = useCallback(
@@ -81,7 +81,7 @@ export function AnalyticsSection() {
   );
 }
 
-export function AnnouncementsSection() {
+function AnnouncementsSection() {
   const [rows, setRows] = useState<Announcement[] | null>(null);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");

@@ -7,11 +7,11 @@ export const SKATEBOARD_01_CREDIT = `This work is based on "Skateboard_01" (${SK
 /** Exact Sketchfab credit from the Low Rail license.txt. */
 export const LOW_RAIL_PAGE = "https://sketchfab.com/3d-models/low-rail-game-ready-4k-ec7bba14b8984e67ab459c20422171a0";
 export const LOW_RAIL_AUTHOR_PAGE = "https://sketchfab.com/bral_unit";
-export const LOW_RAIL_LICENSE = "http://creativecommons.org/licenses/by/4.0/";
+const LOW_RAIL_LICENSE = "http://creativecommons.org/licenses/by/4.0/";
 export const LOW_RAIL_CREDIT = `This work is based on "Low Rail | Game Ready | 4K" (${LOW_RAIL_PAGE}) by bralunit (${LOW_RAIL_AUTHOR_PAGE}) licensed under CC-BY-4.0 (${LOW_RAIL_LICENSE})`;
 
 /** Exact Sketchfab credit from the Skatepark Obstacles license.txt. */
 export const SKATEPARK_PAGE = "https://sketchfab.com/3d-models/skatepark-obstacles-235d1cab2dfe4d63b46030db8d459699";
 export const SKATEPARK_AUTHOR_PAGE = "https://sketchfab.com/rhcreations";
-export const SKATEPARK_LICENSE = "http://creativecommons.org/licenses/by/4.0/";
+const SKATEPARK_LICENSE = "http://creativecommons.org/licenses/by/4.0/";
 export const SKATEPARK_CREDIT = `This work is based on "Skatepark Obstacles" (${SKATEPARK_PAGE}) by rhcreations (${SKATEPARK_AUTHOR_PAGE}) licensed under CC-BY-4.0 (${SKATEPARK_LICENSE})`;

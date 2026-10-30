@@ -20,16 +20,7 @@ import type { Dispute, DisputeModerationStatus, DisputeOutcome, DisputeStatus } 
  * Types
  * ──────────────────────────────────────────── */
 
-export type {
-  Dispute,
-  DisputeModerationStatus,
-  DisputeOutcome,
-  DisputeStatus,
-  DisputeTally,
-  DisputeVerdict,
-  DisputeViewerState,
-  DisputeVote,
-} from "../types/dispute";
+export type { Dispute, DisputeTally, DisputeVerdict, DisputeViewerState } from "../types/dispute";
 
 /* ────────────────────────────────────────────
  * References

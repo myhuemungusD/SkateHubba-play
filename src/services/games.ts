@@ -8,7 +8,7 @@
  *   - games.subscriptions.ts  — read-side APIs
  */
 
-export type { GameStatus, GamePhase, JudgeStatus, TurnRecord, GameDoc, CreateGameOptions } from "./games.mappers";
+export type { TurnRecord, GameDoc } from "./games.mappers";
 export { timestampFromMillis, isJudgeActive } from "./games.mappers";
 
 export { forfeitExpiredTurn, _resetCreateGameRateLimit, _turnActionMapSize } from "./games.turns";

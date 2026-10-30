@@ -36,8 +36,6 @@ import {
 /** Lifecycle of a single take. Shared by the web and native capture paths. */
 export type CaptureState = "idle" | "preview" | "recording" | "done";
 
-export type { FacingMode };
-
 /** Canvas capture rate used when the camera track won't report its own fps. */
 const FALLBACK_CAPTURE_FPS = 30;
 

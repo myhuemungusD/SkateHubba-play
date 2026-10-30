@@ -12,14 +12,14 @@ import { assertAccount, DROP_RULE } from "./access.js";
 import { ClosetError, DAY_MS, num, parseDef, paths, str, toMillis, ts, type ClosetActor } from "./model.js";
 import type { ClosetDb } from "./store.js";
 
-export const DRAW_CLAIM_DAYS = 3;
+const DRAW_CLAIM_DAYS = 3;
 
-export function newDrawSeed(): string {
+function newDrawSeed(): string {
   return randomBytes(16).toString("hex");
 }
 
 /** Deterministic pick: the `count` entrants with the lowest sha256(seed:uid). */
-export function pickWinners(entrants: readonly string[], count: number, seed: string): string[] {
+function pickWinners(entrants: readonly string[], count: number, seed: string): string[] {
   const score = (uid: string) => createHash("sha256").update(`${seed}:${uid}`).digest("hex");
   return [...entrants]
     .map((uid) => ({ uid, key: score(uid) }))
@@ -45,7 +45,7 @@ export async function enterDraw(db: ClosetDb, actor: ClosetActor, dropId: string
   });
 }
 
-export interface DrawResult {
+interface DrawResult {
   dropId: string;
   seed: string;
   entries: number;
@@ -53,7 +53,7 @@ export interface DrawResult {
 }
 
 /** Run one closed draw. Returns null when it is not due (or already drawn). */
-export async function runDraw(db: ClosetDb, dropId: string, nowMs: number, seed: string): Promise<DrawResult | null> {
+async function runDraw(db: ClosetDb, dropId: string, nowMs: number, seed: string): Promise<DrawResult | null> {
   return db.runTransaction(async (tx) => {
     const drop = (await tx.get(paths.drop(dropId))).data;
     const end = toMillis(drop?.endsAt);

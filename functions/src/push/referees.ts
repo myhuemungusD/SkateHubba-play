@@ -4,8 +4,8 @@
  * replacing the GitHub Actions cron that curled them.
  */
 
-export const REFEREE_BASE_URL = "https://skatehubba.com";
-export const REFEREE_PATHS = ["/api/cron/sweep-expired-turns", "/api/cron/resolve-expired-disputes"] as const;
+const REFEREE_BASE_URL = "https://skatehubba.com";
+const REFEREE_PATHS = ["/api/cron/sweep-expired-turns", "/api/cron/resolve-expired-disputes"] as const;
 
 /** Run the referees every third 5-minute tick (same as the old workflow). */
 export function refereesDue(nowMs: number): boolean {

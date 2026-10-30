@@ -1,8 +1,8 @@
 import type { EditProject, SpeedKey } from "./types";
 import { clamp } from "./project";
 
-export const MIN_SPEED = 0.125;
-export const MAX_SPEED = 4;
+const MIN_SPEED = 0.125;
+const MAX_SPEED = 4;
 
 export type SpeedRampPreset = "realtime" | "landing-slowmo" | "pop-slowmo" | "hammer" | "fast-roll-in";
 

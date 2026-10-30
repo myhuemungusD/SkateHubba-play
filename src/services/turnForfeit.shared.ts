@@ -36,7 +36,7 @@ function opponentOf(game: GameDoc, playerUid: string): string {
  *  • "disputeAccept"    — disputable phase expired; matcher's "landed" stands.
  *  • "setReviewClear"   — setReview expired; setter gets benefit of the doubt.
  */
-export type ForfeitKind = "forfeit" | "disputeAccept" | "setReviewClear";
+type ForfeitKind = "forfeit" | "disputeAccept" | "setReviewClear";
 
 /**
  * Fields the caller must write onto the game doc, with all *Ms values left as
@@ -65,7 +65,7 @@ export interface ForfeitGameUpdate {
  * `LandedClipContext` but is reproduced here to keep this module free of any
  * clips/firebase dependency. Present only for the disputeAccept branch.
  */
-export interface ForfeitLandedClips {
+interface ForfeitLandedClips {
   gameId: string;
   turnNumber: number;
   trickName: string;
@@ -93,7 +93,7 @@ export interface ForfeitLandedClips {
  *     (senderUid == auth.uid AND recipientUid != auth.uid). The game-state
  *     write is identical regardless — only this side-effect is conditional.
  */
-export interface ForfeitNotification {
+interface ForfeitNotification {
   /** Player to alert that it's now their turn. */
   recipientUid: string;
   /** Notification author — the player whose inaction triggered the resolution. */

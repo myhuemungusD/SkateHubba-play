@@ -6,7 +6,7 @@ export type PushState = "unsupported" | "default" | "granted" | "denied";
  *  this set (a future expansion, a non-standard browser, a misconfigured
  *  polyfill) degrades to "unsupported" rather than flowing a bogus string
  *  through the UI branches below. */
-export const KNOWN_PUSH_STATES: ReadonlySet<string> = new Set<PushState>(["default", "granted", "denied"]);
+const KNOWN_PUSH_STATES: ReadonlySet<string> = new Set<PushState>(["default", "granted", "denied"]);
 
 /** Map the native plugin's tri-state onto the UI's four-state union. */
 export function fromNativePermission(permission: NativePushPermission): PushState {

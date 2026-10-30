@@ -94,7 +94,7 @@ export function matchHasStarted(state: DiceMatch): boolean {
   return Object.values(state.scores).some((n) => n > 0);
 }
 
-export function assertActive(state: DiceMatch): void {
+function assertActive(state: DiceMatch): void {
   if (state.status !== "active") throw new Error("NOT_IN_PROGRESS");
 }
 

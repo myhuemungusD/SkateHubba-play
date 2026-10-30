@@ -8,7 +8,7 @@
  * below 100.
  */
 export const REP_START = 1000;
-export const REP_K = 32;
+const REP_K = 32;
 export const REP_FLOOR = 100;
 
 export function expectedScore(rating: number, opponent: number): number {

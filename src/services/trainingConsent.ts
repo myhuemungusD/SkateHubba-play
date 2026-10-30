@@ -13,9 +13,9 @@ import { ADULT_AGE, getAge } from "../utils/age";
 import { PRIVATE_PROFILE_DOC_ID } from "./users";
 
 /** Bump when the training explanation in the privacy policy changes. */
-export const TRAINING_CONSENT_POLICY_VERSION = "2026-10-10";
+const TRAINING_CONSENT_POLICY_VERSION = "2026-10-10";
 
-export const TRAINING_REVOCATIONS_COLLECTION = "trainingRevocations";
+const TRAINING_REVOCATIONS_COLLECTION = "trainingRevocations";
 
 export class TrainingConsentDeniedError extends Error {
   constructor(message: string) {

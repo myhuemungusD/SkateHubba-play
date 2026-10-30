@@ -20,11 +20,9 @@ export const DEFAULT_BLESSING_CONFIG: BlessingConfig = {
   offerTtlDays: 14,
 };
 
-export const REASON_MIN = 10;
-export const REASON_MAX = 280;
+const REASON_MIN = 10;
+const REASON_MAX = 280;
 export const DAY_MS = 24 * 60 * 60 * 1000;
-
-export type BlessingStatus = "pending" | "accepted" | "declined" | "expired" | "revoked";
 
 /** Firestore Timestamp, Date, or millis to millis. Null when unreadable. */
 export function toMillis(value: unknown): number | null {

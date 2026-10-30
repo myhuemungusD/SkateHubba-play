@@ -9,8 +9,8 @@
 import type { TrickObstacle, TrickStance } from "../constants/tricks.js";
 
 export type TrainingRole = "set" | "match";
-export type TrainingVia = "play" | "judge" | "dispute" | "forfeit";
-export type TrainingOutcome =
+type TrainingVia = "play" | "judge" | "dispute" | "forfeit";
+type TrainingOutcome =
   "landed" | "missed" | "judge_landed" | "judge_missed" | "dispute_landed" | "dispute_missed" | "forfeit";
 
 export interface TrainingTurn {

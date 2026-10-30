@@ -28,7 +28,7 @@ const STATUS_FROM_SERVER: Record<string, TradeStatus> = {
   declined: "declined",
 };
 
-export interface TradeItem {
+interface TradeItem {
   copyId: string;
   name: string;
   rarity: string;
@@ -171,7 +171,7 @@ export async function proposeTrade(params: ProposeTradeParams): Promise<{ tradeI
   }
 }
 
-export type TradeResponse = "accept" | "decline" | "cancel";
+type TradeResponse = "accept" | "decline" | "cancel";
 
 export interface RespondTradeParams {
   tradeId: string;

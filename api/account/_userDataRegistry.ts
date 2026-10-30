@@ -19,7 +19,7 @@
  *   none       holds no per-user data
  */
 
-export type ErasureAction = "delete" | "anonymize" | "retain" | "none";
+type ErasureAction = "delete" | "anonymize" | "retain" | "none";
 
 export interface ErasureEntry {
   action: ErasureAction;
@@ -198,7 +198,7 @@ export interface ExportIncluded {
 }
 
 /** A collection left out of the export on purpose. */
-export interface ExportExcluded {
+interface ExportExcluded {
   /** Why it is left out. Required: the coverage test rejects an empty reason. */
   excluded: string;
   /**

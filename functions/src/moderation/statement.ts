@@ -18,7 +18,7 @@ const MAX_BODY = 200;
 const MAX_STATEMENT_ID = 128;
 
 /** Settings → Reports & actions, where the statement and its appeal live. */
-export const CLIP_APPEAL_PATH = "/settings#safety-reports";
+const CLIP_APPEAL_PATH = "/settings#safety-reports";
 
 /** Doc id in moderationStatements. Fits the DSA 128-character id cap. */
 export function statementIdFor(clipId: string): string {
@@ -26,7 +26,7 @@ export function statementIdFor(clipId: string): string {
   return prefixed.length <= MAX_STATEMENT_ID ? prefixed : clipId.slice(0, MAX_STATEMENT_ID);
 }
 
-export function appealPathFor(): string {
+function appealPathFor(): string {
   return CLIP_APPEAL_PATH;
 }
 

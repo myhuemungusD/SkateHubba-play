@@ -364,7 +364,7 @@ export class AgeVerificationRequiredError extends Error {
 }
 
 /** Thrown by createProfile when the Terms checkbox wasn't ticked. */
-export class TermsAcceptanceRequiredError extends Error {
+class TermsAcceptanceRequiredError extends Error {
   constructor() {
     super("Agree to the Terms and Privacy Policy to continue");
     this.name = "TermsAcceptanceRequiredError";
@@ -375,16 +375,6 @@ export async function createProfile(
   uid: string,
   username: string,
   stance: string,
-  /**
-   * @deprecated Historical emailVerified mirror. No longer persisted —
-   * Firebase Auth (`auth.currentUser.emailVerified`) and the JWT claim
-   * `request.auth.token.email_verified` are the canonical sources, and
-   * mirroring the flag at creation time silently went stale as soon as
-   * the user completed verification. Positional parameter retained so
-   * existing UI callers keep compiling until the follow-up UX PR drops
-   * the argument. Ignored inside this function.
-   */
-  _emailVerified = false,
   dob?: string,
   parentalConsent?: boolean,
   /** The ProfileSetup Terms checkbox. Required: new profiles record termsAcceptedAt. */

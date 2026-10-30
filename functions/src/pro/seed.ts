@@ -20,7 +20,7 @@ import type { DiceDb } from "../dice/store.js";
 import { parseSeedInput, SeedInputError } from "./seedInput.js";
 import { SeedError, seedPro, type ProSeedResult } from "./seedCore.js";
 
-export { PRO_AUDIT_COLLECTION, type ProSeedResult } from "./seedCore.js";
+export { type ProSeedResult } from "./seedCore.js";
 
 export interface ProSeedDeps {
   db: DiceDb;

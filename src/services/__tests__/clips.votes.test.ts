@@ -24,7 +24,6 @@ import {
   removeClipVote,
   type ClipForVoteHydration,
 } from "../clips.votes";
-import { fetchClipUpvoteState, removeUpvote, upvoteClip } from "../clips.upvotes";
 import { logger } from "../logger";
 
 /** On-disk clip body as the in-transaction read sees it. */
@@ -340,34 +339,5 @@ describe("fetchClipVoteState", () => {
     expect(map.get("c1")).toEqual({ upvoteCount: 5, downvoteCount: 2, myVote: null });
     expect(warn).toHaveBeenCalledWith("clip_vote_state_batch_failed", expect.anything());
     warn.mockRestore();
-  });
-});
-
-/* ── the legacy upvote-only projection ──────────────────────── */
-
-describe("clips.upvotes legacy projection", () => {
-  it("projects vote state down to { count, alreadyUpvoted }", async () => {
-    mockGetDocs.mockResolvedValueOnce({
-      docs: [{ data: () => ({ clipId: "up", value: 1 }) }, { data: () => ({ clipId: "down", value: -1 }) }],
-    });
-
-    const map = await fetchClipUpvoteState("me", [
-      { id: "up", upvoteCount: 4, playerUid: "author" },
-      { id: "down", upvoteCount: 4, playerUid: "author" },
-      { id: "none", upvoteCount: 0, playerUid: "author" },
-    ]);
-
-    expect(map.get("up")).toEqual({ count: 4, alreadyUpvoted: true });
-    // A downvote is NOT an upvote — the legacy boolean must stay false.
-    expect(map.get("down")).toEqual({ count: 4, alreadyUpvoted: false });
-    expect(map.get("none")).toEqual({ count: 0, alreadyUpvoted: false });
-  });
-
-  it("returns just the upvote count from upvoteClip and removeUpvote", async () => {
-    wireTx(null, { playerUid: "author", upvoteCount: 4, downvoteCount: 9 });
-    await expect(upvoteClip("me", "c1")).resolves.toBe(5);
-
-    wireTx({ value: 1 }, { upvoteCount: 5, downvoteCount: 9 });
-    await expect(removeUpvote("me", "c1")).resolves.toBe(4);
   });
 });

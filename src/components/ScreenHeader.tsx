@@ -14,7 +14,7 @@ interface BackButtonProps {
  * The one back button. 44×44pt, top-left, same spot on every pushed screen
  * (the Instagram / Strava pattern: chevron left, title beside it).
  */
-export function BackButton({ fallback, label = "Back", onBack }: BackButtonProps) {
+function BackButton({ fallback, label = "Back", onBack }: BackButtonProps) {
   const goBack = useGoBack(fallback);
   return <BackChevron onClick={onBack ?? goBack} label={label} />;
 }

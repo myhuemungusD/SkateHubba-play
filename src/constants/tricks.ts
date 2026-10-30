@@ -25,7 +25,7 @@ export const TRICK_CATALOG_CATEGORIES = [
   { id: "manual", label: "Manuals" },
   { id: "air", label: "Airs" },
 ] as const;
-export type TrickCatalogCategory = (typeof TRICK_CATALOG_CATEGORIES)[number]["id"];
+type TrickCatalogCategory = (typeof TRICK_CATALOG_CATEGORIES)[number]["id"];
 
 export interface CatalogTrick {
   id: string;
@@ -171,11 +171,11 @@ export function trickById(id: string): CatalogTrick | undefined {
   return TRICK_BY_ID.get(id);
 }
 
-export function isTrickStance(value: unknown): value is TrickStance {
+function isTrickStance(value: unknown): value is TrickStance {
   return typeof value === "string" && (TRICK_STANCES as readonly string[]).includes(value);
 }
 
-export function isTrickObstacle(value: unknown): value is TrickObstacle {
+function isTrickObstacle(value: unknown): value is TrickObstacle {
   return typeof value === "string" && (TRICK_OBSTACLES as readonly string[]).includes(value);
 }
 

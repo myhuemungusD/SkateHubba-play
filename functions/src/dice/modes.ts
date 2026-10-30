@@ -7,7 +7,7 @@
  */
 export type DiceMode = "clo" | "s456" | "craps" | "ten";
 
-export const DICE_MODES: readonly DiceMode[] = ["clo", "s456", "craps", "ten"];
+const DICE_MODES: readonly DiceMode[] = ["clo", "s456", "craps", "ten"];
 
 interface ModeRule {
   /** Dice thrown on a fresh roll. */

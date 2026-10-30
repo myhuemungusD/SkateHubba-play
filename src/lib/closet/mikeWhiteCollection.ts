@@ -14,7 +14,7 @@
  * left out because the photo includes a cigarette pack.
  */
 
-export const MIKE_WHITE_COLLECTION_ID = "mike_white_signature";
+const MIKE_WHITE_COLLECTION_ID = "mike_white_signature";
 export const MIKE_WHITE_COLLECTION_NAME = "Mike White Signature";
 export const MIKE_WHITE_DESIGNER = "Mike White";
 export const MIKE_WHITE_SIGNATURE_URL = "/assets/closet/mike-white/signature.png";

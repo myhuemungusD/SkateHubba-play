@@ -80,7 +80,7 @@ function intIn(value: unknown, min: number, max: number): number {
 }
 
 /** Validate an award request into a plan. Pure. */
-export function planEarn(input: EarnInput): EarnPlan {
+function planEarn(input: EarnInput): EarnPlan {
   const event = EARN_EVENTS.find((e) => e === input.event);
   if (!event || !isId(input.uid) || !isId(input.ref)) throw new ClosetError("bad_request");
   const isGame = event === "game_finished" || event === "game_won";

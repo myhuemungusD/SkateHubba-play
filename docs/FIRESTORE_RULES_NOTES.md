@@ -980,7 +980,7 @@ cannot impersonate another user's vote. Votes are immutable:
 
 Reads are open to signed-in users because the clips feed aggregates
 votes via `getCountFromServer` and checks whether the current user
-already upvoted via a direct get — both in `fetchClipUpvoteState`
+already upvoted via a direct get — both in `fetchClipVoteState`
 (see src/services/clips.ts), and both require read permission on
 the collection / doc.
 ```

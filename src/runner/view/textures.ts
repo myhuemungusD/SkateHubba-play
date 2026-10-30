@@ -245,7 +245,7 @@ function loadMaps(gl: WebGLRenderer): Promise<void> {
     });
 }
 
-export function ensureRunnerMaps(gl: WebGLRenderer): Promise<void> {
+function ensureRunnerMaps(gl: WebGLRenderer): Promise<void> {
   mapsPromise ??= loadMaps(gl).catch((error: unknown) => {
     mapsPromise = null;
     throw error;

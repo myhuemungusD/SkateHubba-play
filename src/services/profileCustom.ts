@@ -33,11 +33,11 @@ export const LIMITS = {
   clipId: 128,
 } as const;
 
-export interface ProfileLink {
+interface ProfileLink {
   label: string;
   url: string;
 }
-export interface ProfileSponsor {
+interface ProfileSponsor {
   name: string;
   url: string;
 }
