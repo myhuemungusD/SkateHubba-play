@@ -32,7 +32,7 @@ describe("OwnProfileActions", () => {
     const { rerender } = render(<OwnProfileActions {...props} customizeReady={false} />);
     const btn = screen.getByRole("button", { name: "Customize profile, loading" });
     expect(btn).toHaveAttribute("aria-disabled", "true");
-    expect(btn).toHaveClass("opacity-60", "min-w-[44px]");
+    expect(btn).toHaveClass("opacity-60", "cursor-not-allowed", "min-w-[44px]");
     fireEvent.click(btn);
     expect(onCustomize).not.toHaveBeenCalled();
 
@@ -40,6 +40,7 @@ describe("OwnProfileActions", () => {
     expect(screen.getByTestId("customize-profile-button")).toBe(btn);
     expect(btn).not.toHaveAttribute("aria-disabled");
     expect(btn).not.toHaveClass("opacity-60");
+    expect(btn).not.toHaveClass("cursor-not-allowed");
     fireEvent.click(screen.getByRole("button", { name: "Customize profile" }));
     expect(onCustomize).toHaveBeenCalledTimes(1);
   });

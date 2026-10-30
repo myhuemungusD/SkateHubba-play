@@ -75,7 +75,7 @@ export function OwnProfileActions({
           data-testid="customize-profile-button"
           aria-disabled={customizeReady ? undefined : true}
           aria-label={customizeReady ? "Customize profile" : "Customize profile, loading"}
-          className={`min-w-[44px] inline-flex items-center justify-center btn-secondary ${SHAPE}${customizeReady ? "" : " opacity-60"}`}
+          className={`min-w-[44px] inline-flex items-center justify-center btn-secondary ${SHAPE}${customizeReady ? "" : " opacity-60 cursor-not-allowed"}`}
         >
           <Palette size={16} aria-hidden="true" />
         </button>

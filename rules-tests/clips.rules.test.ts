@@ -20,7 +20,6 @@ import {
   type RulesTestContext,
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
-import { proSpotsConstraints } from "../src/services/proSpotsQuery";
 import { resolve } from "node:path";
 import {
   collection,
@@ -36,6 +35,7 @@ import {
   setLogLevel,
   where,
 } from "firebase/firestore";
+import { proSpotsConstraints } from "../src/services/proSpotsQuery";
 
 const PROJECT_ID = "demo-skatehubba-rules-clips";
 
