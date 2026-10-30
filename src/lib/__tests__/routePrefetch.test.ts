@@ -1,4 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+// The real screen chunks are heavy; stand each one in with a module that
+// records when the default loader pulls it in.
+const pulled = vi.hoisted(() => [] as string[]);
+vi.mock("../../screens/FeedScreen", () => (pulled.push("feed"), {}));
+vi.mock("../../screens/MapPage", () => (pulled.push("map"), {}));
+vi.mock("../../screens/GamePlayScreen", () => (pulled.push("game"), {}));
+vi.mock("../../screens/GameOverScreen", () => (pulled.push("gameOver"), {}));
+vi.mock("../../screens/PlayerProfileScreen", () => (pulled.push("me"), {}));
+vi.mock("../../screens/Settings", () => (pulled.push("settings"), {}));
+vi.mock("../../screens/ChallengeScreen", () => (pulled.push("challenge"), {}));
+vi.mock("../../screens/MyStatsScreen", () => (pulled.push("myStats"), {}));
 import {
   __resetRoutePrefetchForTest,
   canPrefetch,
@@ -117,6 +129,14 @@ describe("prefetchLikelyRoutes", () => {
     expect(kit.calls).toEqual([]);
   });
 
+  it("is off by default under the test build mode", () => {
+    const add = vi.spyOn(window, "addEventListener");
+    prefetchLikelyRoutes("/lobby");
+    prefetchLikelyRoutes("/lobby", { loaders: loaders() });
+    expect(add).not.toHaveBeenCalled();
+    add.mockRestore();
+  });
+
   it("drains one chunk per idle slice after the quiet delay", async () => {
     vi.useFakeTimers();
     const ric = vi.fn((cb: () => void) => {
@@ -173,5 +193,72 @@ describe("prefetchLikelyRoutes", () => {
     window.dispatchEvent(new Event("pointerdown"));
     await vi.advanceTimersByTimeAsync(10_000);
     expect(kit.calls).toEqual([]);
+  });
+});
+
+describe("prefetchLikelyRoutes queue lifecycle", () => {
+  /** Idle callbacks wait in a list so a test can run them one at a time. */
+  function queuedIdle(): Array<() => void> {
+    const idle: Array<() => void> = [];
+    window.requestIdleCallback = ((cb: () => void) => idle.push(cb)) as unknown as typeof window.requestIdleCallback;
+    return idle;
+  }
+
+  async function runIdle(idle: Array<() => void>): Promise<void> {
+    while (idle.length) {
+      idle.shift()?.();
+      await vi.advanceTimersByTimeAsync(0);
+    }
+  }
+
+  it("stops draining the old route once the viewer navigates", async () => {
+    vi.useFakeTimers();
+    const idle = queuedIdle();
+    const kit = loaders();
+    prefetchLikelyRoutes("/lobby", { enabled: true, loaders: kit });
+    window.dispatchEvent(new Event("keydown"));
+    idle.shift()?.(); // kick -> first chunk
+    await vi.advanceTimersByTimeAsync(0);
+    expect(kit.calls).toEqual(["game"]);
+    expect(idle).toHaveLength(1); // the next drain slice is queued
+    const next = loaders();
+    prefetchLikelyRoutes("/settings", { enabled: true, loaders: next });
+    await runIdle(idle);
+    expect(kit.calls).toEqual(["game"]);
+    expect(next.calls).toEqual([]);
+  });
+
+  it("does not queue another slice when navigation lands mid-download", async () => {
+    vi.useFakeTimers();
+    const idle = queuedIdle();
+    const kit = loaders();
+    let release: (v: unknown) => void = () => undefined;
+    kit.gameOver = () => {
+      kit.calls.push("gameOver");
+      return new Promise((r) => (release = r));
+    };
+    prefetchLikelyRoutes("/game", { enabled: true, loaders: kit });
+    window.dispatchEvent(new Event("pointerdown"));
+    idle.shift()?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(kit.calls).toEqual(["gameOver"]);
+    __resetRoutePrefetchForTest();
+    release(undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(idle).toEqual([]);
+  });
+
+  it("falls back to the real screen chunks when no loaders are passed", async () => {
+    vi.useFakeTimers();
+    const idle = queuedIdle();
+    vi.stubEnv("VITE_FEATURE_EXTRAS_ENABLED", "true");
+    for (const path of ["/lobby", "/me", "/game"]) {
+      prefetchLikelyRoutes(path, { enabled: true });
+      window.dispatchEvent(new Event("keydown"));
+      await runIdle(idle);
+    }
+    expect([...pulled].sort()).toEqual(
+      ["challenge", "feed", "game", "gameOver", "map", "me", "myStats", "settings"].sort(),
+    );
   });
 });

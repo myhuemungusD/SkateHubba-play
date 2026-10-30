@@ -141,6 +141,18 @@ describe("installToolbarOverlay", () => {
     window.matchMedia = original;
   });
 
+  it("asks Capacitor for the native shell by default (web here) and pads the Google app", () => {
+    setUA(GSA);
+    restore = installToolbarOverlay(window);
+    expect(document.documentElement.style.getPropertyValue("--overlay-top")).toBe(`${GSA_TOOLBAR_FALLBACK_PX}px`);
+  });
+
+  it("treats a blank user agent as an ordinary browser", () => {
+    setUA("");
+    restore = installToolbarOverlay(window, () => false);
+    expect(document.documentElement.style.getPropertyValue("--overlay-top")).toBe("");
+  });
+
   it("republishes on orientation change", () => {
     setUA(CHROME_IOS);
     restore = installToolbarOverlay(window, () => false);
