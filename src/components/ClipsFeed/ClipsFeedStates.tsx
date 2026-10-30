@@ -56,12 +56,18 @@ export function ClipsFeedExhausted({ onReload }: { onReload: () => void }) {
   );
 }
 
-export function ClipsFeedEmpty() {
+/**
+ * Shown when the feed has no user posts at all. Game clips stay out of the
+ * public feed, so the way to fill it is posting a clip: the CTA opens the
+ * same upload sheet as the header's POST button.
+ */
+export function ClipsFeedEmpty({ onPostClip }: { onPostClip: () => void }) {
   return (
-    <div className="flex flex-col items-center py-10 border border-white/[0.06] rounded-2xl bg-surface shadow-card">
+    <div className="flex w-full max-w-sm flex-col items-center px-6 py-10 border border-white/[0.06] rounded-2xl bg-surface shadow-card text-center">
       <FilmIcon size={24} className="mb-3 text-faint" />
-      <p className="font-body text-sm text-dim">No clips yet.</p>
-      <p className="font-body text-xs text-faint mt-1">Land a trick to start filling the feed.</p>
+      <h3 className="font-display text-lg tracking-wide text-white">Feed&apos;s empty. Go fill it.</h3>
+      <p className="font-body text-sm text-dim mt-1 mb-5">Film a line, post it, and it shows up here for the crew.</p>
+      <Btn onClick={onPostClip}>Post a clip</Btn>
     </div>
   );
 }

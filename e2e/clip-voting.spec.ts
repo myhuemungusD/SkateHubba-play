@@ -103,3 +103,26 @@ test("clip viewer cannot upvote their own clip — the control renders disabled"
   await expect(ownUpvote).toBeVisible({ timeout: 10_000 });
   await expect(ownUpvote).toBeDisabled();
 });
+
+test("a landed trick from a game stays out of the public feed", async ({ page }) => {
+  const author = await createUser(AUTHOR.email, AUTHOR.password);
+  await createProfile(author.uid, AUTHOR.username, AUTHOR.email, true);
+
+  // Same author, one post and one game-turn clip. Only the post may show.
+  await createClip("posted-clip", author.uid, AUTHOR.username);
+  await createClip("seeded-game_1_set", author.uid, AUTHOR.username, {
+    source: "game",
+    gameId: "seeded-game",
+    turnNumber: 1,
+    role: "set",
+    trickName: "Heelflip",
+  });
+
+  await signUpAndSetupProfile(page, VIEWER.email, VIEWER.password, VIEWER.username);
+  await openClipsFeed(page);
+
+  // The post is the hydration anchor; once it is on screen the page has
+  // loaded, so the game clip's absence is a real result, not a race.
+  await expect(page.getByText("Kickflip").first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Heelflip")).toHaveCount(0);
+});

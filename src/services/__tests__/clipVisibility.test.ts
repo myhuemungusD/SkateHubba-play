@@ -26,6 +26,12 @@ describe("isUserPostedClip", () => {
     expect(isUserPostedClip({ source: "User" })).toBe(false);
   });
 
+  it("fails a non-string or null source, and null data", () => {
+    expect(isUserPostedClip({ source: 1 })).toBe(false);
+    expect(isUserPostedClip({ source: null })).toBe(false);
+    expect(isUserPostedClip(null)).toBe(false);
+  });
+
   it("treats a legacy clip with no source, or no data, as a game clip", () => {
     expect(isUserPostedClip({})).toBe(false);
     expect(isUserPostedClip(undefined)).toBe(false);

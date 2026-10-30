@@ -15,7 +15,7 @@ import { isUserPostedClip } from "./clipVisibility";
  * a clip at, each with those clips.
  */
 
-/** How many of the pro's clips are scanned for spot tags. */
+/** How many of the pro's posts are scanned for spot tags. */
 const PRO_CLIP_SCAN_LIMIT = 60;
 /** Max spots shown on a pro profile. */
 export const PRO_SPOTS_LIMIT = 8;
@@ -45,7 +45,16 @@ export async function fetchProClipReel(uid: string): Promise<PinnableClip[]> {
 export async function fetchProSpots(uid: string): Promise<ProSpot[]> {
   try {
     const [clipSnap, created] = await Promise.all([
-      getDocs(query(collection(requireDb(), "clips"), where("playerUid", "==", uid), limit(PRO_CLIP_SCAN_LIMIT))),
+      // `source` is filtered in the query, before the limit, so game clips can't
+      // crowd posts out of the scan. Equality-only: single-field indexes merge.
+      getDocs(
+        query(
+          collection(requireDb(), "clips"),
+          where("playerUid", "==", uid),
+          where("source", "==", "user"),
+          limit(PRO_CLIP_SCAN_LIMIT),
+        ),
+      ),
       listSpotsByCreator(uid).catch(() => [] as Spot[]),
     ]);
     const bySpot = new Map<string, PinnableClip[]>();

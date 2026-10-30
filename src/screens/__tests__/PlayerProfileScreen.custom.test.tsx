@@ -32,7 +32,7 @@ vi.mock("../../services/profileCustom", async (orig) => {
     getProfileCustom: m.get,
     saveProfileCustom: m.save,
     fetchPinnableClips: m.pinnable,
-    fetchPinnedClips: m.pinned,
+    resolvePinnedClips: m.pinned,
   };
 });
 
@@ -72,7 +72,11 @@ beforeEach(() => {
   vi.stubGlobal("Audio", FakeAudio);
   mockLocker.mockResolvedValue([]);
   m.get.mockResolvedValue(full);
-  m.pinned.mockResolvedValue([{ id: "c1", trickName: "Tre flip", videoUrl: "v.mp4", thumbnailUrl: null }]);
+  // Every pin resolves (none pruned); only c1 has a clip to render.
+  m.pinned.mockImplementation(async (_uid: string, ids: string[]) => ({
+    clips: [{ id: "c1", trickName: "Tre flip", videoUrl: "v.mp4", thumbnailUrl: null }],
+    keepIds: ids,
+  }));
   m.pinnable.mockResolvedValue([
     { id: "c1", trickName: "Tre flip", videoUrl: "v.mp4", thumbnailUrl: null },
     { id: "c2", trickName: "Heelflip", videoUrl: "v2.mp4", thumbnailUrl: "t.jpg" },

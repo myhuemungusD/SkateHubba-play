@@ -19,9 +19,9 @@ import {
 import { trackEvent } from "../../services/analytics";
 import { logger } from "../../services/logger";
 import { parseFirebaseError } from "../../utils/helpers";
-import { useBlockedUsers } from "../../hooks/useBlockedUsers";
+import { useBlockedUsersState } from "../../hooks/useBlockedUsers";
 import { NO_VOTE, applyVote, nextVoteFor, sameVoteState, type VoteValue } from "./clipVoteMath";
-import { copyForError, errorCodeFor } from "./utils";
+import { BLOCK_LIST_ERROR, BLOCK_LIST_ERROR_CODE, copyForError, errorCodeFor } from "./utils";
 import { useLatestRef } from "./useLatestRef";
 import { fetchFeedPage } from "./feedPaging";
 
@@ -45,7 +45,11 @@ export function useClipsFeedController(viewerUid: string) {
   const [voteState, setVoteState] = useState<ReadonlyMap<string, ClipVoteState>>(new Map());
   const [votingIds, setVotingIds] = useState<ReadonlySet<string>>(new Set());
 
-  const blockedUids = useBlockedUsers(viewerUid);
+  // The feed must never show a blocked player's clip, even for a frame, so
+  // it waits for the block list (same rule SpotChat follows) and treats a
+  // list that failed to load as an error with Try again, not as "nobody".
+  const block = useBlockedUsersState(viewerUid);
+  const blockedUids = block.blocked;
   const blockedUidsRef = useLatestRef<ReadonlySet<string>>(blockedUids);
   const dismissedRef = useLatestRef<ReadonlySet<string>>(dismissedClipIds);
 
@@ -162,12 +166,15 @@ export function useClipsFeedController(viewerUid: string) {
     [hydrateVotes, sort],
   );
 
+  // Try again also re-subscribes the block list, but only if it failed.
+  const { failed: blockFailed, retry: retryBlockList } = block;
   const loadPool = useCallback(async () => {
+    if (blockFailed) retryBlockList();
     setLoading(true);
     setError(null);
     setErrorCode(null);
     await fetchPool();
-  }, [fetchPool]);
+  }, [fetchPool, blockFailed, retryBlockList]);
 
   // Initial state is already `loading: true` with no error, so mount and
   // sort/viewer changes only need the async half.
@@ -175,10 +182,17 @@ export function useClipsFeedController(viewerUid: string) {
     void fetchPool();
   }, [fetchPool]);
 
+  // Until the block list is known, nothing is shown: the feed stays in its
+  // loading state, or shows Try again if the list failed to load.
+  const blockKnown = block.ready && !blockFailed;
+  const loadingAll = loading || !block.ready;
+  const blockError = blockFailed ? BLOCK_LIST_ERROR : null;
+  const shownError = error ?? blockError;
+
   // Filter blocked users + session-dismissed clips out on the client.
   const visibleClips = useMemo(
-    () => pool.filter((c) => !blockedUids.has(c.playerUid) && !dismissedClipIds.has(c.id)),
-    [pool, blockedUids, dismissedClipIds],
+    () => (blockKnown ? pool.filter((c) => !blockedUids.has(c.playerUid) && !dismissedClipIds.has(c.id)) : []),
+    [blockKnown, pool, blockedUids, dismissedClipIds],
   );
 
   const safeIndex = visibleClips.length === 0 ? 0 : Math.min(currentIndex, visibleClips.length - 1);
@@ -189,7 +203,7 @@ export function useClipsFeedController(viewerUid: string) {
 
   // Every clip in the page was blocked or reported. Distinct from "no clips
   // exist" — the copy and the affordance differ.
-  const exhausted = !loading && !error && pool.length > 0 && visibleClips.length === 0;
+  const exhausted = !loadingAll && !shownError && pool.length > 0 && visibleClips.length === 0;
 
   // Mirror `cursor` / `loadingMore` in refs so loadMore keeps a stable
   // identity (same reasoning as votingIdsRef above).
@@ -311,9 +325,11 @@ export function useClipsFeedController(viewerUid: string) {
     // Exposed so the comment sheet can filter blocked authors out of a thread
     // without opening a second `subscribeToBlockedUsers` listener.
     blockedUids,
-    loading,
-    error,
-    errorCode,
+    loading: loadingAll,
+    /** The block list failed to load: the feed shows only its Try again banner. */
+    blockFailed,
+    error: shownError,
+    errorCode: error ? errorCode : blockError && BLOCK_LIST_ERROR_CODE,
     visibleClips,
     currentClip,
     nextClip,

@@ -19,7 +19,8 @@ import type { Dispute, DisputeTally, DisputeVerdict, DisputeViewerState } from "
 import { trackEvent } from "../../services/analytics";
 import { logger } from "../../services/logger";
 import { parseFirebaseError } from "../../utils/helpers";
-import { useBlockedUsers } from "../../hooks/useBlockedUsers";
+import { useBlockedUsersState } from "../../hooks/useBlockedUsers";
+import { BLOCK_LIST_ERROR } from "./utils";
 
 const PAGE_SIZE = 8;
 
@@ -53,7 +54,10 @@ export function useDisputeLaneController(viewerUid: string): DisputeLaneControll
   const [viewerState, setViewerState] = useState<ReadonlyMap<string, DisputeViewerState>>(new Map());
   const [votingIds, setVotingIds] = useState<ReadonlySet<string>>(new Set());
 
-  const blockedUids = useBlockedUsers(viewerUid);
+  // Same rule as the clips lane: wait for the block list, and show the
+  // lane's error + Try again if it failed to load (see useBlockedUsersState).
+  const block = useBlockedUsersState(viewerUid);
+  const blockedUids = block.blocked;
 
   // Guard against setState-after-unmount during fetch races.
   const mountedRef = useRef(true);
@@ -202,16 +206,23 @@ export function useDisputeLaneController(viewerUid: string): DisputeLaneControll
   );
 
   // Blocked authors drop out client-side, exactly as they do for clips.
-  const visible = disputes.filter((d) => !blockedUids.has(d.matcherUid) && !blockedUids.has(d.setterUid));
+  // Nothing shows until the block list is known.
+  const blockKnown = block.ready && !block.failed;
+  const visible = blockKnown
+    ? disputes.filter((d) => !blockedUids.has(d.matcherUid) && !blockedUids.has(d.setterUid))
+    : [];
 
   return {
     disputes: visible,
-    loading,
-    error,
+    loading: loading || !block.ready,
+    error: error ?? (block.failed ? BLOCK_LIST_ERROR : null),
     tallyFor: (disputeId) => tallies.get(disputeId) ?? ZERO_TALLY,
     viewerFor: (disputeId) => viewerState.get(disputeId) ?? UNKNOWN_VIEWER,
     isVoting: (disputeId) => votingIds.has(disputeId),
-    reload: () => void load(),
+    reload: () => {
+      if (block.failed) block.retry();
+      void load();
+    },
     handleVerdict,
   };
 }

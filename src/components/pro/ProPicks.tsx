@@ -81,10 +81,14 @@ export function ProPicks({ player }: { player: Player }) {
   useEffect(() => {
     if (!open || featured !== null) return;
     let live = true;
-    void Promise.all([listFeaturedClips(), listChallenges(), fetchPinnableClips(player.uid)]).then(([f, c, mine]) => {
-      if (!live) return;
+    void Promise.all([
       // Pro Picks sits on the feed, so it shows user posts only.
-      setFeatured(f.filter((clip) => clip.userClip));
+      listFeaturedClips({ userPostsOnly: true }),
+      listChallenges(),
+      fetchPinnableClips(player.uid),
+    ]).then(([f, c, mine]) => {
+      if (!live) return;
+      setFeatured(f);
       setChallenges(c);
       setClips(mine);
     });

@@ -99,9 +99,17 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
   }, [clips.loadingMore, clips.visibleClips.length, scrollToIndex]);
 
   const toggleMute = useCallback(() => setMuted((m) => !m), []);
+  // The header's POST button and the empty state's CTA open the same sheet.
+  const openUpload = useCallback(() => setUploadOpen(true), []);
+  const retryFeed = useCallback(() => {
+    if (clips.blockFailed) disputes.reload();
+    void clips.loadPool();
+  }, [clips, disputes]);
 
   const hasSlides = disputes.disputes.length > 0 || clips.visibleClips.length > 0;
-  const showSlides = !blocking && (hasSlides || Boolean(disputes.error));
+  // A failed block list pauses the whole feed behind one Try again banner;
+  // the dispute lane would otherwise repeat the same error as a slide.
+  const showSlides = !blocking && !clips.blockFailed && (hasSlides || Boolean(disputes.error));
   const showEmpty = !blocking && !clips.error && !disputes.error && !hasSlides && !clips.exhausted;
   const showExhausted =
     !blocking && !clips.error && !disputes.error && clips.exhausted && disputes.disputes.length === 0;
@@ -117,7 +125,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         onSortChange={clips.handleSortChange}
         disabled={clips.loading || clips.loadingMore}
         position={showSlides && slideCount > 0 ? { index: activeIndex, total: slideCount } : undefined}
-        onPostClip={() => setUploadOpen(true)}
+        onPostClip={openUpload}
       />
 
       {feedModesEnabled && (
@@ -142,13 +150,13 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
 
       {clips.error && !clips.loading && (
         <div className="absolute inset-x-4 top-24 z-30">
-          <ClipsFeedError error={clips.error} errorCode={clips.errorCode} onRetry={clips.loadPool} />
+          <ClipsFeedError error={clips.error} errorCode={clips.errorCode} onRetry={retryFeed} />
         </div>
       )}
 
       {showEmpty && (
         <div className="absolute inset-0 z-20 flex items-center justify-center px-6">
-          <ClipsFeedEmpty />
+          <ClipsFeedEmpty onPostClip={openUpload} />
         </div>
       )}
 

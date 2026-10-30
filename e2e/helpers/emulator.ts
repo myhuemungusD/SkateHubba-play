@@ -270,8 +270,16 @@ export async function createSpot(
  * `videoUrl` is a tiny inline data URL by default: the spotlight video
  * element won't decode meaningful frames, but upvote / report controls do
  * not require playback to be exercised.
+ *
+ * `overrides` replaces any field, e.g. a game-turn clip
+ * (`source: "game"`, a `gameId`) to check it stays out of the feed.
  */
-export async function createClip(id: string, playerUid: string, playerUsername: string): Promise<void> {
+export async function createClip(
+  id: string,
+  playerUid: string,
+  playerUsername: string,
+  overrides: Record<string, unknown> = {},
+): Promise<void> {
   await writeDoc("clips", id, {
     source: "user",
     gameId: null,
@@ -285,6 +293,7 @@ export async function createClip(id: string, playerUid: string, playerUsername: 
     createdAt: new Date(),
     moderationStatus: "active",
     upvoteCount: 0,
+    ...overrides,
   });
 }
 
