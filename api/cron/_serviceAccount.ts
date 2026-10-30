@@ -50,7 +50,7 @@ interface RawServiceAccount {
 }
 
 /** Credential fields in the camelCase form `cert()` expects, all present. */
-interface ParsedServiceAccount {
+export interface ParsedServiceAccount {
   projectId: string;
   clientEmail: string;
   privateKey: string;

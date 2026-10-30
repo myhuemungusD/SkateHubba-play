@@ -11,6 +11,7 @@ import { fetchActiveDrops, fetchDropClaim, fetchDrawEntry, claimDrop, enterDraw 
 import { fetchCatalogItem } from "../services/closet.catalog";
 import { logger } from "../services/logger";
 import { parseFirebaseError } from "../utils/helpers";
+import { ClosetGatedState, ClosetLoadErrorState, ClosetLoadingState } from "../components/ClosetScreenStates";
 
 interface DropWithItem {
   drop: Drop;
@@ -92,35 +93,15 @@ export function DropDayScreen() {
   };
 
   if (!isClosetDropsEnabled() || !user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-surface">
-        <p className="text-subtle">Drop Day is in testing and not open to everyone yet.</p>
-      </div>
-    );
+    return <ClosetGatedState message="Drop Day is in testing and not open to everyone yet." />;
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-surface">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange" />
-      </div>
-    );
+    return <ClosetLoadingState />;
   }
 
   if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-surface px-4">
-        <div className="text-center">
-          <p className="text-critical mb-4">Failed to load drops</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-brand-orange text-surface-dark rounded-lg font-display"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
+    return <ClosetLoadErrorState message="Failed to load drops" />;
   }
 
   return (

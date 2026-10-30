@@ -178,7 +178,8 @@ function tuneMaterials(root: Object3D, anisotropy: number): void {
   });
 }
 
-function disposeObject(root: Object3D): void {
+/** Dispose every geometry, material and texture map under `root`, each once. */
+export function disposeObject(root: Object3D): void {
   const geometries = new Set<BufferGeometry>();
   const materials = new Set<Material>();
   const textures = new Set<Texture>();
