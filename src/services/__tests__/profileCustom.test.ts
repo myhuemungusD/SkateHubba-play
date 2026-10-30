@@ -201,13 +201,16 @@ describe("Firestore I/O", () => {
     await expect(saveProfileCustom("u1", DEFAULT_PROFILE_CUSTOM)).rejects.toThrow("profile_custom_unauthenticated");
   });
 
-  it("fetchPinnableClips maps valid clips and returns [] on error", async () => {
+  it("fetchPinnableClips maps valid user posts and returns [] on error", async () => {
     h.getDocs.mockResolvedValueOnce({
       docs: [
-        { id: "a", data: () => ({ trickName: "Kickflip", videoUrl: "v", thumbnailUrl: "t" }) },
-        { id: "b", data: () => ({ trickName: "Heel", videoUrl: "v2" }) },
-        { id: "c", data: () => ({ trickName: 3 }) },
+        { id: "a", data: () => ({ source: "user", trickName: "Kickflip", videoUrl: "v", thumbnailUrl: "t" }) },
+        { id: "b", data: () => ({ source: "user", trickName: "Heel", videoUrl: "v2" }) },
+        { id: "c", data: () => ({ source: "user", trickName: 3 }) },
         { id: "d", data: () => undefined },
+        // Game clips and legacy clips with no source stay off the profile.
+        { id: "g", data: () => ({ source: "game", trickName: "Game", videoUrl: "vg" }) },
+        { id: "l", data: () => ({ trickName: "Legacy", videoUrl: "vl" }) },
       ],
     });
     expect(await fetchPinnableClips("u1")).toEqual([
@@ -222,13 +225,15 @@ describe("Firestore I/O", () => {
 
   it("fetchPinnedClips keeps order and skips missing, foreign and unreadable clips", async () => {
     h.getDoc.mockImplementation(async (path: string) => {
-      if (path === "clips/a") return snap({ playerUid: "u1", trickName: "A", videoUrl: "va" });
-      if (path === "clips/b") return snap({ playerUid: "u2", trickName: "B", videoUrl: "vb" });
+      if (path === "clips/a") return snap({ source: "user", playerUid: "u1", trickName: "A", videoUrl: "va" });
+      if (path === "clips/b") return snap({ source: "user", playerUid: "u2", trickName: "B", videoUrl: "vb" });
+      if (path === "clips/g") return snap({ source: "game", playerUid: "u1", trickName: "G", videoUrl: "vg" });
+      if (path === "clips/l") return snap({ playerUid: "u1", trickName: "L", videoUrl: "vl" });
       if (path === "clips/c") return snap(undefined);
       throw new Error("denied");
     });
     expect((await fetchPinnedClips("u1", ["d", "b", "c", "a"])).length).toBe(0);
-    expect(await fetchPinnedClips("u1", ["a", "b", "c"])).toEqual([
+    expect(await fetchPinnedClips("u1", ["a", "b", "c", "g", "l"])).toEqual([
       { id: "a", trickName: "A", videoUrl: "va", thumbnailUrl: null },
     ]);
   });

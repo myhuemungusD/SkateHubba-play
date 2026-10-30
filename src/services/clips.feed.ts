@@ -20,7 +20,7 @@ import {
 import { withRetry } from "../utils/retry";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
-import { isPubliclyApproved } from "./clipVisibility";
+import { isPubliclyApproved, isUserPostedClip } from "./clipVisibility";
 import {
   clipsRef,
   toClipDoc,
@@ -106,13 +106,38 @@ function isMissingIndexError(err: unknown): boolean {
   return message.toLowerCase().includes("index");
 }
 
+/**
+ * How many raw pages one feed call may scan to fill a page with user posts.
+ * Game clips share the collection and the indexes, and are filtered on the
+ * client (a `source` filter in the query would need new composite indexes),
+ * so a window of mostly game clips would otherwise come back near-empty and
+ * end the feed early. Bounded so a game-heavy window costs at most this many
+ * reads of `pageSize` docs per call.
+ */
+const MAX_SCAN_PAGES = 4;
+
 async function runFeedQuery(
   cursor: ClipsFeedCursor | null,
   pageSize: number,
   sort: ClipsFeedSort,
 ): Promise<ClipsFeedPage> {
   const boundedSize = Math.max(1, Math.min(50, pageSize));
+  const clips: ClipDoc[] = [];
+  let next = cursor;
+  for (let scanned = 0; scanned < MAX_SCAN_PAGES; scanned += 1) {
+    const page = await runFeedPage(next, boundedSize, sort);
+    clips.push(...page.clips);
+    next = page.cursor;
+    if (!page.full || !next || clips.length >= boundedSize) break;
+  }
+  return { clips, cursor: next };
+}
 
+async function runFeedPage(
+  cursor: ClipsFeedCursor | null,
+  boundedSize: number,
+  sort: ClipsFeedSort,
+): Promise<ClipsFeedPage & { full: boolean }> {
   // App Store Guideline 1.2 requires offensive UGC to be removable from
   // the feed. The query keeps moderationStatus == 'active'. Pending,
   // hidden, rejected, and review clips are not active. isPubliclyApproved
@@ -151,8 +176,11 @@ async function runFeedQuery(
   const clips: ClipDoc[] = [];
   for (const d of snap.docs) {
     try {
-      const raw = d.data() as { moderationStatus?: unknown; moderation?: unknown } | undefined;
+      const raw = d.data() as { moderationStatus?: unknown; moderation?: unknown; source?: unknown } | undefined;
       if (raw && !isPubliclyApproved(raw)) continue;
+      // Public feed = user posts only. Game clips (and legacy clips with no
+      // source, which were all game clips) stay in game and dispute screens.
+      if (!isUserPostedClip(raw)) continue;
       clips.push(toClipDoc(d));
     } catch (err) {
       logger.warn("clips_feed_doc_malformed", { docId: d.id, error: parseFirebaseError(err) });
@@ -181,5 +209,5 @@ async function runFeedQuery(
             : { createdAt: last.createdAt, id: last.id };
         })();
 
-  return { clips, cursor: nextCursor };
+  return { clips, cursor: nextCursor, full: snap.docs.length >= boundedSize };
 }
