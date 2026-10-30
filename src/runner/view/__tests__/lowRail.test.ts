@@ -7,6 +7,7 @@ import { asRenderer, fakeRenderer } from "./r3f-test-helpers";
 import { RAIL_LENGTH } from "../../constants";
 import { useLowRail } from "../lowRail";
 import { loadRunnerModel } from "../skateboardModel";
+import { expectWarned } from "./warn-test-helpers";
 
 vi.mock("../../artSlots", async () => (await import("./art-slots-test-helpers")).artSlotsModule);
 vi.mock("../skateboardModel", async (importOriginal) => ({
@@ -178,7 +179,7 @@ describe("useLowRail", () => {
       pending.reject(error);
       await flush();
     });
-    expect(warn).toHaveBeenCalledWith("Runner low rail failed to load", error);
+    expectWarned(warn, ["low rail", "fail"], error.message);
     expect(fallbackVisible(withMount)).toEqual([true, true, true]);
   });
 });

@@ -14,6 +14,7 @@ import {
 } from "three";
 import { deferred, flush, resetSlots, slots, type Deferred } from "./art-slots-test-helpers";
 import { useCustomBoardArt } from "../customArt";
+import { expectWarned } from "./warn-test-helpers";
 
 vi.mock("../../artSlots", async () => (await import("./art-slots-test-helpers")).artSlotsModule);
 
@@ -148,7 +149,7 @@ describe("useCustomBoardArt", () => {
       loads.get("graphic.webp")?.reject(error);
       await flush();
     });
-    expect(warn).toHaveBeenCalledWith("Runner custom art failed to load", error);
+    expectWarned(warn, ["custom art", "fail"], error.message);
     expect(graphic.visible).toBe(false);
   });
 });

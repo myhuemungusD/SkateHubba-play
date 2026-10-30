@@ -143,10 +143,18 @@ describe("ObstaclePool", () => {
   });
 
   it("ignores a frame once the slots unmount", async () => {
-    const { scene: s, slots } = await mount([obstacle({})]);
+    const rail = obstacle({});
+    const { scene: s, slots } = await mount([rail]);
+    await s.frame();
+    const first = slots[0] as Object3D;
+    const placed = first.position.toArray();
+    expect(first.visible).toBe(true);
     const late = s.captureFrame();
     await s.unmount();
-    expect(() => late()).not.toThrow();
-    expect(slots[0]?.visible).toBe(false);
+    // A live frame would move the slot to the new z.
+    rail.z = 30;
+    late();
+    expect(first.position.toArray()).toEqual(placed);
+    expect(first.visible).toBe(true);
   });
 });

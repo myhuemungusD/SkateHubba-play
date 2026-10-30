@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render3D, type Scene3D } from "./r3f-test-helpers";
 import { RunnerBloom } from "../Bloom";
 import { BLOOM_MIPS, BLOOM_RADIUS, BLOOM_STRENGTH, BLOOM_THRESHOLD } from "../../tune";
+import { expectWarned, expectNotWarned } from "./warn-test-helpers";
 
 interface FakePass {
   kind: string;
@@ -104,7 +105,7 @@ describe("RunnerBloom", () => {
     expect(bloom).toEqual([BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD]);
     expect(effect?.pixelRatio).toBe(1);
     expect(effect?.size).toEqual([400, 800]);
-    expect(warn).not.toHaveBeenCalledWith("Runner bloom mip count drifted", expect.anything());
+    expectNotWarned(warn, ["bloom", "mip", "drift"]);
   });
 
   it("takes over the frame's render at priority 1", async () => {
@@ -120,7 +121,7 @@ describe("RunnerBloom", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     composer.nMips = 3;
     scene = await render3D(<RunnerBloom />);
-    expect(warn).toHaveBeenCalledWith("Runner bloom mip count drifted", 3);
+    expectWarned(warn, ["bloom", "mip", "drift"], "3");
   });
 
   it("frees the composer on unmount", async () => {

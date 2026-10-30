@@ -13,6 +13,7 @@ import {
 } from "three";
 import { fakeContext2D, flush, stubCanvas2D, type Deferred } from "./art-slots-test-helpers";
 import { asRenderer, fakeRenderer } from "./r3f-test-helpers";
+import { expectWarned } from "./warn-test-helpers";
 
 /** Every KTX2 / HDR load the module asks for, by asset file name. */
 const ktx = vi.hoisted(() => ({
@@ -275,9 +276,7 @@ describe("runner maps", () => {
     const gl = asRenderer(fakeRenderer());
     const scene = new Scene();
     tex.mountRunnerEnvironment(gl, scene)();
-    await vi.waitFor(() =>
-      expect(warn).toHaveBeenCalledWith("Runner environment failed to load", new Error("bad brick-normal")),
-    );
+    await vi.waitFor(() => expectWarned(warn, ["environment", "fail"], "bad brick-normal"));
     expect(ktx.loaders[0]?.disposed).toBe(true);
     expect(tex.roadMaterial().map).toBeNull();
 
@@ -365,7 +364,7 @@ describe("mountRunnerEnvironment", () => {
     const { scene, hdr, hdrLoad } = await mount(tex);
     hdrLoad.resolve(hdr);
     await vi.waitFor(() => expect(scene.environment).not.toBeNull());
-    expect(warn).toHaveBeenCalledWith("Runner brand art failed to load", error);
+    expectWarned(warn, ["brand art", "fail"], error.message);
   });
 
   it("warns and frees the HDRI when the street maps fail", async () => {
@@ -374,7 +373,7 @@ describe("mountRunnerEnvironment", () => {
     const { tex } = await fresh();
     const { scene, hdr, hdrLoad } = await mount(tex);
     const hdrDispose = vi.spyOn(hdr, "dispose");
-    await vi.waitFor(() => expect(warn).toHaveBeenCalledWith("Runner environment failed to load", expect.any(Error)));
+    await vi.waitFor(() => expectWarned(warn, ["environment", "fail"]));
     hdrLoad.resolve(hdr);
     await vi.waitFor(() => expect(hdrDispose).toHaveBeenCalled());
     expect(scene.environment).toBeNull();
@@ -386,7 +385,7 @@ describe("mountRunnerEnvironment", () => {
     const { scene, hdrLoad } = await mount(tex);
     const error = new Error("hdr 404");
     hdrLoad.reject(error);
-    await vi.waitFor(() => expect(warn).toHaveBeenCalledWith("Runner environment failed to load", error));
+    await vi.waitFor(() => expectWarned(warn, ["environment", "fail"], error.message));
     await flush();
     expect(warn).toHaveBeenCalledTimes(1);
     expect(scene.environment).toBeNull();

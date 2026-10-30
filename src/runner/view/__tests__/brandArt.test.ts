@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { CanvasTexture, SRGBColorSpace, Texture, TextureLoader } from "three";
 import { fakeContext2D, flush, stubCanvas2D, type FakeContext2D } from "./art-slots-test-helpers";
+import { expectWarned } from "./warn-test-helpers";
 
 type BrandArt = typeof import("../brandArt");
 
@@ -108,7 +109,7 @@ describe("ensureBrandArt", () => {
     stubCanvas2D(null);
     const art = await fresh();
     await art.ensureBrandArt();
-    expect(warn).toHaveBeenCalledWith("Runner sign font failed", fontError);
+    expectWarned(warn, ["sign", "font", "fail"], fontError.message);
     expect(art.shopSignMaterial().map).toBeNull();
     // The posters still paint.
     expect(art.logoPosterMaterial().map).toBeInstanceOf(Texture);

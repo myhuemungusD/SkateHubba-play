@@ -7,6 +7,7 @@ import { deferred, flush, slots, type Deferred } from "./art-slots-test-helpers"
 // keeps mocked modules, so later fresh imports still read these slots.
 import "../../artSlots";
 import { asRenderer, fakeRenderer } from "./r3f-test-helpers";
+import { expectWarned } from "./warn-test-helpers";
 
 vi.mock("../../artSlots", async () => (await import("./art-slots-test-helpers")).artSlotsModule);
 
@@ -200,7 +201,7 @@ describe("useSkateparkLedges", () => {
       loads[0]?.reject(error);
       await flush();
     });
-    expect(warn).toHaveBeenCalledWith("Runner skatepark ledges failed to load", error);
+    expectWarned(warn, ["skatepark ledges", "fail"], error.message);
     expect(fallback(slot)).toEqual([true, true, true]);
     first.unmount();
 
@@ -263,7 +264,7 @@ describe("useSkateparkScenery", () => {
       loads[0]?.reject(error);
       await flush();
     });
-    expect(warn).toHaveBeenCalledWith("Runner skatepark scenery failed to load", error);
+    expectWarned(warn, ["skatepark scenery", "fail"], error.message);
   });
 });
 
@@ -309,7 +310,7 @@ describe("shared skatepark load", () => {
       loads[1]?.reject(new Error("stale"));
       await flush();
     });
-    expect(warn).toHaveBeenCalledWith("Runner skatepark ledges failed to load", expect.any(Error));
+    expectWarned(warn, ["skatepark ledges", "fail"]);
     renderHook(() => park.useSkateparkLedges({ current: [boxSlot()] }, gl));
     expect(loader.fn).toHaveBeenCalledTimes(3);
     const live = parkScene(park.LEDGE_NODE_NAMES);

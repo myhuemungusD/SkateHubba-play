@@ -68,11 +68,17 @@ describe("GhostBoard", () => {
   });
 
   it("ignores a frame that lands after unmount", async () => {
-    const { controller } = await mountGhost({}, { distance: 5 });
+    const { controller, ghost } = await mountGhost({}, { distance: 5 });
+    await scene?.frame();
+    const board = ghost();
+    const placed = board.position.toArray();
     const late = scene?.captureFrame();
     await scene?.unmount();
     scene = null;
-    controller.frame.distance = 6;
-    expect(() => late?.()).not.toThrow();
+    // A live frame at 15 m would move the ghost to x = 0 and y = 0.54.
+    controller.frame.distance = 15;
+    late?.();
+    expect(board.position.toArray()).toEqual(placed);
+    expect(board.visible).toBe(true);
   });
 });

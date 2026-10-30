@@ -27,6 +27,7 @@ import {
   useSkateboardModel,
   wheelSpinRate,
 } from "../skateboardModel";
+import { expectWarned } from "./warn-test-helpers";
 
 vi.mock("../../artSlots", async () => (await import("./art-slots-test-helpers")).artSlotsModule);
 
@@ -243,7 +244,7 @@ describe("loadRunnerModel", () => {
     gltf.detectError = new Error("no webgl");
     gltf.next = () => Promise.resolve({ scene: boardModel().model });
     await expect(loadRunnerModel("board.glb", asRenderer(fakeRenderer()))).resolves.toBeInstanceOf(Group);
-    expect(warn).toHaveBeenCalledWith("Runner KTX2 support check failed", gltf.detectError);
+    expectWarned(warn, ["ktx2", "support", "fail"], "no webgl");
   });
 
   it("frees the decoders when the file fails", async () => {
@@ -415,7 +416,7 @@ describe("useSkateboardModel", () => {
     scene = await render3D(<Rig controller={fakeController()} />);
     const error = new Error("bad glb");
     pending.reject(error);
-    await vi.waitFor(() => expect(warn).toHaveBeenCalledWith("Runner skateboard model failed to load", error));
+    await vi.waitFor(() => expectWarned(warn, ["skateboard model", "fail"], error.message));
     expect(scene.find("ProceduralBoard").visible).toBe(true);
   });
 });

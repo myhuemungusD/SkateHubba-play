@@ -63,15 +63,23 @@ describe("GroundInstances", () => {
   });
 
   it("skips shadows on the phone tier, frees geometry on unmount, and ignores a late frame", async () => {
-    scene = await render3D(<GroundInstances controller={fakeController()} quality="low" />);
-    const draws = scene.state().scene.children[0]?.children as InstancedMesh[];
+    const controller = fakeController({}, { distance: 0 });
+    scene = await render3D(<GroundInstances controller={controller} quality="low" />);
+    await scene.frame();
+    // Copied: unmount empties the live children array.
+    const draws = [...(scene.state().scene.children[0]?.children ?? [])] as InstancedMesh[];
+    expect(draws).toHaveLength(5);
     expect(draws.some((mesh) => mesh.receiveShadow)).toBe(false);
     const freed = draws.map((mesh) => vi.spyOn(mesh.geometry, "dispose"));
+    const placed = draws.map((mesh) => Array.from(mesh.instanceMatrix.array));
     const late = scene.captureFrame();
     await scene.unmount();
     scene = null;
     for (const spy of freed) expect(spy).toHaveBeenCalled();
-    expect(() => late()).not.toThrow();
+    // A live frame 100 m on would move every slab; the late one moves none.
+    controller.frame.distance = 100;
+    late();
+    expect(draws.map((mesh) => Array.from(mesh.instanceMatrix.array))).toEqual(placed);
   });
 });
 
@@ -140,15 +148,19 @@ describe("Street", () => {
   });
 
   it("copes with a missing slab and with a frame after unmount", async () => {
-    const { scene: s, slabs } = await mountStreet(50);
+    const { controller, scene: s, slabs } = await mountStreet(50);
     const last = slabs.children[2] as Object3D;
     last.removeFromParent();
     await s.frame();
     expect(slabs.children[1]?.position.z).toBeCloseTo(-10);
     expect(last.position.z).toBe(0);
+    const middle = slabs.children[1] as Object3D;
     const late = s.captureFrame();
     await s.unmount();
     scene = null;
-    expect(() => late()).not.toThrow();
+    // A live frame 100 m on would recycle the slab; the late one leaves it.
+    controller.frame.distance = 150;
+    late();
+    expect(middle.position.z).toBeCloseTo(-10);
   });
 });
