@@ -330,7 +330,7 @@ export function PlayerProfileScreen({
             onViewMyStats={onViewMyStats}
             onShare={() => void handleShareProfile()}
             shareCopied={shareCopied}
-            onCustomize={customOn ? () => setCustomizing(true) : undefined}
+            onCustomize={customOn && pc.ready ? () => setCustomizing(true) : undefined}
           />
         )}
 

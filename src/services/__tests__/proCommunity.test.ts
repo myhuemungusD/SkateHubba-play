@@ -174,6 +174,13 @@ describe("featured clips", () => {
       expect(h.getDocs).toHaveBeenCalledTimes(2);
     });
 
+    it("keeps the pages already read when a later page fails", async () => {
+      h.getDocs.mockResolvedValueOnce(page([...ids("g", 28), "u-a", "u-b"])).mockRejectedValueOnce(new Error("x"));
+      const out = await listFeaturedClips({ userPostsOnly: true });
+      expect(out.map((c) => c.clipId)).toEqual(["u-a", "u-b"]);
+      expect(h.warn).toHaveBeenCalledWith("pro_featured_load_failed", { error: "x", kept: 2 });
+    });
+
     it("lists every feature from one full page when not filtering", async () => {
       h.getDocs.mockResolvedValueOnce(page([...ids("g", 15), ...ids("u", 15)]));
       expect(await listFeaturedClips()).toHaveLength(30);

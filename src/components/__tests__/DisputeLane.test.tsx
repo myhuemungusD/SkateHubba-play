@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DisputeLane, disputeSlideCount } from "../ClipsFeed/DisputeLane";
+import { useDisputeLaneController } from "../ClipsFeed/useDisputeLaneController";
+import { BLOCK_LIST_ERROR } from "../ClipsFeed/utils";
 import type { Dispute, DisputeTally, DisputeViewerState } from "../../types/dispute";
 import { deferred } from "../../__tests__/harness/deferred";
 import { makeDispute } from "./disputeFixtures.test-helpers";
@@ -395,5 +397,37 @@ describe("DisputeLane — block list", () => {
 
     await screen.findByRole("article", { name: /community call on Switch Heel/i });
     expect(mockSubscribeToBlockedUsers).toHaveBeenCalledTimes(2);
+  });
+
+  describe("useDisputeLaneController", () => {
+    it("drops a call that involves a blocked player", async () => {
+      mockSubscribeToBlockedUsers.mockImplementation(answerBlockList(["u2"]));
+      mockFetchOpenDisputes.mockResolvedValueOnce([makeDispute()]);
+      const { result } = renderHook(() => useDisputeLaneController("me"));
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.disputes).toEqual([]);
+      expect(result.current.error).toBeNull();
+    });
+
+    it("keeps a call when nobody in it is blocked", async () => {
+      mockSubscribeToBlockedUsers.mockImplementation(answerBlockList(["someone-else"]));
+      mockFetchOpenDisputes.mockResolvedValueOnce([makeDispute()]);
+      const { result } = renderHook(() => useDisputeLaneController("me"));
+
+      await waitFor(() => expect(result.current.disputes).toHaveLength(1));
+    });
+
+    it("hands out no calls once the block list has failed", async () => {
+      // A failed list reads as empty; that must not pass the calls on unfiltered.
+      mockSubscribeToBlockedUsers.mockImplementation(failBlockList);
+      mockFetchOpenDisputes.mockResolvedValueOnce([makeDispute()]);
+      const { result } = renderHook(() => useDisputeLaneController("me"));
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      await waitFor(() => expect(mockFetchOpenDisputes).toHaveBeenCalled());
+      expect(result.current.error).toBe(BLOCK_LIST_ERROR);
+      expect(result.current.disputes).toEqual([]);
+    });
   });
 });

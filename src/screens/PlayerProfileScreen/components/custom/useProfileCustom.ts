@@ -19,10 +19,17 @@ async function withPins(uid: string, c: ProfileCustom): Promise<{ custom: Profil
   return { custom: pruned, pinned: clips };
 }
 
-/** Loads a player's customization + pinned clips. `enabled` false skips all reads. */
+/**
+ * Loads a player's customization + pinned clips. `enabled` false skips all reads.
+ * The look shows as soon as the customization arrives; `ready` turns on once
+ * the pins are resolved and pruned too. The editor copies `custom` once when
+ * it opens, so it must not open before `ready` (it would keep orphaned pins
+ * and save them back).
+ */
 export function useProfileCustom(uid: string, enabled: boolean) {
   const [custom, setCustom] = useState<ProfileCustom>(DEFAULT_PROFILE_CUSTOM);
   const [pinned, setPinned] = useState<PinnableClip[]>([]);
+  const [readyUid, setReadyUid] = useState<string | null>(null);
 
   useEffect(() => {
     if (!enabled || !uid) return;
@@ -35,6 +42,7 @@ export function useProfileCustom(uid: string, enabled: boolean) {
       if (!alive) return;
       setCustom(next.custom);
       setPinned(next.pinned);
+      setReadyUid(uid);
     })();
     return () => {
       alive = false;
@@ -48,5 +56,5 @@ export function useProfileCustom(uid: string, enabled: boolean) {
     setPinned(next.pinned);
   };
 
-  return { custom, pinned, applySaved };
+  return { custom, pinned, ready: readyUid === uid, applySaved };
 }

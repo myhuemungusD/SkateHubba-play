@@ -109,8 +109,11 @@ test("a landed trick from a game stays out of the public feed", async ({ page })
   await createProfile(author.uid, AUTHOR.username, AUTHOR.email, true);
 
   // Same author, one post and one game-turn clip. Only the post may show.
+  // The game clip is older so the post sorts first: if the filter regresses,
+  // Kickflip still loads and the failure lands on the Heelflip check below.
   await createClip("posted-clip", author.uid, AUTHOR.username);
   await createClip("seeded-game_1_set", author.uid, AUTHOR.username, {
+    createdAt: new Date(Date.now() - 60 * 60_000),
     source: "game",
     gameId: "seeded-game",
     turnNumber: 1,

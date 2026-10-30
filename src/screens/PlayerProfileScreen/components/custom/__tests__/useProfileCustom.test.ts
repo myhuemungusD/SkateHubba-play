@@ -90,4 +90,24 @@ describe("useProfileCustom", () => {
     expect(result.current.custom.pinnedClipIds).toEqual(["c1"]);
     expect(result.current.pinned).toEqual([tre]);
   });
+
+  it("turns ready only once the pins are pruned, and again for each new player", async () => {
+    let finishPins: (p: ResolvedPins) => void = () => {};
+    m.get.mockResolvedValueOnce({ ...DEFAULT_PROFILE_CUSTOM, pinnedClipIds: ["gone", "c1"] });
+    m.pinned.mockReturnValueOnce(new Promise<ResolvedPins>((ok) => (finishPins = ok)));
+    const { result, rerender } = renderHook(({ uid }) => useProfileCustom(uid, true), { initialProps: { uid: "u1" } });
+    // The look is in, the pins are not: still not ready.
+    await vi.waitFor(() => expect(result.current.custom.pinnedClipIds).toEqual(["gone", "c1"]));
+    expect(result.current.ready).toBe(false);
+    await act(async () => finishPins({ clips: [tre], keepIds: ["c1"] }));
+    expect(result.current.ready).toBe(true);
+    expect(result.current.custom.pinnedClipIds).toEqual(["c1"]);
+
+    let finishNext: (c: ProfileCustom) => void = () => {};
+    m.get.mockReturnValueOnce(new Promise<ProfileCustom>((ok) => (finishNext = ok)));
+    rerender({ uid: "u2" });
+    expect(result.current.ready).toBe(false);
+    await act(async () => finishNext(DEFAULT_PROFILE_CUSTOM));
+    expect(result.current.ready).toBe(true);
+  });
 });

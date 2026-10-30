@@ -46,12 +46,16 @@ export async function fetchProSpots(uid: string): Promise<ProSpot[]> {
   try {
     const [clipSnap, created] = await Promise.all([
       // `source` is filtered in the query, before the limit, so game clips can't
-      // crowd posts out of the scan. Equality-only: single-field indexes merge.
+      // crowd posts out of the scan. `moderationStatus` makes the query provable
+      // for a visitor: the clips read rule lets a non-owner read active clips
+      // only, so without it every visitor's query is denied. Equality-only:
+      // single-field indexes merge, no composite index needed.
       getDocs(
         query(
           collection(requireDb(), "clips"),
           where("playerUid", "==", uid),
           where("source", "==", "user"),
+          where("moderationStatus", "==", "active"),
           limit(PRO_CLIP_SCAN_LIMIT),
         ),
       ),

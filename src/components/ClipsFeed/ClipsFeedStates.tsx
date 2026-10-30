@@ -11,7 +11,7 @@ export function ClipsFeedError({
   onRetry: () => void;
 }) {
   return (
-    <div className="rounded-2xl p-5 mb-3 border border-brand-red/30 bg-surface">
+    <div role="alert" className="rounded-2xl p-5 mb-3 border border-brand-red/30 bg-surface">
       <p className="font-body text-sm text-white/80 mb-3">{error}</p>
       {errorCode && import.meta.env.DEV && <p className="font-body text-label text-faint mb-3">code: {errorCode}</p>}
       <Btn onClick={onRetry} variant="secondary">
@@ -45,14 +45,12 @@ export function ClipsFeedSkeleton() {
  */
 export function ClipsFeedExhausted({ onReload }: { onReload: () => void }) {
   return (
-    <div className="flex flex-col items-center py-10 border border-white/[0.06] rounded-2xl bg-surface shadow-card">
-      <FilmIcon size={24} className="mb-3 text-faint" />
-      <p className="font-body text-sm text-dim">That&apos;s everything in this batch.</p>
-      <p className="font-body text-xs text-faint mt-1 mb-3">Pull in more clips from the feed.</p>
-      <Btn onClick={onReload} variant="secondary">
-        Load more clips
-      </Btn>
-    </div>
+    <FeedNotice
+      title="That's everything in this batch."
+      body="Pull in more clips from the feed."
+      action="Load more clips"
+      onAction={onReload}
+    />
   );
 }
 
@@ -63,11 +61,33 @@ export function ClipsFeedExhausted({ onReload }: { onReload: () => void }) {
  */
 export function ClipsFeedEmpty({ onPostClip }: { onPostClip: () => void }) {
   return (
+    <FeedNotice
+      title="Feed's empty. Go fill it."
+      body="Film a line, post it, and it shows up here for the crew."
+      action="Post a clip"
+      onAction={onPostClip}
+    />
+  );
+}
+
+/** The empty and exhausted states share one layout: headline, line, primary button. */
+function FeedNotice({
+  title,
+  body,
+  action,
+  onAction,
+}: {
+  title: string;
+  body: string;
+  action: string;
+  onAction: () => void;
+}) {
+  return (
     <div className="flex w-full max-w-sm flex-col items-center px-6 py-10 border border-white/[0.06] rounded-2xl bg-surface shadow-card text-center">
       <FilmIcon size={24} className="mb-3 text-faint" />
-      <h3 className="font-display text-lg tracking-wide text-white">Feed&apos;s empty. Go fill it.</h3>
-      <p className="font-body text-sm text-dim mt-1 mb-5">Film a line, post it, and it shows up here for the crew.</p>
-      <Btn onClick={onPostClip}>Post a clip</Btn>
+      <h3 className="font-display text-lg tracking-wide text-white">{title}</h3>
+      <p className="font-body text-sm text-dim mt-1 mb-5">{body}</p>
+      <Btn onClick={onAction}>{action}</Btn>
     </div>
   );
 }

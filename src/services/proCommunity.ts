@@ -226,7 +226,9 @@ async function clipInfo(clipId: string): Promise<{ videoUrl: string | null; tric
  * featured doc carries no `source`, so the game-clip filter can't go in the
  * query: page by createdAt (single-field index, nothing new) until the list
  * is full, bounded so a run of featured game clips can't fan out into
- * unbounded clip reads.
+ * unbounded clip reads. Worst case per Pro Picks open is 3 × (30 featured
+ * docs + 30 clip reads) = 180 reads, against 60 for one page, so raise this
+ * only with that cost in mind.
  */
 const FEATURED_MAX_PAGES = 3;
 
@@ -234,11 +236,12 @@ const FEATURED_MAX_PAGES = 3;
  * Newest featured clips, up to LIST_LIMIT. `userPostsOnly` (Pro Picks, a feed
  * surface) keeps user posts only and fills the list past skipped game clips
  * instead of coming up short; without it every feature is listed so a pro
- * can still unpin a game clip.
+ * can still unpin a game clip. A failed later page keeps the pages already
+ * read; only a failed first page comes back empty.
  */
 export async function listFeaturedClips({ userPostsOnly = false } = {}): Promise<FeaturedClip[]> {
+  const out: FeaturedClip[] = [];
   try {
-    const out: FeaturedClip[] = [];
     let after: QueryDocumentSnapshot | null = null;
     for (let page = 0; page < FEATURED_MAX_PAGES && out.length < LIST_LIMIT; page++) {
       const from = after ? [startAfter(after)] : [];
@@ -255,11 +258,10 @@ export async function listFeaturedClips({ userPostsOnly = false } = {}): Promise
       if (snap.docs.length < LIST_LIMIT) break;
       after = snap.docs[snap.docs.length - 1];
     }
-    return out.slice(0, LIST_LIMIT);
   } catch (e) {
-    logger.warn("pro_featured_load_failed", { error: errMsg(e) });
-    return [];
+    logger.warn("pro_featured_load_failed", { error: errMsg(e), kept: out.length });
   }
+  return out.slice(0, LIST_LIMIT);
 }
 
 /** Pin a clip to the top of the feed. Each pro keeps at most MAX_FEATURED_PER_PRO. */

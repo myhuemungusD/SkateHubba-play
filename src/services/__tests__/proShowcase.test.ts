@@ -62,7 +62,7 @@ describe("fetchProClipReel", () => {
 });
 
 describe("fetchProSpots", () => {
-  it("filters to user posts in the query, before the 60-clip scan limit", async () => {
+  it("filters to active user posts in the query, before the 60-clip scan limit", async () => {
     h.listSpotsByCreator.mockResolvedValue([]);
     h.getDocs.mockResolvedValue({ docs: [] });
     await fetchProSpots("p");
@@ -70,6 +70,8 @@ describe("fetchProSpots", () => {
       "clips",
       { where: ["playerUid", "==", "p"] },
       { where: ["source", "==", "user"] },
+      // Without it the clips read rule denies every visitor's query.
+      { where: ["moderationStatus", "==", "active"] },
       { limit: 60 },
     ]);
   });
