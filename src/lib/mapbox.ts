@@ -2,6 +2,7 @@
 // token is missing (previews/forks don't have it), and the consuming code must
 // treat that case explicitly. See SpotMap.tsx for the fallback render path.
 import { captureMessage } from "./sentry";
+import { logger } from "../services/logger";
 
 export const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
 
@@ -71,9 +72,8 @@ export function reportMapStyleConfig(): void {
   if (mapStyleConfigReported) return;
   mapStyleConfigReported = true;
   if (!resolved.invalidOverride) return;
-  console.warn(
-    `[mapbox] Ignoring invalid VITE_MAPBOX_STYLE_URL — must start with "mapbox://styles/" or be an https URL. Falling back to ${DEFAULT_MAP_STYLE}.`,
-  );
+  // VITE_MAPBOX_STYLE_URL must start with "mapbox://styles/" or be an https URL.
+  logger.warn("map_style_invalid", { envVar: "VITE_MAPBOX_STYLE_URL", fallback: DEFAULT_MAP_STYLE });
   captureMessage("map_style_invalid", {
     level: "warning",
     extra: { styleUrl: resolved.invalidOverride },

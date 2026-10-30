@@ -4,6 +4,8 @@ import { skateparkModelUrl } from "../artSlots";
 import { BOX_LENGTH } from "../constants";
 import { fitParkPiece, type ParkFit } from "./parkFit";
 import { disposeObject, loadRunnerModel } from "./skateboardModel";
+import { logger } from "../../services/logger";
+import { errorLogFields } from "../../utils/errors";
 
 /**
  * Sketchfab node names kept from Skatepark Obstacles. The suffix is the
@@ -147,7 +149,7 @@ export function useSkateparkLedges(slots: RefObject<(Group | null)[]>, renderer:
         });
       })
       .catch((error: unknown) => {
-        console.warn("Runner skatepark ledges failed to load", error);
+        logger.warn("runner_skatepark_ledges_load_failed", errorLogFields(error));
       });
 
     return () => {
@@ -195,7 +197,7 @@ export function useSkateparkScenery(root: RefObject<Group | null>, renderer: Web
         });
       })
       .catch((error: unknown) => {
-        console.warn("Runner skatepark scenery failed to load", error);
+        logger.warn("runner_skatepark_scenery_load_failed", errorLogFields(error));
       });
 
     return () => {

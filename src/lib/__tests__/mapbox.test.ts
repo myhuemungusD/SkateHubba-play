@@ -89,7 +89,10 @@ describe("MAP_STYLE module-level resolver + reportMapStyleConfig", () => {
     const { MAP_STYLE, DEFAULT_MAP_STYLE: defaultStyle, reportMapStyleConfig } = await import("../mapbox");
     expect(MAP_STYLE).toBe(defaultStyle);
     reportMapStyleConfig();
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("VITE_MAPBOX_STYLE_URL"));
+    expect(warn).toHaveBeenCalledWith("[WARN]", "map_style_invalid", {
+      envVar: "VITE_MAPBOX_STYLE_URL",
+      fallback: defaultStyle,
+    });
     expect(mockCaptureMessage).toHaveBeenCalledWith("map_style_invalid", {
       level: "warning",
       extra: { styleUrl: "not-a-valid-url" },
