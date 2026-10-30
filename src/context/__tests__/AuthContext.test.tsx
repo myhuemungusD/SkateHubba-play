@@ -4,8 +4,10 @@ import { Component, useEffect, useRef, type ReactNode } from "react";
 import { useAuthContext, AuthProvider } from "../AuthContext";
 import type { UserProfile } from "../../services/users";
 import { hashIdentity, hashUid } from "../../utils/pii";
-import { isPushSupported, registerPushTokenIfGranted } from "../../services/pushNotifications";
+import { isPushSupported, registerPushTokenIfGranted, unregisterPushToken } from "../../services/pushNotifications";
+import { logger } from "../../services/logger";
 import { refreshWebPushTokenIfGranted } from "../../services/fcm";
+import { signOut as fbSignOut } from "../../services/auth";
 
 // Widened return shape so mockReturnValue can swap user/profile to non-null
 // values mid-test (the initial () => null literals would otherwise narrow the
@@ -265,6 +267,25 @@ describe("identity sync", () => {
 
     // A sign-out that skips handleSignOut (another tab, a revoked session)
     // leaves the old activeProfile behind; the next user must not inherit it.
+    it("logs, and does not throw, when native push registration rejects", async () => {
+      vi.mocked(isPushSupported).mockReturnValue(true);
+      vi.mocked(registerPushTokenIfGranted).mockRejectedValueOnce(new Error("plugin gone"));
+      renderIdentity({ user: true, consent: false });
+      await waitFor(() =>
+        expect(logger.warn).toHaveBeenCalledWith("push_register_unhandled", expect.objectContaining({ uid: "u1" })),
+      );
+      vi.mocked(isPushSupported).mockReturnValue(false);
+    });
+
+    it("logs, and does not throw, when the web push refresh rejects", async () => {
+      vi.stubGlobal("Notification", { permission: "granted" });
+      vi.mocked(refreshWebPushTokenIfGranted).mockRejectedValueOnce(new Error("sw gone"));
+      renderIdentity({ user: true, consent: false });
+      await waitFor(() =>
+        expect(logger.warn).toHaveBeenCalledWith("web_push_register_unhandled", expect.objectContaining({ uid: "u1" })),
+      );
+    });
+
     it("does not treat the previous user's profile as the next user's", () => {
       vi.mocked(isPushSupported).mockReturnValue(true);
       mockConsent.mockReturnValue(true);
@@ -478,6 +499,54 @@ describe("mfa challenge", () => {
     expect(ctx.current?.googleError).toMatch(/account has been disabled/);
   });
 
+  it("attributes a redirect sign-in to Apple when Apple is among the providers", async () => {
+    mockResolveGoogleRedirect.mockResolvedValueOnce({ uid: "u9", providerData: [{ providerId: "apple.com" }] });
+
+    renderCtx();
+
+    await waitFor(() => expect(mockAnalyticsSignIn).toHaveBeenCalledWith("apple"));
+    expect(mockMetricsSignIn).toHaveBeenCalledWith("apple", "u9");
+    expect(mockLoggerInfo).toHaveBeenCalledWith("apple_redirect_resolved", { uid: "u9" });
+  });
+
+  it("points a redirect credential conflict at the password form, without paging Sentry", async () => {
+    mockResolveGoogleRedirect.mockRejectedValueOnce({ code: "auth/account-exists-with-different-credential" });
+
+    const ctx = renderCtx();
+
+    await waitFor(() => expect(ctx.current?.googleError).toMatch(/linked to a password account/));
+    expect(mockCaptureException).not.toHaveBeenCalled();
+  });
+
+  it("explains an unauthorized domain and pages Sentry with the origin", async () => {
+    mockSignInWithGoogle.mockRejectedValueOnce({ code: "auth/unauthorized-domain" });
+
+    const ctx = renderCtx();
+    await act(async () => {
+      await ctx.current?.handleGoogleSignIn();
+    });
+
+    expect(ctx.current?.googleError).toMatch(/isn't authorized for Google sign-in/);
+    expect(mockLoggerError).toHaveBeenCalledWith(
+      "google_sign_in_unauthorized_domain",
+      expect.objectContaining({ code: "auth/unauthorized-domain", origin: window.location.origin }),
+    );
+    expect(mockCaptureException).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a benign popup failure without sending it to Sentry", async () => {
+    mockSignInWithGoogle.mockRejectedValueOnce({ code: "auth/popup-blocked" });
+
+    const ctx = renderCtx();
+    await act(async () => {
+      await ctx.current?.handleGoogleSignIn();
+    });
+
+    expect(ctx.current?.googleError).not.toBe("");
+    expect(mockAnalyticsSignInFailure).toHaveBeenCalledWith("google", "auth/popup-blocked");
+    expect(mockCaptureException).not.toHaveBeenCalled();
+  });
+
   it("beginMfaChallenge reports whether the error was a challenge", async () => {
     const ctx = renderCtx();
 
@@ -523,6 +592,20 @@ describe("mfa challenge", () => {
     await resolveSession(ctx);
 
     await waitFor(() => expect(ctx.current?.mfaChallenge).toBeNull());
+  });
+
+  it("still signs out when the push-token scrub is rejected", async () => {
+    const ctx = renderCtx();
+    await resolveSession(ctx);
+    vi.mocked(unregisterPushToken).mockRejectedValueOnce(new Error("rules"));
+
+    await act(async () => {
+      await ctx.current?.handleSignOut();
+    });
+
+    expect(logger.warn).toHaveBeenCalledWith("sign_out_push_scrub_failed", expect.objectContaining({ uid: "u1" }));
+    expect(fbSignOut).toHaveBeenCalled();
+    expect(ctx.current?.activeProfile).toBeNull();
   });
 });
 
@@ -609,6 +692,23 @@ describe("handleDeleteAccount", () => {
     const extra = mockCaptureException.mock.calls[0][1].extra;
     expect(extra).not.toHaveProperty("uid");
     expect(extra).not.toHaveProperty("username");
+  });
+
+  it("drops the pending delete when the user cancels the Apple sheet, and survives a failed push scrub", async () => {
+    vi.mocked(unregisterPushToken).mockRejectedValueOnce(new Error("rules"));
+    mockDeleteAccount.mockRejectedValueOnce({ code: "account-delete/cancelled" });
+
+    const { triggerDelete } = renderWithTrigger(profile);
+    const thrown = await triggerDelete();
+
+    expect(thrown).toEqual({ code: "account-delete/cancelled" });
+    expect(sessionStorage.getItem("skate.pendingDeleteUid")).toBeNull();
+    await waitFor(() =>
+      expect(logger.warn).toHaveBeenCalledWith(
+        "delete_account_push_scrub_failed",
+        expect.objectContaining({ uid: "u1" }),
+      ),
+    );
   });
 
   it("captures Sentry and rethrows friendly message on auth/requires-recent-login", async () => {

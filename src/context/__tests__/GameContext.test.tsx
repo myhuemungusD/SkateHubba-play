@@ -30,6 +30,7 @@ const mockSubscribeToGame = vi.fn();
 const mockForfeitExpiredTurn = vi.fn();
 vi.mock("../../services/games", () => ({
   createGame: vi.fn(),
+  timestampFromMillis: (ms: number) => ({ toMillis: () => ms }),
   forfeitExpiredTurn: (gameId: string, callerUid: string | null) => mockForfeitExpiredTurn(gameId, callerUid),
   subscribeToMyGames: (uid: string, cb: (games: GameDoc[]) => void, limit?: number) =>
     mockSubscribeToMyGames(uid, cb, limit),
@@ -75,6 +76,22 @@ function resetMocks(): void {
   mockSubscribeToMyGames.mockReturnValue(vi.fn());
   mockSubscribeToGame.mockReturnValue(vi.fn());
   mockForfeitExpiredTurn.mockResolvedValue({ forfeited: false, winner: null });
+}
+
+/** Mounts `node` under the real Auth/Navigation/Notification/Game providers. */
+async function renderInGameProviders(node: ReactNode) {
+  const { GameProvider } = await import("../GameContext");
+  return render(
+    <MemoryRouter initialEntries={["/"]}>
+      <AuthProvider>
+        <NavigationProvider>
+          <NotificationProvider uid="u1">
+            <GameProvider>{node}</GameProvider>
+          </NotificationProvider>
+        </NavigationProvider>
+      </AuthProvider>
+    </MemoryRouter>,
+  );
 }
 
 describe("useGameContext", () => {
@@ -150,20 +167,7 @@ describe("useGameContext", () => {
       );
     }
 
-    const { GameProvider } = await import("../GameContext");
-    render(
-      <MemoryRouter initialEntries={["/"]}>
-        <AuthProvider>
-          <NavigationProvider>
-            <NotificationProvider uid="u1">
-              <GameProvider>
-                <Consumer />
-              </GameProvider>
-            </NotificationProvider>
-          </NavigationProvider>
-        </AuthProvider>
-      </MemoryRouter>,
-    );
+    await renderInGameProviders(<Consumer />);
     await userEvent.click(screen.getByText("Open"));
     expect(screen.getByTestId("active-game")).toHaveTextContent(game.id);
   }
@@ -264,20 +268,7 @@ describe("GameProvider auto-forfeit sweep", () => {
   }
 
   async function renderWithProvider() {
-    const { GameProvider } = await import("../GameContext");
-    return render(
-      <MemoryRouter initialEntries={["/"]}>
-        <AuthProvider>
-          <NavigationProvider>
-            <NotificationProvider uid="u1">
-              <GameProvider>
-                <span />
-              </GameProvider>
-            </NotificationProvider>
-          </NavigationProvider>
-        </AuthProvider>
-      </MemoryRouter>,
-    );
+    return renderInGameProviders(<span />);
   }
 
   it("fires forfeitExpiredTurn from the timer when a future deadline elapses", async () => {
@@ -320,5 +311,122 @@ describe("GameProvider auto-forfeit sweep", () => {
 
     // forfeitAttemptedRef prevents a second call for the same gameId.
     expect(mockForfeitExpiredTurn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("GameProvider actions", () => {
+  type Ctx = ReturnType<typeof useGameContext>;
+  const live: { ctx: Ctx | null } = { ctx: null };
+
+  beforeEach(() => {
+    resetMocks();
+    live.ctx = null;
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: { uid: "u1", emailVerified: true },
+      profile: { uid: "u1", username: "sk8r", isVerifiedPro: false },
+      refreshProfile: vi.fn(),
+    });
+  });
+
+  async function mountActions() {
+    function Probe() {
+      const ctx = useGameContext();
+      live.ctx = ctx;
+      const { screen: where } = useNavigationContext();
+      const { notifications } = useNotifications();
+      return (
+        <>
+          <span data-testid="where">{where}</span>
+          <span data-testid="loading">{String(ctx.gamesLoading)}</span>
+          <span data-testid="last-toast">{notifications[0]?.title ?? ""}</span>
+        </>
+      );
+    }
+    await renderInGameProviders(<Probe />);
+  }
+
+  it("opens a finished game straight on the game-over screen", async () => {
+    await mountActions();
+    act(() => live.ctx?.openGame({ id: "done", status: "forfeit" } as GameDoc));
+    expect(screen.getByTestId("where")).toHaveTextContent("gameover");
+    expect(live.ctx?.activeGame?.id).toBe("done");
+  });
+
+  it("loadMoreGames widens the subscription by a page and shows loading until it lands", async () => {
+    let deliver: ((games: GameDoc[]) => void) | undefined;
+    mockSubscribeToMyGames.mockImplementation((_uid: string, cb: (games: GameDoc[]) => void) => {
+      deliver = cb;
+      return vi.fn();
+    });
+    await mountActions();
+    expect(mockSubscribeToMyGames).toHaveBeenLastCalledWith("u1", expect.any(Function), 20);
+
+    act(() => live.ctx?.loadMoreGames());
+    expect(screen.getByTestId("loading")).toHaveTextContent("true");
+    expect(mockSubscribeToMyGames).toHaveBeenLastCalledWith("u1", expect.any(Function), 40);
+
+    // A game with no deadline is neither swept nor scheduled.
+    act(() => deliver?.([{ id: "g-no-deadline", status: "active" } as GameDoc]));
+    expect(screen.getByTestId("loading")).toHaveTextContent("false");
+    expect(mockForfeitExpiredTurn).not.toHaveBeenCalled();
+  });
+
+  it("refuses to challenge a player when either side has blocked the other", async () => {
+    const { isUserBlocked } = await import("../../services/blocking");
+    const { createGame } = await import("../../services/games");
+    vi.mocked(isUserBlocked).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    await mountActions();
+
+    await expect(live.ctx!.startChallenge("u2", "rival")).rejects.toThrow("Cannot challenge this player.");
+    expect(createGame).not.toHaveBeenCalled();
+  });
+
+  it("binds the judge's real handle and forwards spot presence and turn length", async () => {
+    const { getUserProfile } = await import("../../services/users");
+    const { createGame } = await import("../../services/games");
+    vi.mocked(getUserProfile).mockImplementation(async (uid: string) =>
+      uid === "u2" ? ({ uid, username: "rival" } as never) : ({ uid, username: "realjudge" } as never),
+    );
+    vi.mocked(createGame).mockResolvedValue("game-77");
+    await mountActions();
+
+    await act(async () => {
+      await live.ctx!.startChallenge("u2", "spoofed", {
+        judgeUid: "j1",
+        judgeUsername: "claimed",
+        spotPresence: true,
+        turnLengthHours: 72,
+      });
+    });
+
+    expect(createGame).toHaveBeenCalledWith(
+      "u1",
+      "sk8r",
+      "u2",
+      "rival",
+      expect.objectContaining({ judgeUid: "j1", judgeUsername: "realjudge", spotPresence: true, turnLengthHours: 72 }),
+    );
+    expect(screen.getByTestId("where")).toHaveTextContent("game");
+    expect(screen.getByTestId("last-toast")).toHaveTextContent("Challenge sent to @rival");
+  });
+
+  it("drops a judge nomination whose profile has no handle", async () => {
+    const { getUserProfile } = await import("../../services/users");
+    const { createGame } = await import("../../services/games");
+    vi.mocked(getUserProfile).mockImplementation(async (uid: string) =>
+      uid === "u2" ? ({ uid, username: "rival" } as never) : null,
+    );
+    vi.mocked(createGame).mockResolvedValue("game-78");
+    await mountActions();
+
+    await act(async () => {
+      await live.ctx!.startChallenge("u2", "rival", { judgeUid: "ghost", judgeUsername: "ghost" });
+    });
+
+    const opts = vi.mocked(createGame).mock.calls[0][4];
+    expect(opts).toMatchObject({ judgeUid: null, judgeUsername: null });
+    expect(opts).not.toHaveProperty("spotPresence");
+    expect(opts).not.toHaveProperty("turnLengthHours");
   });
 });
