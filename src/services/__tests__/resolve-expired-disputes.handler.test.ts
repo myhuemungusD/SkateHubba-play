@@ -644,3 +644,247 @@ describe("resolve handler — communityReview verdicts (binding + stats + close-
     expect(out.body).toMatchObject({ resolved: 1, errors: 0 });
   });
 });
+
+describe("resolve handler edge paths", () => {
+  beforeEach(bootAdmin);
+
+  afterEach(() => {
+    vi.resetModules();
+  });
+
+  type TxRef = { __kind?: string; uid?: string; id?: string };
+  type TxGet = (ref: TxRef) => Promise<unknown>;
+
+  /** Intercept the transaction's reads: `override` returns a snapshot, or undefined to fall through. */
+  function overrideTxGet(db: ReturnType<typeof makeDb>["db"], override: (ref: TxRef, real: TxGet) => unknown) {
+    const realTx = db.runTransaction.getMockImplementation()!;
+    db.runTransaction.mockImplementation((fn) =>
+      realTx((tx: unknown) => {
+        const t = tx as { get: TxGet };
+        return fn({ ...t, get: async (ref: TxRef) => (await override(ref, t.get)) ?? t.get(ref) });
+      }),
+    );
+  }
+
+  async function run(h: typeof handler = handler, req = authedGet()) {
+    const { res, out } = makeRes();
+    await h(req, res);
+    return out;
+  }
+
+  async function freshHandler(): Promise<typeof handler> {
+    vi.resetModules();
+    return (await import("../../../api/cron/resolve-expired-disputes")).default;
+  }
+
+  it("reuses an existing admin app without reading the service account", async () => {
+    const existing = { name: "existing" };
+    getAppsMock.mockReturnValue([existing]);
+    delete process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+    getFirestoreMock.mockReturnValue(makeDb({}).db);
+    const out = await run(await freshHandler());
+    expect(out.code).toBe(200);
+    expect(initializeAppMock).not.toHaveBeenCalled();
+    expect(getFirestoreMock.mock.calls[0][0]).toBe(existing);
+  });
+
+  it("boots from a hand-pasted service account and logs only that it repaired it", async () => {
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = VALID_SERVICE_ACCOUNT.replace(/\\n/g, "\n");
+    getFirestoreMock.mockReturnValue(makeDb({}).db);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const out = await run(await freshHandler());
+    expect(out.code).toBe(200);
+    expect(warnSpy).toHaveBeenCalledWith(JSON.stringify({ event: "service_account_json_repaired" }));
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain("PRIVATE KEY");
+    warnSpy.mockRestore();
+  });
+
+  it("reads dry-run from DRY_RUN=true, a repeated query value, or the raw URL, and auth from the first header value", async () => {
+    const pending = () => makeDb({ game: rawGame({ phase: "pendingReview" }) });
+    let current = pending();
+    getFirestoreMock.mockImplementation(() => current.db);
+
+    process.env.DRY_RUN = "true";
+    expect((await run()).body).toMatchObject({ dryRun: true, resolved: 1 });
+    delete process.env.DRY_RUN;
+
+    const repeated = makeReq({ query: { dryRun: ["1", "0"] } });
+    repeated.headers.authorization = ["Bearer s3cret", "Bearer wrong!"];
+    expect((await run(handler, repeated)).body).toMatchObject({ dryRun: true });
+
+    const wrongFirst = makeReq();
+    wrongFirst.headers.authorization = ["Bearer wrong!", "Bearer s3cret"];
+    expect((await run(handler, wrongFirst)).code).toBe(401);
+
+    current = pending();
+    const raw = makeReq({ authorization: "Bearer s3cret", url: "/api/cron/resolve-expired-disputes?dryRun=1" });
+    expect((await run(handler, raw)).body).toMatchObject({ dryRun: true });
+    expect(current.txUpdate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["pendingReview", "vanished", null],
+    ["pendingReview", "left review", { phase: "setting" }],
+    ["pendingReview", "has no review deadline", { reviewDeadline: null }],
+    ["communityReview", "vanished", null],
+    ["communityReview", "left review", { phase: "setting" }],
+    ["communityReview", "has no review deadline", { reviewDeadline: null }],
+    ["communityReview", "is not yet past its deadline", { reviewDeadline: "future" }],
+  ] as const)("skips a %s game that %s by transaction time", async (phase, _label, change) => {
+    const { db, txUpdate, txSet } = makeDb({
+      game: rawGame({ phase }),
+      dispute: { status: "open", landVotes: 1, bailVotes: 0 },
+    });
+    overrideTxGet(db, (ref) => {
+      if (ref.__kind !== "game") return undefined;
+      if (change === null) return { exists: false, id: "g1", data: () => undefined };
+      const reviewDeadline = change.reviewDeadline === "future" ? ms(Date.now() + 60_000) : change.reviewDeadline;
+      const data = { ...rawGame({ phase }), ...change, ...("reviewDeadline" in change ? { reviewDeadline } : {}) };
+      return { exists: true, id: "g1", data: () => data };
+    });
+    getFirestoreMock.mockReturnValue(db);
+    const out = await run();
+    expect(out.body).toMatchObject({ scanned: 1, resolved: 0, skipped: 1, errors: 0 });
+    expect(txUpdate).not.toHaveBeenCalled();
+    expect(txSet).not.toHaveBeenCalled();
+  });
+
+  it("auto-accepts a claim with no trick name or clips: generic copy, no clip rows, matcher from the seats", async () => {
+    const { db, txUpdate, txSet } = makeDb({
+      game: rawGame({
+        phase: "pendingReview",
+        currentTrickName: "",
+        currentTrickVideoUrl: null,
+        matchVideoUrl: null,
+        reviewFor: null,
+      }),
+    });
+    getFirestoreMock.mockReturnValue(db);
+    const out = await run();
+    expect(out.body).toMatchObject({ resolved: 1 });
+    expect(txUpdate).toHaveBeenCalledTimes(1);
+    expect(setsOfKind(txSet, "clip")).toHaveLength(0);
+    const [notif] = setsOfKind(txSet, "notif");
+    expect(notif.data).toMatchObject({ recipientUid: "p2", senderUid: "p1", title: "Your Turn!" });
+    expect(String(notif.data.body)).toContain("— Trick.");
+  });
+
+  it("caps the push body for a very long trick name", async () => {
+    const { db, dispatchAdd } = makeDb({
+      game: rawGame({ phase: "pendingReview", currentTrickName: "x".repeat(400) }),
+      pushTokens: ["tok-1"],
+    });
+    getFirestoreMock.mockReturnValue(db);
+    await run();
+    const push = dispatchAdd.mock.calls[0][0] as { notification: { title: string; body: string } };
+    expect(push.notification.body).toHaveLength(200);
+    expect(push.notification.title).toBe("Your Turn!");
+  });
+
+  it("treats malformed vote counts as zero (a 'none' verdict) and finds the matcher from the seats", async () => {
+    const { db, txSet } = makeDb({
+      game: rawGame({ phase: "communityReview", reviewFor: null }),
+      dispute: { status: "open", landVotes: "7", bailVotes: -2 },
+    });
+    getFirestoreMock.mockReturnValue(db);
+    const out = await run();
+    expect(out.body).toMatchObject({ resolved: 1 });
+    expect(setsOfKind(txSet, "dispute")[0].data).toMatchObject({ verdict: "none", status: "closed" });
+    expect(setsOfKind(txSet, "clip").every((c) => c.data.role !== "match" || c.data.playerUid === "p2")).toBe(true);
+  });
+
+  it("pays only listed testers when XP is off: once each, skipping blank uids and missing profiles", async () => {
+    process.env.XP_TESTER_UIDS = " fan , ghost ";
+    const today = new Date().toISOString().slice(0, 10);
+    const { db, txSet } = makeDb({
+      game: rawGame({ phase: "communityReview" }),
+      dispute: { status: "open", landVotes: 2, bailVotes: 1 },
+      votes: [{ uid: "" }, { uid: "stranger" }, { uid: "fan" }, { uid: "fan" }, { uid: "ghost" }],
+      // At today's cap: the vote counts, but no XP is added.
+      users: { fan: { xp: "lots", xpDay: today, xpToday: 3000, disputeVotesCast: 4 }, stranger: { xp: 0 } },
+    });
+    overrideTxGet(db, (ref) => (ref.__kind === "ach" ? { exists: true, data: () => ({}) } : undefined));
+    getFirestoreMock.mockReturnValue(db);
+    const out = await run();
+    expect(out.body).toMatchObject({ resolved: 1 });
+    const voterRows = setsOfKind(txSet, "user").filter((u) => ["fan", "stranger", "ghost"].includes(u.ref.uid ?? ""));
+    expect(voterRows).toEqual([
+      { ref: expect.objectContaining({ uid: "fan" }), data: { disputeVotesCast: { __inc: 1 } } },
+    ]);
+    // The achievement already exists, so nothing is granted again.
+    expect(setsOfKind(txSet, "ach")).toHaveLength(0);
+  });
+
+  it("starts a voter's counters from zero when the profile exists but reads back empty", async () => {
+    process.env.XP_ENABLED = "true";
+    const { db, txSet } = makeDb({
+      game: rawGame({ phase: "communityReview" }),
+      dispute: { status: "open", landVotes: 2, bailVotes: 1 },
+      votes: [{ uid: "fan" }],
+    });
+    overrideTxGet(db, (ref) =>
+      ref.__kind === "user" && ref.uid === "fan" ? { exists: true, data: () => undefined } : undefined,
+    );
+    getFirestoreMock.mockReturnValue(db);
+    await run();
+    const fan = setsOfKind(txSet, "user").find((u) => u.ref.uid === "fan");
+    expect(fan?.data).toMatchObject({ xp: 10, xpToday: 10, disputeVotesCast: { __inc: 1 } });
+  });
+
+  it("stops paging votes when the cursor stops advancing, instead of looping forever", async () => {
+    process.env.XP_ENABLED = "true";
+    const page = Array.from({ length: 100 }, (_, i) => ({ id: `v${i}`, data: () => ({ uid: `fan${i % 3}` }) }));
+    const { db, txSet } = makeDb({
+      game: rawGame({ phase: "communityReview" }),
+      dispute: { status: "open", landVotes: 2, bailVotes: 1 },
+      users: { fan0: { xp: 0 }, fan1: { xp: 0 }, fan2: { xp: 0 } },
+    });
+    let votePages = 0;
+    overrideTxGet(db, (ref) => {
+      if (ref.__kind !== "voteQuery") return undefined;
+      votePages += 1;
+      return { docs: page };
+    });
+    getFirestoreMock.mockReturnValue(db);
+    const out = await run();
+    expect(out.body).toMatchObject({ resolved: 1 });
+    expect(votePages).toBe(2);
+    const paid = setsOfKind(txSet, "user").filter((u) => u.ref.uid?.startsWith("fan"));
+    expect(paid.map((u) => u.ref.uid).sort()).toEqual(["fan0", "fan1", "fan2"]);
+  });
+
+  it("counts a failed game transaction as an error and logs only phase, id and code", async () => {
+    const { db } = makeDb({ game: rawGame({ phase: "pendingReview" }) });
+    db.runTransaction.mockRejectedValue(Object.assign(new Error("contention uid=p2 secret"), { code: "aborted" }));
+    getFirestoreMock.mockReturnValue(db);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const out = await run();
+    expect(out.code).toBe(200);
+    expect(out.body).toMatchObject({ scanned: 1, resolved: 0, errors: 1 });
+    expect(warnSpy).toHaveBeenCalledWith(
+      JSON.stringify({ event: "resolve_game_failed", phase: "pendingReview", gameId: "g1", code: "aborted" }),
+    );
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain("secret");
+    warnSpy.mockRestore();
+  });
+
+  it("returns 500 resolve_failed with the partial summary when a candidate query fails", async () => {
+    const { db } = makeDb({});
+    db.collection.mockImplementation(() => {
+      const q = {
+        where: () => q,
+        orderBy: () => q,
+        limit: () => q,
+        get: () => Promise.reject(new Error("index missing")),
+      };
+      return q as never;
+    });
+    getFirestoreMock.mockReturnValue(db);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const out = await run();
+    expect(out.code).toBe(500);
+    expect(out.body).toMatchObject({ error: "resolve_failed", scanned: 0, resolved: 0 });
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('"event":"resolve_failed"'));
+    warnSpy.mockRestore();
+  });
+});
