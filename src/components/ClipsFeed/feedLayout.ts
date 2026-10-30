@@ -41,7 +41,7 @@ export const RAIL_BTN =
   "inline-flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-0.5 rounded-full border border-white/15 bg-black/55 text-white shadow-lg backdrop-blur-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-not-allowed disabled:opacity-40";
 
 /** How many slides around the active one keep a mounted <video>. */
-export const VIDEO_WINDOW = 1;
+const VIDEO_WINDOW = 1;
 
 export function isNearSlide(index: number, activeIndex: number): boolean {
   return Math.abs(index - activeIndex) <= VIDEO_WINDOW;

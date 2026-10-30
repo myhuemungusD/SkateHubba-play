@@ -1,11 +1,10 @@
 /**
- * Log-safe error helpers (`api/_safeError.ts`) and the WTT cron failure path
- * (`api/cron/_wttFailure.ts`): a caught error's message must never reach a
- * log line or a response body, because it can quote secrets or uids.
+ * Log-safe error helpers (`api/_safeError.ts`): a caught error's message must
+ * never reach a log line or a response body, because it can quote secrets or
+ * uids.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { safeErrorCode, safeErrorName } from "../../../api/_safeError.js";
-import { wttFailureResponse } from "../../../api/cron/_wttFailure.js";
 import { MALFORMED_KEY_JSON } from "./cron.test-helpers";
 
 /** An error whose message quotes a secret, the way JSON.parse does. */
@@ -79,21 +78,5 @@ describe("safeErrorCode", () => {
   it("handles null and primitive throws", () => {
     expect(safeErrorCode(null)).toBe("object");
     expect(safeErrorCode("PRIVATE KEY")).toBe("string");
-  });
-});
-
-describe("wttFailureResponse", () => {
-  it("logs and returns a fixed 500 with no part of the message", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const err = quotingError();
-    expect(err.message).toContain("PRIVATE KEY");
-    const res = wttFailureResponse("wtt_build_items_failed", err, "Failed to build WTT items");
-    expect(res.status).toBe(500);
-    const body: unknown = await res.json();
-    expect(body).toEqual({ error: "Failed to build WTT items", message: "Internal error." });
-    expect(errorSpy).toHaveBeenCalledWith(
-      JSON.stringify({ event: "wtt_build_items_failed", errorName: "SyntaxError" }),
-    );
-    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain("PRIVATE KEY");
   });
 });

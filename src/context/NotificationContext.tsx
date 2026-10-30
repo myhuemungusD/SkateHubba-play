@@ -62,7 +62,7 @@ export interface AppNotification {
  * not news: it skips the bell, stays up longer, and calls `onExpire` if it
  * leaves without the button being tapped.
  */
-export interface ToastAction {
+interface ToastAction {
   label: string;
   onAction: () => void;
   onExpire?: () => void;

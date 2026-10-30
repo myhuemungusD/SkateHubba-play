@@ -148,14 +148,6 @@ export function isWttEnabled(): boolean {
 }
 
 /**
- * Post your makes from GameOver screen. Off until consent flow is tested.
- * Literal "true" only.
- */
-export function isPostMakesEnabled(): boolean {
-  return flagOn(import.meta.env.VITE_FEATURE_POST_MAKES_ENABLED);
-}
-
-/**
  * Feed mode switcher (Scroll / Name It / Vote / Judge). Off until modes
  * are implemented and tested. Literal "true" only.
  */
@@ -190,10 +182,6 @@ export function isClosetDropsEnabled(): boolean {
 
 export function isClosetTradingEnabled(): boolean {
   return isClosetEnabled() && flagOn(import.meta.env.VITE_FEATURE_CLOSET_TRADING_ENABLED);
-}
-
-export function isClosetBucksPurchaseEnabled(): boolean {
-  return isClosetEnabled() && flagOn(import.meta.env.VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED);
 }
 
 /**

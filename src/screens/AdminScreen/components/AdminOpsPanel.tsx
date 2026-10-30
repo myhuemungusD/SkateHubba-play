@@ -26,7 +26,7 @@ const ACTION_LABELS: Record<string, string> = {
   end_announcement: "Ended announcement",
 };
 
-export function DisputesQueueSection() {
+function DisputesQueueSection() {
   const [rows, setRows] = useState<QueuedDispute[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
@@ -134,7 +134,7 @@ export function DisputesQueueSection() {
   );
 }
 
-export function AuditLogSection() {
+function AuditLogSection() {
   const [rows, setRows] = useState<AuditEntry[] | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {

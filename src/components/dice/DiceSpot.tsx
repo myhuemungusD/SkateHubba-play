@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Die, type DieMotion, type DieSize } from "./Die";
 
-export interface DiceSelection {
+interface DiceSelection {
   selected: ReadonlySet<number>;
   /** Dice that can score; the rest are dimmed. */
   live: ReadonlySet<number>;

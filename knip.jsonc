@@ -1,0 +1,39 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  // Dead-code gate (`npm run check:dead`). Fails on unused files, exports,
+  // exported types, duplicate exports and unused or unlisted dependencies.
+  // The push platform helpers are copied byte-for-byte between api/ and
+  // functions/ (drift tests compare everything from the first export on), so
+  // their exports stay even when only one side uses a given helper.
+  "ignoreIssues": {
+    "api/cron/_pushPlatforms.ts": ["exports", "types"],
+    "api/cron/_pushWebpush.ts": ["exports", "types"],
+    "functions/src/push/platforms.ts": ["exports", "types"],
+    "functions/src/push/webpush.ts": ["exports", "types"],
+  },
+  "workspaces": {
+    ".": {
+      "entry": [
+        // Vercel serverless routes. Files starting with "_" are shared helpers,
+        // not routes, so their exports are still checked.
+        "api/**/*.ts",
+        "!api/**/_*.ts",
+        // Maintenance and CI scripts, run by hand or from package.json/workflows.
+        "scripts/**/*.{mjs,ts}",
+        "rules-tests/vitest.config.ts",
+      ],
+      // Static files served as-is (service workers, decoders, CSS), not modules.
+      "ignore": ["public/**"],
+      "ignoreDependencies": [
+        // Native-only Capacitor plugin, used by ios/ and capacitor.config.ts.
+        "@capacitor/keyboard",
+        // Type-only import in rules-tests; ships with @firebase/rules-unit-testing.
+        "@firebase/storage-types",
+      ],
+      // System tools called by local asset scripts, not npm packages.
+      "ignoreBinaries": ["plutil", "toktx", "ffmpeg"],
+    },
+    // Cloud Functions. knip reads the entry from functions/package.json "main".
+    "functions": {},
+  },
+}

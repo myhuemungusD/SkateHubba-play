@@ -34,9 +34,6 @@ export const MAX_VIDEO_DURATION_MS = MAX_VIDEO_DURATION_SECONDS * 1000;
  */
 export const USER_CLIP_MAX_DURATION_SECONDS = 30;
 
-/** Millisecond form of {@link USER_CLIP_MAX_DURATION_SECONDS}, for timer APIs. */
-export const USER_CLIP_MAX_DURATION_MS = USER_CLIP_MAX_DURATION_SECONDS * 1000;
-
 /**
  * Target video bitrate (bits/second) — shared by BOTH capture paths, for the
  * same reason the duration cap is: a clip must not look better or worse purely

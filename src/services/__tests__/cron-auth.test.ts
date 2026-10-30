@@ -1,10 +1,10 @@
 /**
  * api/cron/_cronAuth.ts: the shared constant-time `Bearer ${CRON_SECRET}`
  * check behind every cron (drain-push-dispatch, resolve-expired-disputes,
- * sweep-expired-turns, and the WTT stubs). Fail-closed throughout.
+ * sweep-expired-turns). Fail-closed throughout.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { isCronAuthorized, matchesCronSecret } from "../../../api/cron/_cronAuth.js";
+import { matchesCronSecret } from "../../../api/cron/_cronAuth.js";
 
 const SECRET = "unit-cron-secret";
 
@@ -42,24 +42,5 @@ describe("matchesCronSecret", () => {
   it("fails closed when CRON_SECRET is empty", () => {
     vi.stubEnv("CRON_SECRET", "");
     expect(matchesCronSecret("Bearer ")).toBe(false);
-  });
-});
-
-describe("isCronAuthorized (Web Request)", () => {
-  const make = (authorization?: string) =>
-    new Request("https://example.test/api/cron/", {
-      headers: authorization === undefined ? {} : { authorization },
-    });
-
-  it("reads the Authorization header (case-insensitively) and accepts the secret", () => {
-    expect(isCronAuthorized(make(`Bearer ${SECRET}`))).toBe(true);
-    expect(
-      isCronAuthorized(new Request("https://example.test/", { headers: { AUTHORIZATION: `Bearer ${SECRET}` } })),
-    ).toBe(true);
-  });
-
-  it("rejects a missing or wrong header", () => {
-    expect(isCronAuthorized(make())).toBe(false);
-    expect(isCronAuthorized(make("Bearer nope"))).toBe(false);
   });
 });

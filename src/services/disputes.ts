@@ -13,15 +13,7 @@
  * rules work — see the note in `src/types/dispute.ts`.
  */
 
-export type {
-  Dispute,
-  DisputeModerationStatus,
-  DisputeStatus,
-  DisputeTally,
-  DisputeVerdict,
-  DisputeViewerState,
-  DisputeVote,
-} from "./disputes.mappers";
+export type { Dispute } from "./disputes.mappers";
 
 export { canRaiseDispute, raiseDispute } from "./disputes.raise";
 export { subscribeToGameDispute } from "./disputes.subscription";

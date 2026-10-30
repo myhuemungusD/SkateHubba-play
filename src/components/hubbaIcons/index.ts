@@ -1,2 +1,1 @@
-export { HubbaIcon, type HubbaIconProps, type GlyphName } from "./HubbaIcon";
-export { GLYPHS, glyphToSvg } from "./glyphs";
+export { HubbaIcon, type GlyphName } from "./HubbaIcon";

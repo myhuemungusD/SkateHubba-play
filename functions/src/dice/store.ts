@@ -4,7 +4,7 @@
  */
 import type { DocumentReference, Firestore, Query } from "firebase-admin/firestore";
 
-export interface DiceFilter {
+interface DiceFilter {
   field: string;
   op: "==" | "<";
   value: unknown;

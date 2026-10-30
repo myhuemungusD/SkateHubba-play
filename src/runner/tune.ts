@@ -23,7 +23,7 @@ export const GRIND_BUFFER = 0.15;
 export const TRICK_BUFFER = 0.12;
 
 /** Rejected trick taps retry for the grind buffer, the longer of the two windows. */
-export const INPUT_BUFFER = GRIND_BUFFER;
+export const INPUT_BUFFER = Math.max(GRIND_BUFFER, TRICK_BUFFER);
 
 /**
  * Extra time after the late window where a tap still locks, and after a
@@ -48,10 +48,8 @@ export const SPEED_RAMP = 0.03;
  * so the board eases over instead of teleporting. 0.16s is a phone swipe
  * that still finishes before the next rail, a little heavier than 0.14s.
  */
-export const LANE_TWEEN = 0.16;
+const LANE_TWEEN = 0.16;
 export const LANE_ACCEL = (2 * (LANE_X[1] - LANE_X[0])) / (LANE_TWEEN * LANE_TWEEN);
-/** Kept for older notes. The slide is acceleration, not a constant speed. */
-export const LANE_SLIDE = 14;
 
 /**
  * Closed-form ollie. Apex h and air time T give g = 8h/T² and v0 = 4h/T.
@@ -61,10 +59,9 @@ export const LANE_SLIDE = 14;
  * A different feel is a preset, not an edit here.
  */
 export const OLLIE_HEIGHT = 1.1;
-export const OLLIE_AIRTIME = 0.58;
+const OLLIE_AIRTIME = 0.58;
 export const OLLIE_GRAVITY = (8 * OLLIE_HEIGHT) / (OLLIE_AIRTIME * OLLIE_AIRTIME);
 export const OLLIE_POP = (4 * OLLIE_HEIGHT) / OLLIE_AIRTIME;
-export const GRAVITY = OLLIE_GRAVITY;
 /** Frozen street fall. Classic preset keeps the previous 1.6. Heavy is 2. */
 export const FALL_GRAVITY_SCALE = 1.85;
 /** Nose-up angular speed (radians/sec) on the pop. Positive pitch lifts the nose. */
@@ -112,16 +109,14 @@ export const PERFECT_MAX = 2.8;
 export const GOOD_MAX = 5.1;
 
 /** How far before the lip the board starts easing onto the feature. */
-export const MAGNET_LEAD = 1.35;
+const MAGNET_LEAD = 1.35;
 /** Seconds to ease onto the rail. 90ms lets the trucks settle instead of teleporting. */
 export const MAGNET_SNAP = 0.09;
-/** Older pull rate. The snap time above is what the sim uses. */
-export const MAGNET_PULL = 1 / MAGNET_SNAP;
 /**
  * Full-assist reach, in meters. The slider scales it. 100 is this radius.
  * 0 does not pull. Default 30 stays short so a grind is a choice.
  */
-export const MAGNET_RADIUS = 0.35;
+const MAGNET_RADIUS = 0.35;
 /** Grind assist 0–100. 30 is the street default. 50 was the sticky complaint. */
 export const GRIND_ASSIST_DEFAULT = 30;
 /** Velocity must agree with the rail tangent. 0.25 is about 75 degrees off. */
@@ -158,11 +153,6 @@ export const BALANCE_FREE = 0.5;
 export const BALANCE_ACTIVE_AFTER = 3;
 export const BALANCE_LIMIT = 1;
 export const BALANCE_NUDGE = 0.38;
-/** Sign of the noise. Even seeds drift left. */
-export const BALANCE_DRIFT = 1;
-/** Older linear walk. The acceleration above replaced it. */
-export const BALANCE_RAMP = 0.15;
-export const BALANCE_GRACE = BALANCE_FREE;
 /** How fast a held finger or key pulls balance, at full deflection. */
 export const LEAN_RATE = 1.15;
 /** Finger travel, in pixels, that counts as full balance deflection. */
@@ -208,8 +198,8 @@ export const SEGMENT_LENGTH = 40;
 /** Passed features in your lane before the run ends. */
 export const MISS_LIMIT = 3;
 
-export const COMBO_STEP = 0.5;
-export const COMBO_CAP = 5;
+const COMBO_STEP = 0.5;
+const COMBO_CAP = 5;
 
 /** Meters between ghost samples. The best line stays on this device only. */
 export const GHOST_SPACING = 0.5;
@@ -254,9 +244,7 @@ export const BLOOM_THRESHOLD = 0.92;
 export const HAPTIC_GAP_MS = 50;
 export const GRIND_PULSE = 0.12;
 
-/** Flick-It style scores are 1–5. Sensitivity 50 is the default swipe distance. */
-export const FLICK_SCORE_MIN = 1;
-export const FLICK_SCORE_MAX = 5;
+/** Sensitivity 50 is the default swipe distance. */
 export const FLICK_SENSITIVITY = 50;
 
 /**

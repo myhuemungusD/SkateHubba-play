@@ -1,6 +1,6 @@
 import { memo } from "react";
 import type { ClipDoc } from "../../services/clips";
-import type { ClipVoteState } from "../../services/clips.upvotes";
+import type { ClipVoteState } from "../../services/clips";
 import { FlagIcon, SkateboardIcon, ThumbsDownIcon, ThumbsUpIcon } from "../icons";
 import { ABOVE_NAV, RAIL_BTN } from "./feedLayout";
 import { isFeedShareEnabled } from "../../lib/featureFlags";

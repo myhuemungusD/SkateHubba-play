@@ -15,7 +15,7 @@ import { logger } from "./logger";
  * open disputes, only once.
  */
 
-export const DISPUTE_QUEUE_LIMIT = 50;
+const DISPUTE_QUEUE_LIMIT = 50;
 export type AdminRuling = "land" | "bail";
 
 export interface QueuedDispute extends Dispute {

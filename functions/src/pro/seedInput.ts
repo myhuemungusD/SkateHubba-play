@@ -2,10 +2,10 @@
  * Validation for a Verified-Pro seed (shared by the `proSeed` callable and
  * `scripts/grant-pro.ts`). Dependency-free so the CLI can import it.
  */
-export const SEED_REASON_MIN = 10;
-export const SEED_REASON_MAX = 280;
-export const SEED_COMPANY_MAX = 80;
-export const SEED_URL_MAX = 500;
+const SEED_REASON_MIN = 10;
+const SEED_REASON_MAX = 280;
+const SEED_COMPANY_MAX = 80;
+const SEED_URL_MAX = 500;
 
 export interface SeedInput {
   targetUid: string;

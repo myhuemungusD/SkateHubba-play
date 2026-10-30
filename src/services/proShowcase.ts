@@ -15,7 +15,7 @@ import { logger } from "./logger";
  */
 
 /** How many of the pro's clips are scanned for spot tags. */
-export const PRO_CLIP_SCAN_LIMIT = 60;
+const PRO_CLIP_SCAN_LIMIT = 60;
 /** Max spots shown on a pro profile. */
 export const PRO_SPOTS_LIMIT = 8;
 

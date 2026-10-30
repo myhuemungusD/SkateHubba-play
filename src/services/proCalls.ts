@@ -10,7 +10,7 @@ import { logger } from "./logger";
  * clip into its wttGold label.
  */
 
-export const PRO_QUEUE_LIMIT = 20;
+const PRO_QUEUE_LIMIT = 20;
 
 export interface ProCallItem {
   clipId: string;

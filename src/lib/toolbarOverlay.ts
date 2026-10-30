@@ -38,7 +38,7 @@ export interface ToolbarOverlayEnv {
   atRestOffsetTop: number;
 }
 
-export function isIosGoogleApp(userAgent: string): boolean {
+function isIosGoogleApp(userAgent: string): boolean {
   return /iPad|iPhone|iPod/.test(userAgent) && /GSA\//.test(userAgent);
 }
 

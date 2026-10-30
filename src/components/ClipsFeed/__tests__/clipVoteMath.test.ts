@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { ClipVoteState } from "../../../services/clips.upvotes";
+import type { ClipVoteState } from "../../../services/clips";
 import { NO_VOTE, applyVote, nextVoteFor, sameVoteState } from "../clipVoteMath";
 
 function state(up: number, down: number, myVote: 1 | -1 | null): ClipVoteState {

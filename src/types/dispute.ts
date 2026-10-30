@@ -85,14 +85,6 @@ export interface Dispute {
   verdict?: DisputeOutcome;
 }
 
-/** A single viewer's verdict on a dispute. */
-export interface DisputeVote {
-  uid: string;
-  disputeId: string;
-  verdict: DisputeVerdict;
-  createdAt: Timestamp | null;
-}
-
 /**
  * The viewer's relationship to a dispute in the feed.
  *

@@ -63,7 +63,7 @@ import type { NotificationDocType } from "./notifications";
  * feature is pointless. Keep this union in lockstep with the `type in [...]`
  * allowlists on /push_dispatch and /push_dispatch_limits in firestore.rules.
  */
-export type PushDispatchType = NotificationDocType | "nudge";
+type PushDispatchType = NotificationDocType | "nudge";
 
 export interface PushDispatchParams {
   senderUid: string;

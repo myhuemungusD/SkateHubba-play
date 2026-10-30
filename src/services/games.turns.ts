@@ -5,11 +5,8 @@ import { writeLandedClipsInTransaction } from "./clips";
 import { writeNotificationInTx } from "./notifications";
 import { createPushDispatchOutbox, drainPushDispatchOutbox, resetPushDispatchOutbox } from "./pushDispatch";
 import { toGameDoc, type GameDoc } from "./games.mappers";
-import { TURN_DURATION_MS } from "./turnDuration";
 import { decideExpiredForfeit, type ForfeitGameUpdate } from "./turnForfeit.shared";
 import { applyTrainingLabelPending } from "./trainingLabels.materialize";
-
-export { TURN_DURATION_MS };
 
 export function gamesRef() {
   return collection(requireDb(), "games");

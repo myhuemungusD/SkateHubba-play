@@ -9,7 +9,7 @@ export const SITE_ORIGIN = "https://skatehubba.com";
 
 const CANONICAL_PATHS: ReadonlySet<string> = new Set(["/", "/auth", "/feed", "/privacy", "/terms", "/data-deletion"]);
 
-export function normalizeCanonicalPath(pathname: string): string {
+function normalizeCanonicalPath(pathname: string): string {
   if (pathname.length > 1 && pathname.endsWith("/")) return pathname.slice(0, -1);
   return pathname;
 }

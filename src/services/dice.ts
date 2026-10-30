@@ -16,15 +16,13 @@ import { toDiceGame, toDiceStats, type DiceGameDoc, type DiceMode, type DiceStat
 export type {
   DiceEndReason,
   DiceGameDoc,
-  DiceHand,
   DiceMode,
   DiceRollView,
   DiceRoundView,
   DiceStatsDoc,
   DiceStatus,
-  DiceTenView,
 } from "./dice.mappers";
-export { DICE_MODES, DICE_TARGETS, toDiceGame, toDiceStats } from "./dice.mappers";
+export { DICE_MODES, DICE_TARGETS, toDiceStats } from "./dice.mappers";
 
 export interface DiceCallResult {
   gameId: string;

@@ -21,7 +21,7 @@ export interface ShoeProfile {
 export type ShoeView = "outer" | "inner" | "top" | "front" | "back";
 
 /** Atlas regions (pixels, top-left origin) in a 2048x1024 multi-view skin. */
-export const ATLAS_SIZE = { w: 2048, h: 1024 } as const;
+const ATLAS_SIZE = { w: 2048, h: 1024 } as const;
 export const ATLAS_REGIONS: Record<ShoeView, readonly [number, number, number, number]> = {
   outer: [0, 0, 1024, 512],
   top: [1024, 0, 2048, 512],
@@ -30,7 +30,7 @@ export const ATLAS_REGIONS: Record<ShoeView, readonly [number, number, number, n
   back: [1536, 512, 2048, 1024],
 };
 
-export interface ShoeSkinEntry extends ShoeProfile {
+interface ShoeSkinEntry extends ShoeProfile {
   /** Views packed in the atlas (multi-view skins only). */
   views?: ShoeView[];
   /** Views the art is still missing; those faces fall back to the side art. */

@@ -23,7 +23,7 @@ import { probeVideoDuration, validateTrickName, validateVideoDuration, validateV
  *               where there is no meaningful file picker).
  *  • `file`   — a video already on the device.
  */
-export type UploadMode = "choose" | "record" | "file";
+type UploadMode = "choose" | "record" | "file";
 
 /**
  * Minimum gap between two user-clip creates, mirroring the Firestore rule.
@@ -34,7 +34,7 @@ export type UploadMode = "choose" | "record" | "file";
  * "you're too fast" would arrive only after 30 MB had already gone over the
  * wire and been paid for.
  */
-export const USER_CLIP_COOLDOWN_MS = 30_000;
+const USER_CLIP_COOLDOWN_MS = 30_000;
 
 /**
  * When this session last posted a clip. Module-scoped, not component state,

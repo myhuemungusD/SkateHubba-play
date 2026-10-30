@@ -38,10 +38,10 @@ import {
 export const USER_DATA_EXPORT_SCHEMA_VERSION = 4 as const;
 
 /** Where to write if an export keeps coming back incomplete. */
-export const PRIVACY_CONTACT_EMAIL = "privacy@skatehubba.com";
+const PRIVACY_CONTACT_EMAIL = "privacy@skatehubba.com";
 
 /** Most docs one list can hold in the file (pages × page size). */
-export const EXPORT_MAX_DOCS_PER_LIST = EXPORT_MAX_PAGES * EXPORT_PAGE_SIZE;
+const EXPORT_MAX_DOCS_PER_LIST = EXPORT_MAX_PAGES * EXPORT_PAGE_SIZE;
 
 /** Shown when no section at all could be read, so no file is made. */
 export const EXPORT_FAILED_MESSAGE = "We couldn't load your data. Check your connection and try again.";
@@ -51,13 +51,13 @@ export const EXPORT_FAILED_MESSAGE = "We couldn't load your data. Check your con
  * whatever Firestore returned, post-normalisation: Timestamps become ISO
  * strings so the JSON round-trips cleanly.
  */
-export interface ExportedDoc {
+interface ExportedDoc {
   id: string;
   path: string;
   data: Record<string, unknown>;
 }
 
-export type { ExportDocSection, ExportListSection, ExportSection } from "../../api/account/_userDataRegistry";
+export type { ExportSection } from "../../api/account/_userDataRegistry";
 
 /**
  * Sections in file order (registry order), each with its plain-words name for
@@ -94,7 +94,7 @@ export const NOT_INCLUDED_NOTICE =
   `To get a copy of those, email ${PRIVACY_CONTACT_EMAIL}.`;
 
 /** File metadata, around the data sections. */
-export interface UserDataExportMeta {
+interface UserDataExportMeta {
   schemaVersion: typeof USER_DATA_EXPORT_SCHEMA_VERSION;
   exportedAt: string;
   /**

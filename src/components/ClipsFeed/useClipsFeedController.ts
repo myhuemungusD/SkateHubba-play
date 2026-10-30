@@ -7,8 +7,16 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fetchClipsFeed, type ClipDoc, type ClipsFeedCursor, type ClipsFeedSort } from "../../services/clips";
-import { fetchClipVoteState, removeClipVote, voteClip, type ClipVoteState } from "../../services/clips.upvotes";
+import {
+  castClipVote,
+  fetchClipsFeed,
+  fetchClipVoteState,
+  removeClipVote,
+  type ClipDoc,
+  type ClipsFeedCursor,
+  type ClipsFeedSort,
+  type ClipVoteState,
+} from "../../services/clips";
 import { trackEvent } from "../../services/analytics";
 import { logger } from "../../services/logger";
 import { parseFirebaseError } from "../../utils/helpers";
@@ -273,7 +281,7 @@ export function useClipsFeedController(viewerUid: string) {
 
       try {
         const confirmed =
-          next === null ? await removeClipVote(viewerUid, clip.id) : await voteClip(viewerUid, clip.id, next);
+          next === null ? await removeClipVote(viewerUid, clip.id) : await castClipVote(viewerUid, clip.id, next);
         if (!mountedRef.current) return;
         // Fire on success so a retried write can't double-count. trackEvent is
         // consent-gated inside services/analytics.
