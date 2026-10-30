@@ -82,6 +82,8 @@ interface ImportMetaEnv {
   readonly VITE_FEATURE_TURN_LENGTH?: string;
   readonly VITE_FEATURE_RANDOM_CHALLENGER?: string;
   readonly VITE_FEATURE_FEED_SHARE?: string;
+  /** Landing v2 "Concrete & Tape" switch: "true" shows the redesigned landing. Unset (default) keeps the current one. Read via isLandingV2Enabled(). */
+  readonly VITE_FEATURE_LANDING_V2?: string;
   /** Sign in with Apple switch: "true" shows the button. Unset (default)
    *  hides it. Read via isAppleSignInEnabled(). */
   readonly VITE_FEATURE_APPLE_SIGNIN_ENABLED?: string;

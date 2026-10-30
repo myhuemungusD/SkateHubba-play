@@ -21,4 +21,11 @@ describe("GoogleButton", () => {
     await userEvent.click(screen.getByRole("button"));
     expect(onClick).toHaveBeenCalledOnce();
   });
+
+  it("renders the flat Landing v2 shape without a shadow", () => {
+    render(<GoogleButton onClick={vi.fn()} loading={false} shape="flat" />);
+    const btn = screen.getByRole("button");
+    expect(btn.className).toContain("rounded-ct");
+    expect(btn.className).not.toContain("shadow");
+  });
 });

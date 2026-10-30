@@ -557,6 +557,26 @@ describe("isFeedShareEnabled (VITE_FEATURE_FEED_SHARE)", () => {
   });
 });
 
+describe("isLandingV2Enabled (VITE_FEATURE_LANDING_V2)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    localStorage.removeItem(FEATURE_TESTER_STORAGE_KEY);
+  });
+  it("is off by default and on only for literal true", async () => {
+    const { isLandingV2Enabled } = await import("../featureFlags");
+    expect(isLandingV2Enabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_LANDING_V2", "1");
+    expect(isLandingV2Enabled()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_LANDING_V2", "true");
+    expect(isLandingV2Enabled()).toBe(true);
+  });
+  it("turns on for a web tester", async () => {
+    const { isLandingV2Enabled } = await import("../featureFlags");
+    localStorage.setItem(FEATURE_TESTER_STORAGE_KEY, "tester-uid");
+    expect(isLandingV2Enabled()).toBe(true);
+  });
+});
+
 describe("tester override in native store builds (App Store 2.3.1)", () => {
   afterEach(() => {
     localStorage.removeItem(FEATURE_TESTER_STORAGE_KEY);

@@ -49,6 +49,17 @@ describe("Smoke: Auth", () => {
     expect(screen.getByLabelText("Birth month")).toBeInTheDocument();
   });
 
+  it("Landing v2 flag swaps the landing and the consent card for the slim bar", async () => {
+    vi.stubEnv("VITE_FEATURE_LANDING_V2", "true");
+    localStorage.removeItem("sh_analytics_consent");
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    await renderApp();
+
+    expect(await screen.findByRole("heading", { level: 1, name: "FOR THE LOVE OF THE GAME." })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /analytics notice/i })).toHaveAttribute("data-variant", "bar");
+    vi.unstubAllEnvs();
+  });
+
   it("landing page navigates to sign-in", async () => {
     auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();

@@ -39,10 +39,13 @@ const ABOVE_NAV_CLASS = "bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))]";
 export function ConsentBanner({
   onNav,
   liftAboveNav = false,
+  variant = "card",
 }: {
   onNav: (screen: "privacy" | "terms") => void;
   /** Sit above the bottom tab bar so Privacy Policy does not cover Challenge. */
   liftAboveNav?: boolean;
+  /** "bar": Landing v2's slim full-width bar with equal Accept / Decline. */
+  variant?: "card" | "bar";
 }) {
   // Initialise synchronously from localStorage so the banner never flickers
   // in on a second render (avoids calling setState inside an effect).
@@ -61,6 +64,44 @@ export function ConsentBanner({
   };
 
   if (!visible) return null;
+
+  if (variant === "bar") {
+    return (
+      <div
+        ref={regionRef}
+        role="region"
+        aria-label="Cookie and analytics notice"
+        data-variant="bar"
+        className="fixed inset-x-0 bottom-0 z-50 border-t border-ct-line-strong bg-ct-concrete pb-[env(safe-area-inset-bottom)]"
+      >
+        <div className="mx-auto flex min-h-14 max-w-6xl items-center gap-3 px-4 py-1.5 sm:px-6">
+          <p className="flex-1 font-body text-sm leading-tight text-ct-dust">
+            Cookie-free analytics.{" "}
+            <button
+              type="button"
+              onClick={() => onNav("privacy")}
+              className="inline-flex min-h-11 items-center rounded-ct text-ct-chalk underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ct-chalk"
+            >
+              Privacy&nbsp;Policy
+            </button>
+          </p>
+          {[
+            { label: "Accept", act: accept },
+            { label: "Decline", act: decline },
+          ].map(({ label, act }) => (
+            <button
+              key={label}
+              type="button"
+              onClick={act}
+              className="inline-flex min-h-11 min-w-[5.5rem] shrink-0 items-center justify-center rounded-ct border border-ct-line-strong px-3 font-body text-sm font-semibold text-ct-chalk transition-colors duration-[120ms] ease-ct hover:bg-ct-curb focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ct-chalk"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   // Compact on phones (tighter margin/padding) so it eats as little of the
   // viewport as possible; roomier from `sm` up.

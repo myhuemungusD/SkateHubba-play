@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { AppleButton } from "../components/AppleButton";
 import { GoogleButton } from "../components/GoogleButton";
 import { InviteButton } from "../components/InviteButton";
 import { LandingDemoVideo } from "../components/LandingDemoVideo";
 import { TermsAgreementNotice } from "../components/legal/TermsAgreementNotice";
 import { SkateButton } from "../components/SkateButton";
-import { isAppleSignInEnabled } from "../lib/featureFlags";
+import { isAppleSignInEnabled, isLandingV2Enabled } from "../lib/featureFlags";
 import { FEATURES, HOW_IT_WORKS } from "./landingContent";
 import { LandingFooter } from "./LandingFooter";
 
@@ -45,7 +45,21 @@ export function __resetHeroEntranceForTest(): void {
   heroEntrancePlayed = false;
 }
 
-export function Landing({ onGo, onGoogle, googleLoading, onApple, appleLoading, onNav }: LandingProps) {
+// Lazy so the flagged redesign stays out of the entry bundle (bundle budget);
+// the classic landing below remains the eager first paint.
+const LandingV2 = lazy(() => import("./LandingV2").then((m) => ({ default: m.LandingV2 })));
+
+/** Signed-out landing. VITE_FEATURE_LANDING_V2 swaps in the redesign; the current one stays the default. */
+export function Landing(props: LandingProps) {
+  if (!isLandingV2Enabled()) return <LandingClassic {...props} />;
+  return (
+    <Suspense fallback={<div className="min-h-dvh bg-ct-ink" />}>
+      <LandingV2 {...props} />
+    </Suspense>
+  );
+}
+
+function LandingClassic({ onGo, onGoogle, googleLoading, onApple, appleLoading, onNav }: LandingProps) {
   const handleAuth = useCallback(
     (mode: AuthMode) => () => {
       onGo(mode);

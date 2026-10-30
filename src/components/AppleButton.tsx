@@ -2,17 +2,24 @@ export function AppleButton({
   onClick,
   loading,
   disabled = false,
+  shape = "default",
 }: {
   onClick: () => void;
   loading: boolean;
   disabled?: boolean;
+  /** "flat": Landing v2 (52px tall, 6px radius, no shadow, chalk focus ring). */
+  shape?: "default" | "flat";
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={loading || disabled}
-      className="group w-full flex items-center justify-center gap-3 rounded-xl bg-black text-white font-body text-sm font-semibold py-3.5 px-6 border border-white/15 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] hover:bg-neutral-900 shadow-[0_1px_3px_rgba(0,0,0,0.12)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.15)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+      className={`group w-full flex items-center justify-center gap-3 bg-black text-white font-body font-semibold px-6 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] hover:bg-neutral-900 focus-visible:outline-2 focus-visible:outline-offset-2 ${
+        shape === "flat"
+          ? "h-[52px] rounded-ct text-base border border-ct-line-strong transition-[background-color,scale] duration-[120ms] ease-ct focus-visible:outline-ct-chalk"
+          : "rounded-xl text-sm py-3.5 border border-white/15 transition-all duration-200 shadow-[0_1px_3px_rgba(0,0,0,0.12)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.15)] focus-visible:outline-brand-orange"
+      }`}
     >
       {loading ? (
         <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />

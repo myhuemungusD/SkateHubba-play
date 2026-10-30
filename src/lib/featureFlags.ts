@@ -332,3 +332,8 @@ export function isRandomChallengerEnabled(): boolean {
 export function isFeedShareEnabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_FEED_SHARE);
 }
+
+/** Landing v2 "Concrete & Tape" redesign (src/screens/LandingV2.tsx). Literal "true" only; off by default (current landing); tester override turns it on on the web. */
+export function isLandingV2Enabled(): boolean {
+  return flagOn(import.meta.env.VITE_FEATURE_LANDING_V2);
+}

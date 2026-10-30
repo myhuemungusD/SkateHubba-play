@@ -24,4 +24,11 @@ describe("AppleButton", () => {
     render(<AppleButton onClick={vi.fn()} loading={false} disabled />);
     expect(screen.getByRole("button", { name: "Continue with Apple" })).toBeDisabled();
   });
+
+  it("renders the flat Landing v2 shape with a hairline border", () => {
+    render(<AppleButton onClick={vi.fn()} loading={false} shape="flat" />);
+    const btn = screen.getByRole("button", { name: "Continue with Apple" });
+    expect(btn.className).toContain("rounded-ct");
+    expect(btn.className).toContain("border-ct-line-strong");
+  });
 });
