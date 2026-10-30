@@ -52,11 +52,15 @@ vi.mock("../../../context/AuthContext", () => ({ useAuthContext: () => authState
 const privateSpots = vi.hoisted(() => ({ list: vi.fn(async () => [] as unknown[]) }));
 vi.mock("../../../services/mapCheckins", () => ({ listMyPrivateSpots: privateSpots.list }));
 
+const addedSpot = vi.hoisted(() => ({ value: null as unknown }));
 vi.mock("../AddSpotSheet", () => ({
-  AddSpotSheet: ({ onClose }: { onClose: () => void }) => (
+  AddSpotSheet: ({ onClose, onSuccess }: { onClose: () => void; onSuccess: (spot: unknown) => void }) => (
     <div role="dialog" aria-label="Add a spot">
       <button type="button" aria-label="Close" onClick={onClose}>
         close
+      </button>
+      <button type="button" onClick={() => onSuccess(addedSpot.value)}>
+        save
       </button>
     </div>
   ),
@@ -108,6 +112,9 @@ let fakeMapConstructorCalls = 0;
 // that the resolved MAP_STYLE actually reaches mapbox-gl, not just that
 // SpotMap renders without throwing.
 let lastMapInitOpts: { style?: unknown } | null = null;
+// Viewport the fake map reports; a test can pan it before firing moveend.
+const DEFAULT_BOUNDS = { north: 34.1, south: 34.0, east: -118.2, west: -118.3 };
+let mapBounds = { ...DEFAULT_BOUNDS };
 
 vi.mock("mapbox-gl", () => {
   class FakeMarker {
@@ -142,11 +149,12 @@ vi.mock("mapbox-gl", () => {
       (mapEventHandlers[event] ??= []).push(cb);
     }
     getBounds() {
+      const b = mapBounds;
       return {
-        getNorth: () => 34.1,
-        getSouth: () => 34.0,
-        getEast: () => -118.2,
-        getWest: () => -118.3,
+        getNorth: () => b.north,
+        getSouth: () => b.south,
+        getEast: () => b.east,
+        getWest: () => b.west,
       };
     }
     flyTo(opts: unknown) {
@@ -630,5 +638,133 @@ describe("SpotMap map check-ins (Phase 1)", () => {
     unmount();
     resolve([FIXTURE]);
     await Promise.resolve();
+  });
+});
+
+describe("SpotMap interactions after load", () => {
+  const renderLoaded = async () => {
+    const view = render(
+      <MemoryRouter>
+        <SpotMap />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(mockGetSpotsInBounds).toHaveBeenCalled());
+    return view;
+  };
+
+  afterEach(() => {
+    vi.useRealTimers();
+    mapBounds = { ...DEFAULT_BOUNDS };
+  });
+
+  it("stops following on a manual drag and refetches the viewport on moveend", async () => {
+    await renderLoaded();
+    expect(screen.getByRole("button", { name: "Following your location" })).toBeInTheDocument();
+    act(() => mapEventHandlers["dragstart"].forEach((cb) => cb()));
+    expect(screen.getByRole("button", { name: "Recenter to my location" })).toBeInTheDocument();
+
+    vi.useFakeTimers();
+    const fetchesBefore = mockGetSpotsInBounds.mock.calls.length;
+    // Same viewport as the load fetch: the debounced refetch is deduped.
+    act(() => mapEventHandlers["moveend"].forEach((cb) => cb()));
+    act(() => vi.advanceTimersByTime(400));
+    expect(mockGetSpotsInBounds).toHaveBeenCalledTimes(fetchesBefore);
+
+    // A real pan: one more fetch, for the new viewport, after the 400 ms debounce.
+    mapBounds = { north: 35.1, south: 35.0, east: -117.2, west: -117.3 };
+    act(() => mapEventHandlers["moveend"].forEach((cb) => cb()));
+    act(() => vi.advanceTimersByTime(399));
+    expect(mockGetSpotsInBounds).toHaveBeenCalledTimes(fetchesBefore);
+    act(() => vi.advanceTimersByTime(1));
+    expect(mockGetSpotsInBounds).toHaveBeenCalledTimes(fetchesBefore + 1);
+    expect(mockGetSpotsInBounds).toHaveBeenLastCalledWith(mapBounds);
+  });
+
+  it("shows a waiting toast on recenter without a GPS fix, restarts it on a second tap, then clears it", async () => {
+    const view = await renderLoaded();
+    vi.useFakeTimers();
+    const recenter = screen.getByRole("button", { name: "Following your location" });
+    act(() => recenter.click());
+    expect(screen.getByText("Waiting for location…")).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(2000));
+    act(() => recenter.click());
+    act(() => vi.advanceTimersByTime(2000));
+    expect(screen.getByText("Waiting for location…")).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1000));
+    expect(screen.queryByText("Waiting for location…")).toBeNull();
+
+    act(() => recenter.click());
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("lets the skater dismiss the GPS banner", async () => {
+    await renderLoaded();
+    expect(screen.getByText(/geolocation not supported/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Dismiss location notice" }));
+    expect(screen.queryByText(/geolocation not supported/i)).toBeNull();
+  });
+
+  it("opens Add Spot from the empty-viewport prompt", async () => {
+    mockGetSpotsInBounds.mockResolvedValue([]);
+    await renderLoaded();
+    await userEvent.click(await screen.findByRole("button", { name: "Add the first spot here" }));
+    expect(screen.getByRole("dialog", { name: "Add a spot" })).toBeInTheDocument();
+  });
+
+  it("flies to and previews a freshly added spot, then closes the preview", async () => {
+    const fresh: Spot = { ...FIXTURE, id: "new-spot", name: "Fresh Ledge", latitude: 34.2, longitude: -118.4 };
+    addedSpot.value = fresh;
+    await renderLoaded();
+    await userEvent.click(screen.getByRole("button", { name: "Add a spot" }));
+    fakeFlyTo.mockClear();
+    await userEvent.click(screen.getByRole("button", { name: "save" }));
+    expect(screen.queryByRole("dialog", { name: "Add a spot" })).toBeNull();
+    expect(fakeFlyTo).toHaveBeenCalledWith({ center: [-118.4, 34.2], zoom: 16 });
+    await waitFor(() => expect(document.querySelector('[data-testid="spot-marker-new-spot"]')).not.toBeNull());
+
+    const card = screen.getByRole("dialog", { name: "Spot: Fresh Ledge" });
+    act(() => {
+      card.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(screen.queryByRole("dialog", { name: "Spot: Fresh Ledge" })).toBeNull();
+  });
+});
+
+describe("SpotMap list view with a GPS fix and no token", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it("lists nearby spots for the known location without asking for GPS again", async () => {
+    const watchPosition = vi.fn((ok: (pos: { coords: { latitude: number; longitude: number } }) => void) => {
+      ok({ coords: { latitude: 33.9, longitude: -118.1 } });
+      return 7;
+    });
+    Object.defineProperty(globalThis.navigator, "geolocation", {
+      configurable: true,
+      value: { watchPosition, clearWatch: vi.fn() },
+    });
+    mockGetSpotsNearby.mockResolvedValue([]);
+    vi.doMock("../../../lib/mapbox", () => ({
+      MAPBOX_TOKEN: "",
+      MAP_STYLE: "mapbox://styles/mapbox/dark-v11",
+      MAP_DEFAULTS: { zoom: 13, minZoom: 5, maxZoom: 19 },
+      reportMapStyleConfig: vi.fn(),
+    }));
+    const { SpotMap: NoTokenMap } = await import("../SpotMap");
+    const view = render(
+      <MemoryRouter>
+        <NoTokenMap />
+      </MemoryRouter>,
+    );
+    try {
+      await userEvent.click(screen.getByRole("button", { name: "Use list view" }));
+      await waitFor(() => expect(mockGetSpotsNearby).toHaveBeenCalledWith({ lat: 33.9, lng: -118.1 }));
+      expect(watchPosition).toHaveBeenCalledTimes(1);
+    } finally {
+      view.unmount();
+      delete (globalThis.navigator as { geolocation?: unknown }).geolocation;
+    }
   });
 });

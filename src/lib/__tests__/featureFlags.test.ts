@@ -581,3 +581,58 @@ describe("tester override in native store builds (App Store 2.3.1)", () => {
     expect(isDiceEnabled()).toBe(true);
   });
 });
+
+describe("literal-true flags without a dedicated suite", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  const flags = [
+    ["VITE_FEATURE_PRO_PROFILES", "isProProfilesEnabled"],
+    ["VITE_FEATURE_WTT_ENABLED", "isWttEnabled"],
+    ["VITE_FEATURE_FEED_MODES_ENABLED", "isFeedModesEnabled"],
+    ["VITE_FEATURE_PRO_BLESSING", "isProBlessingEnabled"],
+    ["VITE_FEATURE_CLOSET_ENABLED", "isClosetEnabled"],
+    ["VITE_FEATURE_SMS_2FA_ENABLED", "isSms2faEnabled"],
+    ["VITE_FEATURE_TIPS", "isTipsEnabled"],
+    ["VITE_FEATURE_HUBBA_ICONS", "isHubbaIconsEnabled"],
+  ] as const satisfies ReadonlyArray<readonly [string, keyof typeof import("../featureFlags")]>;
+
+  it.each(flags)("%s drives %s and only the literal true turns it on", async (env, name) => {
+    const mod = await import("../featureFlags");
+    const read = mod[name];
+    vi.stubEnv(env, "");
+    expect(read()).toBe(false);
+    vi.stubEnv(env, "TRUE");
+    expect(read()).toBe(false);
+    vi.stubEnv(env, "true");
+    expect(read()).toBe(true);
+  });
+});
+
+describe("closet sub-features need the closet itself", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([
+    ["VITE_FEATURE_CLOSET_DROPS_ENABLED", "isClosetDropsEnabled"],
+    ["VITE_FEATURE_CLOSET_TRADING_ENABLED", "isClosetTradingEnabled"],
+  ] as const)("%s only counts while VITE_FEATURE_CLOSET_ENABLED is on", async (env, name) => {
+    const read = (await import("../featureFlags"))[name];
+    vi.stubEnv(env, "true");
+    vi.stubEnv("VITE_FEATURE_CLOSET_ENABLED", "false");
+    expect(read()).toBe(false);
+    vi.stubEnv("VITE_FEATURE_CLOSET_ENABLED", "true");
+    expect(read()).toBe(true);
+    vi.stubEnv(env, "false");
+    expect(read()).toBe(false);
+  });
+});
+
+describe("tester override when storage is blocked", () => {
+  it("treats a throwing localStorage as no override", async () => {
+    const { isFeatureTesterOverrideActive } = await import("../featureFlags");
+    const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("SecurityError");
+    });
+    expect(isFeatureTesterOverrideActive()).toBe(false);
+    get.mockRestore();
+  });
+});

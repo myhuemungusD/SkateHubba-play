@@ -11,6 +11,9 @@ vi.mock("../../../services/mapCheckins", async (orig) => {
   return { ...real, checkInAtSpot: svc.checkIn };
 });
 
+const presence = vi.hoisted(() => ({ remember: vi.fn(() => true) }));
+vi.mock("../../../services/spotPresence", () => ({ rememberIfPassed: presence.remember }));
+
 import { CheckInButton } from "../CheckInButton";
 import { LocationError } from "../../../services/mapCheckins";
 
@@ -57,5 +60,21 @@ describe("CheckInButton", () => {
     svc.checkIn.mockRejectedValueOnce(new Error("x"));
     await userEvent.click(screen.getByRole("button", { name: "Check in" }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Check-in failed. Try again."));
+  });
+
+  it("remembers a passed check-in for spot presence only when that feature is on", async () => {
+    const outcome = {
+      queued: false,
+      result: { code: "ok", xp: 10, newSpot: false, pioneer: false, badgeId: null, rewardsPaused: false },
+    };
+    svc.checkIn.mockResolvedValue(outcome);
+    renderIt();
+    await userEvent.click(screen.getByRole("button", { name: "Check in" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Checked in! +10 XP."));
+    expect(presence.remember).not.toHaveBeenCalled();
+
+    vi.stubEnv("VITE_FEATURE_SPOT_PRESENCE", "true");
+    await userEvent.click(screen.getByRole("button", { name: "Check in" }));
+    await waitFor(() => expect(presence.remember).toHaveBeenCalledWith({ id: "s1" }, outcome));
   });
 });
