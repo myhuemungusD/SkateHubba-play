@@ -273,6 +273,46 @@ describe("ClipsFeed", () => {
     await waitFor(() => expect(screen.getByText(/No clips yet\./i)).toBeInTheDocument());
   });
 
+  describe("when a page comes back with no user posts but a cursor", () => {
+    const ts = { toMillis: () => Date.now() - 60_000 } as ClipDoc["createdAt"];
+    const at = (id: string) => ({ createdAt: ts, id });
+
+    it("follows the cursor on the first load instead of showing no clips", async () => {
+      mockFetchClipsFeed
+        .mockResolvedValueOnce({ clips: [], cursor: at("c1") })
+        .mockResolvedValueOnce({ clips: [makeClip({ id: "u1", trickName: "Deep" })], cursor: null });
+      render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+      expect(await screen.findByText("Deep")).toBeInTheDocument();
+      expect(mockFetchClipsFeed.mock.calls.map((c) => c[0])).toEqual([null, at("c1")]);
+    });
+
+    it("keeps paging forward on load more, and stops once the cursor is null", async () => {
+      const user = userEvent.setup();
+      mockFetchClipsFeed
+        .mockResolvedValueOnce({ clips: [makeClip({ id: "a", trickName: "TrickA" })], cursor: at("a") })
+        .mockResolvedValueOnce({ clips: [], cursor: at("c2") })
+        .mockResolvedValueOnce({ clips: [makeClip({ id: "b", trickName: "TrickB" })], cursor: null });
+      render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+      await screen.findByText("TrickA");
+
+      await user.keyboard("{ArrowDown}");
+      expect(await screen.findByText("TrickB")).toBeInTheDocument();
+      expect(mockFetchClipsFeed).toHaveBeenCalledTimes(3);
+
+      await user.keyboard("{ArrowDown}");
+      expect(mockFetchClipsFeed).toHaveBeenCalledTimes(3);
+    });
+
+    it("gives up after three more calls and shows the empty state", async () => {
+      for (const id of ["c1", "c2", "c3", "c4", "c5"]) {
+        mockFetchClipsFeed.mockResolvedValueOnce({ clips: [], cursor: at(id) });
+      }
+      render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+      expect(await screen.findByText(/No clips yet\./i)).toBeInTheDocument();
+      expect(mockFetchClipsFeed).toHaveBeenCalledTimes(4);
+    });
+  });
+
   it("requests fetchClipsFeed with sort='top' (sample 12) on mount — top is the default", async () => {
     mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
