@@ -139,7 +139,7 @@ describe("useGamePlayController submissions", () => {
 });
 
 describe("GamePlayScreen report and history", () => {
-  it("shows earlier rounds under the active turn", () => {
+  it("shows earlier rounds under the active turn and expands them on tap", async () => {
     const turnHistory = [
       {
         turnNumber: 1,
@@ -155,7 +155,15 @@ describe("GamePlayScreen report and history", () => {
       },
     ];
     render(<GamePlayScreen game={game({ turnHistory })} profile={me} onBack={vi.fn()} />);
-    expect(screen.getByRole("button", { name: /Game Clips/ })).toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: /Game Clips/ });
+    expect(toggle).toHaveTextContent("Game Clips (1 round)");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Round 1: Kickflip")).not.toBeInTheDocument();
+
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Round 1: Kickflip")).toBeInTheDocument();
+    expect(screen.getByText("@rival's trick")).toBeInTheDocument();
   });
 
   it("files a report against the opponent and then locks the button", async () => {

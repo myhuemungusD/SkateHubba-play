@@ -113,6 +113,7 @@ describe("MatcherDecisionPanel", () => {
     );
     expect(screen.queryByRole("button", { name: /Landed/ })).not.toBeInTheDocument();
     expect(screen.queryByText("Did you land it?")).not.toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "Video upload progress" })).toHaveAttribute("aria-valuenow", "50");
   });
 
   it("retries the last call after an error", async () => {
