@@ -194,14 +194,17 @@ describe("material getters", () => {
   });
 });
 
-describe("ensureRunnerMaps", () => {
+// The KTX2 maps load through mountRunnerEnvironment, cached for the session.
+describe("runner maps", () => {
   it("loads the KTX2 sets once and tiles them onto the street materials", async () => {
     ktx.compressed.add("asphalt-color");
     const { tex, palette } = await fresh();
     const gl = asRenderer(fakeRenderer());
-    const first = tex.ensureRunnerMaps(gl);
-    expect(tex.ensureRunnerMaps(gl)).toBe(first);
-    await first;
+    // Two visits before the maps land still share one load.
+    const cleanups = [tex.mountRunnerEnvironment(gl, new Scene()), tex.mountRunnerEnvironment(gl, new Scene())];
+    await vi.waitFor(() => expect(ktx.loaders[0]?.disposed).toBe(true));
+    await flush();
+    for (const cleanup of cleanups) cleanup();
 
     expect(ktx.loaders).toHaveLength(1);
     const loader = ktx.loaders[0];
@@ -268,18 +271,21 @@ describe("ensureRunnerMaps", () => {
   it("disposes the loader on failure and lets the next call retry", async () => {
     ktx.fail = "brick-normal";
     const { tex } = await fresh();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const gl = asRenderer(fakeRenderer());
-    const failed = tex.ensureRunnerMaps(gl);
-    await expect(failed).rejects.toThrow("bad brick-normal");
+    const scene = new Scene();
+    tex.mountRunnerEnvironment(gl, scene)();
+    await vi.waitFor(() =>
+      expect(warn).toHaveBeenCalledWith("Runner environment failed to load", new Error("bad brick-normal")),
+    );
     expect(ktx.loaders[0]?.disposed).toBe(true);
     expect(tex.roadMaterial().map).toBeNull();
 
     ktx.fail = null;
-    const retry = tex.ensureRunnerMaps(gl);
-    expect(retry).not.toBe(failed);
-    await retry;
+    const cleanup = tex.mountRunnerEnvironment(gl, scene);
+    await vi.waitFor(() => expect(tex.roadMaterial().map).toBeInstanceOf(Texture));
     expect(ktx.loaders).toHaveLength(2);
-    expect(tex.roadMaterial().map).toBeInstanceOf(Texture);
+    cleanup();
   });
 });
 

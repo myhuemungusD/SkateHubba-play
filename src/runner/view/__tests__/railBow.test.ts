@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { BoxGeometry, BufferAttribute, BufferGeometry, Group, Mesh, MeshBasicMaterial } from "three";
+
+/** Bow one unscaled mesh, so the bow reaches the geometry as is. */
+function bowOne(geometry: BufferGeometry, bow: number): void {
+  const root = new Group();
+  root.add(new Mesh(geometry, new MeshBasicMaterial()));
+  bowFittedRail(root, bow);
+}
 import { RAIL_BOW, RAIL_LENGTH } from "../../tune";
 import { railBowOffset } from "../../railCurve";
-import { bowFittedRail, bowRailGeometry, railBeamGeometry } from "../railBow";
+import { bowFittedRail, railBeamGeometry } from "../railBow";
 
 /** Map of z → x for every vertex, so the bend can be read back by position. */
 function xAtZ(geometry: BufferGeometry): Map<number, number[]> {
@@ -17,11 +24,11 @@ function xAtZ(geometry: BufferGeometry): Map<number, number[]> {
   return out;
 }
 
-describe("bowRailGeometry", () => {
+describe("rail bend", () => {
   it("keeps the +Z lip in place and pushes the middle by the sim's sine", () => {
     const geometry = new BoxGeometry(0.2, 0.1, 4, 1, 1, 4);
     const before = xAtZ(geometry);
-    bowRailGeometry(geometry, 0.3);
+    bowOne(geometry, 0.3);
     const after = xAtZ(geometry);
 
     // Lip (z = +2) and far end (z = -2): zero offset at both ends.
@@ -41,9 +48,9 @@ describe("bowRailGeometry", () => {
   it("does nothing for a zero bow or a geometry with no positions", () => {
     const flat = new BoxGeometry(0.2, 0.1, 4, 1, 1, 4);
     const version = (flat.getAttribute("position") as BufferAttribute).version;
-    bowRailGeometry(flat, 0);
+    bowOne(flat, 0);
     expect((flat.getAttribute("position") as BufferAttribute).version).toBe(version);
-    expect(() => bowRailGeometry(new BufferGeometry(), 0.3)).not.toThrow();
+    expect(() => bowOne(new BufferGeometry(), 0.3)).not.toThrow();
   });
 });
 

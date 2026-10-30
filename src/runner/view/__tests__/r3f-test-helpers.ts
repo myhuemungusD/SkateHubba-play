@@ -13,8 +13,10 @@ import { createRoot, extend, type ReconcilerRoot, type RootState } from "@react-
 import * as THREE from "three";
 import type { Object3D, WebGLRenderer } from "three";
 import { vi } from "vitest";
-import type { RenderFrame, RunnerController } from "../../controller";
+import type { RunnerController } from "../../controller";
 import type { RunnerState } from "../../types";
+
+type RenderFrame = ReturnType<RunnerController["getRenderFrame"]>;
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

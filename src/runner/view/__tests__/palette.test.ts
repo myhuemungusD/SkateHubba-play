@@ -1,13 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { Texture } from "three";
-import {
-  PALETTE,
-  PALETTE_CELLS,
-  alleyPaletteMaterial,
-  assignAlleyPalette,
-  paletteBox,
-  paletteCylinder,
-} from "../palette";
+import { PALETTE, alleyPaletteMaterial, assignAlleyPalette, paletteBox, paletteCylinder } from "../palette";
+
+/** alley-palette.ktx2 is eight cells across. */
+const PALETTE_CELLS = 8;
 
 function uvs(geometry: ReturnType<typeof paletteBox>): Array<[number, number]> {
   const uv = geometry.getAttribute("uv");

@@ -23,9 +23,7 @@ import {
   BOARD_TARGET_LENGTH,
   fitSkateboard,
   loadRunnerModel,
-  loadSkateboardModel,
   placeDeckGraphic,
-  resetDeckGraphic,
   useSkateboardModel,
   wheelSpinRate,
 } from "../skateboardModel";
@@ -139,18 +137,6 @@ describe("wheelSpinRate", () => {
   });
 });
 
-describe("resetDeckGraphic", () => {
-  it("puts the logo plane back under the procedural deck", () => {
-    const graphic = new Group();
-    graphic.position.set(1, 2, 3);
-    graphic.scale.set(5, 5, 5);
-    resetDeckGraphic(graphic);
-    expect(graphic.position.toArray()).toEqual([0, 0.222, 0]);
-    expect(graphic.rotation.x).toBeCloseTo(Math.PI / 2);
-    expect(graphic.scale.toArray()).toEqual([0.48, 0.92, 1]);
-  });
-});
-
 describe("fitSkateboard edge cases", () => {
   it("lays a board authored standing up on Y flat, with a thin X axis", () => {
     const mesh = new Mesh(new BoxGeometry(0.05, 2, 0.3, 1, 30, 1), new MeshBasicMaterial());
@@ -226,7 +212,6 @@ describe("loadRunnerModel", () => {
     model.add(twoMaterials);
     gltf.next = () => Promise.resolve({ scene: model });
     const gl = fakeRenderer(false, 16);
-    expect(loadSkateboardModel).toBe(loadRunnerModel);
 
     const scene = await loadRunnerModel("board.glb", asRenderer(gl));
     expect(scene).toBe(model);
@@ -370,6 +355,9 @@ describe("useSkateboardModel", () => {
     expect(geometryDispose).toHaveBeenCalled();
     expect(textureDispose).toHaveBeenCalled();
     expect(scene.find("ProceduralBoard").visible).toBe(true);
+    // The logo plane goes back under the procedural deck.
+    expect(graphic.position.toArray()).toEqual([0, 0.222, 0]);
+    expect(graphic.rotation.x).toBeCloseTo(Math.PI / 2);
     expect(graphic.scale.toArray()).toEqual([0.48, 0.92, 1]);
     // The wheel list is gone with the model: later frames do not touch it.
     const spun = wheel.rotation.x;
