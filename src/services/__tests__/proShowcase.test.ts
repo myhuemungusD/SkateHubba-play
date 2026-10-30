@@ -62,6 +62,19 @@ describe("fetchProClipReel", () => {
 });
 
 describe("fetchProSpots", () => {
+  it("filters to active user posts in the query, before the 60-clip scan limit", async () => {
+    h.listSpotsByCreator.mockResolvedValue([]);
+    h.getDocs.mockResolvedValue({ docs: [] });
+    await fetchProSpots("p");
+    expect(h.getDocs).toHaveBeenCalledWith([
+      "clips",
+      { where: ["playerUid", "==", "p"] },
+      { where: ["source", "==", "user"] },
+      // Without it the clips read rule denies every visitor's query.
+      { where: ["moderationStatus", "==", "active"] },
+      { limit: 60 },
+    ]);
+  });
   it("merges created spots and clip-tagged spots, sorted by clip count", async () => {
     h.listSpotsByCreator.mockResolvedValue([spot("r1"), spot("r2")]);
     h.getDocs.mockResolvedValue({

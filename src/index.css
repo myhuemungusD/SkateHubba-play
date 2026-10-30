@@ -873,7 +873,10 @@ html.tour-open .lobby-root {
       filter 0.12s ease;
   }
 
-  .btn-secondary:hover {
+  /* aria-disabled buttons (e.g. Customize while it loads) stay focusable, so
+     they don't match :disabled; skip the hover and press feedback for them
+     too, so they don't look pressable. */
+  .btn-secondary:not([aria-disabled="true"]):hover {
     border-color: rgba(255, 107, 0, 0.34);
     color: #fff;
   }
@@ -899,7 +902,7 @@ html.tour-open .lobby-root {
       0 1px 2px rgba(0, 0, 0, 0.3);
   }
 
-  .press-feedback:not(:disabled):active {
+  .press-feedback:not(:disabled):not([aria-disabled="true"]):active {
     scale: 0.97;
     filter: brightness(1.12);
   }
@@ -914,7 +917,7 @@ html.tour-open .lobby-root {
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .press-feedback:not(:disabled):active {
+    .press-feedback:not(:disabled):not([aria-disabled="true"]):active {
       scale: none;
     }
   }

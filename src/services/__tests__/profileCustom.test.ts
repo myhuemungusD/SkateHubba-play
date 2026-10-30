@@ -8,17 +8,9 @@ const h = vi.hoisted(() => ({
   uid: { value: "u1" as string | null },
 }));
 
-vi.mock("firebase/firestore", () => ({
-  doc: (_db: unknown, ...p: string[]) => p.join("/"),
-  collection: (_db: unknown, ...p: string[]) => p.join("/"),
-  where: (...a: unknown[]) => ({ where: a }),
-  limit: (n: number) => ({ limit: n }),
-  query: (...a: unknown[]) => a,
-  getDoc: h.getDoc,
-  getDocs: h.getDocs,
-  setDoc: h.setDoc,
-  serverTimestamp: () => "TS",
-}));
+vi.mock("firebase/firestore", async () =>
+  (await import("./profileCustomFirestore.test-helpers")).fakeProfileCustomFirestore(h),
+);
 vi.mock("../../firebase", () => ({
   requireAuth: () => ({ currentUser: h.uid.value === null ? null : { uid: h.uid.value } }),
   requireDb: () => ({}),
@@ -40,6 +32,7 @@ import {
   isHexColor,
   moveSection,
   normalizeSections,
+  resolvePinnedClips,
   sanitizeProfileCustom,
   saveProfileCustom,
   togglePinnedClip,
@@ -201,6 +194,17 @@ describe("Firestore I/O", () => {
     await expect(saveProfileCustom("u1", DEFAULT_PROFILE_CUSTOM)).rejects.toThrow("profile_custom_unauthenticated");
   });
 
+  it("fetchPinnableClips filters to user posts in the query, before the 24-clip limit", async () => {
+    h.getDocs.mockResolvedValueOnce({ docs: [] });
+    await fetchPinnableClips("u1");
+    expect(h.getDocs).toHaveBeenCalledWith([
+      "clips",
+      { where: ["playerUid", "==", "u1"] },
+      { where: ["source", "==", "user"] },
+      { limit: 24 },
+    ]);
+  });
+
   it("fetchPinnableClips maps valid user posts and returns [] on error", async () => {
     h.getDocs.mockResolvedValueOnce({
       docs: [
@@ -236,5 +240,26 @@ describe("Firestore I/O", () => {
     expect(await fetchPinnedClips("u1", ["a", "b", "c", "g", "l"])).toEqual([
       { id: "a", trickName: "A", videoUrl: "va", thumbnailUrl: null },
     ]);
+  });
+
+  it("resolvePinnedClips keeps resolved and unreadable pins, drops orphans, and caps at 3", async () => {
+    h.getDoc.mockImplementation(async (path: string) => {
+      if (path === "clips/a") return snap({ source: "user", playerUid: "u1", trickName: "A", videoUrl: "va" });
+      if (path === "clips/g") return snap({ source: "game", playerUid: "u1", trickName: "G", videoUrl: "vg" });
+      if (path === "clips/x") return snap({ source: "user", playerUid: "u2", trickName: "X", videoUrl: "vx" });
+      if (path === "clips/c") return snap(undefined);
+      throw new Error("offline");
+    });
+    // Game pin, foreign pin and deleted pin are orphans; the offline read is kept.
+    expect(await resolvePinnedClips("u1", ["g", "a", "x"])).toEqual({
+      clips: [{ id: "a", trickName: "A", videoUrl: "va", thumbnailUrl: null }],
+      keepIds: ["a"],
+    });
+    h.getDoc.mockClear();
+    expect(await resolvePinnedClips("u1", ["c", "offline", "a", "g"])).toEqual({
+      clips: [{ id: "a", trickName: "A", videoUrl: "va", thumbnailUrl: null }],
+      keepIds: ["offline", "a"],
+    });
+    expect(h.getDoc.mock.calls.map((c) => c[0])).toEqual(["clips/c", "clips/offline", "clips/a"]);
   });
 });

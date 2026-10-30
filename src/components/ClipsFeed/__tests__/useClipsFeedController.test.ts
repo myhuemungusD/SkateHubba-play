@@ -21,7 +21,9 @@ vi.mock("../../../services/clips", async (importOriginal) => ({
   fetchClipsFeed: feed.fetchClipsFeed,
 }));
 const noneBlocked = vi.hoisted(() => new Set<string>());
-vi.mock("../../../hooks/useBlockedUsers", () => ({ useBlockedUsers: () => noneBlocked }));
+// The block list has loaded (the controller holds the feed until it has).
+const blockState = vi.hoisted(() => ({ blocked: noneBlocked, ready: true, failed: false, retry: () => {} }));
+vi.mock("../../../hooks/useBlockedUsers", () => ({ useBlockedUsersState: () => blockState }));
 vi.mock("../../../services/analytics", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../services/analytics")>()),
   trackEvent: vi.fn(),

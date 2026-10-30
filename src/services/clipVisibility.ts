@@ -30,6 +30,6 @@ export function isPubliclyApproved(data: { moderationStatus?: unknown; moderatio
  * "game" (clips.mappers.ts). So a missing source is treated as a game clip
  * and kept off the public surfaces. Only the exact string "user" passes.
  */
-export function isUserPostedClip(data: { source?: unknown } | undefined): boolean {
+export function isUserPostedClip(data: { source?: unknown } | null | undefined): boolean {
   return data?.source === "user";
 }

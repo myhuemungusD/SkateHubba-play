@@ -331,6 +331,7 @@ export function PlayerProfileScreen({
             onShare={() => void handleShareProfile()}
             shareCopied={shareCopied}
             onCustomize={customOn ? () => setCustomizing(true) : undefined}
+            customizeReady={pc.ready}
           />
         )}
 

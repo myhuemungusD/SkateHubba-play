@@ -14,7 +14,9 @@ vi.mock("../../../services/disputes", async (importOriginal) => ({
   ...svc,
 }));
 const blocked = vi.hoisted(() => new Set<string>());
-vi.mock("../../../hooks/useBlockedUsers", () => ({ useBlockedUsers: () => blocked }));
+// The block list has loaded (the controller holds the feed until it has).
+const blockState = vi.hoisted(() => ({ blocked: blocked, ready: true, failed: false, retry: () => {} }));
+vi.mock("../../../hooks/useBlockedUsers", () => ({ useBlockedUsersState: () => blockState }));
 vi.mock("../../../services/analytics", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../services/analytics")>()),
   trackEvent: vi.fn(),

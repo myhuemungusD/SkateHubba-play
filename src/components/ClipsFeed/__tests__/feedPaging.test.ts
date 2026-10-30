@@ -45,4 +45,16 @@ describe("fetchFeedPage", () => {
     expect(mockFetchClipsFeed).toHaveBeenCalledTimes(1);
     expect(page.more).toBe(false);
   });
+
+  it("stops after three follow-ups even while the cursor keeps moving", async () => {
+    for (const id of ["c1", "c2", "c3", "c4", "c5"]) {
+      mockFetchClipsFeed.mockResolvedValueOnce({ clips: [], cursor: at(id) });
+    }
+
+    const page = await fetchFeedPage(null, "new", new Set());
+
+    // One call plus the 3-follow cap: the fifth answer is never asked for.
+    expect(mockFetchClipsFeed.mock.calls.map((c) => c[0])).toEqual([null, at("c1"), at("c2"), at("c3")]);
+    expect(page).toEqual({ clips: [], cursor: at("c4"), more: true });
+  });
 });
