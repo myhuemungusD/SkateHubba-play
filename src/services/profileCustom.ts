@@ -263,6 +263,12 @@ function toPinnable(id: string, raw: Record<string, unknown> | undefined): Pinna
  */
 export async function fetchPinnableClips(uid: string): Promise<PinnableClip[]> {
   try {
+    // Equality-only with no orderBy: Firestore merges the automatic
+    // single-field indexes, so no composite index is needed. Adding an
+    // orderBy or a range filter needs a composite index in
+    // firestore.indexes.json AND an approved index deploy before it ships,
+    // or the query fails in prod with failed-precondition (logged below,
+    // shown as no clips to pin).
     const snap = await getDocs(
       query(collection(requireDb(), "clips"), where("playerUid", "==", uid), where("source", "==", "user"), limit(24)),
     );

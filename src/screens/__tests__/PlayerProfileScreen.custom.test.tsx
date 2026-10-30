@@ -134,7 +134,7 @@ describe("PlayerProfileScreen — custom profile (flag on)", () => {
     m.save.mockImplementation(async (_uid: string, v: ProfileCustom) => v);
     render(<PlayerProfileScreen {...props} />);
     await screen.findByText("Mike White designs");
-    fireEvent.click(await screen.findByTestId("customize-profile-button"));
+    fireEvent.click(await screen.findByRole("button", { name: "Customize profile" }));
     const sheet = screen.getByTestId("profile-customize-sheet");
     expect(sheet).toBeInTheDocument();
 
@@ -203,7 +203,7 @@ describe("PlayerProfileScreen — custom profile (flag on)", () => {
     m.pinnable.mockResolvedValue([]);
     render(<PlayerProfileScreen {...props} />);
     await screen.findByText("Mike White designs");
-    fireEvent.click(await screen.findByTestId("customize-profile-button"));
+    fireEvent.click(await screen.findByRole("button", { name: "Customize profile" }));
     fireEvent.click(screen.getByRole("tab", { name: "LAYOUT" }));
     expect(await screen.findByText("Post a clip to pin it here.")).toBeInTheDocument();
     await act(async () => {
@@ -214,7 +214,7 @@ describe("PlayerProfileScreen — custom profile (flag on)", () => {
     expect(screen.queryByTestId("profile-customize-sheet")).toBeNull();
   });
 
-  it("keeps Customize closed until the pins are pruned, so the editor never holds an orphan", async () => {
+  it("keeps Customize inert, in place, until the pins are pruned, so the editor never holds an orphan", async () => {
     // The look loads first; the pin read is still out (hesher #936 S3).
     m.get.mockResolvedValue({ ...full, pinnedClipIds: ["c1", "gone"] });
     let finishPins: (ids: string[]) => void = () => {};
@@ -229,12 +229,20 @@ describe("PlayerProfileScreen — custom profile (flag on)", () => {
     render(<PlayerProfileScreen {...props} />);
     await screen.findByText("Mike White designs");
     await waitFor(() => expect(m.pinned).toHaveBeenCalled());
-    expect(screen.queryByTestId("customize-profile-button")).toBeNull();
+
+    // The palette holds its slot while the pins load, but is inert: tapping
+    // it doesn't open the editor (hesher #936 r2 S-2: no layout shift).
+    const loading = screen.getByRole("button", { name: "Customize profile, loading" });
+    expect(loading).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(loading);
+    expect(screen.queryByTestId("profile-customize-sheet")).toBeNull();
 
     // Open the editor the moment it can be opened.
-    const opened = screen.findByTestId("customize-profile-button").then((btn) => fireEvent.click(btn));
+    const opened = screen.findByRole("button", { name: "Customize profile" }).then((btn) => fireEvent.click(btn));
     await act(async () => finishPins(["c1"]));
     await opened;
+    expect(screen.getByTestId("customize-profile-button")).toBe(loading);
+    expect(loading).not.toHaveAttribute("aria-disabled");
     fireEvent.click(screen.getByRole("tab", { name: "LAYOUT" }));
     expect(screen.getByText("PINNED CLIPS · 1/3")).toBeInTheDocument();
     await act(async () => {
@@ -276,7 +284,7 @@ describe("PlayerProfileScreen — custom profile with the Closet flag off (iOS 1
     m.save.mockImplementation(async (_uid: string, v: ProfileCustom) => v);
     render(<PlayerProfileScreen {...props} />);
     await screen.findByText("Mike White designs");
-    fireEvent.click(await screen.findByTestId("customize-profile-button"));
+    fireEvent.click(await screen.findByRole("button", { name: "Customize profile" }));
     fireEvent.click(screen.getByRole("tab", { name: "LAYOUT" }));
     expect(screen.queryByText("Closet showcase")).toBeNull();
     expect(screen.queryByText("Highlight signature pieces")).toBeNull();

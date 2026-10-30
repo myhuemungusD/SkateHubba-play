@@ -127,5 +127,9 @@ test("a landed trick from a game stays out of the public feed", async ({ page })
   // The post is the hydration anchor; once it is on screen the page has
   // loaded, so the game clip's absence is a real result, not a race.
   await expect(page.getByText("Kickflip").first()).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("Heelflip")).toHaveCount(0);
+  // Count slides by their accessible name ("Clip by @user: Trick"), not by
+  // visible text: a slide that isn't active doesn't render its trick name as
+  // text, so a getByText check would pass even with the game clip in the feed.
+  await expect(page.getByRole("article", { name: /: Kickflip$/ })).toHaveCount(1);
+  await expect(page.getByRole("article", { name: /: Heelflip$/ })).toHaveCount(0);
 });

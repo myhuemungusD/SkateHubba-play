@@ -26,6 +26,24 @@ describe("OwnProfileActions", () => {
     }
   });
 
+  it("keeps the palette in its slot but inert while customization loads", () => {
+    const onCustomize = vi.fn();
+    const props = { onShare: vi.fn(), shareCopied: false, onCustomize };
+    const { rerender } = render(<OwnProfileActions {...props} customizeReady={false} />);
+    const btn = screen.getByRole("button", { name: "Customize profile, loading" });
+    expect(btn).toHaveAttribute("aria-disabled", "true");
+    expect(btn).toHaveClass("opacity-60", "min-w-[44px]");
+    fireEvent.click(btn);
+    expect(onCustomize).not.toHaveBeenCalled();
+
+    rerender(<OwnProfileActions {...props} customizeReady />);
+    expect(screen.getByTestId("customize-profile-button")).toBe(btn);
+    expect(btn).not.toHaveAttribute("aria-disabled");
+    expect(btn).not.toHaveClass("opacity-60");
+    fireEvent.click(screen.getByRole("button", { name: "Customize profile" }));
+    expect(onCustomize).toHaveBeenCalledTimes(1);
+  });
+
   it("wires each action and shows the copied state", () => {
     const onShare = vi.fn();
     const { rerender } = render(<OwnProfileActions onShare={onShare} shareCopied={false} />);

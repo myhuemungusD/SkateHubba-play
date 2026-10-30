@@ -12,6 +12,12 @@ interface Props {
   onShare: () => void;
   shareCopied: boolean;
   onCustomize?: () => void;
+  /**
+   * False while the profile's pins are still loading. The palette keeps its
+   * slot (so the row doesn't shift when it turns ready) but does nothing and
+   * says it is loading, so the editor can't open on half-loaded pins.
+   */
+  customizeReady?: boolean;
 }
 
 /**
@@ -21,7 +27,14 @@ interface Props {
  * contains its visible word (WCAG 2.5.3). This row only renders on your
  * own profile, where there is no Challenge CTA to compete with.
  */
-export function OwnProfileActions({ onEditProfile, onViewMyStats, onShare, shareCopied, onCustomize }: Props) {
+export function OwnProfileActions({
+  onEditProfile,
+  onViewMyStats,
+  onShare,
+  shareCopied,
+  onCustomize,
+  customizeReady = true,
+}: Props) {
   return (
     <div className="flex items-center gap-2 mb-6">
       {onEditProfile && (
@@ -58,10 +71,11 @@ export function OwnProfileActions({ onEditProfile, onViewMyStats, onShare, share
       {onCustomize && (
         <button
           type="button"
-          onClick={onCustomize}
+          onClick={customizeReady ? onCustomize : undefined}
           data-testid="customize-profile-button"
-          aria-label="Customize profile"
-          className={`min-w-[44px] inline-flex items-center justify-center btn-secondary ${SHAPE}`}
+          aria-disabled={customizeReady ? undefined : true}
+          aria-label={customizeReady ? "Customize profile" : "Customize profile, loading"}
+          className={`min-w-[44px] inline-flex items-center justify-center btn-secondary ${SHAPE}${customizeReady ? "" : " opacity-60"}`}
         >
           <Palette size={16} aria-hidden="true" />
         </button>

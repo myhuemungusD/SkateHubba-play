@@ -106,9 +106,10 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
     void clips.loadPool();
   }, [clips, disputes]);
 
-  // A failed block list is known at once: its banner shows even while the
-  // pool is still loading, so that frame is never blank.
-  const bannerError = !clips.loading || clips.blockFailed ? clips.error : null;
+  // An error shows at once, even while the pool or the block list is still
+  // loading: `blocking` drops the skeleton as soon as there is an error, so
+  // holding the banner back would leave a blank frame. loadPool and the sort
+  // reset clear the error when they start loading, so it is never stale.
   const hasSlides = disputes.disputes.length > 0 || clips.visibleClips.length > 0;
   // A failed block list pauses the whole feed behind one Try again banner;
   // the dispute lane would otherwise repeat the same error as a slide.
@@ -151,9 +152,9 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
 
       {blocking && <ClipsFeedSkeleton />}
 
-      {bannerError && (
+      {clips.error && (
         <div className="absolute inset-x-4 top-24 z-30">
-          <ClipsFeedError error={bannerError} errorCode={clips.errorCode} onRetry={retryFeed} />
+          <ClipsFeedError error={clips.error} errorCode={clips.errorCode} onRetry={retryFeed} />
         </div>
       )}
 

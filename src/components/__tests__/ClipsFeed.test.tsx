@@ -1444,6 +1444,18 @@ describe("ClipsFeed — block list", () => {
     expect(screen.queryByText("Kickflip")).not.toBeInTheDocument();
   });
 
+  it("shows a failed page's error at once, even while the block list is still pending", async () => {
+    // The error drops the skeleton, so the banner must not wait for the list:
+    // that frame would be blank (hesher #936 r2 N-a).
+    mockSubscribeToBlockedUsers.mockImplementation(() => () => {});
+    mockFetchClipsFeed.mockRejectedValueOnce(new Error("boom"));
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Couldn't load the feed/i);
+    expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: /loading clips/i })).not.toBeInTheDocument();
+  });
+
   it("never shows a blocked player's clip", async () => {
     mockSubscribeToBlockedUsers.mockImplementation(answerBlockList(["p1"]));
     mockFetchClipsFeed.mockResolvedValueOnce([

@@ -1,10 +1,11 @@
-import { collection, getDocs, limit, query, where } from "firebase/firestore";
+import { collection, getDocs, query } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import type { Spot } from "../types/spot";
 import { fetchPinnedClips, getProfileCustom, type PinnableClip } from "./profileCustom";
 import { getSpot, listSpotsByCreator } from "./spots";
 import { logger } from "./logger";
 import { isUserPostedClip } from "./clipVisibility";
+import { proSpotsConstraints } from "./proSpotsQuery";
 
 /**
  * Pro profile Clip Reel + Pro Spots (behind VITE_FEATURE_PRO_SHOWCASE).
@@ -15,8 +16,6 @@ import { isUserPostedClip } from "./clipVisibility";
  * a clip at, each with those clips.
  */
 
-/** How many of the pro's posts are scanned for spot tags. */
-const PRO_CLIP_SCAN_LIMIT = 60;
 /** Max spots shown on a pro profile. */
 export const PRO_SPOTS_LIMIT = 8;
 
@@ -45,20 +44,9 @@ export async function fetchProClipReel(uid: string): Promise<PinnableClip[]> {
 export async function fetchProSpots(uid: string): Promise<ProSpot[]> {
   try {
     const [clipSnap, created] = await Promise.all([
-      // `source` is filtered in the query, before the limit, so game clips can't
-      // crowd posts out of the scan. `moderationStatus` makes the query provable
-      // for a visitor: the clips read rule lets a non-owner read active clips
-      // only, so without it every visitor's query is denied. Equality-only:
-      // single-field indexes merge, no composite index needed.
-      getDocs(
-        query(
-          collection(requireDb(), "clips"),
-          where("playerUid", "==", uid),
-          where("source", "==", "user"),
-          where("moderationStatus", "==", "active"),
-          limit(PRO_CLIP_SCAN_LIMIT),
-        ),
-      ),
+      // Active user posts only; see proSpotsQuery.ts for why each filter is
+      // there and what an orderBy would need (a composite index + deploy).
+      getDocs(query(collection(requireDb(), "clips"), ...proSpotsConstraints(uid))),
       listSpotsByCreator(uid).catch(() => [] as Spot[]),
     ]);
     const bySpot = new Map<string, PinnableClip[]>();

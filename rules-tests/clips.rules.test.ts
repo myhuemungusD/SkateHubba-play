@@ -20,6 +20,7 @@ import {
   type RulesTestContext,
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
+import { proSpotsConstraints } from "../src/services/proSpotsQuery";
 import { resolve } from "node:path";
 import {
   collection,
@@ -223,13 +224,18 @@ describe("clips — read", () => {
   // visitor. A list query must be provable from its own filters, so it needs
   // the moderationStatus filter for a non-owner (hesher #936 S1).
   describe("pro spots query", () => {
-    const postsBy = (ctx: RulesTestContext, active: boolean) =>
+    // The service's own query (src/services/proSpotsQuery.ts), so a change
+    // there is tested here too.
+    const proSpots = (ctx: RulesTestContext) =>
+      getDocs(query(collection(ctx.firestore(), "clips"), ...proSpotsConstraints(P1_UID)));
+    // Deliberately the same query minus its moderationStatus filter: the
+    // variant a visitor must not be able to run.
+    const withoutStatus = (ctx: RulesTestContext) =>
       getDocs(
         query(
           collection(ctx.firestore(), "clips"),
           where("playerUid", "==", P1_UID),
           where("source", "==", "user"),
-          ...(active ? [where("moderationStatus", "==", "active")] : []),
           limit(60),
         ),
       );
@@ -246,16 +252,16 @@ describe("clips — read", () => {
     });
 
     it("a visitor CAN list a player's active posts", async () => {
-      const snap = await assertSucceeds(postsBy(asStranger(), true));
+      const snap = await assertSucceeds(proSpots(asStranger()));
       expect(snap.docs.map((d) => d.id)).toEqual(["post-active"]);
     });
 
     it("a visitor CANNOT run the query without the moderationStatus filter", async () => {
-      await assertFails(postsBy(asStranger(), false));
+      await assertFails(withoutStatus(asStranger()));
     });
 
     it("the owner can still list their own posts without it", async () => {
-      await assertSucceeds(postsBy(asP1(), false));
+      await assertSucceeds(withoutStatus(asP1()));
     });
   });
 });
