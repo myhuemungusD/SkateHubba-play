@@ -162,7 +162,10 @@ export default defineConfig({
     unstubGlobals: true,
     coverage: {
       provider: "v8",
-      include: ["src/**/*.{ts,tsx}"],
+      // api/ is the Vercel serverless side (account delete, crons, player
+      // meta, well-known files). Its tests live in src/ (vitest's include
+      // above), so measure it here too or it can drop to 0% unseen.
+      include: ["src/**/*.{ts,tsx}", "api/**/*.ts"],
       exclude: [
         "src/**/*.test.{ts,tsx}",
         "src/__tests__/**",
