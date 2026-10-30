@@ -132,4 +132,33 @@ describe("multi-view skins", () => {
     }
     expect(topHits).toBeGreaterThan(0);
   });
+
+  it("keeps valid UVs on the zero-area heel faces an odd segment count creates", () => {
+    // With 3 segments two heel-ring points share a height and sit on the
+    // centerline, so one triangle collapses and its normal has zero length.
+    const profile = { aspect: 0.5, top: [0.4, 0.9, 1, 0.7], bottom: [0.1, 0, 0, 0.6] };
+    const g = buildMultiViewLoft(profile, ["outer", "inner", "top", "front", "back"], 3);
+    expect(g.positions.length).toBe((profile.top.length + 1) * 3 * 2 * 9);
+    for (const v of g.uvs) {
+      expect(Number.isFinite(v)).toBe(true);
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("textures the steep heel faces of a finely sampled profile from the back view", () => {
+    // 20 columns put the first ring close to the heel, so the faces between
+    // them point mostly backwards (-x) and must sample the heel art.
+    const cols = 20;
+    const profile = { aspect: 0.45, top: Array(cols).fill(0.8), bottom: Array(cols).fill(0.05) };
+    const g = buildMultiViewLoft(profile, ["outer", "inner", "top", "front", "back"], 12);
+    const [bx0, by0, bx1, by1] = ATLAS_REGIONS.back;
+    let backHits = 0;
+    for (let i = 0; i < g.uvs.length; i += 2) {
+      const px = g.uvs[i] * 2048;
+      const py = (1 - g.uvs[i + 1]) * 1024;
+      if (px > bx0 && px <= bx1 && py >= by0 && py <= by1) backHits++;
+    }
+    expect(backHits).toBeGreaterThan(0);
+  });
 });

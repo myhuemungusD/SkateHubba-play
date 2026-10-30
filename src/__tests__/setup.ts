@@ -126,3 +126,21 @@ class MockIntersectionObserver {
   takeRecords = vi.fn(() => []);
 }
 (globalThis as unknown as Record<string, unknown>).IntersectionObserver = MockIntersectionObserver;
+
+// jsdom ships these as "Not implemented" stubs that write an error to the
+// virtual console on every call: ~750 lines of noise per run, which buries
+// real warnings. Install silent stand-ins with jsdom's own observable result
+// (no scroll, no media load, no 2D/WebGL context). Plain functions, not
+// vi.fn(), so they keep that behavior regardless of mock-reset settings.
+// Tests that care still spy on these per test.
+window.scrollTo = (() => undefined) as typeof window.scrollTo;
+Object.defineProperty(window.HTMLMediaElement.prototype, "load", {
+  configurable: true,
+  writable: true,
+  value: () => undefined,
+});
+Object.defineProperty(window.HTMLCanvasElement.prototype, "getContext", {
+  configurable: true,
+  writable: true,
+  value: () => null,
+});

@@ -33,6 +33,8 @@ import metalNormalUrl from "../assets/metal-normal.ktx2?url";
 import metalRoughnessUrl from "../assets/metal-roughness.ktx2?url";
 import { ensureBrandArt } from "./brandArt";
 import { assignAlleyPalette } from "./palette";
+import { logger } from "../../services/logger";
+import { errorLogFields } from "../../utils/errors";
 
 /**
  * CC0 PBR maps plus the Design Mainline posters for the runner only.
@@ -267,7 +269,7 @@ export function mountRunnerEnvironment(gl: WebGLRenderer, scene: Scene): () => v
     const hdrPromise = new RGBELoader().loadAsync(hdriUrl);
     try {
       const brandPromise = ensureBrandArt().catch((error: unknown) => {
-        console.warn("Runner brand art failed to load", error);
+        logger.warn("runner_brand_art_load_failed", errorLogFields(error));
       });
       await Promise.all([hdrPromise, ensureRunnerMaps(gl), brandPromise]);
       const loaded = await hdrPromise;
@@ -287,7 +289,7 @@ export function mountRunnerEnvironment(gl: WebGLRenderer, scene: Scene): () => v
       env = baked.texture;
       scene.environment = env;
     } catch (error: unknown) {
-      console.warn("Runner environment failed to load", error);
+      logger.warn("runner_environment_load_failed", errorLogFields(error));
       void hdrPromise.then((texture: Texture) => texture.dispose()).catch(() => undefined);
     }
   })();

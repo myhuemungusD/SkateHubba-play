@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { AppleButton } from "../components/AppleButton";
+import { AuthEmailField, AuthSocialSection } from "../components/AuthSocialSection";
 import { DobConsentFields } from "../components/DobConsentFields";
-import { GoogleButton } from "../components/GoogleButton";
-import { TermsAgreementNotice } from "../components/legal/TermsAgreementNotice";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { isAppleSignInEnabled } from "../lib/featureFlags";
@@ -57,33 +55,20 @@ export function BootAuth() {
             : "Sign in to continue your games."}
         </p>
 
-        <div className="flex flex-col gap-3">
-          {appleOn ? (
-            <AppleButton
-              onClick={() => {
-                requestBootAppleSignIn();
-                setApplePending(true);
-              }}
-              loading={applePending}
-              disabled={googlePending}
-            />
-          ) : null}
-          <GoogleButton
-            onClick={() => {
-              requestBootGoogleSignIn();
-              setGooglePending(true);
-            }}
-            loading={googlePending}
-            disabled={appleOn && applePending}
-          />
-          <TermsAgreementNotice onNav={(doc) => navigate(doc === "privacy" ? "/privacy" : "/terms")} />
-        </div>
-
-        <div className="flex items-center gap-3 my-5">
-          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
-          <span className="font-body text-xs text-subtle">or continue with email</span>
-          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
-        </div>
+        <AuthSocialSection
+          appleOn={appleOn}
+          onApple={() => {
+            requestBootAppleSignIn();
+            setApplePending(true);
+          }}
+          appleLoading={applePending}
+          onGoogle={() => {
+            requestBootGoogleSignIn();
+            setGooglePending(true);
+          }}
+          googleLoading={googlePending}
+          onNavLegal={(doc) => navigate(doc === "privacy" ? "/privacy" : "/terms")}
+        />
 
         <form
           onSubmit={(e) => {
@@ -93,20 +78,12 @@ export function BootAuth() {
           aria-busy={socialLoading || undefined}
           className={`transition-opacity duration-200 ${socialLoading ? "opacity-40 pointer-events-none" : ""}`}
         >
-          <Field
-            label="Email"
-            name="email"
+          <AuthEmailField
             value={email}
             onChange={(value) => {
               setEmail(value);
               remember({ email: value });
             }}
-            placeholder="you@email.com"
-            icon="@"
-            type="email"
-            autoComplete="email"
-            inputMode="email"
-            enterKeyHint="next"
           />
           <Field
             label="Password"

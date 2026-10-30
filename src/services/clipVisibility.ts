@@ -15,3 +15,21 @@ export function isPubliclyApproved(data: { moderationStatus?: unknown; moderatio
   if (!WORKFLOW.has(moderation)) return false;
   return moderation === "approved";
 }
+
+/**
+ * Whether a clip is a user post, the only kind the public surfaces show
+ * (the feed, its Spotlight cards, Pro Picks, and profile reels and spots).
+ *
+ * Game clips (`source: "game"`) are turn videos from a game. They stay in
+ * the game and dispute screens, where both players and the dispute jury
+ * need them, but the player never chose to post them publicly.
+ *
+ * A clip with no `source` is a legacy doc. Every clip written before user
+ * uploads existed was a game clip, user uploads always write
+ * `source: "user"`, and the mapper already reads a missing source as
+ * "game" (clips.mappers.ts). So a missing source is treated as a game clip
+ * and kept off the public surfaces. Only the exact string "user" passes.
+ */
+export function isUserPostedClip(data: { source?: unknown } | undefined): boolean {
+  return data?.source === "user";
+}

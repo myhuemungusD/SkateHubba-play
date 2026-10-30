@@ -33,6 +33,7 @@ import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { parseFirebaseError } from "../utils/helpers";
 import { logger } from "./logger";
+import { toDateOrNull } from "./firestoreDate";
 
 /** One owned item on `users/{uid}/locker`. */
 export interface LockerItem {
@@ -78,16 +79,6 @@ const DEFAULT_RARITY = "common";
  * descending sort. `Array#sort` is stable, so ties keep Firestore order.
  */
 const UNDATED_SORT_KEY = Number.MIN_SAFE_INTEGER;
-
-/** See `achievements.ts` — structural Timestamp detection, `null` on anything else. */
-function toDateOrNull(value: unknown): Date | null {
-  if (!value || typeof value !== "object") return null;
-  const toDate = (value as { toDate?: unknown }).toDate;
-  if (typeof toDate !== "function") return null;
-  const date: unknown = toDate.call(value);
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
-  return date;
-}
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;

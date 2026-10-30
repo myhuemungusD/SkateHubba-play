@@ -4,6 +4,7 @@ import type { Spot } from "../types/spot";
 import { fetchPinnedClips, getProfileCustom, type PinnableClip } from "./profileCustom";
 import { getSpot, listSpotsByCreator } from "./spots";
 import { logger } from "./logger";
+import { isUserPostedClip } from "./clipVisibility";
 
 /**
  * Pro profile Clip Reel + Pro Spots (behind VITE_FEATURE_PRO_SHOWCASE).
@@ -50,6 +51,8 @@ export async function fetchProSpots(uid: string): Promise<ProSpot[]> {
     const bySpot = new Map<string, PinnableClip[]>();
     for (const d of clipSnap.docs) {
       const raw = d.data() as Record<string, unknown>;
+      // A profile shows user posts only; game clips stay in the game screens.
+      if (!isUserPostedClip(raw)) continue;
       if (typeof raw.spotId !== "string" || !raw.spotId) continue;
       if (typeof raw.videoUrl !== "string" || typeof raw.trickName !== "string") continue;
       const list = bySpot.get(raw.spotId) ?? [];

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, memo } from "react";
+import { useState, useEffect, useRef, memo } from "react";
 import type { TurnRecord } from "../services/games";
 import { isFirebaseStorageUrl } from "../utils/helpers";
 import { trackEvent } from "../services/analytics";
@@ -131,9 +131,23 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
   );
 });
 
-function DownloadBtn({ url, filename }: { url: string; filename: string }) {
-  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "failed">("idle");
-  // Track the pending status-reset timer so an unmount mid-download (e.g.
+type ClipActionStatus = "idle" | "busy" | "done" | "failed";
+
+/**
+ * A clip action button (save, share) that shows a transient "done" or
+ * "failed" label for 2s before returning to idle.
+ */
+function ClipActionBtn({
+  labels,
+  action,
+  onError,
+}: {
+  labels: Record<ClipActionStatus, string>;
+  action: () => Promise<void>;
+  onError: (err: unknown) => void;
+}) {
+  const [status, setStatus] = useState<ClipActionStatus>("idle");
+  // Track the pending status-reset timer so an unmount mid-action (e.g.
   // user taps "Rematch" between save and the 2s reset) doesn't fire
   // setState on an unmounted component.
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -145,56 +159,59 @@ function DownloadBtn({ url, filename }: { url: string; filename: string }) {
     [],
   );
 
-  const scheduleReset = () => {
+  const settle = (next: "done" | "failed") => {
+    setStatus(next);
     if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
     resetTimerRef.current = setTimeout(() => setStatus("idle"), 2000);
   };
 
-  const handleDownload = async () => {
-    setStatus("saving");
+  const handleClick = async () => {
+    setStatus("busy");
     try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("Download failed");
-      const blob = await res.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = objectUrl;
-      a.download = filename;
-      a.click();
-      // Delay revocation so the browser has time to start the download
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
-      setStatus("saved");
-      scheduleReset();
+      await action();
+      settle("done");
     } catch (err) {
-      // No url: it carries the clip's Storage access token.
-      captureException(err, { extra: { context: "DownloadBtn", filename } });
-      setStatus("failed");
-      scheduleReset();
+      onError(err);
+      settle("failed");
     }
   };
-
-  const label = {
-    idle: "Save clip",
-    saving: "Saving...",
-    saved: "Saved!",
-    failed: "Save failed",
-  }[status];
 
   return (
     <button
       type="button"
-      onClick={handleDownload}
-      disabled={status === "saving"}
+      onClick={handleClick}
+      disabled={status === "busy"}
       className={`mt-1 w-full text-center font-body text-xs transition-colors disabled:opacity-50 ${
-        status === "saved"
-          ? "text-brand-green"
-          : status === "failed"
-            ? "text-brand-red"
-            : "text-faint hover:text-[#aaa]"
+        status === "done" ? "text-brand-green" : status === "failed" ? "text-brand-red" : "text-faint hover:text-[#aaa]"
       }`}
     >
-      {label}
+      {labels[status]}
     </button>
+  );
+}
+
+const DOWNLOAD_LABELS = { idle: "Save clip", busy: "Saving...", done: "Saved!", failed: "Save failed" };
+const SHARE_LABELS = { idle: "Share clip", busy: "Sharing...", done: "Shared!", failed: "Share failed" };
+
+function DownloadBtn({ url, filename }: { url: string; filename: string }) {
+  return (
+    <ClipActionBtn
+      labels={DOWNLOAD_LABELS}
+      action={async () => {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("Download failed");
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = objectUrl;
+        a.download = filename;
+        a.click();
+        // Delay revocation so the browser has time to start the download
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+      }}
+      // No url: it carries the clip's Storage access token.
+      onError={(err) => captureException(err, { extra: { context: "DownloadBtn", filename } })}
+    />
   );
 }
 
@@ -209,58 +226,15 @@ function ShareBtn({
   ownerUid: string;
   context: string;
 }) {
-  const [status, setStatus] = useState<"idle" | "sharing" | "shared" | "failed">("idle");
-  // Same unmount-safety pattern as DownloadBtn.
-  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
-    },
-    [],
-  );
-
-  const scheduleReset = () => {
-    if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
-    resetTimerRef.current = setTimeout(() => setStatus("idle"), 2000);
-  };
-
-  const handleShare = useCallback(async () => {
-    setStatus("sharing");
-    try {
-      const method = await shareText(ownClipShareOptions({ videoUrl: url, trickName, ownerUid }));
-      trackEvent("clip_shared", { method, context });
-      setStatus("shared");
-      scheduleReset();
-    } catch (err) {
-      // No url: it carries the clip's Storage access token.
-      captureException(err, { extra: { context: "ShareBtn", trickName } });
-      setStatus("failed");
-      scheduleReset();
-    }
-  }, [url, trickName, ownerUid, context]);
-
-  const label = {
-    idle: "Share clip",
-    sharing: "Sharing...",
-    shared: "Shared!",
-    failed: "Share failed",
-  }[status];
-
   return (
-    <button
-      type="button"
-      onClick={handleShare}
-      disabled={status === "sharing"}
-      className={`mt-1 w-full text-center font-body text-xs transition-colors disabled:opacity-50 ${
-        status === "shared"
-          ? "text-brand-green"
-          : status === "failed"
-            ? "text-brand-red"
-            : "text-faint hover:text-[#aaa]"
-      }`}
-    >
-      {label}
-    </button>
+    <ClipActionBtn
+      labels={SHARE_LABELS}
+      action={async () => {
+        const method = await shareText(ownClipShareOptions({ videoUrl: url, trickName, ownerUid }));
+        trackEvent("clip_shared", { method, context });
+      }}
+      // No url: it carries the clip's Storage access token.
+      onError={(err) => captureException(err, { extra: { context: "ShareBtn", trickName } })}
+    />
   );
 }

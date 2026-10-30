@@ -17,6 +17,8 @@ import {
 } from "three";
 import { SKATEBOARD_01_NOSE_FLIP, skateboard01ModelUrl } from "../artSlots";
 import type { RunnerController } from "../controller";
+import { logger } from "../../services/logger";
+import { errorLogFields } from "../../utils/errors";
 
 /** Local length inside the posed group. That group is already scaled by 1.4. */
 export const BOARD_TARGET_LENGTH = 1.9;
@@ -178,7 +180,8 @@ function tuneMaterials(root: Object3D, anisotropy: number): void {
   });
 }
 
-function disposeObject(root: Object3D): void {
+/** Dispose every geometry, material and texture map under `root`, each once. */
+export function disposeObject(root: Object3D): void {
   const geometries = new Set<BufferGeometry>();
   const materials = new Set<Material>();
   const textures = new Set<Texture>();
@@ -243,7 +246,7 @@ export async function loadRunnerModel(url: string, renderer: WebGLRenderer): Pro
     try {
       ktx2.detectSupport(renderer);
     } catch (error: unknown) {
-      console.warn("Runner KTX2 support check failed", error);
+      logger.warn("runner_ktx2_support_check_failed", errorLogFields(error));
     }
     const gltf = await loader.loadAsync(url);
     tuneMaterials(gltf.scene, Math.min(4, renderer.capabilities.getMaxAnisotropy()));
@@ -316,7 +319,7 @@ export function useSkateboardModel(
         wheels.current = collectWheelNodes(loaded);
       })
       .catch((error: unknown) => {
-        console.warn("Runner skateboard model failed to load", error);
+        logger.warn("runner_skateboard_model_load_failed", errorLogFields(error));
       });
 
     return () => {

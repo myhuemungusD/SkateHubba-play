@@ -2,6 +2,8 @@ import { CanvasTexture, MeshStandardMaterial, SRGBColorSpace, TextureLoader, typ
 import graffUrl from "../assets/graff-wall.webp";
 import hubbaUrl from "../assets/hubba-graff.webp";
 import logoUrl from "../assets/board-logo.webp";
+import { logger } from "../../services/logger";
+import { errorLogFields } from "../../utils/errors";
 
 /**
  * SkateHubba brand art owned by Design Mainline LLC. Loaded with the lazy
@@ -72,7 +74,7 @@ async function paintShopSign(): Promise<void> {
     await document.fonts.ready;
     await document.fonts.load("80px 'Bebas Neue'");
   } catch (error: unknown) {
-    console.warn("Runner sign font failed", error);
+    logger.warn("runner_sign_font_failed", errorLogFields(error));
   }
   const texture = drawShopSign();
   if (!texture) return;

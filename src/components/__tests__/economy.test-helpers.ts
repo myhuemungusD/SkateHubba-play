@@ -4,7 +4,7 @@ import type { LockerItem } from "../../services/locker";
  * Shared Economy Phase A fixtures.
  *
  * Lives beside the component specs that own the rendering contract
- * (`LockerShowcase.test.tsx`), and is imported by the screen-level failure
+ * (`ClosetShowcase.test.tsx`), and is imported by the screen-level failure
  * spec too so there is exactly one description of a locker item across the
  * suite — the profile spec asserting "the locker still populated" should not
  * carry its own copy of the shape.

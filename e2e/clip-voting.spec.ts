@@ -2,7 +2,7 @@
  * E2E for the community clips spotlight upvote flow (audit F8).
  *
  * The Clips tab (/feed) renders <ClipsFeed>, which fetches the top-ranked
- * landed-trick clip and lets a viewer tap the flame button to upvote it. The
+ * user-posted clip and lets a viewer tap the flame button to upvote it. The
  * feed used to be embedded in the lobby; the redesign moved it onto its own
  * route behind the bottom nav's Clips tab, so these tests navigate there the
  * way a user does. The optimistic
@@ -11,8 +11,8 @@
  * from Firestore.
  *
  * Seeds run via the emulator REST helpers so we don't need a second
- * verified user to land a real trick first — the clip's deterministic id
- * mirrors what `writeLandedClipsInTransaction` would have written.
+ * verified user to post a real clip first. The feed only shows user posts
+ * (`source: "user"`), so that is what the helper seeds.
  */
 import { test, expect } from "@playwright/test";
 import {
@@ -43,8 +43,8 @@ test("viewer upvotes another player's clip → button flips to pressed and count
   const author = await createUser(AUTHOR.email, AUTHOR.password);
   await createProfile(author.uid, AUTHOR.username, AUTHOR.email, true);
 
-  // One landed-trick clip authored by AUTHOR — visible to any signed-in viewer.
-  await createClip("seeded-game-id", 1, "set", author.uid, AUTHOR.username);
+  // One user-posted clip by AUTHOR — visible to any signed-in viewer.
+  await createClip("seeded-clip", author.uid, AUTHOR.username);
 
   // Viewer signs up through the UI and lands on the lobby.
   // Both `clipVotes` create and the `clips.upvoteCount` increment require
@@ -87,7 +87,7 @@ test("clip viewer cannot upvote their own clip — the control renders disabled"
 
   const uid = await getSignedInUid(page);
 
-  await createClip("own-clip-game", 1, "set", uid, VIEWER.username);
+  await createClip("own-clip", uid, VIEWER.username);
 
   // Open the Clips tab. The navigation is what pulls the freshly-seeded clip
   // into the feed pool — ClipsFeed queries on mount — so no reload is needed.

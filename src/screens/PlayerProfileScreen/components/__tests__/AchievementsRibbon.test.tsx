@@ -47,4 +47,13 @@ describe("AchievementsRibbon", () => {
     await user.click(screen.getByRole("button", { name: "Done" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
+
+  it("closes the full grid on Escape", async () => {
+    const user = userEvent.setup();
+    render(<AchievementsRibbon />);
+    await user.click(screen.getByRole("button", { name: `0 of ${ACHIEVEMENTS.length} unlocked` }));
+    expect(screen.getByRole("dialog", { name: "All achievements" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
 });
