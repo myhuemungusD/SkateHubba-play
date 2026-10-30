@@ -149,7 +149,7 @@ describe("Timeline edges", () => {
     fireEvent.pointerUp(clip);
   });
 
-  it("labels a sound missing from the library by its id and survives a zero-length edit", () => {
+  it("labels a sound missing from the library by its id", () => {
     const h = handlers();
     const ghost: SfxPlacement = { id: "sfx-x", soundId: "retired-sound", outAtSec: 0, gain: 1 };
     render(<Timeline project={{ ...project(0), sfx: [ghost] }} playhead={0} beats={[0]} {...h} />);

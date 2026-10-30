@@ -1332,7 +1332,7 @@ describe("ClipsFeed dispute prefetch and streak flag", () => {
     await waitFor(() => expect(prefetchedSrc()).toBeUndefined());
   });
 
-  it("flags a due streak only while Name It is open with nothing answered today", async () => {
+  it("loads Name It on tap and never badges the open Name It tab, even with a streak due", async () => {
     flags.feedModes = true;
     flags.wtt = true;
     mockUseWttFeed.mockReturnValue({

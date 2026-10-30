@@ -4,6 +4,7 @@ import type { ClipComment } from "../../../services/clips.comments";
 import { isPostableComment, useClipComments } from "../useClipComments";
 import { clipCommentsMocks, makeClipComment, resetClipCommentsMocks } from "./clipComments.test-helpers";
 import { deferred } from "./deferred.test-helpers";
+import { logger } from "../../../services/logger";
 
 vi.mock("../../../services/clips.comments", async () =>
   (await import("./clipComments.test-helpers")).clipCommentsModuleMock(),
@@ -194,23 +195,23 @@ describe("useClipComments", () => {
   });
 });
 
-describe("useClipComments after unmount", () => {
-  it.each(["resolve", "reject"] as const)("drops a thread load that settles (%s) after unmount", async (settle) => {
+// The `mountedRef` guards themselves can't be observed (React drops a state
+// write after unmount silently), but each failure is still logged before the
+// guard, and that log must not be lost when the sheet closes mid-request.
+describe("useClipComments failures that settle after unmount", () => {
+  it("still logs a thread load that fails after unmount", async () => {
     const d = deferred<{ comments: ClipComment[]; cursor: null }>();
     mockFetch.mockReturnValueOnce(d.promise);
-    const { result, unmount } = mount();
+    const { unmount } = mount();
     unmount();
     await act(async () => {
-      if (settle === "resolve") d.resolve({ comments: [comment()], cursor: null });
-      else d.reject(new Error("offline"));
+      d.reject(new Error("offline"));
       await d.promise.catch(() => undefined);
     });
-    expect(result.current.comments).toEqual([]);
-    expect(result.current.error).toBe("");
-    expect(result.current.loading).toBe(true);
+    expect(logger.warn).toHaveBeenCalledWith("clip_comments_load_failed", expect.objectContaining({ clipId: "c1" }));
   });
 
-  it.each(["resolve", "reject"] as const)("drops a post that settles (%s) after unmount", async (settle) => {
+  it("still logs a post that fails after unmount", async () => {
     const d = deferred<ClipComment>();
     mockCreate.mockReturnValueOnce(d.promise);
     const { result, unmount } = mount();
@@ -222,16 +223,13 @@ describe("useClipComments after unmount", () => {
     });
     unmount();
     await act(async () => {
-      if (settle === "resolve") d.resolve(comment({ id: "new" }));
-      else d.reject(new Error("offline"));
+      d.reject(new Error("offline"));
       await pending;
     });
-    expect(result.current.posting).toBe(true);
-    expect(result.current.comments).toEqual([]);
-    expect(result.current.error).toBe("");
+    expect(logger.warn).toHaveBeenCalledWith("clip_comment_create_failed", expect.objectContaining({ clipId: "c1" }));
   });
 
-  it.each(["resolve", "reject"] as const)("drops a delete that settles (%s) after unmount", async (settle) => {
+  it("still logs a delete that fails after unmount", async () => {
     mockFetch.mockResolvedValueOnce({ comments: [comment({ id: "mine" })], cursor: null });
     const d = deferred<void>();
     mockDelete.mockReturnValueOnce(d.promise);
@@ -243,12 +241,9 @@ describe("useClipComments after unmount", () => {
     });
     unmount();
     await act(async () => {
-      if (settle === "resolve") d.resolve();
-      else d.reject(new Error("offline"));
+      d.reject(new Error("offline"));
       await pending;
     });
-    expect(result.current.deletingId).toBe("mine");
-    expect(result.current.comments).toHaveLength(1);
-    expect(result.current.error).toBe("");
+    expect(logger.warn).toHaveBeenCalledWith("clip_comment_delete_failed", expect.objectContaining({ clipId: "c1" }));
   });
 });

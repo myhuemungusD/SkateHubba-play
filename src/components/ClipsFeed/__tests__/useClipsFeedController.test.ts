@@ -29,6 +29,7 @@ vi.mock("../../../services/analytics", async (importOriginal) => ({
 
 import { useClipsFeedController } from "../useClipsFeedController";
 import { logger } from "../../../services/logger";
+import { trackEvent } from "../../../services/analytics";
 
 const clipA = makeGameClip({ id: "a", playerUid: "other" }) as ClipDoc;
 const clipB = makeGameClip({ id: "b", playerUid: "other" }) as ClipDoc;
@@ -78,18 +79,9 @@ describe("useClipsFeedController after unmount", () => {
     unmount();
     await act(async () => d.reject({ code: "unavailable" }));
     expect(warn).toHaveBeenCalledWith("clips_feed_load_failed", expect.objectContaining({ code: "unavailable" }));
-    expect(result.current.error).toBeNull();
-    expect(result.current.loading).toBe(true);
   });
 
-  it("drops vote hydration that lands after unmount, and logs a failed hydration", async () => {
-    const d = deferred<Map<string, unknown>>();
-    votes.fetchClipVoteState.mockReturnValueOnce(d.promise);
-    const first = await loaded([clipA]);
-    first.unmount();
-    await act(async () => d.resolve(new Map([["a", state(9, 0, 1)]])));
-    expect(first.result.current.voteFor("a").upvoteCount).toBe(0);
-
+  it("logs a failed vote hydration and keeps the seeded counts", async () => {
     votes.fetchClipVoteState.mockRejectedValueOnce(new Error("quota"));
     const second = await loaded([clipB]);
     await waitFor(() =>
@@ -121,21 +113,8 @@ describe("useClipsFeedController loadMore guards", () => {
     expect(withCursor.result.current.visibleClips.map((c) => c.id)).toEqual(["a", "b"]);
   });
 
-  it("drops a next page, or its failure, that lands after unmount", async () => {
-    const ok = await loaded([clipA], "cur-1");
-    const d = deferred<ReturnType<typeof page>>();
-    feed.fetchClipsFeed.mockReturnValueOnce(d.promise);
+  it("logs a next-page failure that lands after unmount", async () => {
     let pending!: Promise<void>;
-    act(() => {
-      pending = ok.result.current.loadMore();
-    });
-    ok.unmount();
-    await act(async () => {
-      d.resolve(page([clipB]));
-      await pending;
-    });
-    expect(ok.result.current.visibleClips.map((c) => c.id)).toEqual(["a"]);
-
     const bad = await loaded([clipA], "cur-1");
     const f = deferred<ReturnType<typeof page>>();
     feed.fetchClipsFeed.mockReturnValueOnce(f.promise);
@@ -151,8 +130,6 @@ describe("useClipsFeedController loadMore guards", () => {
       "clips_feed_load_more_failed",
       expect.objectContaining({ code: "permission-denied" }),
     );
-    expect(bad.result.current.error).toBeNull();
-    expect(bad.result.current.loadingMore).toBe(true);
   });
 });
 
@@ -222,7 +199,7 @@ describe("useClipsFeedController vote guards", () => {
     expect(result.current.voteFor("a")).toEqual(state(1, 0, 1));
   });
 
-  it("drops a vote result, or its failure, that lands after unmount", async () => {
+  it("reports no vote for a result, and logs a failure, that lands after unmount", async () => {
     for (const settle of ["resolve", "reject"] as const) {
       const { result, unmount } = await loaded([clipA]);
       const d = deferred<ReturnType<typeof state>>();
@@ -237,9 +214,13 @@ describe("useClipsFeedController vote guards", () => {
         else d.reject(new Error("offline"));
         await voting;
       });
-      // The last rendered state is the optimistic one; nothing after unmount.
-      expect(result.current.voteFor("a")).toEqual(state(1, 0, 1));
-      expect(result.current.isVoting("a")).toBe(true);
+      if (settle === "resolve") {
+        // The unmount guard sits before the success event, so no vote is reported.
+        expect(trackEvent).not.toHaveBeenCalledWith("clip_voted", expect.anything());
+      } else {
+        // The failure is logged before the guard.
+        expect(warn).toHaveBeenCalledWith("clips_feed_vote_failed", expect.objectContaining({ clipId: "a", vote: 1 }));
+      }
     }
   });
 });
