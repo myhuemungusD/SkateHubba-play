@@ -1312,3 +1312,48 @@ describe("ClipsFeed — user clips and comments", () => {
     expect(mockUseWttFeed).toHaveBeenLastCalledWith("me", false);
   });
 });
+
+/* ── Next-slide prefetch across disputes, and the Name It streak flag ── */
+
+describe("ClipsFeed dispute prefetch and streak flag", () => {
+  const prefetchedSrc = () => (document.querySelector("video[aria-hidden='true']") as HTMLVideoElement | null)?.src;
+
+  it("prefetches the next dispute's attempt, and nothing when that attempt is not a storage URL", async () => {
+    mockFetchOpenDisputes.mockResolvedValueOnce([
+      makeDispute({ id: "d1" }),
+      makeDispute({ id: "d2", matchVideoUrl: "https://firebasestorage.googleapis.com/v0/b/x/o/d2.webm?alt=media" }),
+      makeDispute({ id: "d3", matchVideoUrl: "https://evil.example/d3.webm" }),
+    ]);
+    mockFetchClipsFeed.mockResolvedValueOnce([]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+
+    await waitFor(() => expect(prefetchedSrc()).toContain("d2.webm"));
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    await waitFor(() => expect(prefetchedSrc()).toBeUndefined());
+  });
+
+  it("flags a due streak only while Name It is open with nothing answered today", async () => {
+    flags.feedModes = true;
+    flags.wtt = true;
+    mockUseWttFeed.mockReturnValue({
+      currentItem: null,
+      dailyCount: 0,
+      dailyLimit: 20,
+      loading: false,
+      reliability: { streakDays: 0 },
+      submitAnswer: vi.fn(),
+      skipCurrent: vi.fn(),
+    });
+    const user = userEvent.setup();
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+
+    const nameIt = await screen.findByRole("button", { name: "Name It" });
+    await user.click(nameIt);
+    expect(mockUseWttFeed).toHaveBeenLastCalledWith("me", true);
+    expect(nameIt).toHaveAttribute("aria-pressed", "true");
+    // The badge marks other tabs; the open Name It tab never badges itself.
+    expect(nameIt.querySelector("[data-mode-badge]")).toBeNull();
+  });
+});

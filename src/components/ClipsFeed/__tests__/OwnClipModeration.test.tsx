@@ -71,3 +71,17 @@ describe("OwnClipModeration", () => {
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
 });
+
+describe("OwnClipModeration after unmount", () => {
+  it("ignores a failed fetch that settles after unmount", async () => {
+    vi.stubEnv("VITE_FEATURE_CLIP_MODERATION_ENABLED", "true");
+    let fail!: (e: unknown) => void;
+    fetchOwn.mockReturnValueOnce(new Promise((_, reject) => (fail = reject)));
+    const { unmount } = renderStrip();
+    await waitFor(() => expect(fetchOwn).toHaveBeenCalledWith("me"));
+    unmount();
+    fail(new Error("offline"));
+    await Promise.resolve();
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+  });
+});

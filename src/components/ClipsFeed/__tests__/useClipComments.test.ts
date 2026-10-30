@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ClipComment } from "../../../services/clips.comments";
 import { isPostableComment, useClipComments } from "../useClipComments";
 import { clipCommentsMocks, makeClipComment, resetClipCommentsMocks } from "./clipComments.test-helpers";
+import { deferred } from "./deferred.test-helpers";
 
 vi.mock("../../../services/clips.comments", async () =>
   (await import("./clipComments.test-helpers")).clipCommentsModuleMock(),
@@ -190,5 +191,64 @@ describe("useClipComments", () => {
     });
 
     expect(result.current.comments[0].text).toBe("later");
+  });
+});
+
+describe("useClipComments after unmount", () => {
+  it.each(["resolve", "reject"] as const)("drops a thread load that settles (%s) after unmount", async (settle) => {
+    const d = deferred<{ comments: ClipComment[]; cursor: null }>();
+    mockFetch.mockReturnValueOnce(d.promise);
+    const { result, unmount } = mount();
+    unmount();
+    await act(async () => {
+      if (settle === "resolve") d.resolve({ comments: [comment()], cursor: null });
+      else d.reject(new Error("offline"));
+      await d.promise.catch(() => undefined);
+    });
+    expect(result.current.comments).toEqual([]);
+    expect(result.current.error).toBe("");
+    expect(result.current.loading).toBe(true);
+  });
+
+  it.each(["resolve", "reject"] as const)("drops a post that settles (%s) after unmount", async (settle) => {
+    const d = deferred<ClipComment>();
+    mockCreate.mockReturnValueOnce(d.promise);
+    const { result, unmount } = mount();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.setDraft("nice"));
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.submit();
+    });
+    unmount();
+    await act(async () => {
+      if (settle === "resolve") d.resolve(comment({ id: "new" }));
+      else d.reject(new Error("offline"));
+      await pending;
+    });
+    expect(result.current.posting).toBe(true);
+    expect(result.current.comments).toEqual([]);
+    expect(result.current.error).toBe("");
+  });
+
+  it.each(["resolve", "reject"] as const)("drops a delete that settles (%s) after unmount", async (settle) => {
+    mockFetch.mockResolvedValueOnce({ comments: [comment({ id: "mine" })], cursor: null });
+    const d = deferred<void>();
+    mockDelete.mockReturnValueOnce(d.promise);
+    const { result, unmount } = mount();
+    await waitFor(() => expect(result.current.comments).toHaveLength(1));
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.remove(result.current.comments[0]);
+    });
+    unmount();
+    await act(async () => {
+      if (settle === "resolve") d.resolve();
+      else d.reject(new Error("offline"));
+      await pending;
+    });
+    expect(result.current.deletingId).toBe("mine");
+    expect(result.current.comments).toHaveLength(1);
+    expect(result.current.error).toBe("");
   });
 });
