@@ -261,32 +261,22 @@ export async function createSpot(
 }
 
 /**
- * Seed a landed-trick clip document directly into Firestore.
+ * Seed a user-posted clip document directly into Firestore.
  *
- * Mirrors the payload written by `writeLandedClipsInTransaction` in
- * `src/services/clips.ts` so the embedded ClipsFeed treats it as a real
- * landed clip. The doc id is forced to the deterministic
- * `${gameId}_${turnNumber}_${role}` format that `firestore.rules` requires
- * on production-path creates — keeping the same shape here means the seed
- * survives any future rule tightening without a helper change.
+ * Mirrors the payload `createUserClip` in `src/services/clips.userWrites.ts`
+ * writes (`source: "user"`, explicit null game fields). The public feed only
+ * shows user posts, so a game-turn clip seeded here would never surface.
  *
  * `videoUrl` is a tiny inline data URL by default: the spotlight video
  * element won't decode meaningful frames, but upvote / report controls do
  * not require playback to be exercised.
  */
-export async function createClip(
-  gameId: string,
-  turnNumber: number,
-  role: "set" | "match",
-  playerUid: string,
-  playerUsername: string,
-  overrides: Record<string, unknown> = {},
-): Promise<string> {
-  const id = `${gameId}_${turnNumber}_${role}`;
+export async function createClip(id: string, playerUid: string, playerUsername: string): Promise<void> {
   await writeDoc("clips", id, {
-    gameId,
-    turnNumber,
-    role,
+    source: "user",
+    gameId: null,
+    turnNumber: null,
+    role: null,
     playerUid,
     playerUsername,
     trickName: "Kickflip",
@@ -295,9 +285,7 @@ export async function createClip(
     createdAt: new Date(),
     moderationStatus: "active",
     upvoteCount: 0,
-    ...overrides,
   });
-  return id;
 }
 
 /**

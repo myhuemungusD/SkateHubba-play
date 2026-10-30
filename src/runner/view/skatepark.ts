@@ -1,9 +1,11 @@
 import { useEffect, type RefObject } from "react";
-import { Group, Mesh, type MeshStandardMaterial, type Object3D, type WebGLRenderer } from "three";
+import { Group, Mesh, type Object3D, type WebGLRenderer } from "three";
 import { skateparkModelUrl } from "../artSlots";
 import { BOX_LENGTH } from "../constants";
 import { fitParkPiece, type ParkFit } from "./parkFit";
-import { loadRunnerModel } from "./skateboardModel";
+import { disposeObject, loadRunnerModel } from "./skateboardModel";
+import { logger } from "../../services/logger";
+import { errorLogFields } from "../../utils/errors";
 
 /**
  * Sketchfab node names kept from Skatepark Obstacles. The suffix is the
@@ -47,27 +49,11 @@ const SCENERY_SPOTS: readonly (readonly [number, number])[] = [
 ];
 
 const BOX_FALLBACK = ["box-body", "box-wax", "box-coping"] as const;
-const MAP_KEYS = ["map", "emissiveMap", "normalMap", "roughnessMap", "metalnessMap", "aoMap"] as const;
 
 let users = 0;
 let generation = 0;
 let shared: Promise<Object3D> | null = null;
 let loaded: Object3D | null = null;
-
-function disposeSource(root: Object3D): void {
-  root.traverse((obj) => {
-    if (!(obj instanceof Mesh)) return;
-    obj.geometry.dispose();
-    const list = Array.isArray(obj.material) ? obj.material : [obj.material];
-    for (const material of list) {
-      for (const key of MAP_KEYS) {
-        const texture = (material as MeshStandardMaterial)[key];
-        texture?.dispose();
-      }
-      material.dispose();
-    }
-  });
-}
 
 function acquireSkatepark(url: string, renderer: WebGLRenderer): Promise<Object3D> {
   users += 1;
@@ -77,7 +63,7 @@ function acquireSkatepark(url: string, renderer: WebGLRenderer): Promise<Object3
       .then((scene) => {
         scene.name = "SkateparkObstacles";
         if (gen !== generation || users === 0) {
-          disposeSource(scene);
+          disposeObject(scene);
           return scene;
         }
         loaded = scene;
@@ -98,7 +84,7 @@ function releaseSkatepark(): void {
   const scene = loaded;
   loaded = null;
   shared = null;
-  if (scene) disposeSource(scene);
+  if (scene) disposeObject(scene);
 }
 
 /** Clone a named node with its Sketchfab parent transform baked in. */
@@ -163,7 +149,7 @@ export function useSkateparkLedges(slots: RefObject<(Group | null)[]>, renderer:
         });
       })
       .catch((error: unknown) => {
-        console.warn("Runner skatepark ledges failed to load", error);
+        logger.warn("runner_skatepark_ledges_load_failed", errorLogFields(error));
       });
 
     return () => {
@@ -211,7 +197,7 @@ export function useSkateparkScenery(root: RefObject<Group | null>, renderer: Web
         });
       })
       .catch((error: unknown) => {
-        console.warn("Runner skatepark scenery failed to load", error);
+        logger.warn("runner_skatepark_scenery_load_failed", errorLogFields(error));
       });
 
     return () => {

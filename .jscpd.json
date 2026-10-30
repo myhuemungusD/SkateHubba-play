@@ -1,0 +1,21 @@
+{
+  "minLines": 12,
+  "minTokens": 80,
+  "threshold": 0,
+  "reporters": ["console"],
+  "absolute": false,
+  "gitignore": true,
+  "exitCode": 1,
+  "path": ["src", "api", "functions/src"],
+  "ignore": [
+    "**/node_modules/**",
+    "functions/lib/**",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "api/cron/_pushPlatforms.ts",
+    "api/cron/_pushWebpush.ts",
+    "api/cron/_pushDrain.ts",
+    "src/assets/fonts/OFL-*.txt"
+  ]
+}

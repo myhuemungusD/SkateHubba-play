@@ -83,7 +83,8 @@ export function ProPicks({ player }: { player: Player }) {
     let live = true;
     void Promise.all([listFeaturedClips(), listChallenges(), fetchPinnableClips(player.uid)]).then(([f, c, mine]) => {
       if (!live) return;
-      setFeatured(f);
+      // Pro Picks sits on the feed, so it shows user posts only.
+      setFeatured(f.filter((clip) => clip.userClip));
       setChallenges(c);
       setClips(mine);
     });

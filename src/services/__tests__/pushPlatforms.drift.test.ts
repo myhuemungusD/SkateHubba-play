@@ -28,4 +28,11 @@ describe("push platform helpers drift", () => {
     const mirror = { platforms: { a: "android", w: "web", i: "ios" } };
     expect(testerEligibleTokens(mirror, ["a", "w", "i", "old"])).toEqual(["a", "w"]);
   });
+
+  it("ignores a platforms field that is not a plain map, so no token passes the filter", () => {
+    for (const platforms of [["android"], "android", null]) {
+      expect(testerEligibleTokens({ platforms }, ["0", "android"])).toEqual([]);
+    }
+    expect(testerEligibleTokens(undefined, ["a"])).toEqual([]);
+  });
 });

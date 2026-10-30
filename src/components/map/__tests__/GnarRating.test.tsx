@@ -1,40 +1,24 @@
 import { describe, it, expect } from "vitest";
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { GnarRating } from "../GnarRating";
 import { BustRisk } from "../BustRisk";
 
+// Both are thin RatingMeter wrappers (RatingMeter.test covers the meter);
+// these pin the label, unit and color each one passes in.
 describe("GnarRating", () => {
-  it("renders 5 ticks with the matching number filled", () => {
-    const { container } = render(<GnarRating value={3} />);
-    // Five rating segments total
-    const segments = container.querySelectorAll("[data-testid='gnar-tick']");
-    // Fall back to a structural assertion if the testid isn't present —
-    // the component just renders 5 spans/svgs.
-    if (segments.length === 0) {
-      // Component renders some structural marker — just assert it doesn't crash
-      expect(container.firstChild).toBeTruthy();
-    } else {
-      expect(segments.length).toBe(5);
-    }
-  });
-
-  it("renders the size variants without crashing", () => {
-    render(<GnarRating value={1} size="sm" />);
-    render(<GnarRating value={5} size="sm" />);
-    expect(true).toBe(true);
+  it("reads as a gnar rating in flames, filled orange", () => {
+    render(<GnarRating value={3} />);
+    expect(screen.getByRole("group", { name: "Gnar rating: 3 of 5" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1 flame" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "3 flames" }).querySelector("svg")).toHaveAttribute("fill", "#ff6b00");
   });
 });
 
 describe("BustRisk", () => {
-  it("renders without crashing for every valid value", () => {
-    for (const v of [1, 2, 3, 4, 5] as const) {
-      const { unmount } = render(<BustRisk value={v} />);
-      unmount();
-    }
-  });
-
-  it("supports the small variant", () => {
-    render(<BustRisk value={3} size="sm" />);
-    expect(true).toBe(true);
+  it("reads as bust risk in shields, filled red", () => {
+    render(<BustRisk value={2} size="sm" />);
+    expect(screen.getByRole("group", { name: "Bust risk: 2 of 5" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1 shield" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "2 shields" }).querySelector("svg")).toHaveAttribute("fill", "#EF4444");
   });
 });

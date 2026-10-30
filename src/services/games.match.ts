@@ -1,15 +1,14 @@
-import { doc, runTransaction, serverTimestamp, Timestamp, arrayUnion } from "firebase/firestore";
+import { serverTimestamp, Timestamp, arrayUnion } from "firebase/firestore";
 import type { TrickSelection } from "../constants/tricks";
-import { requireAuth, requireDb } from "../firebase";
+import { requireAuth } from "../firebase";
 import { analytics } from "./analytics";
 import { metrics } from "./logger";
 import { writeNotificationInTx } from "./notifications";
-import { createPushDispatchOutbox, drainPushDispatchOutbox, resetPushDispatchOutbox } from "./pushDispatch";
 import { writeLandedClipsInTransaction } from "./clips";
-import { toGameDoc, isJudgeActive, type TurnRecord } from "./games.mappers";
+import { isJudgeActive, type TurnRecord } from "./games.mappers";
 import { clearedTrickFields, trickFieldsFromSelection, trickSnapshot } from "./trickFields";
 import { applyTrainingLabelPending } from "./trainingLabels.materialize";
-import { getOpponent, checkTurnActionRate, recordTurnAction } from "./games.turns";
+import { applyRoundOutcome, getOpponent, runActiveGameTurn } from "./games.turns";
 import { turnDurationMsFor } from "./turnDuration";
 import { decidePendingReviewExpiry } from "./dispute.resolution.shared";
 
@@ -35,21 +34,7 @@ export async function setTrick(
       .slice(0, 100);
   if (!safeTrickName) throw new Error("Trick name cannot be empty");
 
-  checkTurnActionRate(gameId);
-  const gameRef = doc(requireDb(), "games", gameId);
-  const pushOutbox = createPushDispatchOutbox();
-
-  // Firestore transactions have built-in retry for transient conflicts;
-  // withRetry is not needed here and would incorrectly retry app-logic errors.
-  await runTransaction(requireDb(), async (tx) => {
-    // Reset on every tx body invocation so a retry doesn't accumulate
-    // duplicate push dispatches.
-    resetPushDispatchOutbox(pushOutbox);
-    const snap = await tx.get(gameRef);
-    if (!snap.exists()) throw new Error("Game not found");
-
-    const game = toGameDoc(snap);
-    if (game.status !== "active") throw new Error("Game is already over");
+  await runActiveGameTurn(gameId, async ({ tx, gameRef, game, pushOutbox }) => {
     if (game.phase !== "setting") throw new Error("Not in setting phase");
 
     const matcherUid = getOpponent(game, game.currentSetter);
@@ -84,8 +69,6 @@ export async function setTrick(
       pushOutbox,
     );
   });
-  void drainPushDispatchOutbox(pushOutbox);
-  recordTurnAction(gameId);
   metrics.trickSet(gameId, safeTrickName, videoUrl !== null);
   analytics.trickSet(gameId, safeTrickName);
 }
@@ -95,17 +78,7 @@ export async function setTrick(
  * ──────────────────────────────────────────── */
 
 export async function failSetTrick(gameId: string): Promise<void> {
-  checkTurnActionRate(gameId);
-  const gameRef = doc(requireDb(), "games", gameId);
-  const pushOutbox = createPushDispatchOutbox();
-
-  await runTransaction(requireDb(), async (tx) => {
-    resetPushDispatchOutbox(pushOutbox);
-    const snap = await tx.get(gameRef);
-    if (!snap.exists()) throw new Error("Game not found");
-
-    const game = toGameDoc(snap);
-    if (game.status !== "active") throw new Error("Game is already over");
+  await runActiveGameTurn(gameId, async ({ tx, gameRef, game, pushOutbox }) => {
     if (game.phase !== "setting") throw new Error("Not in setting phase");
 
     const nextSetter = getOpponent(game, game.currentSetter);
@@ -138,8 +111,6 @@ export async function failSetTrick(gameId: string): Promise<void> {
       pushOutbox,
     );
   });
-  void drainPushDispatchOutbox(pushOutbox);
-  recordTurnAction(gameId);
 }
 
 /* ────────────────────────────────────────────
@@ -160,17 +131,7 @@ export async function submitMatchAttempt(
   matchVideoUrl: string | null,
   landed: boolean,
 ): Promise<{ gameOver: boolean; winner: string | null }> {
-  checkTurnActionRate(gameId);
-  const gameRef = doc(requireDb(), "games", gameId);
-  const pushOutbox = createPushDispatchOutbox();
-
-  const result = await runTransaction(requireDb(), async (tx) => {
-    resetPushDispatchOutbox(pushOutbox);
-    const snap = await tx.get(gameRef);
-    if (!snap.exists()) throw new Error("Game not found");
-
-    const game = toGameDoc(snap);
-    if (game.status !== "active") throw new Error("Game is already over");
+  const result = await runActiveGameTurn(gameId, async ({ tx, gameRef, game, pushOutbox }) => {
     if (game.phase !== "matching") throw new Error("Not in matching phase");
 
     const matcherUid = getOpponent(game, game.currentSetter);
@@ -307,16 +268,7 @@ export async function submitMatchAttempt(
     };
     applyTrainingLabelPending(updates, turnRecord);
 
-    if (gameOver) {
-      updates.status = "complete";
-      updates.winner = winner;
-    } else {
-      updates.phase = "setting";
-      updates.currentSetter = nextSetter;
-      updates.currentTurn = nextSetter;
-      updates.turnDeadline = Timestamp.fromMillis(Date.now() + turnDurationMsFor(game));
-      updates.turnNumber = game.turnNumber + 1;
-    }
+    applyRoundOutcome(updates, game, { gameOver, winner, nextSetter });
 
     tx.update(gameRef, updates);
 
@@ -379,8 +331,6 @@ export async function submitMatchAttempt(
       turnNumber: game.turnNumber,
     };
   });
-  void drainPushDispatchOutbox(pushOutbox);
-  recordTurnAction(gameId);
   metrics.matchSubmitted(gameId, landed);
   analytics.matchSubmitted(gameId, landed);
 
@@ -409,17 +359,7 @@ export async function acceptLanded(gameId: string): Promise<void> {
   const uid = requireAuth().currentUser?.uid;
   if (!uid) throw new Error("You must be signed in to accept a landed claim.");
 
-  checkTurnActionRate(gameId);
-  const gameRef = doc(requireDb(), "games", gameId);
-  const pushOutbox = createPushDispatchOutbox();
-
-  await runTransaction(requireDb(), async (tx) => {
-    resetPushDispatchOutbox(pushOutbox);
-    const snap = await tx.get(gameRef);
-    if (!snap.exists()) throw new Error("Game not found");
-
-    const game = toGameDoc(snap);
-    if (game.status !== "active") throw new Error("Game is already over");
+  await runActiveGameTurn(gameId, async ({ tx, gameRef, game, pushOutbox }) => {
     if (game.phase !== "pendingReview") throw new Error("No landed claim is awaiting review");
     if (game.currentSetter !== uid) throw new Error("Only the setter can accept the landed claim");
 
@@ -481,6 +421,4 @@ export async function acceptLanded(gameId: string): Promise<void> {
       pushOutbox,
     );
   });
-  void drainPushDispatchOutbox(pushOutbox);
-  recordTurnAction(gameId);
 }

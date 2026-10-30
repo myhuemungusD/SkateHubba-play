@@ -122,9 +122,9 @@ interface Props {
  *     each linking to `/spots/:id`. Empty state when they have added none.
  *     The CTA opens the map with the Add Spot sheet already open.
  *
- *   - BadgesRow / LockerShowcase — Economy Phase A. Real granted data, fetched
+ *   - BadgesRow / ClosetShowcase — Economy Phase A. Real granted data, fetched
  *     by the controller; each renders nothing when the player has earned
- *     nothing (LockerShowcase shows one hint card on your own profile).
+ *     nothing (ClosetShowcase shows one hint card on your own profile).
  *
  * The level chip, XP bar, and achievements ribbon render only when
  * VITE_FEATURE_XP_ENABLED is the literal "true". Off, the profile looks as

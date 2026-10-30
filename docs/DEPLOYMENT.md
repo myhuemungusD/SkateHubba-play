@@ -356,8 +356,8 @@ VITE_MAPBOX_STYLE_URL — Custom Mapbox style URL. Optional override consumed
                         a valid `https://` URL pointing at a self-hosted style
                         JSON; any other value is rejected at startup, a
                         warning is logged to the browser console, a
-                        `map_style_invalid` Sentry event is emitted with
-                        the offending value attached, and the map falls
+                        `map_style_invalid` Sentry event is emitted naming
+                        the env var (not its value), and the map falls
                         back to `mapbox://styles/mapbox/dark-v11` so a typo
                         can't take the /map page down. See
                         docs/MAPBOX_STYLE.md for the Mapbox Studio authoring

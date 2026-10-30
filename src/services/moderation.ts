@@ -2,6 +2,7 @@ import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc
 import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
+import { toDateOrNull } from "./firestoreDate";
 
 /** Equality queries only — sorted in memory so a missing createdAt is not dropped. */
 const LIST_LIMIT = 50;
@@ -45,15 +46,6 @@ interface DatedRow {
 
 function validUid(uid: string): boolean {
   return typeof uid === "string" && uid.length > 0 && !uid.includes("/");
-}
-
-function toDateOrNull(value: unknown): Date | null {
-  if (!value || typeof value !== "object") return null;
-  const toDate = (value as { toDate?: unknown }).toDate;
-  if (typeof toDate !== "function") return null;
-  const date = (toDate as () => unknown).call(value);
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
-  return date;
 }
 
 function byNewest(a: DatedRow, b: DatedRow): number {

@@ -1,4 +1,9 @@
-/** Firestore Timestamp (or anything with a valid toDate()) to Date, else null. */
+/**
+ * Convert a Firestore Timestamp-shaped field into a `Date`. Uses structural
+ * duck-typing on `.toDate()` rather than `instanceof Timestamp` — the latter
+ * is brittle across multiple SDK instances and across the test module mock.
+ * Anything that isn't a resolvable Timestamp becomes `null`.
+ */
 export function toDateOrNull(value: unknown): Date | null {
   if (!value || typeof value !== "object") return null;
   const toDate = (value as { toDate?: unknown }).toDate;

@@ -207,12 +207,53 @@ describe("player-meta handler", () => {
       expect(out.body).toContain("SkateHubba™ — For the Love of the Game");
     });
 
+    it("falls back to FIREBASE_PROJECT_ID and sends the web API key, URL-encoded", async () => {
+      vi.stubEnv("VITE_FIREBASE_PROJECT_ID", undefined);
+      vi.stubEnv("FIREBASE_PROJECT_ID", "server-side-proj");
+      vi.stubEnv("VITE_FIREBASE_API_KEY", "fake key/for+tests");
+      profileResponds({ username: { stringValue: "kickflip" } });
+      const out = await invoke({ uid: UID });
+      const url = String(mockFetch.mock.calls[0][0]);
+      expect(url).toContain("/projects/server-side-proj/");
+      expect(url).toMatch(new RegExp(`/documents/users/${UID}\\?key=fake%20key%2Ffor%2Btests$`));
+      expect(out.body).toContain("kickflip");
+    });
+
     it("serves the generic card without fetching when the project id is unset", async () => {
       vi.stubEnv("VITE_FIREBASE_PROJECT_ID", "");
       vi.stubEnv("FIREBASE_PROJECT_ID", "");
       const out = await invoke({ uid: UID });
       expect(mockFetch).not.toHaveBeenCalled();
       expect(out.statusCode).toBe(200);
+    });
+
+    it("serves the generic card when the response body has no fields", async () => {
+      mockFetch.mockResolvedValue({ ok: true, json: async () => ({}) });
+      const out = await invoke({ uid: UID });
+      expect(out.statusCode).toBe(200);
+      expect(out.body).toContain("SkateHubba™ — For the Love of the Game");
+    });
+
+    it("gives up on a slow profile read after the timeout and serves the generic card", async () => {
+      vi.useFakeTimers();
+      try {
+        let signal: AbortSignal | undefined;
+        mockFetch.mockImplementation(
+          (_url: string, init: { signal: AbortSignal }) =>
+            new Promise((_resolve, reject) => {
+              signal = init.signal;
+              init.signal.addEventListener("abort", () => reject(new Error("aborted")));
+            }),
+        );
+        const pending = invoke({ uid: UID });
+        await vi.advanceTimersByTimeAsync(2500);
+        const out = await pending;
+        expect(signal?.aborted).toBe(true);
+        expect(out.statusCode).toBe(200);
+        expect(out.body).toContain("SkateHubba™ — For the Love of the Game");
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("ignores a malformed counter rather than rendering NaN", async () => {
