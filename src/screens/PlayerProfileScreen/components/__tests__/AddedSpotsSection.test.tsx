@@ -90,6 +90,20 @@ describe("AddedSpotsSection", () => {
     await Promise.resolve();
   });
 
+  it("ignores a failure that arrives after the section unmounts", async () => {
+    let rejectRows: (err: Error) => void = () => {};
+    listSpotsByCreator.mockReturnValue(
+      new Promise<Spot[]>((_resolve, reject) => {
+        rejectRows = reject;
+      }),
+    );
+    const { unmount } = renderSection();
+    unmount();
+    rejectRows(new Error("permission-denied"));
+    await Promise.resolve();
+    expect(screen.queryByTestId("added-spots-error")).not.toBeInTheDocument();
+  });
+
   it("does not claim the list is empty when the read fails", async () => {
     listSpotsByCreator.mockRejectedValue(new Error("permission-denied"));
     renderSection();
