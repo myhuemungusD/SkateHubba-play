@@ -16,7 +16,7 @@ vi.mock("../../../lib/clipEditor/sfxLibrary", async (importOriginal) => {
   return {
     ...real,
     soundCredits: () => [
-      real.SOUNDBITER_CREDIT,
+      ...real.soundCredits().slice(0, 1),
       { author: "Second Author", title: "Push Loop", url: "https://example.test/push", license: "CC0" },
     ],
     getSound: (id: string) =>
