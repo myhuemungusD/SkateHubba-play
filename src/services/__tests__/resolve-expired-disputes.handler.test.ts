@@ -722,14 +722,17 @@ describe("resolve handler edge paths", () => {
     expect(current.txUpdate).not.toHaveBeenCalled();
   });
 
+  const leftReview = () => ({ phase: "setting" });
+  const noDeadline = () => ({ reviewDeadline: null });
+  const notYetDue = () => ({ reviewDeadline: ms(Date.now() + 60_000) });
   it.each([
     ["pendingReview", "vanished", null],
-    ["pendingReview", "left review", { phase: "setting" }],
-    ["pendingReview", "has no review deadline", { reviewDeadline: null }],
+    ["pendingReview", "left review", leftReview],
+    ["pendingReview", "has no review deadline", noDeadline],
     ["communityReview", "vanished", null],
-    ["communityReview", "left review", { phase: "setting" }],
-    ["communityReview", "has no review deadline", { reviewDeadline: null }],
-    ["communityReview", "is not yet past its deadline", { reviewDeadline: "future" }],
+    ["communityReview", "left review", leftReview],
+    ["communityReview", "has no review deadline", noDeadline],
+    ["communityReview", "is not yet past its deadline", notYetDue],
   ] as const)("skips a %s game that %s by transaction time", async (phase, _label, change) => {
     const { db, txUpdate, txSet } = makeDb({
       game: rawGame({ phase }),
@@ -738,8 +741,7 @@ describe("resolve handler edge paths", () => {
     overrideTxGet(db, (ref) => {
       if (ref.__kind !== "game") return undefined;
       if (change === null) return { exists: false, id: "g1", data: () => undefined };
-      const reviewDeadline = change.reviewDeadline === "future" ? ms(Date.now() + 60_000) : change.reviewDeadline;
-      const data = { ...rawGame({ phase }), ...change, ...("reviewDeadline" in change ? { reviewDeadline } : {}) };
+      const data = { ...rawGame({ phase }), ...change() };
       return { exists: true, id: "g1", data: () => data };
     });
     getFirestoreMock.mockReturnValue(db);
