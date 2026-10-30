@@ -739,3 +739,36 @@ describe("dispatches without tokens (M1: courier looks them up)", () => {
     expect(rec.privateSets.map((w) => w.uid)).toEqual(["u1"]);
   });
 });
+
+// These reach the authorized path, which caches the admin app in module scope.
+// Each test gets its own fresh module instance, so they leave the shared
+// `handler` uninitialized and pass in any order relative to the init block.
+describe("repeated headers and query parameters", () => {
+  let fresh: typeof handler;
+  beforeEach(async () => {
+    vi.resetModules();
+    fresh = (await import("../../../api/cron/drain-push-dispatch")).default;
+  });
+
+  it("checks only the first value of a repeated Authorization header", async () => {
+    h.getFirestoreMock.mockReturnValue(makeDb([], rec));
+    const run = async (values: string[]) => {
+      const req = makeReq();
+      req.headers.authorization = values;
+      const { res, out } = makeRes();
+      await fresh(req, res);
+      return out.code;
+    };
+    expect(await run([AUTH, "Bearer wrong"])).toBe(200);
+    expect(await run(["Bearer wrong-but-same-len", AUTH])).toBe(401);
+  });
+
+  it("reads the first value of a repeated dryRun query parameter", async () => {
+    h.getFirestoreMock.mockReturnValue(makeDb([makeFakeDoc("d1", dispatchDoc(), rec)], rec));
+    const { res, out } = makeRes();
+    await fresh(makeReq({ authorization: AUTH, query: { dryRun: ["true", "0"] } }), res);
+    expect(out.body).toMatchObject({ dryRun: true, sent: 1 });
+    expect(sendEachForMulticast).not.toHaveBeenCalled();
+    expect(rec.deletes).toEqual([]);
+  });
+});
