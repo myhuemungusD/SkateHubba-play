@@ -907,3 +907,199 @@ describe("sweep handler your_turn notification (server always notifies)", () => 
     expect(out.body).toMatchObject({ forfeited: 1, errors: 0 });
   });
 });
+
+describe("sweep handler edge paths", () => {
+  const AUTH = "Bearer s3cret";
+
+  beforeEach(() => {
+    process.env.CRON_SECRET = "s3cret";
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = VALID_SERVICE_ACCOUNT;
+    getAppsMock.mockReturnValue([]);
+    initializeAppMock.mockReturnValue({ name: "app" });
+  });
+
+  afterEach(() => {
+    vi.doUnmock("../trainingLabels.materialize");
+    vi.resetModules();
+  });
+
+  /** A fresh handler module: the admin app is cached in module scope after the first init. */
+  async function freshHandler(): Promise<typeof handler> {
+    vi.resetModules();
+    return (await import("../../../api/cron/sweep-expired-turns")).default;
+  }
+
+  async function run(h: typeof handler, req = makeReq({ authorization: AUTH })) {
+    const { res, out } = makeRes();
+    await h(req, res);
+    return out;
+  }
+
+  it("reuses an already-initialized admin app instead of creating one", async () => {
+    const existing = { name: "existing" };
+    getAppsMock.mockReturnValue([existing]);
+    delete process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+    getFirestoreMock.mockReturnValue(dbWithOneExpiredGame().db);
+    const out = await run(await freshHandler(), makeReq({ authorization: AUTH, query: { dryRun: "1" } }));
+    expect(out.code).toBe(200);
+    expect(initializeAppMock).not.toHaveBeenCalled();
+    expect(getFirestoreMock.mock.calls[0][0]).toBe(existing);
+  });
+
+  it("500s init_failed and touches nothing when the service account env is unset", async () => {
+    delete process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const out = await run(await freshHandler());
+    expect(out.code).toBe(500);
+    expect(out.body).toEqual({ error: "init_failed", message: "Server misconfiguration." });
+    expect(getFirestoreMock).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("authorizes on the first value of a repeated header and honours array and raw-URL dryRun", async () => {
+    getFirestoreMock.mockImplementation(() => dbWithOneExpiredGame().db);
+    const repeated = makeReq({ query: { dryRun: ["1", "0"] } });
+    repeated.headers.authorization = [AUTH, "Bearer nope"];
+    expect((await run(handler, repeated)).body).toMatchObject({ dryRun: true, forfeited: 1 });
+
+    const wrongFirst = makeReq();
+    wrongFirst.headers.authorization = ["Bearer nope00", AUTH];
+    expect((await run(handler, wrongFirst)).code).toBe(401);
+
+    const rawUrl = makeReq({ authorization: AUTH, url: "/api/cron/sweep-expired-turns?x=1&dryRun=true" });
+    expect((await run(handler, rawUrl)).body).toMatchObject({ dryRun: true });
+  });
+
+  it.each([
+    ["vanished before the transaction", () => ({ exists: false })],
+    [
+      "no longer expired at transaction time",
+      () => {
+        const { id: _id, ...data } = makeGameDoc({ turnDeadline: makeDeadline(Date.now() + 60_000) });
+        return { exists: true, id: "g1", data: () => data };
+      },
+    ],
+  ])("skips a candidate that %s, writing nothing", async (_label, snap) => {
+    const { db, txUpdate, txSet } = dbWithOneExpiredGame();
+    db.runTransaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({ get: vi.fn().mockResolvedValue(snap()), update: txUpdate, set: txSet }),
+    );
+    getFirestoreMock.mockReturnValue(db);
+    const out = await run(handler);
+    expect(out.body).toMatchObject({ scanned: 1, forfeited: 0, skipped: 1, errors: 0 });
+    expect(txUpdate).not.toHaveBeenCalled();
+  });
+
+  it("counts a failed game transaction as an error, logs only its id and code, and still returns 200", async () => {
+    const { db } = dbWithOneExpiredGame();
+    db.runTransaction = vi
+      .fn()
+      .mockRejectedValue(Object.assign(new Error("contention on users/p1 token=abc"), { code: "aborted" }));
+    getFirestoreMock.mockReturnValue(db);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const out = await run(handler);
+    expect(out.code).toBe(200);
+    expect(out.body).toMatchObject({ scanned: 1, forfeited: 0, errors: 1 });
+    expect(warnSpy).toHaveBeenCalledWith(JSON.stringify({ event: "sweep_game_failed", gameId: "g1", code: "aborted" }));
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain("token=abc");
+    warnSpy.mockRestore();
+  });
+
+  it("returns 500 sweep_failed with the partial summary when the candidate query fails", async () => {
+    getFirestoreMock.mockReturnValue({
+      collection: () => {
+        const q = {
+          where: () => q,
+          orderBy: () => q,
+          limit: () => q,
+          get: () => Promise.reject(new Error("index missing")),
+        };
+        return q;
+      },
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const out = await run(handler);
+    expect(out.code).toBe(500);
+    expect(out.body).toMatchObject({ error: "sweep_failed", scanned: 0, forfeited: 0 });
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('"event":"sweep_failed"'));
+    warnSpy.mockRestore();
+  });
+
+  it("keeps the forfeit sweep green when the training-label side pass throws", async () => {
+    vi.doMock("../trainingLabels.materialize", async (importOriginal) => ({
+      ...(await importOriginal<Record<string, unknown>>()),
+      materializeTrainingLabels: vi.fn().mockRejectedValue(new Error("labels down")),
+    }));
+    const { db, txUpdate } = dbWithOneExpiredGame();
+    getFirestoreMock.mockReturnValue(db);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const out = await run(await freshHandler());
+    expect(out.code).toBe(200);
+    expect(out.body).toMatchObject({ forfeited: 1, trainingErrors: 1, trainingLabels: 0 });
+    expect(txUpdate).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('"event":"training_labels_failed"'));
+    warnSpy.mockRestore();
+  });
+
+  it("writes no clip when the accepted turn has neither a set nor a match video", async () => {
+    const noVideos = { phase: "disputable", currentSetter: "p1", currentTurn: "p1", currentTrickName: "Kickflip", currentTrickVideoUrl: null, matchVideoUrl: null }; // prettier-ignore
+    const { db, txSet } = dbForResolve(rawGame(noVideos));
+    getFirestoreMock.mockReturnValue(db);
+    const out = await run(handler);
+    expect(out.body).toMatchObject({ forfeited: 1 });
+    const clipWrites = txSet.mock.calls.filter((c) => (c[0] as { __doc?: string }).__doc === "clips");
+    expect(clipWrites).toHaveLength(0);
+  });
+
+  it("counts a reminder that fails mid-game as a notify error and moves on", async () => {
+    const broken = {
+      id: "gd-bad",
+      data: (): Record<string, unknown> => {
+        throw new Error("unreadable reminder doc");
+      },
+    };
+    const { db, notifSet } = dbForNotifyPasses({ reminder: [broken, deadlineGame(1.9 * 60 * 60_000)] });
+    getFirestoreMock.mockReturnValue(db);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const out = await run(handler);
+    expect(out.body).toMatchObject({ reminded: 1, notifyErrors: 1 });
+    expect(notifSet).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('"event":"turn_reminder_failed","gameId":"gd-bad"'));
+    warnSpy.mockRestore();
+  });
+
+  it("reminds player 1 of a game with no turn number or second seat, and caps the push copy", async () => {
+    const longName = "n".repeat(250);
+    const { db, notifSet, dispatchAdd } = dbForNotifyPasses({
+      reminder: [
+        deadlineGame(1.9 * 60 * 60_000, {
+          currentTurn: "p1",
+          turnNumber: undefined,
+          player2Uid: undefined,
+          player2Username: longName,
+        }),
+      ],
+      tokens: ["tok-1"],
+    });
+    getFirestoreMock.mockReturnValue(db);
+    const out = await run(handler);
+    expect(out.body).toMatchObject({ reminded: 1 });
+    const [id, doc] = notifSet.mock.calls[0] as [string, Record<string, unknown>];
+    expect(id).toBe("gd1_0_turn_reminder_notify");
+    // No other seat to name as sender: the recipient stands in.
+    expect(doc).toMatchObject({ recipientUid: "p1", senderUid: "p1" });
+    const push = dispatchAdd.mock.calls[0][0] as { notification: { title: string; body: string } };
+    expect(push.notification.body).toHaveLength(200);
+    expect(push.notification.title).toBe("Turn ending soon");
+  });
+
+  it("names an unnamed challenger 'A skater' in the backfilled challenge", async () => {
+    const { db, notifSet } = dbForNotifyPasses({
+      reconcile: [challengeGame(20 * 60_000, { player1Username: undefined })],
+    });
+    getFirestoreMock.mockReturnValue(db);
+    const out = await run(handler);
+    expect(out.body).toMatchObject({ reconciled: 1 });
+    expect(String((notifSet.mock.calls[0][1] as Record<string, unknown>).body)).toContain("A skater");
+  });
+});
