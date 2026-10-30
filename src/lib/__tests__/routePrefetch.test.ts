@@ -249,6 +249,10 @@ describe("prefetchLikelyRoutes queue lifecycle", () => {
   });
 
   it("falls back to the real screen chunks when no loaders are passed", async () => {
+    // Start from an empty module registry so every chunk import below runs its
+    // mock factory again, whatever earlier tests already pulled in.
+    vi.resetModules();
+    pulled.length = 0;
     vi.useFakeTimers();
     const idle = queuedIdle();
     vi.stubEnv("VITE_FEATURE_EXTRAS_ENABLED", "true");

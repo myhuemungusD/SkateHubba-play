@@ -585,7 +585,7 @@ describe("tester override in native store builds (App Store 2.3.1)", () => {
 describe("literal-true flags without a dedicated suite", () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  const flags: Array<[string, keyof typeof import("../featureFlags")]> = [
+  const flags = [
     ["VITE_FEATURE_PRO_PROFILES", "isProProfilesEnabled"],
     ["VITE_FEATURE_WTT_ENABLED", "isWttEnabled"],
     ["VITE_FEATURE_POST_MAKES_ENABLED", "isPostMakesEnabled"],
@@ -595,11 +595,11 @@ describe("literal-true flags without a dedicated suite", () => {
     ["VITE_FEATURE_SMS_2FA_ENABLED", "isSms2faEnabled"],
     ["VITE_FEATURE_TIPS", "isTipsEnabled"],
     ["VITE_FEATURE_HUBBA_ICONS", "isHubbaIconsEnabled"],
-  ];
+  ] as const satisfies ReadonlyArray<readonly [string, keyof typeof import("../featureFlags")]>;
 
   it.each(flags)("%s drives %s and only the literal true turns it on", async (env, name) => {
     const mod = await import("../featureFlags");
-    const read = mod[name] as () => boolean;
+    const read = mod[name];
     vi.stubEnv(env, "");
     expect(read()).toBe(false);
     vi.stubEnv(env, "TRUE");
