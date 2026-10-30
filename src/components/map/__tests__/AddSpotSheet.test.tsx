@@ -285,3 +285,57 @@ describe("AddSpotSheet visibility (map check-ins on)", () => {
     expect(mockResolveCrew).not.toHaveBeenCalled();
   });
 });
+
+describe("AddSpotSheet photos, back navigation and odd failures", () => {
+  const sheet = () =>
+    render(<AddSpotSheet userLocation={{ lat: 34.0522, lng: -118.2437 }} onClose={vi.fn()} onSuccess={vi.fn()} />);
+
+  async function openPhotos() {
+    sheet();
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await userEvent.type(screen.getByPlaceholderText(/Hollywood High/i), "Photo spot");
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+  }
+
+  it("rejects a non-https photo URL, adds a good one, and removes it again", async () => {
+    await openPhotos();
+    const input = screen.getByPlaceholderText("https://...");
+    await userEvent.type(input, "http://example.com/a.jpg");
+    await userEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(screen.getByText("URL must start with https://")).toBeInTheDocument();
+    expect(screen.queryByAltText("Spot photo 1")).toBeNull();
+
+    await userEvent.clear(input);
+    await userEvent.type(input, "  https://example.com/a.jpg  ");
+    await userEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(screen.queryByText("URL must start with https://")).toBeNull();
+    expect(screen.getByAltText("Spot photo 1")).toHaveAttribute("src", "https://example.com/a.jpg");
+    expect(input).toHaveValue("");
+
+    await userEvent.click(screen.getByRole("button", { name: "Remove photo 1" }));
+    expect(screen.queryByAltText("Spot photo 1")).toBeNull();
+  });
+
+  it("goes back a step with the Back button and keeps a typed longitude", async () => {
+    mockCreateSpot.mockResolvedValueOnce(FIXTURE_SPOT);
+    await openPhotos();
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getByText("Spot Details")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    const lng = screen.getByLabelText("Longitude");
+    await userEvent.clear(lng);
+    await userEvent.type(lng, "-117.5");
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await userEvent.click(screen.getByRole("button", { name: /Submit Spot/i }));
+    await waitFor(() => expect(mockCreateSpot).toHaveBeenCalledTimes(1));
+    expect(mockCreateSpot.mock.calls[0][0].longitude).toBeCloseTo(-117.5);
+  });
+
+  it("shows a generic message with the Firestore code when the failure is not an Error", async () => {
+    mockCreateSpot.mockRejectedValueOnce({ code: "permission-denied" });
+    await openPhotos();
+    await userEvent.click(screen.getByRole("button", { name: /Submit Spot/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Failed to create spot [permission-denied]");
+  });
+});
