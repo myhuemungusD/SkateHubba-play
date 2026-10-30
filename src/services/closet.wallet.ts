@@ -7,7 +7,7 @@ import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { parseFirebaseError } from "../utils/helpers";
 import { logger } from "./logger";
-import { toDateOrNull } from "./closet.time";
+import { toDateOrNull } from "./firestoreDate";
 
 export interface WalletBalance {
   balance: number;

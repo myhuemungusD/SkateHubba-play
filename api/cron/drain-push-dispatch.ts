@@ -46,18 +46,17 @@
  *     deletes nothing.
  */
 
-import { cert, getApps, initializeApp, type App, type ServiceAccount } from "firebase-admin/app";
-import { getFirestore, FieldValue, type Firestore } from "firebase-admin/firestore";
+import type { App } from "firebase-admin/app";
+import type { Firestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
-import { matchesCronSecret } from "./_cronAuth.js";
-import { describeInitFailure, parseServiceAccountJson } from "./_serviceAccount.js";
+import { adminAppFromEnv, adminFirestore } from "./_adminApp.js";
+import { isAuthorized, isDryRun, type CronRequest, type CronResponse } from "./_cronRequest.js";
+import { describeInitFailure } from "./_serviceAccount.js";
 import { diceEligibleTokens, isDicePush, mirrorTokens } from "./_pushPlatforms.js";
 import { webpushOptions } from "./_pushWebpush.js";
+import { parseDispatchDoc, pruneDeadTokens, PUSH_TARGETS_COLLECTION } from "./_pushDrain.js";
 import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
 import { safeErrorCode } from "../_safeError.js";
-
-/** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
-const FIRESTORE_DB_NAME = "skatehubba";
 
 /** Max dispatch docs to process per invocation. The cron repeats every 5 minutes. */
 const MAX_PER_RUN = 200;
@@ -68,12 +67,8 @@ const MAX_PER_RUN = 200;
  */
 const PUSH_TTL_MS = 24 * 60 * 60 * 1000;
 
-/** Collections — mirror the constants in src/services/pushDispatch.ts. */
+/** Collection — mirrors the constant in src/services/pushDispatch.ts. */
 const PUSH_DISPATCH_COLLECTION = "push_dispatch";
-const PUSH_TARGETS_COLLECTION = "pushTargets";
-
-/** Owner-only canonical token list — mirrors PRIVATE_PROFILE_DOC_ID in users.ts. */
-const PRIVATE_PROFILE_DOC_ID = "profile";
 
 /**
  * FCM error codes that mean "this token is permanently dead, stop sending to
@@ -85,18 +80,6 @@ const DEAD_TOKEN_CODES = new Set([
   "messaging/invalid-registration-token",
   "messaging/invalid-argument",
 ]);
-
-/** Minimal request/response shape — avoids a hard dep on @vercel/node types. */
-interface CronRequest {
-  method?: string;
-  headers: Record<string, string | string[] | undefined>;
-  query?: Record<string, string | string[] | undefined>;
-  url?: string;
-}
-interface CronResponse {
-  status: (code: number) => CronResponse;
-  json: (body: unknown) => void;
-}
 
 interface DrainSummary {
   /** Docs read from the queue. */
@@ -120,174 +103,10 @@ interface DrainSummary {
 
 let cachedApp: App | null = null;
 
-/**
- * Lazily initialize firebase-admin from a service-account JSON in env. Cached
- * across warm invocations. Throws (caught by the handler) if the env is
- * missing or malformed so the misconfiguration surfaces as a 500, not a
- * silent no-op.
- */
+/** Cached across warm invocations; see ./_adminApp.ts. */
 function getAdminApp(): App {
-  if (!cachedApp) {
-    const existing = getApps();
-    if (existing.length > 0) {
-      cachedApp = existing[0];
-    } else {
-      const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-      if (!raw) {
-        throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is not set");
-      }
-      // Tolerates known hand-paste damage (expanded \n escapes, smart
-      // quotes) and throws on anything unparseable or missing a field.
-      const { account, repaired } = parseServiceAccountJson(raw);
-      if (repaired) {
-        // Expected error path: the stored env value is damaged but
-        // recoverable. Announce it on every cold start so the
-        // misconfiguration gets fixed instead of silently absorbed forever.
-        console.warn(JSON.stringify({ event: "service_account_json_repaired" }));
-      }
-      const serviceAccount: ServiceAccount = account;
-      cachedApp = initializeApp({ credential: cert(serviceAccount) });
-    }
-  }
+  cachedApp ??= adminAppFromEnv();
   return cachedApp;
-}
-
-/**
- * Constant-time bearer check against CRON_SECRET, fail-closed. The comparison
- * lives in ./_cronAuth.ts (shared by every cron); this only picks the header
- * value off the Node request.
- */
-function isAuthorized(req: CronRequest): boolean {
-  const header = req.headers["authorization"] ?? req.headers["Authorization"];
-  return matchesCronSecret(Array.isArray(header) ? header[0] : header);
-}
-
-function isDryRun(req: CronRequest): boolean {
-  if (process.env.DRY_RUN === "1" || process.env.DRY_RUN === "true") return true;
-  const q = req.query?.["dryRun"];
-  const value = Array.isArray(q) ? q[0] : q;
-  if (value === "1" || value === "true") return true;
-  // Fall back to parsing the raw URL when the platform didn't pre-parse query.
-  if (req.url && /[?&]dryRun=(1|true)\b/.test(req.url)) return true;
-  return false;
-}
-
-/**
- * The subset of a /push_dispatch doc this handler needs, after validation.
- * `buildDispatchDoc` in src/services/pushDispatch.ts is the authoring contract;
- * the sweep cron's `buildAdminDispatchDoc` writes the same shape.
- */
-interface DispatchPayload {
-  /** Tokens named on the doc, or null: resolve them from pushTargets at send time (M1). */
-  tokens: string[] | null;
-  title: string;
-  body: string;
-  data: Record<string, string>;
-  recipientUid: string;
-  createdAtMs: number | null;
-}
-
-/**
- * Validate a dispatch doc against the authoring contract.
- *
- * Returns null for anything that does not match, which the caller treats as
- * malformed-and-deletable. We validate rather than trust because /push_dispatch
- * is client-writable: firestore.rules constrains the shape hard, but a doc
- * written before a rules tighten (or by a future writer) must never be able to
- * crash the drain or push an unbounded payload to a user's device.
- */
-function parseDispatchDoc(raw: Record<string, unknown>): DispatchPayload | null {
-  // No `tokens` key: resolve from the recipient's pushTargets doc at send
-  // time (M1). A present-but-bad list is still malformed.
-  const tokensRaw = raw.tokens;
-  let tokens: string[] | null = null;
-  if (tokensRaw !== undefined) {
-    if (!Array.isArray(tokensRaw)) return null;
-    tokens = tokensRaw.filter((t): t is string => typeof t === "string" && t.length > 0);
-    if (tokens.length === 0) return null;
-  }
-
-  const notification = raw.notification;
-  if (typeof notification !== "object" || notification === null) return null;
-  const { title, body } = notification as { title?: unknown; body?: unknown };
-  if (typeof title !== "string" || typeof body !== "string") return null;
-
-  const recipientUid = raw.recipientUid;
-  if (typeof recipientUid !== "string" || recipientUid.length === 0) return null;
-
-  // FCM requires every `data` value to be a string. The authoring path only
-  // writes strings, but a non-string here would make the whole send throw and
-  // wedge the doc in the queue forever — drop the offending key instead.
-  const data: Record<string, string> = {};
-  const dataRaw = raw.data;
-  if (typeof dataRaw === "object" && dataRaw !== null) {
-    for (const [k, v] of Object.entries(dataRaw as Record<string, unknown>)) {
-      if (typeof v === "string") data[k] = v;
-    }
-  }
-
-  // createdAt is a server Timestamp on every legitimate doc. A doc whose
-  // timestamp has not resolved yet (or is absent) gets a null age and is
-  // treated as "too new to expire" rather than being dropped.
-  const createdAt = raw.createdAt;
-  const createdAtMs =
-    typeof createdAt === "object" &&
-    createdAt !== null &&
-    typeof (createdAt as { toMillis?: unknown }).toMillis === "function"
-      ? (createdAt as { toMillis: () => number }).toMillis()
-      : null;
-
-  return { tokens, title, body, data, recipientUid, createdAtMs };
-}
-
-/**
- * Remove tokens FCM reported as permanently dead from BOTH the cross-readable
- * mirror and the owner-only canonical list, keeping the two in lockstep.
- *
- * Scoping note (security): the tokens passed here come either from the
- * recipient's own pushTargets doc (a dispatch that names no tokens, M1) or from
- * the doc's `tokens` array, which the /push_dispatch create rule pins to
- * `tokens.hasOnly(pushTargets[recipientUid].tokens)` for client writers. So a
- * crafted dispatch doc cannot make this prune an unrelated user's devices. The prune is further
- * gated on FCM itself declaring the token dead.
- */
-async function pruneDeadTokens(db: Firestore, recipientUid: string, dead: string[]): Promise<number> {
-  if (dead.length === 0) return 0;
-  try {
-    await Promise.all([
-      db
-        .collection(PUSH_TARGETS_COLLECTION)
-        .doc(recipientUid)
-        .set(
-          {
-            tokens: FieldValue.arrayRemove(...dead),
-            // Drop the dead tokens' platform tags too, so the map stays in step with the list.
-            platforms: Object.fromEntries(dead.map((token) => [token, FieldValue.delete()])),
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true },
-        ),
-      db
-        .collection("users")
-        .doc(recipientUid)
-        .collection("private")
-        .doc(PRIVATE_PROFILE_DOC_ID)
-        .set({ fcmTokens: FieldValue.arrayRemove(...dead) }, { merge: true }),
-    ]);
-    return dead.length;
-  } catch (err) {
-    // Best-effort: a leaked stale token costs one wasted FCM call per dispatch
-    // and is re-pruned on the next attempt. Never fail the drain over it.
-    console.warn(
-      JSON.stringify({
-        event: "drain_prune_failed",
-        recipientUid,
-        code: safeErrorCode(err),
-      }),
-    );
-    captureServerError("drain_prune_failed", err, { recipientUid }, { level: "warning" });
-    return 0;
-  }
 }
 
 async function handler(req: CronRequest, res: CronResponse): Promise<void> {
@@ -322,7 +141,7 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
   let db: Firestore;
   try {
     app = getAdminApp();
-    db = getFirestore(app, FIRESTORE_DB_NAME);
+    db = adminFirestore(app);
   } catch (err) {
     // Misconfiguration (missing/malformed service account) — surface as 500.
     // Never err.message, in the log or the body: a JSON.parse failure on

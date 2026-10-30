@@ -6,12 +6,9 @@ import { EMAIL_RE, getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { MIRRORED_PASSWORD_POLICY, type SignupPasswordPolicy } from "../utils/passwordPolicy";
 import { isMinorDob } from "../utils/age";
 import { AuthSubmitButton } from "./AuthSubmitButton";
-import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { DobConsentFields } from "../components/DobConsentFields";
-import { AppleButton } from "../components/AppleButton";
-import { GoogleButton } from "../components/GoogleButton";
-import { TermsAgreementNotice } from "../components/legal/TermsAgreementNotice";
+import { AuthEmailField, AuthSocialSection } from "../components/AuthSocialSection";
 import { CoppaBlockedCard } from "../components/CoppaBlockedCard";
 import { MfaVerifyCard } from "../components/MfaVerifyCard";
 import type { MfaChallenge } from "../services/mfa";
@@ -287,17 +284,14 @@ export function AuthScreen({
             : "Sign in to continue your games."}
         </p>
 
-        <div className="flex flex-col gap-3">
-          {appleOn ? <AppleButton onClick={onApple} loading={appleLoading} disabled={googleLoading} /> : null}
-          <GoogleButton onClick={onGoogle} loading={googleLoading} disabled={appleOn && appleLoading} />
-          <TermsAgreementNotice onNav={onNavLegal} />
-        </div>
-
-        <div className="flex items-center gap-3 my-5">
-          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
-          <span className="font-body text-xs text-subtle">or continue with email</span>
-          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
-        </div>
+        <AuthSocialSection
+          appleOn={appleOn}
+          onApple={onApple}
+          appleLoading={appleLoading}
+          onGoogle={onGoogle}
+          googleLoading={googleLoading}
+          onNavLegal={onNavLegal}
+        />
 
         <form
           onSubmit={(e) => {
@@ -308,18 +302,7 @@ export function AuthScreen({
           aria-busy={socialLoading || undefined}
           className={`transition-opacity duration-200 ${socialLoading ? "opacity-40 pointer-events-none" : ""}`}
         >
-          <Field
-            label="Email"
-            name="email"
-            value={email}
-            onChange={setEmail}
-            placeholder="you@email.com"
-            icon="@"
-            type="email"
-            autoComplete="email"
-            inputMode="email"
-            enterKeyHint="next"
-          />
+          <AuthEmailField value={email} onChange={setEmail} />
           <AuthPasswordFields
             isSignup={isSignup}
             showDob={showDob}

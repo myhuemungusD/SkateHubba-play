@@ -10,6 +10,7 @@ import { fetchUserTrades, respondTrade, confirmTrade } from "../services/closet.
 import { logger } from "../services/logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { CreateTradeModal } from "./CreateTradeModal";
+import { ClosetGatedState, ClosetLoadErrorState, ClosetLoadingState } from "../components/ClosetScreenStates";
 
 export function TradingScreen() {
   const { user } = useAuth();
@@ -45,35 +46,15 @@ export function TradingScreen() {
   }, [user, filter, refreshKey]);
 
   if (!isClosetTradingEnabled() || !user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-surface">
-        <p className="text-subtle">Trading is in testing and not open to everyone yet.</p>
-      </div>
-    );
+    return <ClosetGatedState message="Trading is in testing and not open to everyone yet." />;
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-surface">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange" />
-      </div>
-    );
+    return <ClosetLoadingState />;
   }
 
   if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-surface px-4">
-        <div className="text-center">
-          <p className="text-critical mb-4">Failed to load trades</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-brand-orange text-surface-dark rounded-lg font-display"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
+    return <ClosetLoadErrorState message="Failed to load trades" />;
   }
 
   return (
