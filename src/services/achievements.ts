@@ -38,6 +38,7 @@ import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { parseFirebaseError } from "../utils/helpers";
 import { logger } from "./logger";
+import { toDateOrNull } from "./firestoreDate";
 
 /** One earned badge on `users/{uid}/achievements`. */
 export interface Achievement {
@@ -66,21 +67,6 @@ interface ParsableDoc {
  * stable (ES2019+).
  */
 const UNDATED_SORT_KEY = Number.MIN_SAFE_INTEGER;
-
-/**
- * Convert a Firestore Timestamp-shaped field into a `Date`. Uses structural
- * duck-typing on `.toDate()` rather than `instanceof Timestamp` — the latter
- * is brittle across multiple SDK instances and across the test module mock.
- * Anything that isn't a resolvable Timestamp becomes `null`.
- */
-function toDateOrNull(value: unknown): Date | null {
-  if (!value || typeof value !== "object") return null;
-  const toDate = (value as { toDate?: unknown }).toDate;
-  if (typeof toDate !== "function") return null;
-  const date: unknown = toDate.call(value);
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
-  return date;
-}
 
 /**
  * A uid is only used as a Firestore path segment here. Empty strings and

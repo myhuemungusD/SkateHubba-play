@@ -19,6 +19,8 @@
  *   - <0.5 → allow silently
  */
 
+import { decodeImage } from "../utils/decodeImage";
+
 /** Outcome of `isAvatarSafe`. Score is the maximum unsafe-class probability. */
 export interface AvatarSafetyResult {
   /** False if the image should be rejected outright. */
@@ -69,25 +71,6 @@ async function loadModel(): Promise<NsfwModel | null> {
     // boundary. Surface the failure to ops without breaking the user.
     console.warn("[avatarModeration] model_load_failed", err);
     return null;
-  }
-}
-
-/**
- * Decode a Blob into something NSFWjs can classify. Uses the browser's
- * native image decoder via an Object URL → HTMLImageElement bridge so we
- * don't pull in another dependency.
- */
-async function decodeImage(blob: Blob): Promise<HTMLImageElement> {
-  const url = URL.createObjectURL(blob);
-  try {
-    return await new Promise<HTMLImageElement>((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error("avatar_decode_failed"));
-      img.src = url;
-    });
-  } finally {
-    URL.revokeObjectURL(url);
   }
 }
 

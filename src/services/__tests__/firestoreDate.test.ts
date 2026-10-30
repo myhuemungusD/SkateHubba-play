@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toDateOrNull } from "../closet.time";
+import { toDateOrNull } from "../firestoreDate";
 
 describe("toDateOrNull", () => {
   it("unwraps a timestamp-like value", () => {

@@ -2,6 +2,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "fi
 import { ensureStorage, requireAuth, requireStorage } from "../firebase";
 import { isAvatarSafe } from "./avatarModeration";
 import { logger } from "./logger";
+import { decodeImage } from "../utils/decodeImage";
 
 /**
  * Avatar service.
@@ -111,25 +112,6 @@ export interface UploadAvatarOptions {
    * confirms a borderline image in the AvatarPicker UI.
    */
   acceptBorderlineNsfw?: boolean;
-}
-
-/**
- * Decode a Blob into a same-origin HTMLImageElement. The Object URL
- * bridge keeps the dependency surface small and lets the caller treat
- * any image source (camera capture, file picker, paste-URL) uniformly.
- */
-async function decodeImage(blob: Blob): Promise<HTMLImageElement> {
-  const url = URL.createObjectURL(blob);
-  try {
-    return await new Promise<HTMLImageElement>((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error("avatar_decode_failed"));
-      img.src = url;
-    });
-  } finally {
-    URL.revokeObjectURL(url);
-  }
 }
 
 /**

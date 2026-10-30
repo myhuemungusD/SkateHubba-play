@@ -1,12 +1,10 @@
-import { doc, runTransaction, serverTimestamp, Timestamp, arrayUnion } from "firebase/firestore";
-import { requireDb } from "../firebase";
+import { serverTimestamp, Timestamp, arrayUnion } from "firebase/firestore";
 import { analytics } from "./analytics";
 import { metrics } from "./logger";
 import { writeNotificationInTx } from "./notifications";
-import { createPushDispatchOutbox, drainPushDispatchOutbox, resetPushDispatchOutbox } from "./pushDispatch";
 import { writeLandedClipsInTransaction } from "./clips";
-import { toGameDoc, isJudgeActive, type TurnRecord } from "./games.mappers";
-import { getOpponent, checkTurnActionRate, recordTurnAction } from "./games.turns";
+import { isJudgeActive, type TurnRecord } from "./games.mappers";
+import { applyRoundOutcome, getOpponent, runActiveGameTurn } from "./games.turns";
 import { turnDurationMsFor } from "./turnDuration";
 import { clearedTrickFields, trickSnapshot } from "./trickFields";
 import { applyTrainingLabelPending } from "./trainingLabels.materialize";
@@ -25,17 +23,7 @@ import { applyTrainingLabelPending } from "./trainingLabels.materialize";
  * ──────────────────────────────────────────── */
 
 export async function callBSOnSetTrick(gameId: string): Promise<void> {
-  checkTurnActionRate(gameId);
-  const gameRef = doc(requireDb(), "games", gameId);
-  const pushOutbox = createPushDispatchOutbox();
-
-  await runTransaction(requireDb(), async (tx) => {
-    resetPushDispatchOutbox(pushOutbox);
-    const snap = await tx.get(gameRef);
-    if (!snap.exists()) throw new Error("Game not found");
-
-    const game = toGameDoc(snap);
-    if (game.status !== "active") throw new Error("Game is already over");
+  await runActiveGameTurn(gameId, async ({ tx, gameRef, game, pushOutbox }) => {
     if (game.phase !== "matching") throw new Error("Not in matching phase");
     if (!isJudgeActive(game) || !game.judgeId) {
       throw new Error("Call BS is only available when a referee is active");
@@ -67,8 +55,6 @@ export async function callBSOnSetTrick(gameId: string): Promise<void> {
       pushOutbox,
     );
   });
-  void drainPushDispatchOutbox(pushOutbox);
-  recordTurnAction(gameId);
 }
 
 /* ────────────────────────────────────────────
@@ -79,17 +65,7 @@ export async function callBSOnSetTrick(gameId: string): Promise<void> {
  * ──────────────────────────────────────────── */
 
 export async function judgeRuleSetTrick(gameId: string, clean: boolean): Promise<void> {
-  checkTurnActionRate(gameId);
-  const gameRef = doc(requireDb(), "games", gameId);
-  const pushOutbox = createPushDispatchOutbox();
-
-  await runTransaction(requireDb(), async (tx) => {
-    resetPushDispatchOutbox(pushOutbox);
-    const snap = await tx.get(gameRef);
-    if (!snap.exists()) throw new Error("Game not found");
-
-    const game = toGameDoc(snap);
-    if (game.status !== "active") throw new Error("Game is already over");
+  await runActiveGameTurn(gameId, async ({ tx, gameRef, game, pushOutbox }) => {
     if (game.phase !== "setReview") throw new Error("Not in setReview phase");
     if (!game.judgeId) throw new Error("No referee on this game");
 
@@ -149,8 +125,6 @@ export async function judgeRuleSetTrick(gameId: string, clean: boolean): Promise
       );
     }
   });
-  void drainPushDispatchOutbox(pushOutbox);
-  recordTurnAction(gameId);
 }
 
 /* ────────────────────────────────────────────
@@ -167,17 +141,7 @@ export async function resolveDispute(
   gameId: string,
   accept: boolean,
 ): Promise<{ gameOver: boolean; winner: string | null }> {
-  checkTurnActionRate(gameId);
-  const gameRef = doc(requireDb(), "games", gameId);
-  const pushOutbox = createPushDispatchOutbox();
-
-  const result = await runTransaction(requireDb(), async (tx) => {
-    resetPushDispatchOutbox(pushOutbox);
-    const snap = await tx.get(gameRef);
-    if (!snap.exists()) throw new Error("Game not found");
-
-    const game = toGameDoc(snap);
-    if (game.status !== "active") throw new Error("Game is already over");
+  const result = await runActiveGameTurn(gameId, async ({ tx, gameRef, game, pushOutbox }) => {
     if (game.phase !== "disputable") throw new Error("Not in disputable phase");
     if (!game.judgeId) throw new Error("No referee on this game");
 
@@ -224,16 +188,7 @@ export async function resolveDispute(
     };
     applyTrainingLabelPending(updates, turnRecord);
 
-    if (gameOver) {
-      updates.status = "complete";
-      updates.winner = winner;
-    } else {
-      updates.phase = "setting";
-      updates.currentSetter = nextSetter;
-      updates.currentTurn = nextSetter;
-      updates.turnDeadline = Timestamp.fromMillis(Date.now() + turnDurationMsFor(game));
-      updates.turnNumber = game.turnNumber + 1;
-    }
+    applyRoundOutcome(updates, game, { gameOver, winner, nextSetter });
 
     tx.update(gameRef, updates);
 
@@ -305,8 +260,6 @@ export async function resolveDispute(
       turnNumber: game.turnNumber,
     };
   });
-  void drainPushDispatchOutbox(pushOutbox);
-  recordTurnAction(gameId);
 
   if (result.gameOver && result.winner) {
     metrics.gameCompleted(gameId, result.winner, result.turnNumber);
