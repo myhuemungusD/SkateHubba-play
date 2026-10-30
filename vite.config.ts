@@ -162,7 +162,10 @@ export default defineConfig({
     unstubGlobals: true,
     coverage: {
       provider: "v8",
-      include: ["src/**/*.{ts,tsx}"],
+      // api/ is the Vercel serverless side (account delete, crons, player
+      // meta, well-known files). Its tests live in src/ (vitest's include
+      // above), so measure it here too or it can drop to 0% unseen.
+      include: ["src/**/*.{ts,tsx}", "api/**/*.ts"],
       exclude: [
         "src/**/*.test.{ts,tsx}",
         "src/__tests__/**",
@@ -204,6 +207,9 @@ export default defineConfig({
         "src/types/**": { lines: 100, functions: 100, branches: 100, statements: 100 },
         "src/utils/**": { lines: 100, functions: 100, branches: 100, statements: 100 },
         "src/firebase.ts": { lines: 100, functions: 100, branches: 100, statements: 100 },
+        // api/ (the Vercel serverless side) is measured since D3; this keeps it
+        // from slipping unseen behind the src/ mass in the global floor.
+        "api/**": { lines: 98.2, functions: 100, branches: 95.1, statements: 97.5 },
         // Ratchet floors for everything not at 100 yet. These are AGGREGATE
         // floors: a single file can sit at 0% and still pass. The per-file
         // rule lives in scripts/check-coverage-per-file.mjs (run by
