@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const h = vi.hoisted(() => ({
   listBans: vi.fn(),
@@ -110,6 +110,19 @@ describe("AdminConsolePanel", () => {
     expect(screen.getByText("Testers: loading…")).toBeInTheDocument();
     expect(await screen.findByText("Testers: j, m")).toBeInTheDocument();
     expect(screen.getAllByText("Tester-only").length).toBeGreaterThan(0);
+  });
+
+  it("marks a switch On when this build was made with it set to true", async () => {
+    vi.stubEnv("VITE_FEATURE_TIPS", "true");
+    vi.stubEnv("VITE_FEATURE_FEED_SHARE", "false");
+    render(<AdminConsolePanel />);
+    await screen.findByText("Testers: none");
+
+    const row = (label: string) => screen.getByText(label, { selector: "span" }).closest("li");
+    expect(row("TIPS")).toHaveTextContent("On");
+    expect(within(row("TIPS")!).getByText("On")).toHaveClass("text-emerald-300");
+    expect(row("FEED SHARE")).toHaveTextContent("Tester-only");
+    expect(within(row("FEED SHARE")!).getByText("Tester-only")).toHaveClass("text-amber-200");
   });
 
   it("shows none when there are no testers and ignores late results", async () => {

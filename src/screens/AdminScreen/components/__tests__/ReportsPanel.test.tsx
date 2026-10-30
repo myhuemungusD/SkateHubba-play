@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const mockFetchReports = vi.fn();
@@ -30,6 +30,7 @@ vi.mock("../../../../services/logger", () => ({
 
 import { ReportsPanel } from "../ReportsPanel";
 import { ADMIN_UID, renderWithToasts } from "./adminPanels.test-helpers";
+import { deferred } from "../../../../__tests__/harness/deferred";
 
 function renderPanel() {
   return renderWithToasts(<ReportsPanel adminUid={ADMIN_UID} />);
@@ -152,6 +153,19 @@ describe("ReportsPanel", () => {
     await user.click(row.getByRole("button", { name: "HIDE" }));
     await waitFor(() => expect(mockHideMessage).toHaveBeenCalledWith("s1", "m1"));
     expect(mockResolveReport).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a failed dispute hide", async () => {
+    mockFetchReports.mockResolvedValue([{ ...report, disputeId: "g1_3" }]);
+    mockHideDispute.mockRejectedValueOnce(new Error("Couldn't hide that dispute."));
+    const user = userEvent.setup();
+    renderPanel();
+
+    const row = within(await screen.findByTestId("report-r1"));
+    await user.click(row.getByRole("button", { name: "HIDE DISPUTE" }));
+    await user.click(row.getByRole("button", { name: "HIDE" }));
+    expect(await screen.findByText("Hide failed")).toBeInTheDocument();
+    expect(screen.getByText("Couldn't hide that dispute.")).toBeInTheDocument();
   });
 
   it("labels an uncaptured chat message and surfaces a failed hide", async () => {
@@ -507,5 +521,37 @@ describe("ReportsPanel — ban", () => {
 
     const row = within(await screen.findByTestId("report-r1"));
     expect(row.queryByRole("button", { name: /ban user/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("ReportsPanel — switching tabs while the pending read is in flight", () => {
+  it("shows the resolved tab's rows even when the pending read lands later", async () => {
+    const pending = deferred<unknown[]>();
+    mockFetchReports.mockImplementation((status: string) =>
+      status === "pending" ? pending.promise : Promise.resolve([]),
+    );
+    renderPanel();
+    await userEvent.click(screen.getByRole("tab", { name: "RESOLVED" }));
+    expect(await screen.findByTestId("reports-empty")).toHaveTextContent("No resolved reports");
+
+    await act(async () => pending.resolve([report]));
+
+    expect(screen.getByTestId("reports-empty")).toBeInTheDocument();
+    expect(screen.queryByTestId("report-r1")).not.toBeInTheDocument();
+  });
+
+  it("does not show the pending read's failure on the resolved tab", async () => {
+    const pending = deferred<unknown[]>();
+    mockFetchReports.mockImplementation((status: string) =>
+      status === "pending" ? pending.promise : Promise.resolve([]),
+    );
+    renderPanel();
+    await userEvent.click(screen.getByRole("tab", { name: "RESOLVED" }));
+    expect(await screen.findByTestId("reports-empty")).toBeInTheDocument();
+
+    await act(async () => pending.reject(new Error("pending queue down")));
+
+    expect(screen.queryByText("pending queue down")).not.toBeInTheDocument();
+    expect(screen.getByTestId("reports-empty")).toBeInTheDocument();
   });
 });

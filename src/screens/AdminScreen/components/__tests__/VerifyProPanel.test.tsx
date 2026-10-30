@@ -153,6 +153,24 @@ describe("VerifyProPanel", () => {
     expect(mockGrantVerifiedPro).not.toHaveBeenCalled();
   });
 
+  it("toasts the service's reason when the revoke fails and keeps the badge", async () => {
+    const user = userEvent.setup();
+    mockGetUserProfile.mockResolvedValue(proProfile);
+    mockRevokeVerifiedPro.mockRejectedValue(new Error("Only the founder can revoke."));
+    renderPanel();
+    await lookUp(user, "nyjah");
+    const status = await screen.findByTestId("verify-pro-status");
+    const before = status.textContent;
+
+    await user.click(screen.getByRole("button", { name: "REVOKE" }));
+    await user.click(screen.getByRole("button", { name: "REVOKE" }));
+
+    expect(await screen.findByText("Revoke failed")).toBeInTheDocument();
+    expect(screen.getByText("Only the founder can revoke.")).toBeInTheDocument();
+    expect(screen.queryByText("Grant failed")).not.toBeInTheDocument();
+    expect(screen.getByTestId("verify-pro-status").textContent).toBe(before);
+  });
+
   it("toasts the service's reason when the grant fails", async () => {
     const user = userEvent.setup();
     mockGrantVerifiedPro.mockRejectedValue(new Error("Missing or insufficient permissions."));

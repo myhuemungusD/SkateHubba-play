@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const mockAwardAchievement = vi.fn();
@@ -36,7 +36,10 @@ vi.mock("../../../../services/logger", () => ({
 }));
 
 import { AwardsPanel } from "../AwardsPanel";
+import { BadgeAwardPanel } from "../BadgeAwardPanel";
+import { LockerAwardPanel } from "../LockerAwardPanel";
 import { renderWithToasts } from "./adminPanels.test-helpers";
+import { deferred } from "../../../../__tests__/harness/deferred";
 
 /** Render, look a player up, and wait for both grant surfaces to settle. */
 async function renderWithTarget(user: ReturnType<typeof userEvent.setup>) {
@@ -291,5 +294,58 @@ describe("AwardsPanel — locker", () => {
     await renderWithTarget(user);
 
     expect(await screen.findByText("Couldn't load locker")).toBeInTheDocument();
+  });
+});
+
+describe("AwardsPanel — switching players mid-read", () => {
+  it("keeps the new player's badges when the old player's read resolves late", async () => {
+    const old = deferred<unknown[]>();
+    mockFetchAchievements.mockImplementation((uid: string) => (uid === "u1" ? old.promise : Promise.resolve([])));
+    const { rerender } = renderWithToasts(<BadgeAwardPanel uid="u1" username="nyjah" />);
+    rerender(<BadgeAwardPanel uid="u2" username="leticia" />);
+    await screen.findByTestId("badge-row-og");
+
+    await act(async () => old.resolve([{ id: "og", earnedAt: null, reason: "founding account" }]));
+
+    // u1 owns OG; u2 doesn't, so the row must still offer Award, not Revoke.
+    const row = within(screen.getByTestId("badge-row-og"));
+    expect(row.queryByRole("button", { name: "REVOKE" })).not.toBeInTheDocument();
+  });
+
+  it("does not toast the old player's failed badge read", async () => {
+    const old = deferred<unknown[]>();
+    mockFetchAchievements.mockImplementation((uid: string) => (uid === "u1" ? old.promise : Promise.resolve([])));
+    const { rerender } = renderWithToasts(<BadgeAwardPanel uid="u1" username="nyjah" />);
+    rerender(<BadgeAwardPanel uid="u2" username="leticia" />);
+    await screen.findByTestId("badge-row-og");
+
+    await act(async () => old.reject(new Error("offline")));
+
+    expect(screen.queryByText("Couldn't load badges")).not.toBeInTheDocument();
+  });
+
+  it("keeps the new player's locker when the old player's read resolves late", async () => {
+    const old = deferred<unknown[]>();
+    mockFetchLockerItems.mockImplementation((uid: string) => (uid === "u1" ? old.promise : Promise.resolve([])));
+    const { rerender } = renderWithToasts(<LockerAwardPanel uid="u1" username="nyjah" />);
+    rerender(<LockerAwardPanel uid="u2" username="leticia" />);
+    await screen.findByTestId("admin-locker-empty");
+
+    await act(async () => old.resolve([lockerItem]));
+
+    expect(screen.getByTestId("admin-locker-empty")).toBeInTheDocument();
+    expect(screen.queryByTestId("admin-locker-item-item1")).not.toBeInTheDocument();
+  });
+
+  it("does not toast the old player's failed locker read", async () => {
+    const old = deferred<unknown[]>();
+    mockFetchLockerItems.mockImplementation((uid: string) => (uid === "u1" ? old.promise : Promise.resolve([])));
+    const { rerender } = renderWithToasts(<LockerAwardPanel uid="u1" username="nyjah" />);
+    rerender(<LockerAwardPanel uid="u2" username="leticia" />);
+    await screen.findByTestId("admin-locker-empty");
+
+    await act(async () => old.reject(new Error("offline")));
+
+    expect(screen.queryByText("Couldn't load locker")).not.toBeInTheDocument();
   });
 });
