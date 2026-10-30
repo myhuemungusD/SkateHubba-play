@@ -15,7 +15,7 @@ vi.mock("../../services/haptics", () => ({
   isHapticsEnabled: () => enabled.value,
 }));
 
-import { playRunnerHaptic } from "../haptics";
+import { playRunnerHaptic, pulseGrindHaptic } from "../haptics";
 
 describe("runner haptics", () => {
   beforeEach(() => {
@@ -70,5 +70,45 @@ describe("runner haptics", () => {
     playRunnerHaptic("pop", null, 3000);
     expect(vibrate).not.toHaveBeenCalled();
     expect(playHaptic).not.toHaveBeenCalled();
+  });
+
+  it("buzzes a clean landing and a native pop, and ignores an unknown event", () => {
+    const vibrate = vi.fn(() => true);
+    Object.defineProperty(navigator, "vibrate", { configurable: true, value: vibrate });
+    playRunnerHaptic("land", "clean", 4000);
+    expect(vibrate).toHaveBeenLastCalledWith(18);
+    playRunnerHaptic("wobble" as never, null, 4100);
+    expect(vibrate).toHaveBeenCalledTimes(1);
+    isNative.mockReturnValue(true);
+    playRunnerHaptic("pop", null, 4200);
+    playRunnerHaptic("wobble" as never, null, 4300);
+    expect(playHaptic.mock.calls).toEqual([["toast"]]);
+  });
+
+  it("pulses a held grind natively, in the browser, or not at all", () => {
+    const vibrate = vi.fn(() => true);
+    Object.defineProperty(navigator, "vibrate", { configurable: true, value: vibrate });
+    pulseGrindHaptic(5000);
+    pulseGrindHaptic(5010);
+    expect(vibrate).toHaveBeenCalledExactlyOnceWith(8);
+    isNative.mockReturnValue(true);
+    pulseGrindHaptic(5100);
+    expect(playHaptic).toHaveBeenCalledWith("toast");
+    enabled.value = false;
+    pulseGrindHaptic(5200);
+    expect(playHaptic).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing in a browser without vibration", () => {
+    Object.defineProperty(navigator, "vibrate", { configurable: true, value: undefined });
+    expect(() => playRunnerHaptic("pop", null, 6000)).not.toThrow();
+    expect(() => pulseGrindHaptic(6100)).not.toThrow();
+    // No vibration API and not native: nothing falls through to the native haptic either.
+    expect(playHaptic).not.toHaveBeenCalled();
+    // Once vibration exists again the same grind pulse buzzes, so the silence above came from the guard.
+    const vibrate = vi.fn(() => true);
+    Object.defineProperty(navigator, "vibrate", { configurable: true, value: vibrate });
+    pulseGrindHaptic(6200);
+    expect(vibrate).toHaveBeenCalledExactlyOnceWith(8);
   });
 });

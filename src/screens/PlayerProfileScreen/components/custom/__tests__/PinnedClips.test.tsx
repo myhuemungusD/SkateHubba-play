@@ -6,10 +6,14 @@ vi.mock("../../../../../components/UserClipUpload", () => ({
     initialClip?: { videoUrl: string; trickName: string };
     editFirst?: boolean;
     onClose: () => void;
+    onPosted: () => void;
   }) => (
     <div data-testid="editor-modal" data-url={p.initialClip?.videoUrl} data-edit-first={String(p.editFirst)}>
       <button type="button" onClick={p.onClose}>
         close
+      </button>
+      <button type="button" onClick={p.onPosted}>
+        posted
       </button>
     </div>
   ),
@@ -37,6 +41,13 @@ describe("PinnedClips", () => {
     expect(modal).toHaveAttribute("data-url", "https://v/1.mp4");
     expect(modal).toHaveAttribute("data-edit-first", "true");
     fireEvent.click(screen.getByText("close"));
+    expect(screen.queryByTestId("editor-modal")).not.toBeInTheDocument();
+  });
+
+  it("closes the editor once the edited clip is posted", async () => {
+    render(<PinnedClips clips={clips} editor={{ uid: "me", username: "me" }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit Kickflip" }));
+    fireEvent.click(await screen.findByText("posted"));
     expect(screen.queryByTestId("editor-modal")).not.toBeInTheDocument();
   });
 });

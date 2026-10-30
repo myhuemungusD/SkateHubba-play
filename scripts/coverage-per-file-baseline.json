@@ -52,18 +52,6 @@
       "branches": 84.31,
       "statements": 80.24
     },
-    "src/components/map/BustRisk.tsx": {
-      "lines": 83.33,
-      "functions": 66.66,
-      "branches": 100,
-      "statements": 83.33
-    },
-    "src/components/map/GnarRating.tsx": {
-      "lines": 83.33,
-      "functions": 66.66,
-      "branches": 100,
-      "statements": 83.33
-    },
     "src/components/map/LandingMap.tsx": {
       "lines": 98.36,
       "functions": 93.75,

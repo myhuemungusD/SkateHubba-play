@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import type { Spot } from "../../../../types/spot";
@@ -76,18 +76,50 @@ describe("AddedSpotsSection", () => {
     expect(await screen.findByRole("button", { name: /add a spot/i })).toBeDisabled();
   });
 
-  it("ignores a response that arrives after the section unmounts", async () => {
-    let resolveRows: (rows: Spot[]) => void = () => {};
-    listSpotsByCreator.mockReturnValue(
-      new Promise<Spot[]>((resolve) => {
-        resolveRows = resolve;
-      }),
+  describe("when the viewed player changes while the old read is in flight", () => {
+    function holdRead() {
+      const held: { resolve: (rows: Spot[]) => void; reject: (err: Error) => void } = {
+        resolve: () => {},
+        reject: () => {},
+      };
+      listSpotsByCreator.mockReturnValueOnce(
+        new Promise<Spot[]>((resolve, reject) => {
+          held.resolve = resolve;
+          held.reject = reject;
+        }),
+      );
+      return held;
+    }
+
+    const section = (uid: string) => (
+      <MemoryRouter>
+        <AddedSpotsSection uid={uid} />
+      </MemoryRouter>
     );
-    const { unmount } = renderSection();
-    expect(screen.getByTestId("added-spots-loading")).toBeInTheDocument();
-    unmount();
-    resolveRows([spot("hubba-1", "Hollenbeck Hubba")]);
-    await Promise.resolve();
+
+    it("keeps the new player's spots when the old read fails late", async () => {
+      const old = holdRead();
+      const { rerender } = render(section("a"));
+      expect(screen.getByTestId("added-spots-loading")).toBeInTheDocument();
+      listSpotsByCreator.mockResolvedValueOnce([spot("ledge-2", "School Ledge")]);
+      rerender(section("b"));
+      expect(await screen.findByRole("link", { name: "School Ledge" })).toBeInTheDocument();
+      await act(async () => old.reject(new Error("permission-denied")));
+      expect(screen.getByRole("link", { name: "School Ledge" })).toBeInTheDocument();
+      expect(screen.queryByTestId("added-spots-error")).not.toBeInTheDocument();
+      expect(listSpotsByCreator.mock.calls).toEqual([["a"], ["b"]]);
+    });
+
+    it("keeps the new player's empty list when the old read lands late", async () => {
+      const old = holdRead();
+      const { rerender } = render(section("a"));
+      listSpotsByCreator.mockResolvedValueOnce([]);
+      rerender(section("b"));
+      expect(await screen.findByTestId("added-spots-placeholder")).toBeInTheDocument();
+      await act(async () => old.resolve([spot("hubba-1", "Hollenbeck Hubba")]));
+      expect(screen.getByTestId("added-spots-placeholder")).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "Hollenbeck Hubba" })).not.toBeInTheDocument();
+    });
   });
 
   it("does not claim the list is empty when the read fails", async () => {

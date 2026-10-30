@@ -38,9 +38,8 @@
  *     nothing.
  */
 
-import { cert, getApps, initializeApp, type App, type ServiceAccount } from "firebase-admin/app";
+import type { App } from "firebase-admin/app";
 import {
-  getFirestore,
   FieldPath,
   FieldValue,
   Timestamp,
@@ -48,9 +47,12 @@ import {
   type Query,
   type QueryDocumentSnapshot,
   type Transaction,
+  type DocumentReference,
 } from "firebase-admin/firestore";
-import { matchesCronSecret } from "./_cronAuth.js";
-import { describeInitFailure, parseServiceAccountJson } from "./_serviceAccount.js";
+import { adminAppFromEnv, adminFirestore } from "./_adminApp.js";
+import { isAuthorized, isDryRun, type CronRequest, type CronResponse } from "./_cronRequest.js";
+import { describeInitFailure } from "./_serviceAccount.js";
+import { dispatchAdminPush, notifyId, NOTIFICATIONS_COLLECTION, writeAdminLandedClip } from "./_referee.js";
 // Relative imports in this file's traced graph need explicit .js extensions:
 // Vercel compiles each file separately (no bundling) and the ESM loader does
 // not do extension resolution. Extensionless specifiers crash the function at
@@ -66,23 +68,8 @@ import { ACHIEVEMENTS, CALL_XP, DAILY_XP_CAP, levelForXp, utcDayFromMs } from ".
 import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
 import { safeErrorCode } from "../_safeError.js";
 
-/** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
-const FIRESTORE_DB_NAME = "skatehubba";
-
 /** Max games to process per phase per invocation. The cron repeats every 15 minutes. */
 const MAX_PER_RUN = 100;
-
-/** Minimal request/response shape — avoids a hard dep on @vercel/node types. */
-interface CronRequest {
-  method?: string;
-  headers: Record<string, string | string[] | undefined>;
-  query?: Record<string, string | string[] | undefined>;
-  url?: string;
-}
-interface CronResponse {
-  status: (code: number) => CronResponse;
-  json: (body: unknown) => void;
-}
 
 interface ResolveSummary {
   scanned: number;
@@ -94,53 +81,10 @@ interface ResolveSummary {
 
 let cachedApp: App | null = null;
 
-/**
- * Lazily initialize firebase-admin from a service-account JSON in env. Cached
- * across warm invocations. Throws (caught by the handler) if the env is
- * missing or malformed so the misconfiguration surfaces as a 500, not a
- * silent no-op. Mirrors `getAdminFirestore` in sweep-expired-turns.ts.
- */
+/** Cached across warm invocations; see ./_adminApp.ts. */
 function getAdminFirestore(): Firestore {
-  if (!cachedApp) {
-    const existing = getApps();
-    if (existing.length > 0) {
-      cachedApp = existing[0];
-    } else {
-      const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-      if (!raw) {
-        throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is not set");
-      }
-      const { account, repaired } = parseServiceAccountJson(raw);
-      if (repaired) {
-        console.warn(JSON.stringify({ event: "service_account_json_repaired" }));
-      }
-      const serviceAccount: ServiceAccount = account;
-      cachedApp = initializeApp({ credential: cert(serviceAccount) });
-    }
-  }
-  // getFirestore(app, databaseId) targets the named "skatehubba" database, not
-  // the project's (default) database.
-  return getFirestore(cachedApp, FIRESTORE_DB_NAME);
-}
-
-/**
- * Constant-time bearer check against CRON_SECRET, fail-closed. The comparison
- * lives in ./_cronAuth.ts (shared by every cron); this only picks the header
- * value off the Node request.
- */
-function isAuthorized(req: CronRequest): boolean {
-  const header = req.headers["authorization"] ?? req.headers["Authorization"];
-  return matchesCronSecret(Array.isArray(header) ? header[0] : header);
-}
-
-function isDryRun(req: CronRequest): boolean {
-  if (process.env.DRY_RUN === "1" || process.env.DRY_RUN === "true") return true;
-  const q = req.query?.["dryRun"];
-  const value = Array.isArray(q) ? q[0] : q;
-  if (value === "1" || value === "true") return true;
-  // Fall back to parsing the raw URL when the platform didn't pre-parse query.
-  if (req.url && /[?&]dryRun=(1|true)\b/.test(req.url)) return true;
-  return false;
+  cachedApp ??= adminAppFromEnv();
+  return adminFirestore(cachedApp);
 }
 
 /**
@@ -179,53 +123,6 @@ export function toAdminDisputeUpdate(update: DisputeGameUpdate): Record<string, 
   if (update.appendTurnRecord !== undefined) out.turnHistory = FieldValue.arrayUnion(update.appendTurnRecord);
   applyTrainingLabelPending(out, update.appendTurnRecord);
   return out;
-}
-
-/** Build the landed-clip doc id — mirrors clipId() in clips.mappers.ts. */
-function clipId(gameId: string, turnNumber: number, role: "set" | "match"): string {
-  return `${gameId}_${turnNumber}_${role}`;
-}
-
-/** Collection the in-app notification feed reads — mirrors notifications.ts. */
-const NOTIFICATIONS_COLLECTION = "notifications";
-/** Token mirror + dispatch collections — mirror pushDispatch.ts constants. */
-const PUSH_TARGETS_COLLECTION = "pushTargets";
-const PUSH_DISPATCH_COLLECTION = "push_dispatch";
-/** Per-dispatch token cap — mirrors MAX_TOKENS_PER_DISPATCH in pushDispatch.ts. */
-const MAX_TOKENS_PER_DISPATCH = 10;
-/** User-visible string caps — mirror pushDispatch.ts. */
-const MAX_TITLE_LEN = 80;
-const MAX_BODY_LEN = 200;
-
-function truncate(value: string, max: number): string {
-  return value.length > max ? value.slice(0, max) : value;
-}
-
-/**
- * Deterministic notification doc id for a resolved review. Keying on
- * (gameId, turnNumber, kind) makes the notification write idempotent across
- * overlapping invocations. Mirrors notifyId() in sweep-expired-turns.ts.
- */
-function notifyId(gameId: string, turnNumber: number, kind: string): string {
-  return `${gameId}_${turnNumber}_${kind}_notify`;
-}
-
-/** Mirror of buildDispatchDoc in pushDispatch.ts, using the admin SDK. */
-function buildAdminDispatchDoc(
-  n: { senderUid: string; recipientUid: string; type: string; title: string; body: string },
-  gameId: string,
-  tokens: string[],
-): Record<string, unknown> {
-  return {
-    tokens,
-    notification: { title: truncate(n.title, MAX_TITLE_LEN), body: truncate(n.body, MAX_BODY_LEN) },
-    data: { gameId, type: n.type, click_action: `/?game=${gameId}` },
-    senderUid: n.senderUid,
-    recipientUid: n.recipientUid,
-    gameId,
-    type: n.type,
-    createdAt: FieldValue.serverTimestamp(),
-  };
 }
 
 /** The opponent of `playerUid` in a two-player game. Mirrors the shared helper. */
@@ -305,35 +202,34 @@ function writeLandedClips(tx: Transaction, db: Firestore, game: GameDoc, matcher
   const setterUid = game.currentSetter;
   const trickName = game.currentTrickName || "Trick";
   const createdAt = FieldValue.serverTimestamp();
+  const clip = { gameId: game.id, turnNumber: game.turnNumber, trickName, spotId: game.spotId ?? null };
   if (game.currentTrickVideoUrl) {
-    tx.set(db.collection("clips").doc(clipId(game.id, game.turnNumber, "set")), {
-      gameId: game.id,
-      turnNumber: game.turnNumber,
-      role: "set",
-      playerUid: setterUid,
-      playerUsername: usernameOf(game, setterUid),
-      trickName,
-      videoUrl: game.currentTrickVideoUrl,
-      spotId: game.spotId ?? null,
-      moderationStatus: "active",
-      upvoteCount: 0,
+    writeAdminLandedClip(
+      tx,
+      db,
+      {
+        ...clip,
+        role: "set",
+        playerUid: setterUid,
+        playerUsername: usernameOf(game, setterUid),
+        videoUrl: game.currentTrickVideoUrl,
+      },
       createdAt,
-    });
+    );
   }
   if (game.matchVideoUrl) {
-    tx.set(db.collection("clips").doc(clipId(game.id, game.turnNumber, "match")), {
-      gameId: game.id,
-      turnNumber: game.turnNumber,
-      role: "match",
-      playerUid: matcherUid,
-      playerUsername: usernameOf(game, matcherUid),
-      trickName,
-      videoUrl: game.matchVideoUrl,
-      spotId: game.spotId ?? null,
-      moderationStatus: "active",
-      upvoteCount: 0,
+    writeAdminLandedClip(
+      tx,
+      db,
+      {
+        ...clip,
+        role: "match",
+        playerUid: matcherUid,
+        playerUsername: usernameOf(game, matcherUid),
+        videoUrl: game.matchVideoUrl,
+      },
       createdAt,
-    });
+    );
   }
 }
 
@@ -349,6 +245,26 @@ function writeNotification(tx: Transaction, db: Firestore, game: GameDoc, kind: 
     read: false,
     createdAt: FieldValue.serverTimestamp(),
   });
+}
+
+/**
+ * Re-read the game inside the tx and return it only while it is still in
+ * `phase` with a review deadline that has passed; null means "nothing to do".
+ * This is the idempotency gate both passes share.
+ */
+async function readExpiredReview(
+  tx: Transaction,
+  gameRef: DocumentReference,
+  phase: "pendingReview" | "communityReview",
+  nowMs: number,
+): Promise<GameDoc | null> {
+  const snap = await tx.get(gameRef);
+  if (!snap.exists) return null;
+  const game: GameDoc = toGameDoc({ id: snap.id, data: () => snap.data() as Record<string, unknown> });
+  if (game.phase !== phase) return null;
+  const deadline = game.reviewDeadline?.toMillis?.() ?? 0;
+  if (deadline === 0 || nowMs < deadline) return null;
+  return game;
 }
 
 /** What one resolved game produced — drives the post-tx push fan-out. */
@@ -373,15 +289,9 @@ async function resolvePendingReview(
   const gameRef = db.collection("games").doc(gameId);
 
   return db.runTransaction(async (tx) => {
-    const snap = await tx.get(gameRef);
-    if (!snap.exists) return { resolved: false, push: null };
-
-    const game: GameDoc = toGameDoc({ id: snap.id, data: () => snap.data() as Record<string, unknown> });
-
     // Idempotent re-check: only a still-pendingReview, still-expired game resolves.
-    if (game.phase !== "pendingReview") return { resolved: false, push: null };
-    const deadline = game.reviewDeadline?.toMillis?.() ?? 0;
-    if (deadline === 0 || nowMs < deadline) return { resolved: false, push: null };
+    const game = await readExpiredReview(tx, gameRef, "pendingReview", nowMs);
+    if (!game) return { resolved: false, push: null };
 
     if (dryRun) return { resolved: true, push: null };
 
@@ -503,16 +413,10 @@ async function resolveCommunityReview(
   const gameRef = db.collection("games").doc(gameId);
 
   return db.runTransaction(async (tx) => {
-    const snap = await tx.get(gameRef);
-    if (!snap.exists) return { resolved: false, push: null };
-
-    const game: GameDoc = toGameDoc({ id: snap.id, data: () => snap.data() as Record<string, unknown> });
-
     // Primary idempotency gate + eligibility: still frozen in communityReview,
     // still past the vote deadline.
-    if (game.phase !== "communityReview") return { resolved: false, push: null };
-    const deadline = game.reviewDeadline?.toMillis?.() ?? 0;
-    if (deadline === 0 || nowMs < deadline) return { resolved: false, push: null };
+    const game = await readExpiredReview(tx, gameRef, "communityReview", nowMs);
+    if (!game) return { resolved: false, push: null };
 
     const disputeRef = db.collection("disputes").doc(`${gameId}_${game.turnNumber}`);
     const disputeSnap = await tx.get(disputeRef);
@@ -608,32 +512,6 @@ async function resolveCommunityReview(
 }
 
 /**
- * Fire the OS-level push for a server-written notification, AFTER the game tx
- * committed. Reads the recipient's token mirror and writes a /push_dispatch doc
- * api/cron/drain-push-dispatch.ts drains. Best-effort. Mirrors the sweep referee.
- */
-async function dispatchAdminPush(db: Firestore, gameId: string, n: ResolveNotification): Promise<void> {
-  try {
-    const targetSnap = await db.collection(PUSH_TARGETS_COLLECTION).doc(n.recipientUid).get();
-    const raw = targetSnap.exists ? (targetSnap.data() as { tokens?: unknown }).tokens : undefined;
-    const tokens = (Array.isArray(raw) ? raw : [])
-      .filter((t): t is string => typeof t === "string" && t.length > 0)
-      .slice(0, MAX_TOKENS_PER_DISPATCH);
-    if (tokens.length === 0) return;
-    await db.collection(PUSH_DISPATCH_COLLECTION).add(buildAdminDispatchDoc(n, gameId, tokens));
-  } catch (err) {
-    console.warn(
-      JSON.stringify({
-        event: "resolve_push_failed",
-        gameId,
-        code: safeErrorCode(err),
-      }),
-    );
-    captureServerError("resolve_push_failed", err, { gameId }, { level: "warning" });
-  }
-}
-
-/**
  * Run one eligibility pass: query capped candidates for `phase`, resolve each in
  * its own transaction, fan out the post-tx push, and fold the counts into the
  * summary. Fault-isolated per game. Shared by both phases so the two passes can
@@ -661,7 +539,7 @@ async function runPass(
       const { resolved, push } = await resolveOne(db, docSnap.id, Date.now(), dryRun);
       if (resolved) summary.resolved += 1;
       else summary.skipped += 1;
-      if (push) await dispatchAdminPush(db, docSnap.id, push);
+      if (push) await dispatchAdminPush(db, docSnap.id, push, "resolve_push_failed");
     } catch (err) {
       summary.errors += 1;
       console.warn(

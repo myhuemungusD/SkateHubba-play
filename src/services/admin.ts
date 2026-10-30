@@ -58,6 +58,7 @@ import { withRetry } from "../utils/retry";
 import { parseFirebaseError } from "../utils/helpers";
 import { logger } from "./logger";
 import { recordAdminAction } from "./admin.audit";
+import { toDateOrNull } from "./firestoreDate";
 
 /** One row of the moderation queue, read from `reports/{reportId}`. */
 export interface AdminReport {
@@ -170,16 +171,6 @@ const RESOLVABLE_STATUSES = new Set<string>(["resolved", "dismissed"]);
  */
 const MAX_REASON_LEN = 200;
 const MAX_ITEM_FIELD_LEN = 100;
-
-/** See `achievements.ts` — structural Timestamp detection, `null` otherwise. */
-function toDateOrNull(value: unknown): Date | null {
-  if (!value || typeof value !== "object") return null;
-  const toDate = (value as { toDate?: unknown }).toDate;
-  if (typeof toDate !== "function") return null;
-  const date: unknown = toDate.call(value);
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
-  return date;
-}
 
 /** Tolerant string read for server-authored docs: anything else becomes "". */
 function toStringOrEmpty(value: unknown): string {

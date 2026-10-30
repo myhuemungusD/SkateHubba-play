@@ -8,7 +8,7 @@ import { callCloset } from "./closet.callable";
 import { withRetry } from "../utils/retry";
 import { parseFirebaseError } from "../utils/helpers";
 import { logger } from "./logger";
-import { toDateOrNull } from "./closet.time";
+import { toDateOrNull } from "./firestoreDate";
 import { trackEvent } from "./analytics";
 
 /** What the trading screen shows. Mapped from the server's status below. */

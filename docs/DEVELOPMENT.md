@@ -33,34 +33,35 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ## Available Scripts
 
-| Command                                                    | Description                                                                                                        |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `npm run dev`                                              | Start Vite dev server at `localhost:5173` with HMR                                                                 |
-| `npm run build`                                            | TypeScript check + production build → `dist/`                                                                      |
-| `npm run preview`                                          | Serve the production build locally                                                                                 |
-| `npm run typecheck`                                        | Run `tsc -b` only                                                                                                  |
-| `npm test`                                                 | Run the full test suite once (CI mode)                                                                             |
-| `npm run test:watch`                                       | Run tests in watch mode while editing                                                                              |
-| `npm run test:coverage`                                    | Run tests with coverage report (CI gate enforces thresholds)                                                       |
-| `npm run test:rules`                                       | Run Firestore rules tests against the rules emulator                                                               |
-| `npm run test:e2e`                                         | Run Playwright E2E tests (auto-starts the Auth/Firestore/Storage emulators)                                        |
-| `npm run test:e2e:ui`                                      | Same as above in the Playwright UI runner                                                                          |
-| `npm run lint`                                             | Lint `src/`, `api/`, `e2e/`, and `public/sw-cleanup.js` with ESLint                                                |
-| `npm run lint:fix`                                         | Lint and auto-fix where possible                                                                                   |
-| `npm run format`                                           | Format `src/**/*.{ts,tsx}` with Prettier                                                                           |
-| `npm run check:test-dup`                                   | Flag duplicated test cases (CI gate, part of `verify`)                                                             |
-| `npm run check:dead`                                       | Fail on unused files, exports, types and dependencies with knip (CI gate, part of `verify`)                        |
-| `npm run check:file-length`                                | Fail on any file over its LOC budget (blocking in the PR gate)                                                     |
-| `npm run verify`                                           | Full CI gate: `tsc -b && lint && check:dead && check:coverage-ignores && test:coverage && build && check:test-dup` |
-| `npm run emulators`                                        | Start the Firebase emulator suite locally                                                                          |
-| `npm run cap:sync`                                         | Sync the web build into the iOS/Android Capacitor projects                                                         |
-| `npm run cap:open:ios` / `cap:open:android`                | Open the native project in Xcode / Android Studio                                                                  |
-| `npm run cap:run:ios` / `cap:run:android`                  | Build and run on a device or simulator/emulator                                                                    |
-| `npm run testers:sync`                                     | Match every server `*_TESTER_UIDS` list to `config/featureTesters` (dry run; `-- --apply` writes)                  |
-| `npm run check:testers`                                    | Fail if code has a tester list `testers:sync` doesn't know (PR gate)                                               |
-| `npm run ios:preflight`                                    | Free Linux check of the iOS native patches; run before any paid Mac build                                          |
-| `npm run deploy:functions` / `deploy:rules` / `deploy:all` | One-command Firebase deploy with checks first (`-- --dry-run` to preview)                                          |
-| `npm run review:seed` / `review:screenshots`               | App Review demo account and store screenshots ([STORE_REVIEW_KIT.md](STORE_REVIEW_KIT.md))                         |
+| Command                                                    | Description                                                                                                                          |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `npm run dev`                                              | Start Vite dev server at `localhost:5173` with HMR                                                                                   |
+| `npm run build`                                            | TypeScript check + production build → `dist/`                                                                                        |
+| `npm run preview`                                          | Serve the production build locally                                                                                                   |
+| `npm run typecheck`                                        | Run `tsc -b` only                                                                                                                    |
+| `npm test`                                                 | Run the full test suite once (CI mode)                                                                                               |
+| `npm run test:watch`                                       | Run tests in watch mode while editing                                                                                                |
+| `npm run test:coverage`                                    | Run tests with coverage report (CI gate enforces thresholds)                                                                         |
+| `npm run test:rules`                                       | Run Firestore rules tests against the rules emulator                                                                                 |
+| `npm run test:e2e`                                         | Run Playwright E2E tests (auto-starts the Auth/Firestore/Storage emulators)                                                          |
+| `npm run test:e2e:ui`                                      | Same as above in the Playwright UI runner                                                                                            |
+| `npm run lint`                                             | Lint `src/`, `api/`, `e2e/`, and `public/sw-cleanup.js` with ESLint                                                                  |
+| `npm run lint:fix`                                         | Lint and auto-fix where possible                                                                                                     |
+| `npm run format`                                           | Format `src/**/*.{ts,tsx}` with Prettier                                                                                             |
+| `npm run check:test-dup`                                   | Flag duplicated test cases (CI gate, part of `verify`)                                                                               |
+| `npm run check:dup`                                        | Fail on duplicated production code with jscpd; only intentional mirrors are allowlisted in `.jscpd.json` (CI gate, part of `verify`) |
+| `npm run check:dead`                                       | Fail on unused files, exports, types and dependencies with knip (CI gate, part of `verify`)                                          |
+| `npm run check:file-length`                                | Fail on any file over its LOC budget (blocking in the PR gate)                                                                       |
+| `npm run verify`                                           | Full CI gate: `tsc -b && lint && check:dead && check:coverage-ignores && test:coverage && build && check:test-dup && check:dup`      |
+| `npm run emulators`                                        | Start the Firebase emulator suite locally                                                                                            |
+| `npm run cap:sync`                                         | Sync the web build into the iOS/Android Capacitor projects                                                                           |
+| `npm run cap:open:ios` / `cap:open:android`                | Open the native project in Xcode / Android Studio                                                                                    |
+| `npm run cap:run:ios` / `cap:run:android`                  | Build and run on a device or simulator/emulator                                                                                      |
+| `npm run testers:sync`                                     | Match every server `*_TESTER_UIDS` list to `config/featureTesters` (dry run; `-- --apply` writes)                                    |
+| `npm run check:testers`                                    | Fail if code has a tester list `testers:sync` doesn't know (PR gate)                                                                 |
+| `npm run ios:preflight`                                    | Free Linux check of the iOS native patches; run before any paid Mac build                                                            |
+| `npm run deploy:functions` / `deploy:rules` / `deploy:all` | One-command Firebase deploy with checks first (`-- --dry-run` to preview)                                                            |
+| `npm run review:seed` / `review:screenshots`               | App Review demo account and store screenshots ([STORE_REVIEW_KIT.md](STORE_REVIEW_KIT.md))                                           |
 
 ---
 
@@ -268,7 +269,7 @@ See [docs/DEPLOYMENT.md](DEPLOYMENT.md) for more detail.
 Mirror the full CI gate in one command:
 
 ```bash
-npm run verify    # tsc -b && lint && check:dead && check:coverage-ignores && test:coverage && build && check:test-dup
+npm run verify    # tsc -b && lint && check:dead && check:coverage-ignores && test:coverage && build && check:test-dup && check:dup
 ```
 
 Or step through individually:
@@ -281,9 +282,10 @@ npm run check:coverage-ignores  # Every coverage ignore needs a reason
 npm run test:coverage     # Tests + coverage thresholds
 npm run build             # Production build
 npm run check:test-dup    # Duplicated-test gate
+npm run check:dup         # Duplicated production code (jscpd)
 ```
 
-All seven must pass before a PR can merge. Two checks are **not** in `verify` and
+All eight must pass before a PR can merge. Two checks are **not** in `verify` and
 have to be run separately:
 
 ```bash

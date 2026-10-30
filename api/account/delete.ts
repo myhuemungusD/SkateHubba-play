@@ -41,19 +41,16 @@
  */
 
 import { getAuth } from "firebase-admin/auth";
-import { cert, getApps, initializeApp, type App, type ServiceAccount } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import type { App } from "firebase-admin/app";
 import { getStorage } from "firebase-admin/storage";
-import { describeInitFailure, parseServiceAccountJson } from "../cron/_serviceAccount.js";
+import { adminAppFromEnv, adminFirestore } from "../cron/_adminApp.js";
+import { describeInitFailure } from "../cron/_serviceAccount.js";
 import { deleteUserDataAsAdmin, type DeletionSummary } from "./_deleteUserData.js";
 import { erasePosthogPerson } from "./_posthogErasure.js";
 import { eraseUnderageSignIn, RacedCascadeError, type UnderageOutcome } from "./_underage.js";
 import { hashIdentity, hashUid } from "../../src/utils/pii.js";
 import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
 import { safeErrorCode } from "../_safeError.js";
-
-/** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
-const FIRESTORE_DB_NAME = "skatehubba";
 
 /**
  * How recently the caller must have authenticated, in seconds.
@@ -159,27 +156,19 @@ let cachedBucketName: string | null = null;
  */
 function getAdminApp(): App {
   if (!cachedApp) {
-    const existing = getApps();
-    if (existing.length > 0) {
-      cachedApp = existing[0];
-      cachedBucketName =
-        process.env.FIREBASE_STORAGE_BUCKET ??
-        cachedBucketName ??
-        (existing[0].options.storageBucket as string | undefined) ??
-        null;
-    } else {
-      const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-      if (!raw) throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is not set");
-      // Tolerates known hand-paste damage (expanded \n escapes, smart quotes)
-      // and throws on anything unparseable or missing a field.
-      const { account, repaired } = parseServiceAccountJson(raw);
-      if (repaired) {
-        console.warn(JSON.stringify({ event: "service_account_json_repaired" }));
-      }
-      const serviceAccount: ServiceAccount = account;
-      cachedBucketName = process.env.FIREBASE_STORAGE_BUCKET ?? `${account.projectId}.firebasestorage.app`;
-      cachedApp = initializeApp({ credential: cert(serviceAccount), storageBucket: cachedBucketName });
-    }
+    let initBucket: string | null = null;
+    cachedApp = adminAppFromEnv((account) => {
+      initBucket = process.env.FIREBASE_STORAGE_BUCKET ?? `${account.projectId}.firebasestorage.app`;
+      return { storageBucket: initBucket };
+    });
+    // A fresh app uses the bucket it was created with; a warm one keeps the
+    // env override, a bucket resolved earlier, or the one it was created with.
+    cachedBucketName =
+      initBucket ??
+      process.env.FIREBASE_STORAGE_BUCKET ??
+      cachedBucketName ??
+      (cachedApp.options.storageBucket as string | undefined) ??
+      null;
   }
   // Resolve the bucket up front rather than discovering the problem mid-cascade.
   // A wrong bucket makes GCS throw NotFound on the first listing, which aborts
@@ -242,7 +231,7 @@ async function reportPosthogErasure(uid: string): Promise<void> {
 
 /** What the full erasure cascade needs, for this app. */
 function cascadeDeps(app: App) {
-  return { db: getFirestore(app, FIRESTORE_DB_NAME), storage: getStorage(app), bucketName: cachedBucketName ?? "" };
+  return { db: adminFirestore(app), storage: getStorage(app), bucketName: cachedBucketName ?? "" };
 }
 
 /**
@@ -258,7 +247,7 @@ async function handleUnderage(app: App, uid: string, res: ApiResponse): Promise<
   const uidHash = hashUid(uid);
   let outcome: UnderageOutcome;
   try {
-    outcome = await eraseUnderageSignIn(getFirestore(app, FIRESTORE_DB_NAME), getAuth(app), uid, () =>
+    outcome = await eraseUnderageSignIn(adminFirestore(app), getAuth(app), uid, () =>
       deleteUserDataAsAdmin(cascadeDeps(app), uid),
     );
   } catch (err) {
