@@ -18,6 +18,13 @@ function armIdle(): void {
   }) as unknown as typeof window.requestIdleCallback;
 }
 
+function stubServiceWorker(register: ReturnType<typeof vi.fn>, registrations: unknown[] = []): void {
+  Object.defineProperty(navigator, "serviceWorker", {
+    value: { register, getRegistrations: vi.fn().mockResolvedValue(registrations) },
+    configurable: true,
+  });
+}
+
 describe("registerCacheWorker", () => {
   it("registers the asset cache once the page has been quiet", async () => {
     armIdle();
@@ -101,6 +108,45 @@ describe("registerCacheWorker", () => {
     delete (window as { Capacitor?: unknown }).Capacitor;
     Object.defineProperty(navigator, "serviceWorker", { value: undefined, configurable: true });
     expect(() => registerCacheWorker({ enabled: true })).not.toThrow();
+  });
+
+  it("spots a messaging worker that is still waiting or installing", async () => {
+    for (const reg of [
+      { active: null, waiting: { scriptURL: "/firebase-messaging-sw.js" }, installing: null },
+      { active: null, waiting: null, installing: { scriptURL: "/firebase-messaging-sw.js" } },
+    ]) {
+      __resetCacheWorkerForTest();
+      armIdle();
+      const register = vi.fn();
+      stubServiceWorker(register, [reg]);
+      registerCacheWorker({ enabled: true });
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(register).not.toHaveBeenCalled();
+    }
+  });
+
+  it("installs past a registration that has no worker yet", async () => {
+    armIdle();
+    const register = vi.fn().mockResolvedValue({});
+    stubServiceWorker(register, [{ active: null, waiting: null, installing: null }]);
+    registerCacheWorker({ enabled: true });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(register).toHaveBeenCalledWith("/asset-cache-sw.js");
+  });
+
+  it("returns early when the browser has no service worker API at all", async () => {
+    Object.defineProperty(navigator, "serviceWorker", { value: undefined, configurable: true });
+    delete (navigator as { serviceWorker?: unknown }).serviceWorker;
+    expect("serviceWorker" in navigator).toBe(false);
+    registerCacheWorker({ enabled: true });
+    // The early return must not latch `started`: once the API appears, the
+    // next call still installs.
+    armIdle();
+    const register = vi.fn().mockResolvedValue({});
+    stubServiceWorker(register);
+    registerCacheWorker({ enabled: true });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(register).toHaveBeenCalledOnce();
   });
 
   it("does nothing in the default test mode", () => {

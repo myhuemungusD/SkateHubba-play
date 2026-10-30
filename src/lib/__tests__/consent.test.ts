@@ -124,3 +124,23 @@ describe("consent helpers", () => {
     });
   });
 });
+
+describe("consent outside a browser (SSR / workers)", () => {
+  it("loads without a window and still serves subscribers", async () => {
+    vi.resetModules();
+    vi.stubGlobal("window", undefined);
+    const mod = await import("../consent");
+    vi.unstubAllGlobals();
+    const listener = vi.fn();
+    const off = mod.subscribeConsent(listener);
+    // No cross-tab `storage` hook was installed, so a storage event is ignored…
+    window.dispatchEvent(new StorageEvent("storage", { key: mod.CONSENT_KEY }));
+    expect(listener).not.toHaveBeenCalled();
+    // …but same-tab writes still notify.
+    localStorage.removeItem(mod.CONSENT_KEY);
+    mod.writeConsent("accepted");
+    expect(listener).toHaveBeenCalledOnce();
+    off();
+    localStorage.removeItem(mod.CONSENT_KEY);
+  });
+});
