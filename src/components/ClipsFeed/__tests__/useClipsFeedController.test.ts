@@ -75,7 +75,7 @@ describe("useClipsFeedController after unmount", () => {
   it("logs but does not set state when the first page fails after unmount", async () => {
     const d = deferred<ReturnType<typeof page>>();
     feed.fetchClipsFeed.mockReturnValueOnce(d.promise);
-    const { result, unmount } = renderHook(() => useClipsFeedController("me"));
+    const { unmount } = renderHook(() => useClipsFeedController("me"));
     unmount();
     await act(async () => d.reject({ code: "unavailable" }));
     expect(warn).toHaveBeenCalledWith("clips_feed_load_failed", expect.objectContaining({ code: "unavailable" }));
