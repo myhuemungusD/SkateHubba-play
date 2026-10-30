@@ -6,6 +6,7 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { logger } from "../../services/logger";
 
 /**
  * One composer for the high tier. UnrealBloomPass builds five half-res
@@ -29,7 +30,7 @@ export function RunnerBloom(): null {
       BLOOM_RADIUS,
       BLOOM_THRESHOLD,
     );
-    if (bloom.nMips !== BLOOM_MIPS) console.warn("Runner bloom mip count drifted", bloom.nMips);
+    if (bloom.nMips !== BLOOM_MIPS) logger.warn("runner_bloom_mip_count_drifted", { nMips: bloom.nMips });
     effect.addPass(bloom);
     effect.addPass(new OutputPass());
     return effect;

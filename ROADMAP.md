@@ -69,7 +69,7 @@ Unlocks after the traction numbers hold, in whatever order the data argues for:
 
 ## Shipped — economy phase A
 
-Achievement badges (`src/services/achievements.ts`, `src/constants/badges.ts`), Verified Pro (`src/components/ProUsername.tsx`), Hubba Locker v1 + collection showcase (`src/services/locker.ts`, `src/components/LockerShowcase.tsx`) are all live on `main`. See [docs/ECONOMY.md](docs/ECONOMY.md) for the phasing and the rules that constrain later phases (B/C remain gated on traction).
+Achievement badges (`src/services/achievements.ts`, `src/constants/badges.ts`), Verified Pro (`src/components/ProUsername.tsx`), Hubba Locker v1 + collection showcase (`src/services/locker.ts`, `src/components/ClosetShowcase.tsx`) are all live on `main`. See [docs/ECONOMY.md](docs/ECONOMY.md) for the phasing and the rules that constrain later phases (B/C remain gated on traction).
 
 ---
 

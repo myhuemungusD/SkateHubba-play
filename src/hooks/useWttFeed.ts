@@ -6,6 +6,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchWttItems, fetchWttReliability, submitWttVote } from "../services/wtt";
 import type { WttChoice, WttItem, WttReliability } from "../services/wtt.types";
+import { logger } from "../services/logger";
+import { errorLogFields } from "../utils/errors";
 
 interface UseWttFeedResult {
   items: WttItem[];
@@ -79,7 +81,7 @@ export function useWttFeed(uid: string, enabled = true): UseWttFeedResult {
       const moreItems = await fetchWttItems(uid, WTT_BATCH_SIZE);
       setItems((prev) => [...prev, ...moreItems]);
     } catch (err) {
-      console.error("Failed to load more WTT items:", err);
+      logger.error("wtt_items_load_more_failed", errorLogFields(err));
     }
   }, [uid, loading, items.length, currentIndex]);
 

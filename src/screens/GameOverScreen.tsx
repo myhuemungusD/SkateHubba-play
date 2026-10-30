@@ -18,6 +18,8 @@ import { TrainingConsentPrompt } from "../components/TrainingConsentPrompt";
 import { LevelChip } from "../components/LevelChip";
 import { isXpEnabled } from "../lib/featureFlags";
 import { useLevelUpMoment } from "../hooks/useLevelUpMoment";
+import { logger } from "../services/logger";
+import { errorLogFields } from "../utils/errors";
 
 export function GameOverScreen({
   game,
@@ -103,7 +105,7 @@ export function GameOverScreen({
       .catch((err) => {
         // Transient failures fail closed — the card is optional and the
         // game-over screen stays usable.
-        console.warn("dispute_result_fetch_failed", err);
+        logger.warn("dispute_result_fetch_failed", { gameId: game.id, ...errorLogFields(err) });
       });
     return () => {
       active = false;

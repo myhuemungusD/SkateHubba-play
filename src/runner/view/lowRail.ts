@@ -4,6 +4,8 @@ import { lowRailModelUrl } from "../artSlots";
 import { RAIL_LENGTH } from "../constants";
 import { bowFittedRail } from "./railBow";
 import { disposeObject, fitSkateboard, loadRunnerModel } from "./skateboardModel";
+import { logger } from "../../services/logger";
+import { errorLogFields } from "../../utils/errors";
 
 function hideFallback(rail: Object3D): void {
   for (const name of ["rail-beam", "rail-post-near", "rail-post-far"]) {
@@ -72,7 +74,7 @@ export function useLowRail(slots: RefObject<(Group | null)[]>, renderer: WebGLRe
         }
       })
       .catch((error: unknown) => {
-        console.warn("Runner low rail failed to load", error);
+        logger.warn("runner_low_rail_load_failed", errorLogFields(error));
       });
 
     return () => {
