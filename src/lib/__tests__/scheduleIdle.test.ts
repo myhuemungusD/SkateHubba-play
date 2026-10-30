@@ -20,7 +20,10 @@ describe("scheduleIdle", () => {
   });
 
   it("falls back to a timeout", () => {
-    vi.useFakeTimers();
+    // Fake only setTimeout: the default fake set also installs a
+    // requestIdleCallback, which would hide the fallback path.
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    expect(window.requestIdleCallback).toBeUndefined();
     const task = vi.fn();
     scheduleIdle(task, 25);
     expect(task).not.toHaveBeenCalled();
