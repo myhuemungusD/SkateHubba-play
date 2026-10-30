@@ -112,6 +112,9 @@ let fakeMapConstructorCalls = 0;
 // that the resolved MAP_STYLE actually reaches mapbox-gl, not just that
 // SpotMap renders without throwing.
 let lastMapInitOpts: { style?: unknown } | null = null;
+// Viewport the fake map reports; a test can pan it before firing moveend.
+const DEFAULT_BOUNDS = { north: 34.1, south: 34.0, east: -118.2, west: -118.3 };
+let mapBounds = { ...DEFAULT_BOUNDS };
 
 vi.mock("mapbox-gl", () => {
   class FakeMarker {
@@ -146,11 +149,12 @@ vi.mock("mapbox-gl", () => {
       (mapEventHandlers[event] ??= []).push(cb);
     }
     getBounds() {
+      const b = mapBounds;
       return {
-        getNorth: () => 34.1,
-        getSouth: () => 34.0,
-        getEast: () => -118.2,
-        getWest: () => -118.3,
+        getNorth: () => b.north,
+        getSouth: () => b.south,
+        getEast: () => b.east,
+        getWest: () => b.west,
       };
     }
     flyTo(opts: unknown) {
@@ -650,6 +654,7 @@ describe("SpotMap interactions after load", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    mapBounds = { ...DEFAULT_BOUNDS };
   });
 
   it("stops following on a manual drag and refetches the viewport on moveend", async () => {
@@ -657,11 +662,22 @@ describe("SpotMap interactions after load", () => {
     expect(screen.getByRole("button", { name: "Following your location" })).toBeInTheDocument();
     act(() => mapEventHandlers["dragstart"].forEach((cb) => cb()));
     expect(screen.getByRole("button", { name: "Recenter to my location" })).toBeInTheDocument();
-    // Same viewport as the load fetch, so the debounced refetch is deduped.
+
+    vi.useFakeTimers();
     const fetchesBefore = mockGetSpotsInBounds.mock.calls.length;
+    // Same viewport as the load fetch: the debounced refetch is deduped.
     act(() => mapEventHandlers["moveend"].forEach((cb) => cb()));
-    await act(() => new Promise((r) => setTimeout(r, 450)));
+    act(() => vi.advanceTimersByTime(400));
     expect(mockGetSpotsInBounds).toHaveBeenCalledTimes(fetchesBefore);
+
+    // A real pan: one more fetch, for the new viewport, after the 400 ms debounce.
+    mapBounds = { north: 35.1, south: 35.0, east: -117.2, west: -117.3 };
+    act(() => mapEventHandlers["moveend"].forEach((cb) => cb()));
+    act(() => vi.advanceTimersByTime(399));
+    expect(mockGetSpotsInBounds).toHaveBeenCalledTimes(fetchesBefore);
+    act(() => vi.advanceTimersByTime(1));
+    expect(mockGetSpotsInBounds).toHaveBeenCalledTimes(fetchesBefore + 1);
+    expect(mockGetSpotsInBounds).toHaveBeenLastCalledWith(mapBounds);
   });
 
   it("shows a waiting toast on recenter without a GPS fix, restarts it on a second tap, then clears it", async () => {
