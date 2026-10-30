@@ -24,7 +24,7 @@ export interface EditorAngle {
 }
 
 /** From `atSec` onward (source time on angle 0's clock) show `angleId`. */
-export interface AngleCut {
+interface AngleCut {
   atSec: number;
   angleId: string;
 }
@@ -56,7 +56,7 @@ export interface SfxPlacement {
   trimEndSec?: number;
 }
 
-export interface MusicChoice {
+interface MusicChoice {
   trackId: string;
   /** Seconds into the track that line up with output 0. */
   trackOffsetSec: number;

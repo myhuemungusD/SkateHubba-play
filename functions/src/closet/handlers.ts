@@ -55,12 +55,12 @@ function toHttps(err: ClosetError): HttpsError {
   return new HttpsError(CODE_MAP[err.code] ?? "failed-precondition", err.code);
 }
 
-export function id(value: unknown): string {
+function id(value: unknown): string {
   if (!isId(value)) throw new HttpsError("invalid-argument", "bad_request");
   return value;
 }
 
-export function actorFrom(request: CallableRequest, nowMs: number): ClosetActor {
+function actorFrom(request: CallableRequest, nowMs: number): ClosetActor {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "unauthenticated");
   if (!request.app) throw new HttpsError("failed-precondition", "app_check_required");

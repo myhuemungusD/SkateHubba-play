@@ -19,20 +19,20 @@ import { Timestamp } from "firebase-admin/firestore";
 
 export const DAY_MS = 86_400_000;
 
-export const RARITIES = ["common", "uncommon", "rare", "limited", "grail"] as const;
+const RARITIES = ["common", "uncommon", "rare", "limited", "grail"] as const;
 export type Rarity = (typeof RARITIES)[number];
 
-export const SLOTS = ["head", "top", "bottom", "shoes", "deck", "accessory"] as const;
+const SLOTS = ["head", "top", "bottom", "shoes", "deck", "accessory"] as const;
 export type Slot = (typeof SLOTS)[number];
 
-export const EDITION_KINDS = ["open", "limited", "one_of_one"] as const;
+const EDITION_KINDS = ["open", "limited", "one_of_one"] as const;
 export type EditionKind = (typeof EDITION_KINDS)[number];
 
 /** `shop` marks open-edition items sold in the daily shop. */
-export const SOURCES = ["earn", "drop", "pro_signature", "event", "shop"] as const;
+const SOURCES = ["earn", "drop", "pro_signature", "event", "shop"] as const;
 export type Source = (typeof SOURCES)[number];
 
-export interface Edition {
+interface Edition {
   kind: EditionKind;
   supply: number | null;
   minted: number;

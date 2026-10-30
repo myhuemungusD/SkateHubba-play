@@ -63,7 +63,7 @@ const BOUNDS_QUERY_LIMIT = 500;
 export const NEARBY_RADIUS_KM = 10;
 
 /** Default row cap for the "spots near me" list. */
-export const NEARBY_LIMIT = 10;
+const NEARBY_LIMIT = 10;
 
 /** 30-second client-side cooldown on spot creation (matches Firestore rule). */
 const SPOT_CREATE_COOLDOWN_MS = 30_000;

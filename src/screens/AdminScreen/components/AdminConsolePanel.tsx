@@ -18,7 +18,7 @@ const H3 = "mb-3 flex items-center gap-2 font-display text-sm tracking-[0.15em] 
 const BTN =
   "min-h-[36px] rounded-lg border border-white/[0.1] px-3 font-display text-sm tracking-wider text-white/80 hover:bg-surface-alt disabled:opacity-50";
 
-export function BansListSection() {
+function BansListSection() {
   const [rows, setRows] = useState<BanRow[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
@@ -86,7 +86,7 @@ export function BansListSection() {
   );
 }
 
-export function UserSearchSection() {
+function UserSearchSection() {
   const [term, setTerm] = useState("");
   const [results, setResults] = useState<UserSearchRow[] | null>(null);
   const [summary, setSummary] = useState<UserSummary | null>(null);
@@ -185,7 +185,7 @@ export function UserSearchSection() {
   );
 }
 
-export function FeatureSwitchesSection() {
+function FeatureSwitchesSection() {
   const [testers, setTesters] = useState<string[] | null>(null);
   useEffect(() => {
     let live = true;

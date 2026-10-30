@@ -7,8 +7,8 @@ import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
 
 const DAY = 24 * 60 * 60 * 1000;
-export const GAME_SCAN_LIMIT = 2000;
-export const COHORT_LIMIT = 500;
+const GAME_SCAN_LIMIT = 2000;
+const COHORT_LIMIT = 500;
 
 export interface AnalyticsSnapshot {
   dailyPlayers: number;

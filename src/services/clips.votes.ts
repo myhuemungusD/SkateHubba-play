@@ -18,8 +18,6 @@
  *
  * Ranking is unaffected: the feed still sorts on `upvoteCount` alone.
  * `downvoteCount` is display and moderation signal only.
- *
- * `clips.upvotes.ts` wraps this module with the legacy upvote-only surface.
  */
 
 import { deleteDoc, doc, documentId, getDocs, query, runTransaction, serverTimestamp, where } from "firebase/firestore";

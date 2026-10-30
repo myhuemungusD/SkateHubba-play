@@ -14,7 +14,7 @@ export interface ProProfileContent {
   signatureTricks: string[];
 }
 
-export const PRO_PROFILES: Readonly<Record<string, ProProfileContent>> = {
+const PRO_PROFILES: Readonly<Record<string, ProProfileContent>> = {
   bryanherman: {
     displayName: "Bryan Herman",
     // Hardflip confirmed by Jason, 2026-10-16. Replaced once Bryan picks his own.

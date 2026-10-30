@@ -3,9 +3,6 @@ import type { TrickCategoryId } from "../constants/trickCategories.js";
 import type { TrickObstacle, TrickStance } from "../constants/tricks.js";
 import type { TurnLengthHours } from "./turnDuration.js";
 
-/** Re-exported so callers can pull the game trick-category type from the games barrel. */
-export type { TrickCategoryId } from "../constants/trickCategories.js";
-
 /* ────────────────────────────────────────────
  * Types
  * ──────────────────────────────────────────── */

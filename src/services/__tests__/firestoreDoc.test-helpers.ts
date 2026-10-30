@@ -54,9 +54,8 @@ const hoisted = vi.hoisted(() => {
 });
 
 export const {
-  mockCollection,
   mockDoc,
-  mockQuery,
+
   mockWhere,
   mockOrderBy,
   mockLimit,
@@ -65,7 +64,7 @@ export const {
   mockOnSnapshot,
   mockGetDoc,
   mockDeleteDoc,
-  mockServerTimestamp,
+
   mockRunTransaction,
   FakeTimestamp,
 } = hoisted;

@@ -69,7 +69,7 @@ interface ClipBase {
 }
 
 /** A clip produced by a landed turn in a game of S.K.A.T.E. */
-export interface GameClip extends ClipBase {
+interface GameClip extends ClipBase {
   source: "game";
   gameId: string;
   turnNumber: number;
@@ -84,7 +84,7 @@ export interface GameClip extends ClipBase {
  * discriminates on `source`, and narrowing is only needed when a caller
  * actually requires the non-null game fields.
  */
-export interface UserClip extends ClipBase {
+interface UserClip extends ClipBase {
   source: "user";
   gameId: null;
   turnNumber: null;

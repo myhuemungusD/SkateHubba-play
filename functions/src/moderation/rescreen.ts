@@ -64,7 +64,7 @@ export interface RescreenOptions {
   redact?: boolean;
 }
 
-export type RescreenAction =
+type RescreenAction =
   | "would-screen"
   | "screened"
   | "skipped-changed"
@@ -259,7 +259,7 @@ export interface RescreenLogMeta {
 }
 
 /** Rows per action, sorted by action name. */
-export function countByAction(result: RescreenResult): Array<[RescreenAction, number]> {
+function countByAction(result: RescreenResult): Array<[RescreenAction, number]> {
   const counts = new Map<RescreenAction, number>();
   for (const row of result.rows) counts.set(row.action, (counts.get(row.action) ?? 0) + 1);
   return [...counts.entries()].sort(([a], [b]) => (a < b ? -1 : 1));

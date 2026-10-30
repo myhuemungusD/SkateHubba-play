@@ -19,7 +19,7 @@
 import type { Auth } from "firebase-admin/auth";
 import type { Firestore } from "firebase-admin/firestore";
 
-export const preProfileDocs = (uid: string): string[] => [
+const preProfileDocs = (uid: string): string[] => [
   `onlineStatus/${uid}`,
   `users/${uid}/private/profile`,
   `pushTargets/${uid}`,

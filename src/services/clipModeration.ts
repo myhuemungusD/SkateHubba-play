@@ -50,8 +50,6 @@ export interface OwnClipModerationRow {
   appealPath: string | null;
 }
 
-export type ClipDecision = "approved" | "removed";
-
 let emulatorConnected = false;
 
 /** Test seam so the emulator connect branch can run twice. */

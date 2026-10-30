@@ -130,7 +130,7 @@ function closingPatch(data: Record<string, unknown>, uid: string, nowMs: number)
 }
 
 /** The match with this account replaced by the tombstone, usernames included. */
-export function anonymizedDiceMatch(data: Record<string, unknown>, uid: string): Record<string, unknown> {
+function anonymizedDiceMatch(data: Record<string, unknown>, uid: string): Record<string, unknown> {
   const out = scrubUid(data, uid) as Record<string, unknown>;
   if (out.player1Uid === DELETED_UID) out.player1Username = DELETED_NAME;
   if (out.player2Uid === DELETED_UID) out.player2Username = DELETED_NAME;

@@ -216,6 +216,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Dead code (knip)
+        run: npm run check:dead
+
       - name: Type check
         run: npx tsc -b
 

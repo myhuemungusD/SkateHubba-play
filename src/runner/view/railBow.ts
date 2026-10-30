@@ -6,7 +6,7 @@ import { railBowOffset } from "../railCurve";
  * Bend a rail so its +Z end (the lip) stays put and the middle shifts +X.
  * The sim uses the same sine, so the trucks stay on the metal.
  */
-export function bowRailGeometry(geometry: BufferGeometry, bow: number): void {
+function bowRailGeometry(geometry: BufferGeometry, bow: number): void {
   const position = geometry.getAttribute("position");
   if (!position || bow === 0) return;
   let minZ = Number.POSITIVE_INFINITY;

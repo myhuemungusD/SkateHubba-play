@@ -9,7 +9,7 @@ import { isAdminOpsEnabled } from "../lib/featureFlags";
  * action it describes.
  */
 
-export const AUDIT_LIST_LIMIT = 100;
+const AUDIT_LIST_LIMIT = 100;
 
 export type AdminAction =
   | "ban"

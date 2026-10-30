@@ -26,8 +26,9 @@ OWASP ASVS 4 / MASVS 2.
   pushDispatchOnCreate and make pushTargets owner-only.
 - **App Check (low):** diceAction, proBlessing, decideClipModeration and
   Firestore run App Check in monitor mode (docs/APPCHECK_ROLLOUT.md).
-- **WTT cron stubs (info):** /api/cron/build-wtt-items and wtt-nightly-em have
-  no CRON_SECRET check. They are inert stubs; add the bearer check when built.
+- **WTT cron stubs (info):** /api/cron/build-wtt-items and wtt-nightly-em were
+  inert stubs. Removed in the dead-code cleanup; any future WTT cron must use
+  matchesCronSecret from api/cron/_cronAuth.ts.
 - **Owner-update denylist (info):** users/{uid} owner updates use a denylist of
   server fields. Every new server-written field (e.g. map check-in XP) must be
   added to it and to the create zero-seed list.

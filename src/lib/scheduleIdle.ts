@@ -1,5 +1,5 @@
 /** How long after `load` we wait before idle work, so it stays outside a Lighthouse trace. */
-export const QUIET_AFTER_LOAD_MS = 10_000;
+const QUIET_AFTER_LOAD_MS = 10_000;
 
 export function scheduleIdle(task: () => void, timeout = 2000): void {
   const ric = window.requestIdleCallback;

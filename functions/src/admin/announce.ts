@@ -10,8 +10,8 @@
 import { FieldValue, type Firestore } from "firebase-admin/firestore";
 import { testerEligibleTokens } from "../push/platforms.js";
 
-export const MAX_RECIPIENTS = 2000;
-export type Audience = "all" | "testers" | "pros";
+const MAX_RECIPIENTS = 2000;
+type Audience = "all" | "testers" | "pros";
 
 export interface FanOutResult {
   queued: number;

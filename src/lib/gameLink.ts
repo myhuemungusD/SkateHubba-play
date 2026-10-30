@@ -14,7 +14,7 @@
  * can't fire in some later session.
  */
 
-export const GAME_LINK_PARAM = "game";
+const GAME_LINK_PARAM = "game";
 
 /** Firestore auto-ids are 20 chars; 128 leaves room for hand-made test ids. */
 export const MAX_GAME_ID_LENGTH = 128;

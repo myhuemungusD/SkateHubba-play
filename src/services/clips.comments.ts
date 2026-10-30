@@ -45,7 +45,7 @@ export type { ClipComment } from "../types/clip";
  * applied AFTER trimming so a comment of pure whitespace is rejected here
  * rather than landing as a blank row in the thread.
  */
-export const CLIP_COMMENT_MIN_LENGTH = 1;
+const CLIP_COMMENT_MIN_LENGTH = 1;
 export const CLIP_COMMENT_MAX_LENGTH = 300;
 
 /** Default and maximum page sizes for {@link fetchClipComments}. */
@@ -79,7 +79,7 @@ function requireId(value: string, label: string): void {
   }
 }
 
-export function clipCommentsRef(clipId: string): CollectionReference {
+function clipCommentsRef(clipId: string): CollectionReference {
   return collection(requireDb(), "clips", clipId, "comments");
 }
 

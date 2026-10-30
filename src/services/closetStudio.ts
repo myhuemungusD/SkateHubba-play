@@ -20,9 +20,9 @@ import { logger } from "./logger";
  */
 
 export const MAX_DESIGNS = 24;
-export const MAX_DESIGN_BYTES = 1024 * 1024;
-export const MIN_DESIGN_BYTES = 100;
-export const MAX_NAME = 40;
+const MAX_DESIGN_BYTES = 1024 * 1024;
+const MIN_DESIGN_BYTES = 100;
+const MAX_NAME = 40;
 const NSFW_WARN_THRESHOLD = 0.5;
 
 export type DesignError = "unauthenticated" | "too_large" | "too_small" | "rejected" | "full" | "bad_name" | "bad_id";

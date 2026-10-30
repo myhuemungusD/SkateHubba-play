@@ -1,6 +1,6 @@
 import { memo } from "react";
 import type { ClipDoc } from "../../services/clips";
-import type { ClipVoteState } from "../../services/clips.upvotes";
+import type { ClipVoteState } from "../../services/clips";
 import { ProUsername } from "../ProUsername";
 import { ClipActions } from "./ClipActions";
 import { ABOVE_NAV, clipMuteSide, FEED_SLIDE } from "./feedLayout";

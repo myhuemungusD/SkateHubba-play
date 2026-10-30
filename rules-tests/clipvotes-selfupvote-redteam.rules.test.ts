@@ -3,7 +3,7 @@
  *
  * The clipVotes create rule now reads the target clip's owner and rejects a
  * vote whose caller IS that owner. Previously the only barrier was the
- * service-layer SelfUpvoteError (UX only) — a client hitting the Firestore
+ * service-layer SelfVoteError (UX only) — a client hitting the Firestore
  * API directly could upvote its own clip and inflate feed ranking. (audit
  * MEDIUM)
  *

@@ -10,7 +10,7 @@ export interface CurveSample {
 }
 
 /** 0 at the near lip, 1 at the far end. */
-export function railAlong(along: number, length: number): number {
+function railAlong(along: number, length: number): number {
   if (length <= 0) return 0;
   return Math.min(1, Math.max(0, along / length));
 }

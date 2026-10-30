@@ -1,7 +1,7 @@
 import { BoxGeometry, BufferGeometry, CylinderGeometry, MeshStandardMaterial, type Texture } from "three";
 
 /** Cells across alley-palette.ktx2. One material, UVs pinned to a cell. */
-export const PALETTE_CELLS = 8;
+const PALETTE_CELLS = 8;
 
 export const PALETTE = {
   pole: 0,

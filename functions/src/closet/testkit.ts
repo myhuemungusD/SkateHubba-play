@@ -9,7 +9,7 @@ import { DAY_MS, type ClosetActor } from "./model.js";
 import type { ClosetDb, ClosetTx } from "./store.js";
 
 export const NOW = 1_800_000_000_000;
-export const OLD = Timestamp.fromMillis(NOW - 90 * DAY_MS);
+const OLD = Timestamp.fromMillis(NOW - 90 * DAY_MS);
 
 function clone<T>(value: T): T {
   if (value instanceof Timestamp || value === null || typeof value !== "object") return value;
