@@ -33,6 +33,8 @@ describe("Landing v2 (VITE_FEATURE_LANDING_V2)", () => {
     expect(screen.getByText("S.K.A.T.E. over video")).toBeInTheDocument();
     expect(screen.getByText("Film your trick. Send it. They match it or take a letter.")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "SkateHubba painted on a graffiti wall" })).toBeInTheDocument();
+    const home = screen.getByRole("link", { name: "SkateHubba home" });
+    expect(within(home).getByRole("img", { name: "SkateHubba" })).toHaveAttribute("src", "/logonew.webp");
     expect(screen.queryByText("QUIT SCROLLING.")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /invite/i })).not.toBeInTheDocument();
   });

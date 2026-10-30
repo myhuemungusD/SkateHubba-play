@@ -13,6 +13,7 @@ import { LandingV2Footer } from "./LandingV2Footer";
 
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ct-chalk";
 const WALL = "/sh-graffiti.webp";
+const LOGO = "/logonew.webp";
 /** Tile width per breakpoint; the -mt offsets center the painted SKATE HUBBA in the band. */
 const TILE = "w-[480px] max-w-none sm:w-[620px] lg:w-[740px]";
 /** Side panels: the tag-covered top of the wall, scaled so the band never reaches the lettering. */
@@ -73,7 +74,21 @@ export function LandingV2({ onGo, onGoogle, googleLoading, onApple, appleLoading
     <div data-testid="landing-v2" className="min-h-dvh bg-ct-ink font-body text-ct-chalk">
       <header className="sticky top-below-overlay z-40 border-b border-ct-line bg-ct-ink pt-safe-inset">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <a href="/" aria-label="SkateHubba home" className={`-ml-1 inline-flex min-h-11 items-center rounded-ct px-1 font-display text-2xl tracking-[0.01em] ${FOCUS}`}>
+          <a
+            href="/"
+            aria-label="SkateHubba home"
+            className={`-ml-1 inline-flex min-h-11 items-center gap-1 rounded-ct px-1 font-display text-2xl tracking-[0.01em] ${FOCUS}`}
+          >
+            {/* The asset has transparent side padding; -mx trims it so the mark sits tight to the text. */}
+            <img
+              src={LOGO}
+              alt="SkateHubba"
+              width={300}
+              height={200}
+              draggable={false}
+              decoding="async"
+              className="-mx-2 h-10 w-auto select-none"
+            />
             SKATEHUBBA
           </a>
           <button
@@ -103,7 +118,9 @@ export function LandingV2({ onGo, onGoogle, googleLoading, onApple, appleLoading
               </p>
               <div className="mt-6 flex max-w-sm flex-col gap-3">
                 <GoogleButton shape="flat" onClick={onGoogle} loading={googleLoading} disabled={socialLoading} />
-                {appleOn && <AppleButton shape="flat" onClick={onApple} loading={appleLoading} disabled={socialLoading} />}
+                {appleOn && (
+                  <AppleButton shape="flat" onClick={onApple} loading={appleLoading} disabled={socialLoading} />
+                )}
                 <button
                   type="button"
                   onClick={() => onGo("signin")}

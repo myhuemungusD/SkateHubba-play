@@ -15,7 +15,20 @@ export function LandingV2Footer({ onNav }: { onNav: (screen: LegalScreen) => voi
   return (
     <footer className="border-t border-ct-line">
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 sm:px-6 md:flex-row md:items-center md:justify-between">
-        <span className="font-display text-xl tracking-[0.01em] text-ct-ash">SKATEHUBBA</span>
+        <span className="inline-flex items-center gap-1 font-display text-xl tracking-[0.01em] text-ct-ash">
+          <img
+            src="/logonew.webp"
+            alt=""
+            aria-hidden="true"
+            width={300}
+            height={200}
+            draggable={false}
+            loading="lazy"
+            decoding="async"
+            className="-mx-2 h-9 w-auto select-none"
+          />
+          SKATEHUBBA
+        </span>
 
         <ul className="-mx-3 flex items-center gap-1" aria-label="Social media">
           {SOCIAL_MARKS.map((mark) => (
@@ -27,7 +40,11 @@ export function LandingV2Footer({ onNav }: { onNav: (screen: LegalScreen) => voi
                 aria-label={mark.label}
                 className={`inline-flex h-11 w-11 items-center justify-center rounded-ct text-ct-dust transition-colors duration-[120ms] ease-ct hover:text-ct-chalk ${FOCUS}`}
               >
-                {mark.name === "store" ? <PlaceholderIcon name="icon-shop" size={20} /> : <SocialMark name={mark.name} size={20} />}
+                {mark.name === "store" ? (
+                  <PlaceholderIcon name="icon-shop" size={20} />
+                ) : (
+                  <SocialMark name={mark.name} size={20} />
+                )}
               </a>
             </li>
           ))}
