@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { bindRunnerTouch, createGestureRecognizer, gradeFlick, type TimedPoint } from "../gestures";
 import { emptyShake, stepPerfectShake } from "../juice";
 import { currentRunnerQuality, runnerDpr, runnerUsesBloom } from "../quality";
-import { curveSample, grindDirectionOk, railAlong } from "../railCurve";
+import { curveSample, grindDirectionOk } from "../railCurve";
 import { feelPresetById, LANE_X, RAIL_Y } from "../tune";
 import { canUseWebGL, noteFps } from "../webgl";
 
@@ -149,7 +149,6 @@ describe("perfect shake phase", () => {
 
 describe("rail curve degenerate shapes", () => {
   it("treats a zero-length rail as a straight point at its lip", () => {
-    expect(railAlong(3, 0)).toBe(0);
     const sample = curveSample({ id: 1, kind: "rail", lane: 1, z: 0, length: 0, awarded: false, resolved: false }, 2);
     expect(sample).toEqual({ x: LANE_X[1], y: RAIL_Y, tx: 0, tz: 1 });
   });

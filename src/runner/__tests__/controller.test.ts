@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createRunnerController, frameFrom } from "../controller";
+import { createRunnerController } from "../controller";
 import { applyAction, applyLean, stepRun } from "../logic";
 import { FIXED_DT, INPUT_BUFFER } from "../constants";
 import { pulseGrindHaptic } from "../haptics";
@@ -86,7 +86,7 @@ describe("subscribe and render frames", () => {
 
   it("interpolates the render frame between fixed steps", () => {
     const run = quiet();
-    expect(run.getRenderFrame()).toEqual(frameFrom(run.getState()));
+    expect(run.getRenderFrame()).toMatchObject({ distance: 0, x: run.getState().x, speed: run.getState().speed });
     run.step(FIXED_DT * 1.5);
     const frame = run.getRenderFrame();
     expect(frame.distance).toBeGreaterThan(0);

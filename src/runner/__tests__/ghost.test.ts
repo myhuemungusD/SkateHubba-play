@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { emptyBest, loadBest, noteSample, sampleAt, saveBest, type GhostSample } from "../ghost";
+import { loadBest, noteSample, sampleAt, saveBest, type GhostSample } from "../ghost";
 import { GHOST_SPACING } from "../tune";
 
 const KEY = "skatehubba.runner.best.v1";
+const emptyBest = () => ({ score: 0, distance: 0, samples: [] });
 const store = (value: unknown) => localStorage.setItem(KEY, typeof value === "string" ? value : JSON.stringify(value));
 
 afterEach(() => {
