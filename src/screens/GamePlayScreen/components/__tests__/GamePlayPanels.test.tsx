@@ -59,8 +59,8 @@ describe("game-rules headline", () => {
 
   it("is dropped from the matcher banner for an anything-goes game, and shows for a preset", () => {
     const props = { setterUsername: "alice", setterIsPro: false, currentTrickName: "kickflip", customRules: null };
-    const { rerender } = render(<MatcherInstructionBanner {...props} trickCategory="any" />);
-    expect(screen.queryByText("Flip Tricks")).not.toBeInTheDocument();
+    const { container, rerender } = render(<MatcherInstructionBanner {...props} trickCategory="any" />);
+    expect(container.querySelector("p")).toBeNull();
     rerender(<MatcherInstructionBanner {...props} trickCategory="flip" />);
     expect(screen.getByText("Flip Tricks")).toBeInTheDocument();
   });
