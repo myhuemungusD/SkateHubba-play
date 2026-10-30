@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPubliclyApproved } from "../clipVisibility";
+import { isPubliclyApproved, isUserPostedClip } from "../clipVisibility";
 
 describe("isPubliclyApproved", () => {
   it("shows legacy active clips and approved clips", () => {
@@ -16,5 +16,18 @@ describe("isPubliclyApproved", () => {
     expect(isPubliclyApproved({ moderationStatus: "active", moderation: "rejected" })).toBe(false);
     expect(isPubliclyApproved({ moderationStatus: "active", moderation: "removed" })).toBe(false);
     expect(isPubliclyApproved({ moderationStatus: "active", moderation: "nope" })).toBe(false);
+  });
+});
+
+describe("isUserPostedClip", () => {
+  it("passes only a clip whose source is exactly user", () => {
+    expect(isUserPostedClip({ source: "user" })).toBe(true);
+    expect(isUserPostedClip({ source: "game" })).toBe(false);
+    expect(isUserPostedClip({ source: "User" })).toBe(false);
+  });
+
+  it("treats a legacy clip with no source, or no data, as a game clip", () => {
+    expect(isUserPostedClip({})).toBe(false);
+    expect(isUserPostedClip(undefined)).toBe(false);
   });
 });

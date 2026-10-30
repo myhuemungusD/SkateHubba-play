@@ -16,6 +16,7 @@ import {
 import { requireDb } from "../firebase";
 import { getUidByUsername } from "./users";
 import { logger } from "./logger";
+import { isUserPostedClip } from "./clipVisibility";
 
 /**
  * Pro challenges, pro props and pro-featured clips (behind
@@ -59,6 +60,11 @@ export interface FeaturedClip {
   proUsername: string;
   videoUrl: string | null;
   trickName: string;
+  /**
+   * The featured clip is a user post. Pro Picks (a feed surface) shows only
+   * these; the pro's own Featured tool still lists the rest so they can unpin.
+   */
+  userClip: boolean;
 }
 
 const s = (v: unknown) => (typeof v === "string" ? v : "");
@@ -198,13 +204,17 @@ export async function listPropsFor(uid: string): Promise<ProProp[]> {
 
 /* ── Featured clips ── */
 
-async function clipInfo(clipId: string): Promise<{ videoUrl: string | null; trickName: string }> {
+async function clipInfo(clipId: string): Promise<{ videoUrl: string | null; trickName: string; userClip: boolean }> {
   try {
     const snap = await getDoc(doc(requireDb(), "clips", clipId));
     const x = snap.exists() ? snap.data() : undefined;
-    return { videoUrl: typeof x?.videoUrl === "string" ? x.videoUrl : null, trickName: s(x?.trickName) };
+    return {
+      videoUrl: typeof x?.videoUrl === "string" ? x.videoUrl : null,
+      trickName: s(x?.trickName),
+      userClip: isUserPostedClip(x),
+    };
   } catch {
-    return { videoUrl: null, trickName: "" };
+    return { videoUrl: null, trickName: "", userClip: false };
   }
 }
 

@@ -2,6 +2,7 @@ import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc
 import { requireAuth, requireDb } from "../firebase";
 import { MUSIC_TRACKS } from "../lib/clipEditor/musicLibrary";
 import { logger } from "./logger";
+import { isUserPostedClip } from "./clipVisibility";
 
 /**
  * Customizable profiles (behind VITE_FEATURE_PROFILE_CUSTOM).
@@ -242,8 +243,10 @@ export interface PinnableClip {
   thumbnailUrl: string | null;
 }
 
+/** Only user posts can be pinned or shown on a profile; game clips stay in the game screens. */
 function toPinnable(id: string, raw: Record<string, unknown> | undefined): PinnableClip | null {
-  if (!raw || typeof raw.videoUrl !== "string" || typeof raw.trickName !== "string") return null;
+  if (!raw || !isUserPostedClip(raw)) return null;
+  if (typeof raw.videoUrl !== "string" || typeof raw.trickName !== "string") return null;
   return {
     id,
     trickName: raw.trickName,
