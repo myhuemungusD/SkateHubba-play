@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { DEFAULT_PROFILE_CUSTOM, type PinnableClip } from "../../../../../services/profileCustom";
 
@@ -46,6 +46,10 @@ describe("CustomizeLookTab", () => {
 });
 
 describe("CustomizeLayoutTab", () => {
+  beforeEach(() => {
+    m.pinnable.mockReset();
+  });
+
   it("lists the player's clips once they load", async () => {
     m.pinnable.mockResolvedValue([{ id: "c1", trickName: "Tre flip", videoUrl: "v.mp4", thumbnailUrl: null }]);
     render(<CustomizeLayoutTab uid="u1" draft={DEFAULT_PROFILE_CUSTOM} set={vi.fn()} />);
@@ -53,12 +57,16 @@ describe("CustomizeLayoutTab", () => {
     expect(m.pinnable).toHaveBeenCalledWith("u1");
   });
 
-  it("ignores clips that arrive after the sheet closes", async () => {
-    let finish: (c: PinnableClip[]) => void = () => {};
-    m.pinnable.mockReturnValue(new Promise<PinnableClip[]>((ok) => (finish = ok)));
-    const { unmount } = render(<CustomizeLayoutTab uid="u1" draft={DEFAULT_PROFILE_CUSTOM} set={vi.fn()} />);
-    unmount();
-    await act(async () => finish([{ id: "c1", trickName: "Tre flip", videoUrl: "v.mp4", thumbnailUrl: null }]));
+  it("keeps the newer player's clips when an older read lands late", async () => {
+    let finishOld: (c: PinnableClip[]) => void = () => {};
+    m.pinnable.mockReturnValueOnce(new Promise<PinnableClip[]>((ok) => (finishOld = ok)));
+    const { rerender } = render(<CustomizeLayoutTab uid="u1" draft={DEFAULT_PROFILE_CUSTOM} set={vi.fn()} />);
+    m.pinnable.mockResolvedValueOnce([{ id: "c2", trickName: "Kickflip", videoUrl: "k.mp4", thumbnailUrl: null }]);
+    rerender(<CustomizeLayoutTab uid="u2" draft={DEFAULT_PROFILE_CUSTOM} set={vi.fn()} />);
+    expect(await screen.findByText("Kickflip")).toBeInTheDocument();
+    await act(async () => finishOld([{ id: "c1", trickName: "Tre flip", videoUrl: "v.mp4", thumbnailUrl: null }]));
+    expect(screen.getByText("Kickflip")).toBeInTheDocument();
     expect(screen.queryByText("Tre flip")).toBeNull();
+    expect(m.pinnable.mock.calls).toEqual([["u1"], ["u2"]]);
   });
 });

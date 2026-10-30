@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 
 vi.mock("../../../../components/pro/ProReelAndSpots", () => ({
@@ -27,8 +27,6 @@ const full = {
 };
 
 const prompt = () => screen.getByTestId("pro-profile-prompt").firstChild?.textContent;
-
-afterEach(() => vi.unstubAllEnvs());
 
 describe("ProShowcase owner prompts", () => {
   it.each([

@@ -1,4 +1,4 @@
-import { afterEach, describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { ProfileAbout } from "../ProfileAbout";
 import { DEFAULT_PROFILE_CUSTOM, type ProfileCustom } from "../../../../../services/profileCustom";
@@ -22,8 +22,6 @@ describe("ProfileAbout link tooltips", () => {
 });
 
 describe("ProfileAbout theme song", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("drops back to the play state when the browser refuses playback", async () => {
     let refuse: (e: Error) => void = () => {};
     class RefusingAudio {

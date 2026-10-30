@@ -29,7 +29,6 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.clearAllMocks();
-  vi.unstubAllEnvs();
 });
 
 describe("usePlayerProfileController edges", () => {
@@ -54,8 +53,8 @@ describe("usePlayerProfileController edges", () => {
         isOwnProfile: true,
       }),
     );
-    expect(result.current.completedGames.map((g) => g.id)[0]).toBe("timed");
-    expect(result.current.completedGames).toHaveLength(3);
+    // A null clock and a clock-less object both sort as 0 and keep their input order.
+    expect(result.current.completedGames.map((g) => g.id)).toEqual(["timed", "untimed", "plain"]);
   });
 
   it("lists opponents by games played, most first", () => {

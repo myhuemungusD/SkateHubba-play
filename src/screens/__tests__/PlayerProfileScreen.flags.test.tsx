@@ -78,7 +78,6 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.clearAllMocks();
-  vi.unstubAllEnvs();
 });
 
 describe("PlayerProfileScreen flag wiring", () => {

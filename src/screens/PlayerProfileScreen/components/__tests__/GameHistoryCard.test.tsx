@@ -27,6 +27,12 @@ afterEach(() => {
 
 describe("GameHistoryCard edges", () => {
   it("omits the date when the timestamp has no clock", () => {
+    // Control: with a clock, the card shows a short "Mon D" date that the pattern matches.
+    const { unmount } = renderCard(
+      buildCompletedGame({ updatedAt: { toMillis: () => Date.UTC(2026, 3, 15, 12) } as GameDoc["updatedAt"] }),
+    );
+    expect(screen.getByText(/^[A-Z][a-z]{2} \d{1,2}$/)).toHaveTextContent("Apr 15");
+    unmount();
     renderCard(buildCompletedGame({ updatedAt: {} as GameDoc["updatedAt"] }));
     expect(screen.queryByText(/^[A-Z][a-z]{2} \d{1,2}$/)).toBeNull();
   });
