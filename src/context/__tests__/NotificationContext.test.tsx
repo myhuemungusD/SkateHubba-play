@@ -57,6 +57,10 @@ class ErrorCatcher extends Component<{ children: ReactNode }, { error: Error | n
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // A test may make the best-effort writes reject; put the default back before each test.
+  mockMarkNotificationRead.mockResolvedValue(undefined);
+  mockDeleteNotification.mockResolvedValue(undefined);
+  mockDeleteUserNotifications.mockResolvedValue(undefined);
   vi.useFakeTimers();
   localStorage.clear();
   mockIsSoundEnabled = true;
@@ -766,5 +770,52 @@ describe("action toasts", () => {
       vi.advanceTimersByTime(300);
     });
     expect(result.current.toasts).toHaveLength(0);
+  });
+});
+
+describe("best-effort Firestore writes", () => {
+  it("keeps local state in sync when every server write rejects", async () => {
+    mockMarkNotificationRead.mockRejectedValue(new Error("offline"));
+    mockDeleteNotification.mockRejectedValue(new Error("offline"));
+    mockDeleteUserNotifications.mockRejectedValue(new Error("offline"));
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+
+    act(() => {
+      result.current.notify({ type: "info", title: "One", message: "1", firestoreId: "fs-a" });
+      result.current.notify({ type: "info", title: "Two", message: "2", firestoreId: "fs-b" });
+      result.current.notify({ type: "info", title: "Three", message: "3", firestoreId: "fs-c" });
+    });
+    const [newest, middle] = result.current.notifications;
+
+    act(() => result.current.markRead(newest.id));
+    await act(async () => {});
+    expect(mockMarkNotificationRead).toHaveBeenCalledWith("fs-c");
+
+    act(() => result.current.markAllRead());
+    await act(async () => {});
+    expect(mockMarkNotificationRead).toHaveBeenCalledWith("fs-a");
+    expect(result.current.unreadCount).toBe(0);
+
+    act(() => result.current.dismissNotification(middle.id));
+    await act(async () => {});
+    expect(mockDeleteNotification).toHaveBeenCalledWith("fs-b");
+    expect(result.current.notifications.map((n) => n.title)).toEqual(["Three", "One"]);
+
+    act(() => result.current.clearAll());
+    await act(async () => {});
+    expect(mockDeleteUserNotifications).toHaveBeenCalledWith("u1");
+    expect(result.current.notifications).toHaveLength(0);
+  });
+
+  it("clearAll while signed out only clears the local list", () => {
+    const { result } = renderHook(() => useNotifications(), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <NotificationProvider uid={null}>{children}</NotificationProvider>
+      ),
+    });
+    act(() => result.current.notify({ type: "info", title: "Local", message: "x" }));
+    act(() => result.current.clearAll());
+    expect(result.current.notifications).toHaveLength(0);
+    expect(mockDeleteUserNotifications).not.toHaveBeenCalled();
   });
 });

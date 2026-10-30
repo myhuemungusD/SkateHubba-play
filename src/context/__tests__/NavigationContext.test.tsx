@@ -230,6 +230,37 @@ describe("useNavigationContext", () => {
     expect(getByTestId("location").textContent).toBe("/auth");
   });
 
+  it("navigateToPlayer and navigateToChallengeWithSpot build their URLs, ignoring a malformed spot id", () => {
+    mockAuth = { loading: false, user: { uid: "u1" }, profile: { username: "skater" } };
+    const SPOT = "11111111-2222-3333-4444-555555555555";
+    function Grab() {
+      const nav = useNavigationContext();
+      return (
+        <>
+          <button onClick={() => nav.navigateToPlayer("rider-9")}>player</button>
+          <button onClick={() => nav.navigateToChallengeWithSpot("../admin")}>bad-spot</button>
+          <button onClick={() => nav.navigateToChallengeWithSpot(SPOT)}>spot</button>
+        </>
+      );
+    }
+    const { getByTestId, getByText } = renderWithProviders(
+      "/lobby",
+      <>
+        <Grab />
+        <LocationProbe />
+      </>,
+    );
+
+    act(() => getByText("player").click());
+    expect(getByTestId("location").textContent).toBe("/player/rider-9");
+
+    act(() => getByText("bad-spot").click());
+    expect(getByTestId("location").textContent).toBe("/player/rider-9");
+
+    act(() => getByText("spot").click());
+    expect(getByTestId("location").textContent).toBe(`/challenge?spot=${SPOT}`);
+  });
+
   it("setScreen('player') throws — callers must go through navigateToPlayer(uid)", () => {
     // 'player' is a current-screen marker for the /player/:uid dynamic
     // route. There's no static /player path in the router, so dispatching
@@ -353,6 +384,12 @@ describe("auth-router deep-link stash/restore", () => {
     const url = renderAt(`/challenge?spot=${SPOT_ID}`);
     expect(sessionStorage.getItem(CHALLENGE_KEY)).toBe(SPOT_ID);
     expect(sessionStorage.getItem(DETAIL_KEY)).toBeNull();
+    expect(url()).toBe("/");
+  });
+
+  it("bounces a signed-out /challenge visit without stashing a malformed spot", () => {
+    const url = renderAt("/challenge?spot=not-a-uuid");
+    expect(sessionStorage.getItem(CHALLENGE_KEY)).toBeNull();
     expect(url()).toBe("/");
   });
 
