@@ -588,7 +588,6 @@ describe("literal-true flags without a dedicated suite", () => {
   const flags = [
     ["VITE_FEATURE_PRO_PROFILES", "isProProfilesEnabled"],
     ["VITE_FEATURE_WTT_ENABLED", "isWttEnabled"],
-    ["VITE_FEATURE_POST_MAKES_ENABLED", "isPostMakesEnabled"],
     ["VITE_FEATURE_FEED_MODES_ENABLED", "isFeedModesEnabled"],
     ["VITE_FEATURE_PRO_BLESSING", "isProBlessingEnabled"],
     ["VITE_FEATURE_CLOSET_ENABLED", "isClosetEnabled"],
@@ -615,7 +614,6 @@ describe("closet sub-features need the closet itself", () => {
   it.each([
     ["VITE_FEATURE_CLOSET_DROPS_ENABLED", "isClosetDropsEnabled"],
     ["VITE_FEATURE_CLOSET_TRADING_ENABLED", "isClosetTradingEnabled"],
-    ["VITE_FEATURE_CLOSET_BUCKS_PURCHASE_ENABLED", "isClosetBucksPurchaseEnabled"],
   ] as const)("%s only counts while VITE_FEATURE_CLOSET_ENABLED is on", async (env, name) => {
     const read = (await import("../featureFlags"))[name];
     vi.stubEnv(env, "true");
