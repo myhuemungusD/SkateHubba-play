@@ -66,6 +66,37 @@ function emptyTxRead(store: FakeStore, path: string): void {
     );
 }
 
+/**
+ * Make every query on `collection` return its hits with `patch` merged into
+ * the snapshot data (the stored docs are unchanged), for guards against a
+ * query hit whose fields don't match what the query matched on.
+ */
+function patchQueryHits(store: FakeStore, collection: string, patch: DocData): void {
+  type Chain = Record<string, unknown> & { get: () => Promise<{ docs: { data: () => DocData }[] }> };
+  const wrap = (q: Chain): Chain =>
+    new Proxy(q, {
+      get(target, key) {
+        if (key === "get") {
+          return async () => {
+            const snap = await target.get();
+            return { ...snap, docs: snap.docs.map((d) => ({ ...d, data: () => ({ ...d.data(), ...patch }) })) };
+          };
+        }
+        const value = target[key as string];
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => {
+          const out = (value as (...a: unknown[]) => unknown).apply(target, args);
+          return out && typeof out === "object" && "get" in out ? wrap(out as Chain) : out;
+        };
+      },
+    });
+  const realCollection = store.db.collection.bind(store.db);
+  store.db.collection = ((name: string) =>
+    name === collection
+      ? wrap(realCollection(name) as unknown as Chain)
+      : realCollection(name)) as typeof store.db.collection;
+}
+
 function activeGame(extra: DocData = {}): DocData {
   return {
     player1Uid: OTHER,
@@ -177,7 +208,9 @@ describe("active S.K.A.T.E. games: edge paths", () => {
     const store = storeOf({ games: { g1: activeGame() } });
     emptyTxRead(store, "games/g1");
     const counts = await eraseActiveSkateGames(store.deps, UID, ["g1"], NOW);
-    expect(counts.anonymized).toBe(0);
+    expect(counts).toEqual({ forfeited: 0, anonymized: 0, deleted: 0, videoObjects: 0 });
+    // "Leaves it": the stored game is exactly as seeded, nothing written or deleted.
+    expect(store.docs.get("games/g1")).toEqual(activeGame());
   });
 
   it("keeps the match video when the departing account is the current setter (its set clip is unlinked instead)", () => {
@@ -221,6 +254,7 @@ describe("judged S.K.A.T.E. games: edge paths", () => {
     const store = storeOf({ games: { j1: judged() } });
     emptyTxRead(store, "games/j1");
     expect(await anonymizeJudgedGames(dbOf(store), UID)).toBe(0);
+    expect(store.docs.get("games/j1")).toEqual(judged());
   });
 });
 
@@ -287,6 +321,7 @@ describe("Roll Dice: edge paths", () => {
     emptyTxRead(store, "diceGames/m1");
     const counts = await eraseDiceGames(dbOf(store), UID, NOW);
     expect(counts).toEqual({ closed: 0, anonymized: 0, deleted: 1 });
+    expect(store.docs.has("diceGames/m1")).toBe(false);
   });
 });
 
@@ -302,6 +337,7 @@ describe("closet: edge paths", () => {
     const store = storeOf({ trades: { t1: { fromUid: 7, toUid: UID, status: "pending" } } });
     const counts = await eraseCloset(dbOf(store), UID, NOW);
     expect(counts.tradesDeleted).toBe(1);
+    expect(store.docs.has("trades/t1")).toBe(false);
   });
 
   it("deletes a trade whose transaction snapshot is empty", async () => {
@@ -309,6 +345,7 @@ describe("closet: edge paths", () => {
     emptyTxRead(store, "trades/t1");
     const counts = await eraseCloset(dbOf(store), UID, NOW);
     expect(counts.tradesDeleted).toBe(1);
+    expect(store.docs.has("trades/t1")).toBe(false);
   });
 
   it("leaves serial rows that name someone else, with or without a history list", async () => {
@@ -318,20 +355,23 @@ describe("closet: edge paths", () => {
     const counts = await eraseCloset(dbOf(store), UID, NOW);
     expect(counts.serials).toBe(0);
     expect(store.docs.get("serials/s1")).toEqual({ ownerUid: OTHER });
+    expect(store.docs.get("serials/s2")).toEqual({ ownerUid: OTHER, history: [null, "x", { uid: OTHER }] });
   });
 });
 
 describe("private-spot crews: edge paths", () => {
-  it("clears a crew list that is no longer a list by the time it is rewritten", async () => {
-    // Firestore only returns array-contains hits for real arrays, so this models
-    // a doc whose field changed shape after the query matched it: the first
-    // two reads (the fake's array-contains match) see a list, later reads don't.
-    let reads = 0;
-    const spot: DocData = { name: "ledge" };
-    Object.defineProperty(spot, "crewUids", { enumerable: true, get: () => (reads++ < 2 ? [UID, OTHER] : "corrupt") });
-    const store = storeOf({ privateSpots: { p1: spot } });
+  it("clears the crew list when a matched hit carries a crewUids that is not a list", async () => {
+    // Targets the `Array.isArray(list) ? … : []` fallback in eraseOwnedContent
+    // (api/account/_ownedContent.ts, the privateSpots crew rewrite). Real
+    // Firestore only returns array-contains hits for real arrays, so this
+    // branch is a defensive guard that no real query reaches. The fake models
+    // it by patching the hits the privateSpots query returns: the stored doc
+    // matches, the snapshot the code reads says "corrupt". No read counting,
+    // so it does not depend on how many times the code reads the field.
+    const store = storeOf({ privateSpots: { p1: { name: "ledge", crewUids: [UID, OTHER] } } });
+    patchQueryHits(store, "privateSpots", { crewUids: "corrupt" });
     const counts = await eraseOwnedContent(store.deps, UID);
     expect(counts.crewListsUpdated).toBe(1);
-    expect(store.docs.get("privateSpots/p1")).toMatchObject({ crewUids: [] });
+    expect(store.docs.get("privateSpots/p1")).toEqual({ name: "ledge", crewUids: [] });
   });
 });
