@@ -265,8 +265,6 @@ describe("identity sync", () => {
       expect(refreshWebPushTokenIfGranted).toHaveBeenCalledWith("u1");
     });
 
-    // A sign-out that skips handleSignOut (another tab, a revoked session)
-    // leaves the old activeProfile behind; the next user must not inherit it.
     it("logs, and does not throw, when native push registration rejects", async () => {
       vi.mocked(isPushSupported).mockReturnValue(true);
       vi.mocked(registerPushTokenIfGranted).mockRejectedValueOnce(new Error("plugin gone"));
@@ -274,7 +272,6 @@ describe("identity sync", () => {
       await waitFor(() =>
         expect(logger.warn).toHaveBeenCalledWith("push_register_unhandled", expect.objectContaining({ uid: "u1" })),
       );
-      vi.mocked(isPushSupported).mockReturnValue(false);
     });
 
     it("logs, and does not throw, when the web push refresh rejects", async () => {
@@ -286,6 +283,8 @@ describe("identity sync", () => {
       );
     });
 
+    // A sign-out that skips handleSignOut (another tab, a revoked session)
+    // leaves the old activeProfile behind; the next user must not inherit it.
     it("does not treat the previous user's profile as the next user's", () => {
       vi.mocked(isPushSupported).mockReturnValue(true);
       mockConsent.mockReturnValue(true);
@@ -542,7 +541,8 @@ describe("mfa challenge", () => {
       await ctx.current?.handleGoogleSignIn();
     });
 
-    expect(ctx.current?.googleError).not.toBe("");
+    // No mapped copy for a blocked popup, and the rejection isn't an Error, so the generic line shows.
+    expect(ctx.current?.googleError).toBe("Google sign-in failed");
     expect(mockAnalyticsSignInFailure).toHaveBeenCalledWith("google", "auth/popup-blocked");
     expect(mockCaptureException).not.toHaveBeenCalled();
   });

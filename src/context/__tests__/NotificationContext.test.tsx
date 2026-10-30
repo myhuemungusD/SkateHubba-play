@@ -57,6 +57,10 @@ class ErrorCatcher extends Component<{ children: ReactNode }, { error: Error | n
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // A test may make the best-effort writes reject; put the default back before each test.
+  mockMarkNotificationRead.mockResolvedValue(undefined);
+  mockDeleteNotification.mockResolvedValue(undefined);
+  mockDeleteUserNotifications.mockResolvedValue(undefined);
   vi.useFakeTimers();
   localStorage.clear();
   mockIsSoundEnabled = true;
@@ -801,10 +805,6 @@ describe("best-effort Firestore writes", () => {
     await act(async () => {});
     expect(mockDeleteUserNotifications).toHaveBeenCalledWith("u1");
     expect(result.current.notifications).toHaveLength(0);
-
-    mockMarkNotificationRead.mockResolvedValue(undefined);
-    mockDeleteNotification.mockResolvedValue(undefined);
-    mockDeleteUserNotifications.mockResolvedValue(undefined);
   });
 
   it("clearAll while signed out only clears the local list", () => {
