@@ -12,6 +12,7 @@ import { readAngle } from "../readAngle";
 import { createProject, setTrim } from "../../../lib/clipEditor/project";
 import { placeSfx } from "../../../lib/clipEditor/overlays";
 import type { EditorEngine } from "../../../lib/clipEditor/engine";
+import { planExport, WEB_CAPABILITIES } from "../../../lib/clipEditor/exportPlan";
 import type { EditProject } from "../../../lib/clipEditor/types";
 
 const project = () =>
@@ -36,6 +37,11 @@ describe("audioUrls", () => {
     expect(
       audioUrls({ ...project(), music: { trackId: "gone", trackOffsetSec: 0, gain: 1, originalGain: 1 } }),
     ).toEqual({});
+  });
+
+  it("skips a placed sound that is no longer in the library", () => {
+    const p: EditProject = { ...project(), sfx: [{ id: "sfx-1", soundId: "retired", outAtSec: 1, gain: 1 }] };
+    expect(audioUrls(p, "https://x.test")).toEqual({});
   });
 });
 
@@ -97,6 +103,18 @@ describe("exportClip", () => {
     });
     await exportClip(p, {}, { exportWeb } as unknown as EditorEngine, vi.fn());
     expect(exportWeb.mock.calls[0][0].bitrate).toBeLessThan(18_000_000);
+  });
+});
+
+describe("exportClip web bitrate", () => {
+  it("keeps the planned bitrate when a short web edit fits under the cap", async () => {
+    native.getNativeEditorSupport.mockResolvedValue({ available: false });
+    const exportWeb = vi.fn().mockResolvedValue(new Blob(["webm"]));
+    const short = setTrim(project(), 0, 2);
+    const plan = planExport(short, WEB_CAPABILITIES);
+    expect(plan.exceedsUploadCap).toBe(false);
+    await exportClip(short, {}, { exportWeb } as unknown as EditorEngine, vi.fn());
+    expect(exportWeb.mock.calls[0][0].bitrate).toBe(plan.bitrate);
   });
 });
 

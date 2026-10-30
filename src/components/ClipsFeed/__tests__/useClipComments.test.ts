@@ -3,6 +3,8 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ClipComment } from "../../../services/clips.comments";
 import { isPostableComment, useClipComments } from "../useClipComments";
 import { clipCommentsMocks, makeClipComment, resetClipCommentsMocks } from "./clipComments.test-helpers";
+import { deferred } from "./deferred.test-helpers";
+import { logger } from "../../../services/logger";
 
 vi.mock("../../../services/clips.comments", async () =>
   (await import("./clipComments.test-helpers")).clipCommentsModuleMock(),
@@ -190,5 +192,58 @@ describe("useClipComments", () => {
     });
 
     expect(result.current.comments[0].text).toBe("later");
+  });
+});
+
+// The `mountedRef` guards themselves can't be observed (React drops a state
+// write after unmount silently), but each failure is still logged before the
+// guard, and that log must not be lost when the sheet closes mid-request.
+describe("useClipComments failures that settle after unmount", () => {
+  it("still logs a thread load that fails after unmount", async () => {
+    const d = deferred<{ comments: ClipComment[]; cursor: null }>();
+    mockFetch.mockReturnValueOnce(d.promise);
+    const { unmount } = mount();
+    unmount();
+    await act(async () => {
+      d.reject(new Error("offline"));
+      await d.promise.catch(() => undefined);
+    });
+    expect(logger.warn).toHaveBeenCalledWith("clip_comments_load_failed", expect.objectContaining({ clipId: "c1" }));
+  });
+
+  it("still logs a post that fails after unmount", async () => {
+    const d = deferred<ClipComment>();
+    mockCreate.mockReturnValueOnce(d.promise);
+    const { result, unmount } = mount();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.setDraft("nice"));
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.submit();
+    });
+    unmount();
+    await act(async () => {
+      d.reject(new Error("offline"));
+      await pending;
+    });
+    expect(logger.warn).toHaveBeenCalledWith("clip_comment_create_failed", expect.objectContaining({ clipId: "c1" }));
+  });
+
+  it("still logs a delete that fails after unmount", async () => {
+    mockFetch.mockResolvedValueOnce({ comments: [comment({ id: "mine" })], cursor: null });
+    const d = deferred<void>();
+    mockDelete.mockReturnValueOnce(d.promise);
+    const { result, unmount } = mount();
+    await waitFor(() => expect(result.current.comments).toHaveLength(1));
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.remove(result.current.comments[0]);
+    });
+    unmount();
+    await act(async () => {
+      d.reject(new Error("offline"));
+      await pending;
+    });
+    expect(logger.warn).toHaveBeenCalledWith("clip_comment_delete_failed", expect.objectContaining({ clipId: "c1" }));
   });
 });
