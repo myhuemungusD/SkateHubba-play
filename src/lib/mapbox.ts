@@ -34,11 +34,10 @@ interface ResolvedMapStyle {
   /** The style URL to hand to mapbox-gl. Always a valid value. */
   url: string;
   /**
-   * The original env-var value when it was set but rejected, so the consumer
-   * can surface it to Sentry/console with the offending input attached.
-   * `null` when the override was unset or accepted.
+   * True when the env var was set but rejected. The value itself is never
+   * reported: a self-hosted style URL can carry a token in its query string.
    */
-  invalidOverride: string | null;
+  overrideRejected: boolean;
 }
 
 function resolveMapStyle(): ResolvedMapStyle {
@@ -47,9 +46,9 @@ function resolveMapStyle(): ResolvedMapStyle {
   // both happy to ship trailing whitespace, and a stray space would otherwise
   // demote a perfectly valid URL to "invalid".
   const override = raw?.trim();
-  if (!override) return { url: DEFAULT_MAP_STYLE, invalidOverride: null };
-  if (isValidStyleUrl(override)) return { url: override, invalidOverride: null };
-  return { url: DEFAULT_MAP_STYLE, invalidOverride: override };
+  if (!override) return { url: DEFAULT_MAP_STYLE, overrideRejected: false };
+  if (isValidStyleUrl(override)) return { url: override, overrideRejected: false };
+  return { url: DEFAULT_MAP_STYLE, overrideRejected: true };
 }
 
 const resolved = resolveMapStyle();
@@ -71,13 +70,12 @@ let mapStyleConfigReported = false;
 export function reportMapStyleConfig(): void {
   if (mapStyleConfigReported) return;
   mapStyleConfigReported = true;
-  if (!resolved.invalidOverride) return;
+  if (!resolved.overrideRejected) return;
   // VITE_MAPBOX_STYLE_URL must start with "mapbox://styles/" or be an https URL.
-  logger.warn("map_style_invalid", { envVar: "VITE_MAPBOX_STYLE_URL", fallback: DEFAULT_MAP_STYLE });
-  captureMessage("map_style_invalid", {
-    level: "warning",
-    extra: { styleUrl: resolved.invalidOverride },
-  });
+  // Name the env var, never its value: a self-hosted style URL can carry a token.
+  const details = { envVar: "VITE_MAPBOX_STYLE_URL", fallback: DEFAULT_MAP_STYLE };
+  logger.warn("map_style_invalid", details);
+  captureMessage("map_style_invalid", { level: "warning", extra: details });
 }
 
 export const MAP_DEFAULTS = {

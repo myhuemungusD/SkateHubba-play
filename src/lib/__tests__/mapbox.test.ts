@@ -83,9 +83,10 @@ describe("MAP_STYLE module-level resolver + reportMapStyleConfig", () => {
     expect(mockCaptureMessage).not.toHaveBeenCalled();
   });
 
-  it("warns and reports to Sentry with the offending URL when reportMapStyleConfig is called", async () => {
+  it("warns and reports to Sentry with the env var name, never its value", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    vi.stubEnv("VITE_MAPBOX_STYLE_URL", "not-a-valid-url");
+    const rejected = "http://tiles.example.com/style.json?access_token=not-a-real-token";
+    vi.stubEnv("VITE_MAPBOX_STYLE_URL", rejected);
     const { MAP_STYLE, DEFAULT_MAP_STYLE: defaultStyle, reportMapStyleConfig } = await import("../mapbox");
     expect(MAP_STYLE).toBe(defaultStyle);
     reportMapStyleConfig();
@@ -95,8 +96,11 @@ describe("MAP_STYLE module-level resolver + reportMapStyleConfig", () => {
     });
     expect(mockCaptureMessage).toHaveBeenCalledWith("map_style_invalid", {
       level: "warning",
-      extra: { styleUrl: "not-a-valid-url" },
+      extra: { envVar: "VITE_MAPBOX_STYLE_URL", fallback: defaultStyle },
     });
+    const reported = JSON.stringify([warn.mock.calls, mockCaptureMessage.mock.calls]);
+    expect(reported).not.toContain("tiles.example.com");
+    expect(reported).not.toContain("not-a-real-token");
   });
 
   it("is idempotent — repeated calls only emit once per module load", async () => {

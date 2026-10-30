@@ -21,8 +21,8 @@ The value must either:
 - be a valid `https://` URL pointing at a self-hosted style JSON.
 
 Any other value is rejected at startup: a warning is logged to the browser
-console, a `map_style_invalid` Sentry event is emitted with the offending value
-attached, and the map falls back to `mapbox://styles/mapbox/dark-v11`. This means
+console, a `map_style_invalid` Sentry event is emitted naming the env var (not its
+value, which can carry a token), and the map falls back to `mapbox://styles/mapbox/dark-v11`. This means
 a typo can't take the `/map` page down. See `docs/SENTRY_ALERTS.md` →
 `map_style_invalid` for the alert runbook.
 
