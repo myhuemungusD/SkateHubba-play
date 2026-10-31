@@ -84,6 +84,8 @@ export VITE_FEATURE_SMS_2FA_ENABLED=false
 export VITE_FEATURE_RANDOM_CHALLENGER=false
 # Share button on the Clips feed rail stays off until it ships post-launch.
 export VITE_FEATURE_FEED_SHARE=false
+# Landing v2 redesign is web only; the app keeps the reviewed landing.
+export VITE_FEATURE_LANDING_V2=false
 export VITE_FEATURE_WTT_ENABLED="${VITE_FEATURE_WTT_ENABLED:-false}"
 # App Check always on (App Attest is free), like ios-release.yml.
 export VITE_APPCHECK_ENABLED=true

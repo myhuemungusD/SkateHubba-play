@@ -575,6 +575,17 @@ describe("isLandingV2Enabled (VITE_FEATURE_LANDING_V2)", () => {
     localStorage.setItem(FEATURE_TESTER_STORAGE_KEY, "tester-uid");
     expect(isLandingV2Enabled()).toBe(true);
   });
+  it("stays off inside the iOS/Android shell even when the env var is true", async () => {
+    const { isLandingV2Enabled } = await import("../featureFlags");
+    vi.stubEnv("VITE_FEATURE_LANDING_V2", "true");
+    (globalThis as { Capacitor?: unknown }).Capacitor = { isNativePlatform: () => true };
+    try {
+      expect(isLandingV2Enabled()).toBe(false);
+    } finally {
+      delete (globalThis as { Capacitor?: unknown }).Capacitor;
+    }
+    expect(isLandingV2Enabled()).toBe(true);
+  });
 });
 
 describe("tester override in native store builds (App Store 2.3.1)", () => {

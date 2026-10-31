@@ -39,6 +39,14 @@ describe("Landing v2 (VITE_FEATURE_LANDING_V2)", () => {
     expect(screen.queryByRole("button", { name: /invite/i })).not.toBeInTheDocument();
   });
 
+  it("captions the edited demo honestly, with no recording dot", async () => {
+    await renderV2(<Landing {...props()} />);
+    const caption = document.querySelector("figcaption");
+    expect(caption).toHaveTextContent(/^HOW IT PLAYS$/);
+    expect(caption?.querySelector("span")).toBeNull();
+    expect(screen.queryByText(/REAL GAME/i)).not.toBeInTheDocument();
+  });
+
   it("renders the three sections in order", async () => {
     await renderV2(<Landing {...props()} />);
     const h2s = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);

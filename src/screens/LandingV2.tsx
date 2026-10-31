@@ -14,8 +14,12 @@ import { LandingV2Footer } from "./LandingV2Footer";
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ct-chalk";
 const WALL = "/sh-graffiti.webp";
 const LOGO = "/logonew.webp";
-/** Tile width per breakpoint; the -mt offsets center the painted SKATE HUBBA in the band. */
-const TILE = "w-[480px] max-w-none sm:w-[620px] lg:w-[740px]";
+/**
+ * Tile width per breakpoint; the -mt offsets center the painted SKATE HUBBA in the band.
+ * Desktop keeps the 620px tile in a shorter 240px band so Google and Apple sit above
+ * the consent bar on a 1280x800 (and 1024x768) first view (hesher #935 S3).
+ */
+const TILE = "w-[480px] max-w-none sm:w-[620px]";
 /** Side panels: the tag-covered top of the wall, scaled so the band never reaches the lettering. */
 const FLANK = "hidden w-[1200px] max-w-none -scale-x-100 sm:block";
 
@@ -28,7 +32,7 @@ function Wall() {
   return (
     <div
       data-testid="landing-v2-wall"
-      className="relative h-[220px] overflow-hidden border-b border-ct-line bg-ct-ink sm:h-[300px] lg:h-[360px]"
+      className="relative h-[220px] overflow-hidden border-b border-ct-line bg-ct-ink sm:h-[300px] lg:h-[240px]"
     >
       <div className="absolute left-1/2 top-0 flex -translate-x-1/2 items-start">
         <img src={WALL} alt="" aria-hidden="true" width={768} height={1152} className={FLANK} />
@@ -38,7 +42,7 @@ function Wall() {
           width={768}
           height={1152}
           fetchPriority="high"
-          className={`${TILE} -mt-[156px] sm:-mt-[194px] lg:-mt-[231px]`}
+          className={`${TILE} -mt-[156px] sm:-mt-[194px] lg:-mt-[184px]`}
         />
         <img src={WALL} alt="" aria-hidden="true" width={768} height={1152} className={FLANK} />
       </div>
@@ -104,7 +108,7 @@ export function LandingV2({ onGo, onGoogle, googleLoading, onApple, appleLoading
       <div>
         <section aria-labelledby="lv2-title">
           <Wall />
-          <div className="mx-auto grid max-w-6xl gap-10 px-4 pt-6 sm:px-6 lg:grid-cols-2 lg:gap-12 lg:pt-10">
+          <div className="mx-auto grid max-w-6xl gap-10 px-4 pt-6 sm:px-6 lg:grid-cols-2 lg:gap-12 lg:pt-8">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-ct-dust">S.K.A.T.E. over video</p>
               <h1
@@ -135,10 +139,8 @@ export function LandingV2({ onGo, onGoogle, googleLoading, onApple, appleLoading
               <div className="overflow-hidden rounded-ct-media border border-ct-line">
                 <LandingDemoVideo />
               </div>
-              <figcaption className="mt-3 flex items-center gap-2 font-mono text-xs text-ct-dust">
-                <span aria-hidden="true" className="h-2 w-2 rounded-full bg-ct-bail" />
-                REAL GAME · ONE TAKE
-              </figcaption>
+              {/* The demo is an edited promo cut, so the caption must not claim a real one-take game. */}
+              <figcaption className="mt-3 font-mono text-xs text-ct-dust">HOW IT PLAYS</figcaption>
             </figure>
           </div>
         </section>

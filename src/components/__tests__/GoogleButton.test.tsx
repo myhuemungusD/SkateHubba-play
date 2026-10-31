@@ -22,6 +22,17 @@ describe("GoogleButton", () => {
     expect(onClick).toHaveBeenCalledOnce();
   });
 
+  it("keeps the classic shape by default (rounded-xl, py-3.5, shadow, orange focus)", () => {
+    render(<GoogleButton onClick={vi.fn()} loading={false} />);
+    const cls = screen.getByRole("button").className.split(/\s+/);
+    expect(cls).toEqual(
+      expect.arrayContaining(["rounded-xl", "text-sm", "py-3.5", "focus-visible:outline-brand-orange"]),
+    );
+    expect(cls.some((c) => c.startsWith("shadow-["))).toBe(true);
+    expect(cls).not.toContain("rounded-ct");
+    expect(cls).not.toContain("h-[52px]");
+  });
+
   it("renders the flat Landing v2 shape without a shadow", () => {
     render(<GoogleButton onClick={vi.fn()} loading={false} shape="flat" />);
     const btn = screen.getByRole("button");

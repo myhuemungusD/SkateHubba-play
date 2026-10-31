@@ -126,6 +126,8 @@ jobs:
           # Share button on the Clips feed rail stays off until it ships post-launch
           # (matches ci_post_clone.sh for Xcode Cloud).
           VITE_FEATURE_FEED_SHARE: "false"
+          # Landing v2 redesign is web only; the app keeps the reviewed landing.
+          VITE_FEATURE_LANDING_V2: "false"
           # iOS turns this on only for tester builds (its "wtt" input).
           VITE_FEATURE_WTT_ENABLED: "false"
           # Store builds must fail, not warn, when the service-worker Firebase

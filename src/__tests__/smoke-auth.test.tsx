@@ -60,6 +60,34 @@ describe("Smoke: Auth", () => {
     vi.unstubAllEnvs();
   });
 
+  it("with Landing v2 off, the landing keeps the classic consent card", async () => {
+    localStorage.removeItem("sh_analytics_consent");
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    await renderApp();
+
+    await screen.findByText("QUIT SCROLLING.");
+    const region = screen.getByRole("region", { name: /analytics notice/i });
+    expect(region).not.toHaveAttribute("data-variant", "bar");
+    expect(region.querySelector(".glass-card")).not.toBeNull();
+  });
+
+  it("with Landing v2 on, screens past the landing get the classic consent card", async () => {
+    vi.stubEnv("VITE_FEATURE_LANDING_V2", "true");
+    localStorage.removeItem("sh_analytics_consent");
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    try {
+      await renderApp();
+      await screen.findByRole("heading", { level: 1, name: "FOR THE LOVE OF THE GAME." });
+      await userEvent.click(screen.getByRole("button", { name: "Use email instead" }));
+      expect(await screen.findByText("Welcome Back")).toBeInTheDocument();
+      const region = screen.getByRole("region", { name: /analytics notice/i });
+      expect(region).not.toHaveAttribute("data-variant", "bar");
+      expect(region.querySelector(".glass-card")).not.toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("landing page navigates to sign-in", async () => {
     auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
