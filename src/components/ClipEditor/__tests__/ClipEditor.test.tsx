@@ -5,6 +5,7 @@ const engine = vi.hoisted(() => ({
   instances: [] as unknown[],
   throwOnCreate: false,
   seekRejects: false,
+  loadAudioRejects: false,
   playing: false,
 }));
 
@@ -14,7 +15,9 @@ vi.mock("../../../lib/clipEditor/engine", () => ({
     Object.assign(this, {
       setSources: vi.fn(),
       setProject: vi.fn(),
-      loadAudio: vi.fn().mockResolvedValue(undefined),
+      loadAudio: vi.fn(async () => {
+        if (engine.loadAudioRejects) throw new Error("decode failed");
+      }),
       seek: vi.fn(async () => {
         if (engine.seekRejects) throw new Error("draw failed");
       }),
@@ -41,6 +44,7 @@ const support = vi.hoisted(() => vi.fn());
 vi.mock("../../../services/clipEditorNative", () => ({ getNativeEditorSupport: support }));
 
 import { ClipEditor } from "../ClipEditor";
+import { EditorEngine } from "../../../lib/clipEditor/engine";
 
 const angle = (id = "main", label = "Angle 1") => ({
   angle: { id, label, durationSec: 10, offsetSec: 0, width: 1920, height: 1080, fps: 60 },
@@ -52,6 +56,7 @@ beforeEach(() => {
   engine.instances = [];
   engine.throwOnCreate = false;
   engine.seekRejects = false;
+  engine.loadAudioRejects = false;
   engine.playing = false;
   readAngle.mockImplementation(async (_b: Blob, id: string, label: string) => angle(id, label));
   support.mockResolvedValue({ available: false, supports4k: false, supports60: false });
@@ -182,5 +187,87 @@ describe("ClipEditor", () => {
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "a" });
     fireEvent.click(screen.getByText("Cancel"));
     expect(onCancel).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("ClipEditor lifecycle and timeline edges", () => {
+  const clip = () => new Blob(["x"], { type: "video/mp4" });
+  const noop = { onDone: vi.fn(), onCancel: vi.fn() };
+
+  it("ignores a probe that finishes after the editor closed", async () => {
+    let resolve!: (v: ReturnType<typeof angle>) => void;
+    readAngle.mockImplementationOnce(() => new Promise((r) => (resolve = r)));
+    const { unmount } = render(<ClipEditor blob={clip()} {...noop} />);
+    unmount();
+    await act(async () => resolve(angle()));
+    expect(engine.instances).toHaveLength(0);
+  });
+
+  it("keeps the first engine when a new clip is probed", async () => {
+    const { rerender } = render(<ClipEditor blob={clip()} {...noop} />);
+    await screen.findByRole("tab", { name: "Trim" });
+    rerender(<ClipEditor blob={clip()} {...noop} />);
+    await waitFor(() => expect(readAngle).toHaveBeenCalledTimes(2));
+    await screen.findByRole("tab", { name: "Trim" });
+    expect(EditorEngine).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses 1080p native caps when the device can't do 4K", async () => {
+    support.mockResolvedValue({ available: true, supports4k: false, supports60: true });
+    renderEditor();
+    fireEvent.click(await screen.findByRole("tab", { name: "Export" }));
+    // Stabilize is native-only, so it enabling proves the native caps landed.
+    await waitFor(() => expect(screen.getByText(/Stabilize/)).not.toBeDisabled());
+    expect(screen.getByText("4K")).toBeDisabled();
+  });
+
+  it("keeps editing when the music can't be decoded", async () => {
+    engine.loadAudioRejects = true;
+    renderEditor();
+    fireEvent.click(await screen.findByRole("tab", { name: "Music" }));
+    await act(async () => fireEvent.click(screen.getByText("Rail Ride")));
+    const e = engine.instances[0] as { loadAudio: ReturnType<typeof vi.fn> };
+    expect(e.loadAudio).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(screen.getByRole("tab", { name: "Music" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("restarts from zero when Play is pressed at the end", async () => {
+    renderEditor();
+    await screen.findByRole("tab", { name: "Trim" });
+    const setPlayhead = vi.mocked(EditorEngine).mock.calls[0][2] as (t: number) => void;
+    act(() => setPlayhead(10));
+    await act(async () => fireEvent.click(screen.getByLabelText("Play")));
+    const e = engine.instances[0] as { play: ReturnType<typeof vi.fn> };
+    expect(e.play).toHaveBeenCalledWith(0);
+  });
+
+  it("removes sounds from the lane, closing the inspector only for the selected one", async () => {
+    renderEditor();
+    await screen.findByRole("tab", { name: "Trim" });
+    const lane = screen.getByTestId("sfx-lane");
+    const drop = (id: string) =>
+      fireEvent.drop(lane, {
+        dataTransfer: { getData: (t: string) => (t === "application/x-skatehubba-sfx" ? id : "") },
+      });
+    drop("flick");
+    drop("bail");
+    fireEvent.keyDown(screen.getByLabelText(/^Bail at/), { key: "Enter" });
+    expect(screen.getByTestId("sfx-inspector")).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByLabelText(/^Flick at/), { key: "Delete" });
+    expect(screen.queryByLabelText(/^Flick at/)).toBeNull();
+    expect(screen.getByTestId("sfx-inspector")).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByLabelText(/^Bail at/), { key: "Backspace" });
+    expect(screen.queryByLabelText(/^Bail at/)).toBeNull();
+    expect(screen.queryByTestId("sfx-inspector")).toBeNull();
+  });
+
+  it("opens the file picker from the Angles panel", async () => {
+    renderEditor();
+    fireEvent.click(await screen.findByRole("tab", { name: "Angles" }));
+    const input = screen.getByTestId("clip-editor-angle-input") as HTMLInputElement;
+    const click = vi.spyOn(input, "click").mockImplementation(() => undefined);
+    fireEvent.click(screen.getByText("+ Add angle"));
+    expect(click).toHaveBeenCalledTimes(1);
   });
 });

@@ -16,6 +16,7 @@ vi.mock("firebase/firestore", () => ({
   where: (...a: unknown[]) => ({ where: a }),
   orderBy: (...a: unknown[]) => ({ orderBy: a }),
   limit: (n: number) => ({ limit: n }),
+  startAfter: (d: { id: string }) => ({ startAfter: d.id }),
   query: (...a: unknown[]) => a,
   serverTimestamp: () => "TS",
   addDoc: h.addDoc,
@@ -112,20 +113,79 @@ describe("props", () => {
 describe("featured clips", () => {
   it("lists featured clips with clip info and fallbacks", async () => {
     h.getDocs.mockResolvedValueOnce({
-      docs: [qd("a", { proUid: "p", proUsername: "mike" }), qd("b", {}), qd("c", {})],
+      docs: [qd("a", { proUid: "p", proUsername: "mike" }), qd("b", {}), qd("c", {}), qd("g", {})],
     });
     h.getDoc.mockImplementation(async (p: string) => {
-      if (p === "clips/a") return { exists: () => true, data: () => ({ videoUrl: "v", trickName: "kf" }) };
+      if (p === "clips/a")
+        return { exists: () => true, data: () => ({ source: "user", videoUrl: "v", trickName: "kf" }) };
+      if (p === "clips/g")
+        return { exists: () => true, data: () => ({ source: "game", videoUrl: "vg", trickName: "g" }) };
       if (p === "clips/b") return { exists: () => false, data: () => undefined };
       throw new Error("denied");
     });
     expect(await listFeaturedClips()).toEqual([
-      { clipId: "a", proUid: "p", proUsername: "mike", videoUrl: "v", trickName: "kf" },
-      { clipId: "b", proUid: "", proUsername: "", videoUrl: null, trickName: "" },
-      { clipId: "c", proUid: "", proUsername: "", videoUrl: null, trickName: "" },
+      { clipId: "a", proUid: "p", proUsername: "mike", videoUrl: "v", trickName: "kf", userClip: true },
+      { clipId: "b", proUid: "", proUsername: "", videoUrl: null, trickName: "", userClip: false },
+      { clipId: "c", proUid: "", proUsername: "", videoUrl: null, trickName: "", userClip: false },
+      // A game clip is still listed (so the pro can unpin it), flagged as not a user post.
+      { clipId: "g", proUid: "", proUsername: "", videoUrl: "vg", trickName: "g", userClip: false },
     ]);
     h.getDocs.mockRejectedValueOnce(new Error("x"));
     expect(await listFeaturedClips()).toEqual([]);
+  });
+
+  describe("userPostsOnly page-fill", () => {
+    /** One featured page: `u*` ids are user posts, anything else a game clip. */
+    const page = (ids: string[]) => ({ docs: ids.map((id) => qd(id, { proUid: "p", proUsername: "mike" })) });
+    const ids = (prefix: string, n: number) => Array.from({ length: n }, (_, i) => `${prefix}${i}`);
+    const queryCursors = () =>
+      h.getDocs.mock.calls.map(([q]) =>
+        (q as unknown[]).find((c) => typeof c === "object" && c !== null && "startAfter" in c),
+      );
+
+    beforeEach(() => {
+      h.getDoc.mockImplementation(async (p: string) => ({
+        exists: () => true,
+        data: () => ({ source: p.startsWith("clips/u") ? "user" : "game", videoUrl: "v", trickName: p }),
+      }));
+    });
+
+    it("pages past featured game clips instead of coming up short", async () => {
+      h.getDocs.mockResolvedValueOnce(page([...ids("g", 28), "u-a", "u-b"])).mockResolvedValueOnce(page(ids("u", 5)));
+      const out = await listFeaturedClips({ userPostsOnly: true });
+      expect(out.map((c) => c.clipId)).toEqual(["u-a", "u-b", ...ids("u", 5)]);
+      expect(out.every((c) => c.userClip)).toBe(true);
+      expect(queryCursors()).toEqual([undefined, { startAfter: "u-b" }]);
+    });
+
+    it("stops at 3 pages when every feature is a game clip", async () => {
+      h.getDocs.mockResolvedValue(page(ids("g", 30)));
+      expect(await listFeaturedClips({ userPostsOnly: true })).toEqual([]);
+      expect(h.getDocs).toHaveBeenCalledTimes(3);
+    });
+
+    it("stops once the list is full and caps it at 30", async () => {
+      h.getDocs
+        .mockResolvedValueOnce(page([...ids("ua", 10), ...ids("g", 20)]))
+        .mockResolvedValueOnce(page(ids("ub", 30)));
+      const out = await listFeaturedClips({ userPostsOnly: true });
+      expect(out).toHaveLength(30);
+      expect(out.map((c) => c.clipId)).toEqual([...ids("ua", 10), ...ids("ub", 20)]);
+      expect(h.getDocs).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps the pages already read when a later page fails", async () => {
+      h.getDocs.mockResolvedValueOnce(page([...ids("g", 28), "u-a", "u-b"])).mockRejectedValueOnce(new Error("x"));
+      const out = await listFeaturedClips({ userPostsOnly: true });
+      expect(out.map((c) => c.clipId)).toEqual(["u-a", "u-b"]);
+      expect(h.warn).toHaveBeenCalledWith("pro_featured_load_failed", { error: "x", kept: 2 });
+    });
+
+    it("lists every feature from one full page when not filtering", async () => {
+      h.getDocs.mockResolvedValueOnce(page([...ids("g", 15), ...ids("u", 15)]));
+      expect(await listFeaturedClips()).toHaveLength(30);
+      expect(h.getDocs).toHaveBeenCalledTimes(1);
+    });
   });
   it("features up to the cap and unpins", async () => {
     await expect(featureClip(pro, " ")).rejects.toThrow("Paste a clip id.");

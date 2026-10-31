@@ -27,32 +27,36 @@ interface LogEntry {
 const IS_DEV = import.meta.env.DEV;
 
 function emit(level: LogLevel, event: string, data?: Record<string, unknown>): void {
-  const entry: LogEntry = {
-    level,
-    event,
-    ts: new Date().toISOString(),
-    ...(data ? { data } : {}),
-  };
+  // Redact PII (email, *uid, *username) and URL tokens once, for both the
+  // production console line and the Sentry breadcrumb, so call sites never
+  // need to think about it.
+  const redacted = redactPII(data);
 
-  /* v8 ignore start -- IS_DEV is always true in test env; production path is integration-tested */
-  // Console output — human-readable in dev, structured JSON in production
+  // Console output: human-readable and raw in dev, one structured JSON line in
+  // production. The production line is redacted too: it lands in device logs
+  // (Xcode/logcat, Safari Web Inspector) and any console-capturing tool, and
+  // as a single JSON string it is out of reach of key-based scrubbing later.
   const consoleMethod = level === "debug" ? "debug" : level;
   if (IS_DEV) {
     const extra = data ? data : "";
     console[consoleMethod](`[${level.toUpperCase()}]`, event, extra);
   } else {
+    const entry: LogEntry = {
+      level,
+      event,
+      ts: new Date().toISOString(),
+      ...(redacted ? { data: redacted } : {}),
+    };
     console[consoleMethod](JSON.stringify(entry));
   }
-  /* v8 ignore stop */
 
   // Forward info+ events to Sentry as breadcrumbs for context in error reports.
-  // Redact PII (email, *uid) here so call sites never need to think about it.
   if (level !== "debug") {
     addBreadcrumb({
       category: "app",
       message: event,
       level: level === "info" ? "info" : level === "warn" ? "warning" : "error",
-      data: redactPII(data),
+      data: redacted,
     });
   }
 }

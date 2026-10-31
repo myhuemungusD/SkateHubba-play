@@ -32,7 +32,7 @@ vi.mock("../../services/profileCustom", async (orig) => {
     getProfileCustom: m.get,
     saveProfileCustom: m.save,
     fetchPinnableClips: m.pinnable,
-    fetchPinnedClips: m.pinned,
+    resolvePinnedClips: m.pinned,
   };
 });
 
@@ -72,7 +72,11 @@ beforeEach(() => {
   vi.stubGlobal("Audio", FakeAudio);
   mockLocker.mockResolvedValue([]);
   m.get.mockResolvedValue(full);
-  m.pinned.mockResolvedValue([{ id: "c1", trickName: "Tre flip", videoUrl: "v.mp4", thumbnailUrl: null }]);
+  // Every pin resolves (none pruned); only c1 has a clip to render.
+  m.pinned.mockImplementation(async (_uid: string, ids: string[]) => ({
+    clips: [{ id: "c1", trickName: "Tre flip", videoUrl: "v.mp4", thumbnailUrl: null }],
+    keepIds: ids,
+  }));
   m.pinnable.mockResolvedValue([
     { id: "c1", trickName: "Tre flip", videoUrl: "v.mp4", thumbnailUrl: null },
     { id: "c2", trickName: "Heelflip", videoUrl: "v2.mp4", thumbnailUrl: "t.jpg" },
@@ -130,7 +134,7 @@ describe("PlayerProfileScreen — custom profile (flag on)", () => {
     m.save.mockImplementation(async (_uid: string, v: ProfileCustom) => v);
     render(<PlayerProfileScreen {...props} />);
     await screen.findByText("Mike White designs");
-    fireEvent.click(screen.getByTestId("customize-profile-button"));
+    fireEvent.click(await screen.findByRole("button", { name: "Customize profile" }));
     const sheet = screen.getByTestId("profile-customize-sheet");
     expect(sheet).toBeInTheDocument();
 
@@ -199,7 +203,7 @@ describe("PlayerProfileScreen — custom profile (flag on)", () => {
     m.pinnable.mockResolvedValue([]);
     render(<PlayerProfileScreen {...props} />);
     await screen.findByText("Mike White designs");
-    fireEvent.click(screen.getByTestId("customize-profile-button"));
+    fireEvent.click(await screen.findByRole("button", { name: "Customize profile" }));
     fireEvent.click(screen.getByRole("tab", { name: "LAYOUT" }));
     expect(await screen.findByText("Post a clip to pin it here.")).toBeInTheDocument();
     await act(async () => {
@@ -208,6 +212,43 @@ describe("PlayerProfileScreen — custom profile (flag on)", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Couldn't save");
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.queryByTestId("profile-customize-sheet")).toBeNull();
+  });
+
+  it("keeps Customize inert, in place, until the pins are pruned, so the editor never holds an orphan", async () => {
+    // The look loads first; the pin read is still out (hesher #936 S3).
+    m.get.mockResolvedValue({ ...full, pinnedClipIds: ["c1", "gone"] });
+    let finishPins: (ids: string[]) => void = () => {};
+    m.pinned.mockImplementation(
+      () =>
+        new Promise((ok) => {
+          finishPins = (keepIds) =>
+            ok({ clips: [{ id: "c1", trickName: "Tre flip", videoUrl: "v.mp4", thumbnailUrl: null }], keepIds });
+        }),
+    );
+    m.save.mockImplementation(async (_uid: string, v: ProfileCustom) => v);
+    render(<PlayerProfileScreen {...props} />);
+    await screen.findByText("Mike White designs");
+    await waitFor(() => expect(m.pinned).toHaveBeenCalled());
+
+    // The palette holds its slot while the pins load, but is inert: tapping
+    // it doesn't open the editor (hesher #936 r2 S-2: no layout shift).
+    const loading = screen.getByRole("button", { name: "Customize profile, loading" });
+    expect(loading).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(loading);
+    expect(screen.queryByTestId("profile-customize-sheet")).toBeNull();
+
+    // Open the editor the moment it can be opened.
+    const opened = screen.findByRole("button", { name: "Customize profile" }).then((btn) => fireEvent.click(btn));
+    await act(async () => finishPins(["c1"]));
+    await opened;
+    expect(screen.getByTestId("customize-profile-button")).toBe(loading);
+    expect(loading).not.toHaveAttribute("aria-disabled");
+    fireEvent.click(screen.getByRole("tab", { name: "LAYOUT" }));
+    expect(screen.getByText("PINNED CLIPS · 1/3")).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "SAVE" }));
+    });
+    expect((m.save.mock.calls[0][1] as ProfileCustom).pinnedClipIds).toEqual(["c1"]);
   });
 
   it("does not read or render custom profile pieces when the flag is off", async () => {
@@ -243,7 +284,7 @@ describe("PlayerProfileScreen — custom profile with the Closet flag off (iOS 1
     m.save.mockImplementation(async (_uid: string, v: ProfileCustom) => v);
     render(<PlayerProfileScreen {...props} />);
     await screen.findByText("Mike White designs");
-    fireEvent.click(screen.getByTestId("customize-profile-button"));
+    fireEvent.click(await screen.findByRole("button", { name: "Customize profile" }));
     fireEvent.click(screen.getByRole("tab", { name: "LAYOUT" }));
     expect(screen.queryByText("Closet showcase")).toBeNull();
     expect(screen.queryByText("Highlight signature pieces")).toBeNull();

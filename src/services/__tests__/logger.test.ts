@@ -216,3 +216,60 @@ describe("logger PII redaction", () => {
     );
   });
 });
+
+describe("logger production console line", () => {
+  // IS_DEV is read once at import, so each test loads a fresh production copy.
+  async function loadProdLogger() {
+    vi.resetModules();
+    vi.stubEnv("DEV", false);
+    const mod = await import("../logger");
+    vi.unstubAllEnvs();
+    return mod.logger;
+  }
+
+  it("prints one JSON line whose data is redacted like the Sentry breadcrumb", async () => {
+    const prodLogger = await loadProdLogger();
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const tokenUrl = "https://firebasestorage.googleapis.com/v0/b/x/o/a.webm?alt=media&token=secret-token";
+
+    prodLogger.warn("share_file_download_failed", {
+      uid: "raw-uid",
+      email: "a@b.co",
+      username: "sk8r",
+      error: `Error downloading file: ${tokenUrl}`,
+    });
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    const line = spy.mock.calls[0][0] as string;
+    expect(spy.mock.calls[0]).toHaveLength(1);
+    expect(line.startsWith('{"level":"warn"')).toBe(true);
+    expect(line).not.toMatch(/raw-uid|a@b\.co|sk8r|secret-token|alt=media/);
+    const entry = JSON.parse(line) as { level: string; event: string; ts: string; data: Record<string, unknown> };
+    expect(entry).toEqual({
+      level: "warn",
+      event: "share_file_download_failed",
+      ts: expect.any(String),
+      data: {
+        uid: hashUid("raw-uid"),
+        email: "[REDACTED_EMAIL]",
+        username: expect.stringMatching(/^name-[0-9a-f]{8}$/),
+        error: "Error downloading file: https://firebasestorage.googleapis.com/v0/b/x/o/a.webm",
+      },
+    });
+    // The breadcrumb gets the same redacted data.
+    expect(vi.mocked(addBreadcrumb).mock.calls.at(-1)?.[0].data).toEqual(entry.data);
+    spy.mockRestore();
+  });
+
+  it("omits data when there is none and sends debug to console.debug only", async () => {
+    const prodLogger = await loadProdLogger();
+    const spy = vi.spyOn(console, "debug").mockImplementation(() => {});
+
+    prodLogger.debug("no_data");
+
+    const entry = JSON.parse(spy.mock.calls[0][0] as string) as Record<string, unknown>;
+    expect(entry).toEqual({ level: "debug", event: "no_data", ts: expect.any(String) });
+    expect(addBreadcrumb).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+});

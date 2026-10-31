@@ -50,3 +50,16 @@ export function getUserMessage(err: unknown, fallback: string): string {
   }
   return fallback;
 }
+
+/**
+ * Log fields for a caught error: `{ error: message }`, plus `stack` in dev
+ * builds only so a developer can see where the failure came from.
+ * Production logs and Sentry breadcrumbs carry just the message.
+ * `import.meta.env` is undefined when this runs server-side, so treat that as
+ * not-dev.
+ */
+export function errorLogFields(err: unknown): { error: string; stack?: string } {
+  const fields: { error: string; stack?: string } = { error: parseFirebaseError(err) };
+  if (import.meta.env?.DEV && err instanceof Error && err.stack) fields.stack = err.stack;
+  return fields;
+}

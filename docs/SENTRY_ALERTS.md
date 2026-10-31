@@ -72,13 +72,13 @@ Fires on the first page view where `VITE_MAPBOX_TOKEN` is unset in production �
 
 #### Map Style Misconfig (`map_style_invalid`)
 
-Fires once per page view of `/map` when `VITE_MAPBOX_STYLE_URL` is set to a value that is neither a `mapbox://styles/` URI nor an https URL. The map still renders against the default `mapbox://styles/mapbox/dark-v11` fallback, so this is a soft alert — not a user-facing outage. Emitted from `src/lib/mapbox.ts` with the offending value attached as `extra.styleUrl`.
+Fires once per page view of `/map` when `VITE_MAPBOX_STYLE_URL` is set to a value that is neither a `mapbox://styles/` URI nor an https URL. The map still renders against the default `mapbox://styles/mapbox/dark-v11` fallback, so this is a soft alert — not a user-facing outage. Emitted from `src/lib/mapbox.ts` with `extra.envVar` and `extra.fallback` only. The rejected value is not sent, because a self-hosted style URL can carry a token.
 
 - **When:** A new issue is created
 - **Filter:** `event.environment:production AND message:"map_style_invalid"`
 - **Then:** Send notification to **Slack** `#skatehubba-alerts`
 - **Action interval:** Once per issue (the event fires on every /map page view while the misconfig is live)
-- **Remediation:** Open the Sentry event, copy `extra.styleUrl`, and check Vercel → Project Settings → Environment Variables. Either correct the value (must start with `mapbox://styles/` or be a valid `https://` URL) and redeploy, or unset the var to use the default. If self-hosting on a non-Mapbox domain, also extend the `connect-src` directive in `vercel.json` to whitelist that origin.
+- **Remediation:** Check `VITE_MAPBOX_STYLE_URL` in Vercel → Project Settings → Environment Variables. Either correct the value (must start with `mapbox://styles/` or be a valid `https://` URL) and redeploy, or unset the var to use the default. If self-hosting on a non-Mapbox domain, also extend the `connect-src` directive in `vercel.json` to whitelist that origin.
 
 ### Server-side alert rules (`api/`)
 
@@ -171,15 +171,20 @@ Adjust `tracesSampleRate` in `src/main.tsx` as traffic grows.
 
 ## PII Scrubbing
 
-The `beforeSend` hook in `src/main.tsx` does considerably more than strip `email=`:
+`src/main.tsx` wires two hooks from `src/lib/sentryScrub.ts` into Sentry init, plus `sendDefaultPii: false`:
 
-- Scrubs `email`, `token`, `api_key`, `access_token`, `id_token`, `auth`, `authorization`, `password`, `phone`, `otp`, and `verification_code` from event URLs.
-- Deletes `event.request.headers` and `event.request.cookies` wholesale.
-- Deletes `event.user.email` and `event.user.ip_address`.
-- Scrubs breadcrumb `data.url` values.
-- `sendDefaultPii: false` is set at init.
+- `beforeBreadcrumb` (`scrubBreadcrumb`) runs as each crumb is recorded. It drops the console copies our own logger prints (the logger records its own redacted `app` crumb). On every other crumb, it strips the query and fragment from each http(s) URL in the message and in every data string, and redacts `email`, `*uid` and `*username` keys at any depth. On `url`, `from` and `to` it also redacts the named PII params listed below.
+- `beforeSend` (`scrubEvent`):
+  - Scrubs `email`, `token`, `api_key`, `access_token`, `id_token`, `auth`, `authorization`, `password`, `phone`, `otp` and `verification_code` from the request URL.
+  - Deletes `event.request.headers` and `event.request.cookies` wholesale.
+  - Deletes `event.user.email` and `event.user.ip_address`.
+  - Strips URL queries from the event message and exception values.
+  - Applies the same key and URL rules to `extra` and to `contexts` (`Sentry.setContext`), and strips URL queries from string `tags` (`Sentry.setTag`).
+  - Scrubs any attached breadcrumbs again.
 
-Separately, `src/services/logger.ts` redacts `email` and `*uid` keys on the breadcrumb path (`src/utils/pii.ts`). User context is a **hashed** UID plus the public username — never the raw UID, never an email address.
+Firebase Storage download URLs carry their access token in the query (`?alt=media&token=...`), which is why every URL loses its query, not just named params.
+
+Separately, `src/services/logger.ts` redacts the same keys and URL queries (`redactPII`, `src/utils/pii.ts`) on its breadcrumb and on its production console line. Dev console output stays raw. User context is a **hashed** UID plus the public username, never the raw UID and never an email address.
 
 ## Verifying the Setup
 

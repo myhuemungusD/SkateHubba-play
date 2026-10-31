@@ -2,6 +2,7 @@ import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc
 import { requireAuth, requireDb } from "../firebase";
 import { MUSIC_TRACKS } from "../lib/clipEditor/musicLibrary";
 import { logger } from "./logger";
+import { isUserPostedClip } from "./clipVisibility";
 
 /**
  * Customizable profiles (behind VITE_FEATURE_PROFILE_CUSTOM).
@@ -242,8 +243,10 @@ export interface PinnableClip {
   thumbnailUrl: string | null;
 }
 
+/** Only user posts can be pinned or shown on a profile; game clips stay in the game screens. */
 function toPinnable(id: string, raw: Record<string, unknown> | undefined): PinnableClip | null {
-  if (!raw || typeof raw.videoUrl !== "string" || typeof raw.trickName !== "string") return null;
+  if (!raw || !isUserPostedClip(raw)) return null;
+  if (typeof raw.videoUrl !== "string" || typeof raw.trickName !== "string") return null;
   return {
     id,
     trickName: raw.trickName,
@@ -252,10 +255,23 @@ function toPinnable(id: string, raw: Record<string, unknown> | undefined): Pinna
   };
 }
 
-/** The owner's own clips to choose pins from (newest 24 the query returns). */
+/**
+ * The owner's own posts to choose pins from (up to 24). `source` is filtered in
+ * the query, before the limit, so a run of game clips can't use up the 24 and
+ * leave no posts to pin. Equality-only, so Firestore merges single-field
+ * indexes: no composite index needed.
+ */
 export async function fetchPinnableClips(uid: string): Promise<PinnableClip[]> {
   try {
-    const snap = await getDocs(query(collection(requireDb(), "clips"), where("playerUid", "==", uid), limit(24)));
+    // Equality-only with no orderBy: Firestore merges the automatic
+    // single-field indexes, so no composite index is needed. Adding an
+    // orderBy or a range filter needs a composite index in
+    // firestore.indexes.json AND an approved index deploy before it ships,
+    // or the query fails in prod with failed-precondition (logged below,
+    // shown as no clips to pin).
+    const snap = await getDocs(
+      query(collection(requireDb(), "clips"), where("playerUid", "==", uid), where("source", "==", "user"), limit(24)),
+    );
     return snap.docs.map((d) => toPinnable(d.id, d.data())).filter((c): c is PinnableClip => c !== null);
   } catch (err) {
     logger.warn("profile_custom_clips_failed", { error: err instanceof Error ? err.message : String(err) });
@@ -263,22 +279,41 @@ export async function fetchPinnableClips(uid: string): Promise<PinnableClip[]> {
   }
 }
 
+/** "gone" when the pin can never show (removed, someone else's, a game clip); "unread" when the read failed. */
+async function resolvePin(uid: string, id: string): Promise<PinnableClip | "gone" | "unread"> {
+  try {
+    const snap = await getDoc(doc(requireDb(), "clips", id));
+    const raw = snap.exists() ? snap.data() : undefined;
+    if (!raw || raw.playerUid !== uid) return "gone";
+    return toPinnable(id, raw) ?? "gone";
+  } catch {
+    return "unread";
+  }
+}
+
+export interface ResolvedPins {
+  /** Clips to show, in pin order. */
+  clips: PinnableClip[];
+  /**
+   * The pin ids worth saving back: every resolved clip plus any whose read
+   * failed, so a flaky connection never unpins a real clip. Orphans (game
+   * clips pinned before Fix A, deleted or foreign clips) drop out here.
+   */
+  keepIds: string[];
+}
+
+/** Resolve pinned clip ids in pin order, splitting what shows from what is worth keeping. */
+export async function resolvePinnedClips(uid: string, ids: string[]): Promise<ResolvedPins> {
+  const capped = ids.slice(0, LIMITS.pinnedClips);
+  const results = await Promise.all(capped.map((id) => resolvePin(uid, id)));
+  const clips = results.filter((r): r is PinnableClip => typeof r !== "string");
+  return { clips, keepIds: capped.filter((_, i) => results[i] !== "gone") };
+}
+
 /**
- * Resolve pinned clip ids for display, in pin order. A clip that was removed,
- * hidden by moderation or belongs to someone else is skipped silently.
+ * Pinned clips for display, in pin order. A clip that was removed, hidden by
+ * moderation or belongs to someone else is skipped silently.
  */
 export async function fetchPinnedClips(uid: string, ids: string[]): Promise<PinnableClip[]> {
-  const out = await Promise.all(
-    ids.slice(0, LIMITS.pinnedClips).map(async (id) => {
-      try {
-        const snap = await getDoc(doc(requireDb(), "clips", id));
-        const raw = snap.exists() ? snap.data() : undefined;
-        if (!raw || raw.playerUid !== uid) return null;
-        return toPinnable(id, raw);
-      } catch {
-        return null;
-      }
-    }),
-  );
-  return out.filter((c): c is PinnableClip => c !== null);
+  return (await resolvePinnedClips(uid, ids)).clips;
 }

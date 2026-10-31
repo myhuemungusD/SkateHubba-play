@@ -185,4 +185,20 @@ describe("LandingMap", () => {
     expect(landingPinClicked).toHaveBeenCalledTimes(1);
     expect(landingPinClicked).toHaveBeenCalledWith(LANDING_SPOTS[0].id);
   });
+
+  it("closes the CTA modal on Escape and ignores other keys", async () => {
+    await mountAndOpenCta();
+    await userEvent.keyboard("a");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("adds no pins when the map loads after the section unmounted", async () => {
+    const { unmount } = render(<LandingMap onSignUpPrompt={vi.fn()} />);
+    await waitFor(() => expect(mapLoadHandlers.length).toBe(1));
+    unmount();
+    mapLoadHandlers[0]();
+    expect(markerInstances).toHaveLength(0);
+  });
 });

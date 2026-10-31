@@ -401,4 +401,16 @@ describe("SpotFilterBar", () => {
     await userEvent.click(screen.getByRole("button", { name: /hollenbeck/i }));
     expect(screen.queryByRole("list", { name: /spots near you/i })).toBeNull();
   });
+
+  it("un-toggles an obstacle chip and closes the panel with Done", async () => {
+    const spy = vi.fn();
+    render(<ControlledHost onChangeSpy={spy} />);
+    await userEvent.click(screen.getByRole("button", { name: /filters/i }));
+    await userEvent.click(screen.getByRole("button", { name: "rail" }));
+    expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ obstacles: ["rail"] }));
+    await userEvent.click(screen.getByRole("button", { name: "rail" }));
+    expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ obstacles: [] }));
+    await userEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(screen.queryByRole("region", { name: /spot filters/i })).toBeNull();
+  });
 });

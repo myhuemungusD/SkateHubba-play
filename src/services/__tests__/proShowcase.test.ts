@@ -26,6 +26,7 @@ import { fetchProClipReel, fetchProSpots, PRO_SPOTS_LIMIT } from "../proShowcase
 const spot = (id: string, isActive = true) => ({ id, name: `Spot ${id}`, isActive });
 const clipDoc = (id: string, data: Record<string, unknown>) => ({ id, data: () => data });
 const clip = (spotId: unknown, extra: Record<string, unknown> = {}) => ({
+  source: "user",
   spotId,
   videoUrl: "v.mp4",
   trickName: "kickflip",
@@ -61,6 +62,19 @@ describe("fetchProClipReel", () => {
 });
 
 describe("fetchProSpots", () => {
+  it("filters to active user posts in the query, before the 60-clip scan limit", async () => {
+    h.listSpotsByCreator.mockResolvedValue([]);
+    h.getDocs.mockResolvedValue({ docs: [] });
+    await fetchProSpots("p");
+    expect(h.getDocs).toHaveBeenCalledWith([
+      "clips",
+      { where: ["playerUid", "==", "p"] },
+      { where: ["source", "==", "user"] },
+      // Without it the clips read rule denies every visitor's query.
+      { where: ["moderationStatus", "==", "active"] },
+      { limit: 60 },
+    ]);
+  });
   it("merges created spots and clip-tagged spots, sorted by clip count", async () => {
     h.listSpotsByCreator.mockResolvedValue([spot("r1"), spot("r2")]);
     h.getDocs.mockResolvedValue({
@@ -75,6 +89,10 @@ describe("fetchProSpots", () => {
         clipDoc("c8", clip("gone")),
         clipDoc("c9", clip("dead")),
         clipDoc("c10", clip("boom")),
+        // Game clips and legacy clips with no source never count toward a spot.
+        clipDoc("g1", clip("t1", { source: "game" })),
+        clipDoc("l1", clip("t1", { source: undefined })),
+        clipDoc("g2", clip("game-only", { source: "game" })),
       ],
     });
     h.getSpot.mockImplementation(async (id: string) => {

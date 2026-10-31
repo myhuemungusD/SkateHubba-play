@@ -39,6 +39,9 @@ export function SpotChat({ spotId, spotName, currentUserId, onError }: SpotChatP
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // Wait for the block list before showing anything, so a blocked player's
   // message can't flash on screen before the filter knows to drop it.
+  // `failed` is ignored on purpose: if the list can't load, chat shows every
+  // message (fails open) rather than going dark. Chat is opt-in and each
+  // message carries Report; the feed, a public surface, fails closed instead.
   const { blocked, ready } = useBlockedUsersState(currentUserId ?? "");
 
   // The subscription returns newest first; the thread reads oldest-to-newest

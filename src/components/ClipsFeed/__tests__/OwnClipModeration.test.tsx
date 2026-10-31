@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { OwnClipModeration } from "../OwnClipModeration";
 
@@ -68,6 +68,52 @@ describe("OwnClipModeration", () => {
     fetchOwn.mockRejectedValue(new Error("offline"));
     renderStrip(1);
     await waitFor(() => expect(fetchOwn).toHaveBeenCalledWith("me"));
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+  });
+});
+
+describe("OwnClipModeration when a refresh overtakes an older read", () => {
+  const ROW = { id: "c1", trickName: "ollie", moderation: "pending", statement: "Checking…", appealPath: null };
+
+  function holdFirstRead() {
+    const first: { resolve: (rows: unknown[]) => void; reject: (e: unknown) => void } = {
+      resolve: () => {},
+      reject: () => {},
+    };
+    fetchOwn.mockReturnValueOnce(
+      new Promise((resolve, reject) => {
+        first.resolve = resolve;
+        first.reject = reject;
+      }),
+    );
+    return first;
+  }
+
+  const strip = (refreshKey: number) => (
+    <MemoryRouter>
+      <OwnClipModeration uid="me" refreshKey={refreshKey} />
+    </MemoryRouter>
+  );
+
+  it("keeps the newer rows when the older read fails late", async () => {
+    vi.stubEnv("VITE_FEATURE_CLIP_MODERATION_ENABLED", "true");
+    const first = holdFirstRead();
+    const { rerender } = render(strip(0));
+    fetchOwn.mockResolvedValueOnce([ROW]);
+    rerender(strip(1));
+    expect(await screen.findByText("Checking…")).toBeInTheDocument();
+    await act(async () => first.reject(new Error("offline")));
+    expect(screen.getByRole("list")).toBeInTheDocument();
+  });
+
+  it("keeps the newer empty result when the older read resolves late", async () => {
+    vi.stubEnv("VITE_FEATURE_CLIP_MODERATION_ENABLED", "true");
+    const first = holdFirstRead();
+    const { rerender } = render(strip(0));
+    fetchOwn.mockResolvedValueOnce([]);
+    rerender(strip(1));
+    await waitFor(() => expect(fetchOwn).toHaveBeenCalledTimes(2));
+    await act(async () => first.resolve([ROW]));
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
 });

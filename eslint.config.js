@@ -16,6 +16,16 @@ export default tseslint.config(
       "no-empty": ["error", { allowEmptyCatch: false }],
     },
   },
+  // App code logs through src/services/logger.ts (structured output plus a
+  // PII-redacted Sentry breadcrumb), never raw console.*. Exempt: the logger
+  // itself, and trainingLabels.materialize.ts, which runs server-side in the
+  // sweep cron (no import.meta.env) and writes one JSON line per event for
+  // Vercel's log drain, matching the api/ cron convention.
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/services/logger.ts", "src/services/trainingLabels.materialize.ts"],
+    rules: { "no-console": "error" },
+  },
   // Relaxed rules for test and mock files — test code commonly uses 'any',
   // Function types, and may intentionally import without using.
   {
@@ -24,6 +34,7 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": "off",
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unsafe-function-type": "off",
+      "no-console": "off",
     },
   },
   // The one plain (non-TypeScript) browser script in the repo — loaded

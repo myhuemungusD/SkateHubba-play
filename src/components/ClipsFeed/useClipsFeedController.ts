@@ -9,7 +9,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   castClipVote,
-  fetchClipsFeed,
   fetchClipVoteState,
   removeClipVote,
   type ClipDoc,
@@ -20,12 +19,11 @@ import {
 import { trackEvent } from "../../services/analytics";
 import { logger } from "../../services/logger";
 import { parseFirebaseError } from "../../utils/helpers";
-import { useBlockedUsers } from "../../hooks/useBlockedUsers";
+import { useBlockedUsersState } from "../../hooks/useBlockedUsers";
 import { NO_VOTE, applyVote, nextVoteFor, sameVoteState, type VoteValue } from "./clipVoteMath";
-import { copyForError, errorCodeFor } from "./utils";
+import { BLOCK_LIST_ERROR, BLOCK_LIST_ERROR_CODE, copyForError, errorCodeFor } from "./utils";
 import { useLatestRef } from "./useLatestRef";
-
-const PAGE_SIZE = 12;
+import { fetchFeedPage } from "./feedPaging";
 
 export function useClipsFeedController(viewerUid: string) {
   const [sort, setSort] = useState<ClipsFeedSort>("top");
@@ -33,10 +31,8 @@ export function useClipsFeedController(viewerUid: string) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   // Pagination. `cursor` is the service's opaque "start after" token for the
-  // page we last fetched; `hasMore` flips off once a page comes back empty or
-  // adds nothing new (the 'top' index circuit breaker serves page one of
-  // 'new' regardless of cursor, so "nothing new" is the only reliable
-  // end-of-feed signal on that path).
+  // page we last fetched; `hasMore` stays on while that cursor keeps moving
+  // (see fetchFeedPage).
   const [cursor, setCursor] = useState<ClipsFeedCursor | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -49,7 +45,11 @@ export function useClipsFeedController(viewerUid: string) {
   const [voteState, setVoteState] = useState<ReadonlyMap<string, ClipVoteState>>(new Map());
   const [votingIds, setVotingIds] = useState<ReadonlySet<string>>(new Set());
 
-  const blockedUids = useBlockedUsers(viewerUid);
+  // The feed must never show a blocked player's clip, even for a frame, so
+  // it waits for the block list (same rule SpotChat follows) and treats a
+  // list that failed to load as an error with Try again, not as "nobody".
+  const block = useBlockedUsersState(viewerUid);
+  const blockedUids = block.blocked;
   const blockedUidsRef = useLatestRef<ReadonlySet<string>>(blockedUids);
   const dismissedRef = useLatestRef<ReadonlySet<string>>(dismissedClipIds);
 
@@ -95,7 +95,7 @@ export function useClipsFeedController(viewerUid: string) {
    * Hydrate vote state for a freshly-loaded pool. The service reads the
    * denormalized `upvoteCount` / `downvoteCount` off the clip docs and batches
    * the viewer's vote-doc check into a single `where(__name__, in, [...])`
-   * query — at PAGE_SIZE=12 that is 1 read total.
+   * query — at a 12-clip page that is 1 read total.
    *
    * Best-effort: a page-wide failure leaves the seeded counts and a null
    * `myVote` in place, so the tallies still render and only the viewer's own
@@ -141,13 +141,13 @@ export function useClipsFeedController(viewerUid: string) {
   // callback, never synchronously in the caller.
   const fetchPool = useCallback(
     (): Promise<void> =>
-      fetchClipsFeed(null, PAGE_SIZE, sort)
+      fetchFeedPage(null, sort, new Set())
         .then((page) => {
           if (!mountedRef.current) return;
           setPool(page.clips);
           setCurrentIndex(0);
           setCursor(page.cursor);
-          setHasMore(page.cursor !== null);
+          setHasMore(page.more);
           // Hydration is fire-and-forget — spotlight renders immediately,
           // vote counts pop in once the batch resolves.
           void hydrateVotes(page.clips);
@@ -166,12 +166,15 @@ export function useClipsFeedController(viewerUid: string) {
     [hydrateVotes, sort],
   );
 
+  // Try again also re-subscribes the block list, but only if it failed.
+  const { failed: blockFailed, retry: retryBlockList } = block;
   const loadPool = useCallback(async () => {
+    if (blockFailed) retryBlockList();
     setLoading(true);
     setError(null);
     setErrorCode(null);
     await fetchPool();
-  }, [fetchPool]);
+  }, [fetchPool, blockFailed, retryBlockList]);
 
   // Initial state is already `loading: true` with no error, so mount and
   // sort/viewer changes only need the async half.
@@ -179,10 +182,17 @@ export function useClipsFeedController(viewerUid: string) {
     void fetchPool();
   }, [fetchPool]);
 
+  // Until the block list is known, nothing is shown: the feed stays in its
+  // loading state, or shows Try again if the list failed to load.
+  const blockKnown = block.ready && !blockFailed;
+  const loadingAll = loading || !block.ready;
+  const blockError = blockFailed ? BLOCK_LIST_ERROR : null;
+  const shownError = error ?? blockError;
+
   // Filter blocked users + session-dismissed clips out on the client.
   const visibleClips = useMemo(
-    () => pool.filter((c) => !blockedUids.has(c.playerUid) && !dismissedClipIds.has(c.id)),
-    [pool, blockedUids, dismissedClipIds],
+    () => (blockKnown ? pool.filter((c) => !blockedUids.has(c.playerUid) && !dismissedClipIds.has(c.id)) : []),
+    [blockKnown, pool, blockedUids, dismissedClipIds],
   );
 
   const safeIndex = visibleClips.length === 0 ? 0 : Math.min(currentIndex, visibleClips.length - 1);
@@ -193,18 +203,19 @@ export function useClipsFeedController(viewerUid: string) {
 
   // Every clip in the page was blocked or reported. Distinct from "no clips
   // exist" — the copy and the affordance differ.
-  const exhausted = !loading && !error && pool.length > 0 && visibleClips.length === 0;
+  const exhausted = !loadingAll && !shownError && pool.length > 0 && visibleClips.length === 0;
 
   // Mirror `cursor` / `loadingMore` in refs so loadMore keeps a stable
   // identity (same reasoning as votingIdsRef above).
   const cursorRef = useLatestRef<ClipsFeedCursor | null>(cursor);
+  const poolRef = useLatestRef<readonly ClipDoc[]>(pool);
   const loadingMoreRef = useRef(false);
 
   /**
    * Fetch the next page and append it to the pool. The feed calls this when
    * the viewer swipes past the last loaded clip. Clips already in the pool
-   * are dropped so a page boundary can't repeat a row; a page that adds
-   * nothing ends the feed. The current page stays mounted.
+   * are dropped so a page boundary can't repeat a row; the feed ends
+   * when the cursor is null or stops moving. The current page stays mounted.
    */
   const loadMore = useCallback(async () => {
     const next = cursorRef.current;
@@ -212,16 +223,13 @@ export function useClipsFeedController(viewerUid: string) {
     loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
-      const page = await fetchClipsFeed(next, PAGE_SIZE, sortRef.current);
+      const page = await fetchFeedPage(next, sortRef.current, new Set(poolRef.current.map((c) => c.id)));
       if (!mountedRef.current) return;
+      setHasMore(page.more);
       setPool((prev) => {
         const seen = new Set(prev.map((c) => c.id));
         const added = page.clips.filter((c) => !seen.has(c.id));
-        if (added.length === 0) {
-          setHasMore(false);
-          return prev;
-        }
-        setHasMore(page.cursor !== null);
+        if (added.length === 0) return prev;
         // The pool is filtered (blocked / dismissed) into visibleClips, and the
         // appended clips land at its tail — so the first new visible clip sits
         // at the pre-append visible length. Computed from `prev` with the same
@@ -244,7 +252,7 @@ export function useClipsFeedController(viewerUid: string) {
       loadingMoreRef.current = false;
       if (mountedRef.current) setLoadingMore(false);
     }
-  }, [blockedUidsRef, cursorRef, dismissedRef, sortRef]);
+  }, [blockedUidsRef, cursorRef, dismissedRef, poolRef, sortRef]);
 
   const dismissClip = useCallback((clipId: string) => {
     setDismissedClipIds((prev) => {
@@ -317,9 +325,11 @@ export function useClipsFeedController(viewerUid: string) {
     // Exposed so the comment sheet can filter blocked authors out of a thread
     // without opening a second `subscribeToBlockedUsers` listener.
     blockedUids,
-    loading,
-    error,
-    errorCode,
+    loading: loadingAll,
+    /** The block list failed to load: the feed shows only its Try again banner. */
+    blockFailed,
+    error: shownError,
+    errorCode: error ? errorCode : blockError && BLOCK_LIST_ERROR_CODE,
     visibleClips,
     currentClip,
     nextClip,

@@ -1,13 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ClipsFeed } from "../ClipsFeed";
+import { useClipsFeedController } from "../ClipsFeed/useClipsFeedController";
+import { BLOCK_LIST_ERROR } from "../ClipsFeed/utils";
 import type { UserProfile } from "../../services/users";
 import type { ClipDoc } from "../../services/clips";
 import type { ClipVoteState } from "../../services/clips";
 import { deferred } from "../../__tests__/harness/deferred";
 import { makeGameClip } from "./clipFixtures.test-helpers";
 import { makeDispute } from "./disputeFixtures.test-helpers";
+import { answerBlockList, failBlockList } from "./blockList.test-helpers";
 
 const {
   mockFetchClipsFeed,
@@ -103,8 +106,11 @@ vi.mock("../../services/disputes", () => ({
   DisputeClosedError: class DisputeClosedError extends Error {},
 }));
 
-vi.mock("../../hooks/useBlockedUsers", () => ({
-  useBlockedUsers: () => new Set<string>(),
+// The real block-list hook runs over a stubbed listener: by default it
+// answers at once with nobody blocked; tests stage a failure or a list.
+const mockSubscribeToBlockedUsers = vi.hoisted(() => vi.fn());
+vi.mock("../../services/blocking", () => ({
+  subscribeToBlockedUsers: (...args: unknown[]) => mockSubscribeToBlockedUsers(...args),
 }));
 
 // Feed modes + Name It stay off unless a test flips them on.
@@ -226,15 +232,22 @@ async function reportAwayThenLoadMore(firstPage: ClipDoc[] | { clips: ClipDoc[];
   await user.click(await screen.findByRole("button", { name: /report clip by @alice/i }));
   await user.click(await screen.findByText("__submit__"));
 
-  expect(await screen.findByText(/that's everything in this batch/i)).toBeInTheDocument();
+  // Same treatment as the empty state: a heading and the primary button.
+  expect(await screen.findByRole("heading", { name: "That's everything in this batch." })).toBeInTheDocument();
+  const loadMore = screen.getByRole("button", { name: /load more clips/i });
+  expect(loadMore.className).toContain("from-brand-orange");
+  expect(loadMore.className).not.toContain("btn-secondary");
   mockFetchClipsFeed.mockResolvedValueOnce([makeClip({ id: "g2_1_set", trickName: "Tre Flip" })]);
-  await user.click(screen.getByRole("button", { name: /load more clips/i }));
+  await user.click(loadMore);
 
   await waitFor(() => expect(screen.getByText("Tre Flip")).toBeInTheDocument());
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // clearAllMocks keeps queued mockResolvedValueOnce answers; a leftover
+  // page must never leak into the next test (hesher #934 S4).
+  mockFetchClipsFeed.mockReset();
   flags.feedModes = false;
   flags.wtt = false;
   mockUseWttFeed.mockReturnValue({
@@ -250,6 +263,7 @@ beforeEach(() => {
   mockFetchOpenDisputes.mockResolvedValue([]);
   mockFetchDisputeViewerState.mockResolvedValue(new Map());
   mockCastDisputeVerdict.mockResolvedValue({ land: 0, bail: 0 });
+  mockSubscribeToBlockedUsers.mockImplementation(answerBlockList([]));
 });
 
 describe("ClipsFeed", () => {
@@ -270,7 +284,63 @@ describe("ClipsFeed", () => {
   it("renders the empty state when the page comes back empty", async () => {
     mockFetchClipsFeed.mockResolvedValueOnce([]);
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText(/No clips yet\./i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Feed's empty\. Go fill it\./i)).toBeInTheDocument());
+  });
+
+  describe("when a page comes back with no user posts but a cursor", () => {
+    const ts = { toMillis: () => Date.now() - 60_000 } as ClipDoc["createdAt"];
+    const at = (id: string) => ({ createdAt: ts, id });
+
+    it("follows the cursor on the first load instead of showing no clips", async () => {
+      mockFetchClipsFeed
+        .mockResolvedValueOnce({ clips: [], cursor: at("c1") })
+        .mockResolvedValueOnce({ clips: [makeClip({ id: "u1", trickName: "Deep" })], cursor: null });
+      render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+      expect(await screen.findByText("Deep")).toBeInTheDocument();
+      expect(mockFetchClipsFeed.mock.calls.map((c) => c[0])).toEqual([null, at("c1")]);
+    });
+
+    it("keeps paging forward on load more, and stops once the cursor is null", async () => {
+      const user = userEvent.setup();
+      mockFetchClipsFeed
+        .mockResolvedValueOnce({ clips: [makeClip({ id: "a", trickName: "TrickA" })], cursor: at("a") })
+        .mockResolvedValueOnce({ clips: [], cursor: at("c2") })
+        .mockResolvedValueOnce({ clips: [makeClip({ id: "b", trickName: "TrickB" })], cursor: null });
+      render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+      await screen.findByText("TrickA");
+
+      await user.keyboard("{ArrowDown}");
+      expect(await screen.findByText("TrickB")).toBeInTheDocument();
+      expect(mockFetchClipsFeed).toHaveBeenCalledTimes(3);
+
+      await user.keyboard("{ArrowDown}");
+      expect(mockFetchClipsFeed).toHaveBeenCalledTimes(3);
+    });
+
+    it("ends the feed when the first load's follow-ups stop on an unmoved cursor", async () => {
+      // The top-index fallback re-serves the same page: the cursor is not
+      // null but didn't move, so there is nothing more to load (M17).
+      const user = userEvent.setup();
+      mockFetchClipsFeed
+        .mockResolvedValueOnce({ clips: [], cursor: at("c1") })
+        .mockResolvedValueOnce({ clips: [makeClip({ id: "a", trickName: "TrickA" })], cursor: at("c1") });
+      render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+      await screen.findByText("TrickA");
+      expect(mockFetchClipsFeed).toHaveBeenCalledTimes(2);
+
+      await user.keyboard("{ArrowDown}");
+      await act(async () => {});
+      expect(mockFetchClipsFeed).toHaveBeenCalledTimes(2);
+    });
+
+    it("gives up after three more calls and shows the empty state", async () => {
+      for (const id of ["c1", "c2", "c3", "c4"]) {
+        mockFetchClipsFeed.mockResolvedValueOnce({ clips: [], cursor: at(id) });
+      }
+      render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+      expect(await screen.findByText(/Feed's empty\. Go fill it\./i)).toBeInTheDocument();
+      expect(mockFetchClipsFeed).toHaveBeenCalledTimes(4);
+    });
   });
 
   it("requests fetchClipsFeed with sort='top' (sample 12) on mount — top is the default", async () => {
@@ -1010,7 +1080,10 @@ describe("ClipsFeed", () => {
       makeClip({ id: "b", trickName: "TrickB", playerUid: "p2", playerUsername: "bob" }),
     ]);
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText("TrickA")).toBeInTheDocument());
+    const activeSlide = () => screen.getByRole("region", { name: "Clips" }).querySelector("[data-active='true']");
+    // Wait for the feed to settle on page 1 (its reset effect included) before
+    // scrolling, or a late reset can snap the scroll back (hesher #936 S2).
+    await waitFor(() => expect(activeSlide()).toHaveTextContent("TrickA"));
 
     const region = screen.getByRole("region", { name: "Clips" });
     expect(region.className).toContain("snap-y");
@@ -1019,15 +1092,16 @@ describe("ClipsFeed", () => {
     expect(articles[0]?.className).toContain("snap-start");
     expect(articles[0]?.className).toContain("snap-always");
 
-    Object.defineProperty(region, "clientHeight", { configurable: true, value: 640 });
-    // Accessor with a no-op setter, not a read-only value: under a loaded
-    // full run the feed's reset effect can write scrollTop = 0 after this
-    // line, and a value-only property throws on that write.
-    Object.defineProperty(region, "scrollTop", { configurable: true, get: () => 640, set: () => {} });
-    fireEvent.scroll(region);
-
-    await waitFor(() => expect(screen.getByText("TrickB")).toBeInTheDocument());
-    expect(region.querySelector("[data-active='true']")).toHaveTextContent("TrickB");
+    // Scroll the live scroller to page 2; re-fired on each retry, the way a
+    // real scroll keeps firing while the page settles.
+    await waitFor(() => {
+      const live = screen.getByRole("region", { name: "Clips" });
+      Object.defineProperty(live, "clientHeight", { configurable: true, value: 640 });
+      // Accessor with a no-op setter: the feed's reset writes scrollTop = 0.
+      Object.defineProperty(live, "scrollTop", { configurable: true, get: () => 640, set: () => {} });
+      fireEvent.scroll(live);
+      expect(activeSlide()).toHaveTextContent("TrickB");
+    });
   });
 
   it("unloads videos more than one slide away and prefetches the next clip", async () => {
@@ -1310,5 +1384,163 @@ describe("ClipsFeed — user clips and comments", () => {
     await user.click(await screen.findByRole("button", { name: /back to scroll/i }));
     expect(screen.getByRole("button", { name: "Scroll" })).toHaveAttribute("aria-pressed", "true");
     expect(mockUseWttFeed).toHaveBeenLastCalledWith("me", false);
+  });
+});
+
+/* ── Next-slide prefetch across disputes, and the Name It streak flag ── */
+
+describe("ClipsFeed dispute prefetch and streak flag", () => {
+  const prefetchedSrc = () => (document.querySelector("video[aria-hidden='true']") as HTMLVideoElement | null)?.src;
+
+  it("prefetches the next dispute's attempt, and nothing when that attempt is not a storage URL", async () => {
+    mockFetchOpenDisputes.mockResolvedValueOnce([
+      makeDispute({ id: "d1" }),
+      makeDispute({ id: "d2", matchVideoUrl: "https://firebasestorage.googleapis.com/v0/b/x/o/d2.webm?alt=media" }),
+      makeDispute({ id: "d3", matchVideoUrl: "https://evil.example/d3.webm" }),
+    ]);
+    mockFetchClipsFeed.mockResolvedValueOnce([]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+
+    await waitFor(() => expect(prefetchedSrc()).toContain("d2.webm"));
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    await waitFor(() => expect(prefetchedSrc()).toBeUndefined());
+  });
+
+  it("loads Name It on tap and never badges the open Name It tab, even with a streak due", async () => {
+    flags.feedModes = true;
+    flags.wtt = true;
+    mockUseWttFeed.mockReturnValue({
+      currentItem: null,
+      dailyCount: 0,
+      dailyLimit: 20,
+      loading: false,
+      reliability: { streakDays: 0 },
+      submitAnswer: vi.fn(),
+      skipCurrent: vi.fn(),
+    });
+    const user = userEvent.setup();
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+
+    const nameIt = await screen.findByRole("button", { name: "Name It" });
+    await user.click(nameIt);
+    expect(mockUseWttFeed).toHaveBeenLastCalledWith("me", true);
+    expect(nameIt).toHaveAttribute("aria-pressed", "true");
+    // The badge marks other tabs; the open Name It tab never badges itself.
+    expect(nameIt.querySelector("[data-mode-badge]")).toBeNull();
+  });
+});
+
+describe("ClipsFeed — block list", () => {
+  it("holds the loading skeleton until the block list has loaded", async () => {
+    mockSubscribeToBlockedUsers.mockImplementation(() => () => {});
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+
+    await waitFor(() => expect(mockFetchClipsFeed).toHaveBeenCalled());
+    await act(async () => {});
+    expect(screen.getByRole("status", { name: /loading clips/i })).toBeInTheDocument();
+    expect(screen.queryByText("Kickflip")).not.toBeInTheDocument();
+  });
+
+  it("shows a failed page's error at once, even while the block list is still pending", async () => {
+    // The error drops the skeleton, so the banner must not wait for the list:
+    // that frame would be blank (hesher #936 r2 N-a).
+    mockSubscribeToBlockedUsers.mockImplementation(() => () => {});
+    mockFetchClipsFeed.mockRejectedValueOnce(new Error("boom"));
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Couldn't load the feed/i);
+    expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: /loading clips/i })).not.toBeInTheDocument();
+  });
+
+  it("never shows a blocked player's clip", async () => {
+    mockSubscribeToBlockedUsers.mockImplementation(answerBlockList(["p1"]));
+    mockFetchClipsFeed.mockResolvedValueOnce([
+      storageClip("c1", "Kickflip"),
+      storageClip("c2", "Tre Flip", { playerUid: "p2", playerUsername: "bob" }),
+    ]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+
+    await screen.findByText("Tre Flip");
+    expect(screen.queryByText("Kickflip")).not.toBeInTheDocument();
+  });
+
+  it("hands out no clips while the block list is unknown, even once it has failed", async () => {
+    // A failed list reads as empty; the controller must not treat that as
+    // "nobody blocked" and pass the unfiltered page on.
+    mockSubscribeToBlockedUsers.mockImplementation(failBlockList);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+    const { result } = renderHook(() => useClipsFeedController(profile.uid));
+
+    await waitFor(() => expect(result.current.error).toBe(BLOCK_LIST_ERROR));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.visibleClips).toEqual([]);
+    expect(result.current.currentClip).toBeUndefined();
+  });
+
+  it("keeps the feed loading while the block list is still pending, even once the page is in", async () => {
+    mockSubscribeToBlockedUsers.mockImplementation(() => () => {});
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+    const { result } = renderHook(() => useClipsFeedController(profile.uid));
+
+    await waitFor(() => expect(mockFetchClipsFeed).toHaveBeenCalled());
+    await act(async () => {});
+    expect(result.current.loading).toBe(true);
+    expect(result.current.error).toBeNull();
+    expect(result.current.visibleClips).toEqual([]);
+  });
+
+  it("shows the block-list alert at once, even while the first page is still loading", async () => {
+    mockSubscribeToBlockedUsers.mockImplementation(failBlockList);
+    mockFetchClipsFeed.mockReturnValueOnce(deferred<ClipDoc[]>().promise);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+
+    await waitFor(() => expect(mockFetchClipsFeed).toHaveBeenCalled());
+    // Not a blank frame: the failure is known, so its banner is up.
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Couldn't load your blocked players/i);
+    expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
+  });
+
+  it("pauses the feed behind one Try again when the block list fails, then recovers", async () => {
+    const user = userEvent.setup();
+    // Both lanes subscribe on mount; both first attempts fail.
+    mockSubscribeToBlockedUsers.mockImplementationOnce(failBlockList).mockImplementationOnce(failBlockList);
+    mockFetchClipsFeed.mockResolvedValue([makeClip()]);
+    mockFetchOpenDisputes.mockResolvedValueOnce([makeDispute()]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+
+    // One banner: the dispute lane does not repeat the error as a slide, and
+    // the empty state never claims the feed is empty.
+    expect(await screen.findAllByText(/Couldn't load your blocked players/i)).toHaveLength(1);
+    expect(screen.getByText("code: block-list/unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Kickflip")).not.toBeInTheDocument();
+    expect(screen.queryByRole("article", { name: /community call/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Feed's empty/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /try again/i }));
+
+    await screen.findByText("Kickflip");
+    expect(screen.queryByText(/Couldn't load your blocked players/i)).not.toBeInTheDocument();
+    // Try again re-subscribed both lanes, not just the clips lane.
+    expect(mockSubscribeToBlockedUsers).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe("ClipsFeed — empty state", () => {
+  it("asks the player to fill the feed and opens the upload sheet from its CTA", async () => {
+    const user = userEvent.setup();
+    mockFetchClipsFeed.mockResolvedValueOnce([]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+
+    expect(await screen.findByRole("heading", { name: "Feed's empty. Go fill it." })).toBeInTheDocument();
+    expect(screen.getByText("Film a line, post it, and it shows up here for the crew.")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "upload-modal" })).not.toBeInTheDocument();
+
+    expect(screen.getByRole("button", { name: "Post a clip" }).className).toContain("from-brand-orange");
+    await user.click(screen.getByRole("button", { name: "Post a clip" }));
+    expect(await screen.findByRole("dialog", { name: "upload-modal" })).toBeInTheDocument();
   });
 });

@@ -20,6 +20,13 @@ describe("StudioDoc", () => {
     expect(d.layers).toHaveLength(MAX_LAYERS);
   });
 
+  it("falls back to the top layer when the active id no longer names a layer", () => {
+    const d = new StudioDoc();
+    const top = d.addLayer()!;
+    d.activeId = "stale-id";
+    expect(d.active.id).toBe(top.id);
+  });
+
   it("deletes, reorders, toggles and undoes structure", () => {
     const d = new StudioDoc();
     const first = d.layers[0];

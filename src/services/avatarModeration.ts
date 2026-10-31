@@ -20,6 +20,8 @@
  */
 
 import { decodeImage } from "../utils/decodeImage";
+import { errorLogFields } from "../utils/errors";
+import { logger } from "./logger";
 
 /** Outcome of `isAvatarSafe`. Score is the maximum unsafe-class probability. */
 export interface AvatarSafetyResult {
@@ -69,7 +71,7 @@ async function loadModel(): Promise<NsfwModel | null> {
   } catch (err) {
     // Fail-open: storage rules + the size/MIME pre-checks are the real
     // boundary. Surface the failure to ops without breaking the user.
-    console.warn("[avatarModeration] model_load_failed", err);
+    logger.warn("avatar_moderation_model_load_failed", errorLogFields(err));
     return null;
   }
 }
@@ -94,7 +96,7 @@ export async function isAvatarSafe(blob: Blob): Promise<AvatarSafetyResult> {
   try {
     img = await decodeImage(blob);
   } catch (err) {
-    console.warn("[avatarModeration] decode_failed", err);
+    logger.warn("avatar_moderation_decode_failed", errorLogFields(err));
     return { ok: true, score: 0 };
   }
 
@@ -102,7 +104,7 @@ export async function isAvatarSafe(blob: Blob): Promise<AvatarSafetyResult> {
   try {
     predictions = await model.classify(img);
   } catch (err) {
-    console.warn("[avatarModeration] classify_failed", err);
+    logger.warn("avatar_moderation_classify_failed", errorLogFields(err));
     return { ok: true, score: 0 };
   }
 

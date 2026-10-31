@@ -225,8 +225,11 @@ function makeClipSnap(id: string, data: Record<string, unknown>) {
   return { id, data: () => data };
 }
 
+// The public feed carries user posts only, so the feed fixtures default to
+// source "user". Game-clip coverage lives in the "user posts only" block.
 function validClipData(overrides: Record<string, unknown> = {}) {
   return {
+    source: "user",
     gameId: "g1",
     turnNumber: 2,
     role: "set",
@@ -265,8 +268,13 @@ describe("fetchClipsFeed (sort='new')", () => {
     expect(mockStartAfter).not.toHaveBeenCalled();
 
     expect(page.clips).toHaveLength(2);
-    expect(page.clips[0]).toMatchObject({ id: "g1_2_set", role: "set", playerUid: "p1", moderationStatus: "active" });
-    expect(page.clips[1]).toMatchObject({ id: "g1_2_match", role: "match", playerUid: "p2" });
+    expect(page.clips[0]).toMatchObject({
+      id: "g1_2_set",
+      source: "user",
+      playerUid: "p1",
+      moderationStatus: "active",
+    });
+    expect(page.clips[1]).toMatchObject({ id: "g1_2_match", source: "user", playerUid: "p2" });
     expect(page.cursor).toEqual({
       createdAt: expect.any(FakeTimestamp),
       id: "g1_2_match",
@@ -388,14 +396,9 @@ describe("fetchClipsFeed (sort='new')", () => {
     expect(page.clips[0].id).toBe("g1_2_set");
   });
 
-  it("filters out a doc with an invalid role", async () => {
-    mockGetDocs.mockResolvedValueOnce({
-      docs: [makeClipSnap("bad", validClipData({ role: "judge" })), makeClipSnap("g1_2_set", validClipData())],
-    });
-
-    const page = await fetchClipsFeed(null, 20, "new");
-    expect(page.clips).toHaveLength(1);
-    expect(page.clips[0].id).toBe("g1_2_set");
+  it("rejects a game clip with an invalid role", () => {
+    const bad = makeClipSnap("bad", validClipData({ source: "game", role: "judge" }));
+    expect(() => toClipDoc(bad as unknown as Parameters<typeof toClipDoc>[0])).toThrow();
   });
 
   it("filters out docs with missing or wrong-typed required fields", async () => {
@@ -426,7 +429,7 @@ describe("fetchClipsFeed (sort='new')", () => {
     mockGetDocs.mockResolvedValueOnce({
       docs: [
         makeClipSnap("g1_2_set", validClipData()),
-        { id: "g1_3_set", data: () => ({ ...validClipData(), createdAt: trailingTs, role: "judge" }) },
+        { id: "g1_3_set", data: () => ({ ...validClipData(), createdAt: trailingTs, videoUrl: 42 }) },
       ],
     });
 
@@ -1253,29 +1256,34 @@ describe("toClipDoc source variants (via fetchClipsFeed)", () => {
     });
   });
 
-  it("defaults a legacy doc with no `source` to 'game' and its counts to 0", async () => {
-    mockGetDocs.mockResolvedValueOnce({
-      docs: [makeClipSnap("legacy-1", validClipData({ upvoteCount: undefined, downvoteCount: undefined }))],
-    });
+  it("defaults a legacy doc with no `source` to 'game' and its counts to 0", () => {
+    const legacy = validClipData({ source: undefined, upvoteCount: undefined, downvoteCount: undefined });
+    const clip = toClipDoc(makeClipSnap("legacy-1", legacy) as unknown as Parameters<typeof toClipDoc>[0]);
 
-    const page = await fetchClipsFeed(null, 20, "new");
-
-    expect(page.clips[0]).toMatchObject({ source: "game", upvoteCount: 0, downvoteCount: 0, gameId: "g1" });
+    expect(clip).toMatchObject({ source: "game", upvoteCount: 0, downvoteCount: 0, gameId: "g1" });
   });
 
-  it("still drops a game-source doc missing its game coordinates", async () => {
+  it("still throws on a game-source doc missing its game coordinates", () => {
+    for (const broken of [{ gameId: undefined }, { role: undefined }, { playerUid: undefined }]) {
+      const snap = makeClipSnap("broken", validClipData({ source: "game", ...broken }));
+      expect(() => toClipDoc(snap as unknown as Parameters<typeof toClipDoc>[0])).toThrow();
+    }
+  });
+
+  it("throws on a snapshot with no data", () => {
+    const empty = { id: "gone", data: () => undefined };
+    expect(() => toClipDoc(empty as unknown as Parameters<typeof toClipDoc>[0])).toThrow(
+      "Malformed clip document: gone",
+    );
+  });
+
+  it("drops a malformed user doc without blanking the page", async () => {
     mockGetDocs.mockResolvedValueOnce({
-      docs: [
-        makeClipSnap("broken-1", validClipData({ gameId: undefined })),
-        makeClipSnap("broken-2", validClipData({ role: undefined })),
-        makeClipSnap("broken-3", validClipData({ playerUid: undefined })),
-        makeClipSnap("ok-1", validClipData()),
-      ],
+      docs: [makeClipSnap("broken-1", validClipData({ playerUid: undefined })), makeClipSnap("ok-1", validClipData())],
     });
 
     const page = await fetchClipsFeed(null, 20, "new");
 
-    // One bad doc must not blank the page — only the malformed ones drop.
     expect(page.clips.map((c) => c.id)).toEqual(["ok-1"]);
   });
 
@@ -1287,5 +1295,70 @@ describe("toClipDoc source variants (via fetchClipsFeed)", () => {
     const page = await fetchClipsFeed(null, 20, "new");
 
     expect(page.clips[0]).toMatchObject({ upvoteCount: 0, downvoteCount: 0 });
+  });
+});
+
+/* ── fetchClipsFeed: user posts only ─────────────────────── */
+
+describe("fetchClipsFeed (user posts only)", () => {
+  const gameClip = (id: string, ms: number) =>
+    makeClipSnap(id, validClipData({ source: "game", createdAt: new FakeTimestamp(ms) }));
+  const legacyClip = (id: string, ms: number) =>
+    makeClipSnap(id, validClipData({ source: undefined, createdAt: new FakeTimestamp(ms) }));
+  const userClip = (id: string, ms: number) => makeClipSnap(id, validClipData({ createdAt: new FakeTimestamp(ms) }));
+
+  it("keeps game clips and legacy clips with no source out of the feed", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [gameClip("game-1", 5), legacyClip("legacy-1", 4), userClip("user-1", 3)],
+    });
+
+    const page = await fetchClipsFeed(null, 20, "new");
+
+    expect(page.clips.map((c) => c.id)).toEqual(["user-1"]);
+    expect(mockGetDocs).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads the next window when a full page held only game clips", async () => {
+    mockGetDocs
+      .mockResolvedValueOnce({ docs: [gameClip("game-1", 9), gameClip("game-2", 8)] })
+      .mockResolvedValueOnce({ docs: [userClip("user-1", 7)] });
+
+    const page = await fetchClipsFeed(null, 2, "new");
+
+    expect(mockGetDocs).toHaveBeenCalledTimes(2);
+    // The second read starts after the last game clip, not from the top.
+    expect(mockStartAfter).toHaveBeenCalledWith(expect.any(FakeTimestamp), "game-2");
+    expect(page.clips.map((c) => c.id)).toEqual(["user-1"]);
+    expect(page.cursor).toEqual({ createdAt: expect.any(FakeTimestamp), id: "user-1" });
+  });
+
+  it("stops after four full windows of game clips and hands back a cursor to keep going", async () => {
+    mockGetDocs.mockImplementation(async () => ({ docs: [gameClip(`game-${mockGetDocs.mock.calls.length}`, 1)] }));
+
+    const page = await fetchClipsFeed(null, 1, "new");
+
+    expect(mockGetDocs).toHaveBeenCalledTimes(4);
+    expect(page.clips).toEqual([]);
+    expect(page.cursor).toEqual({ createdAt: expect.any(FakeTimestamp), id: "game-4" });
+  });
+
+  it("stops at once when a full window already has enough user clips", async () => {
+    mockGetDocs.mockResolvedValueOnce({ docs: [userClip("user-1", 2), userClip("user-2", 1)] });
+
+    const page = await fetchClipsFeed(null, 2, "new");
+
+    expect(mockGetDocs).toHaveBeenCalledTimes(1);
+    expect(page.clips).toHaveLength(2);
+  });
+
+  it("stops when a full window ends on a doc it cannot page past", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("game-1", validClipData({ source: "game", createdAt: null }))],
+    });
+
+    const page = await fetchClipsFeed(null, 1, "new");
+
+    expect(mockGetDocs).toHaveBeenCalledTimes(1);
+    expect(page).toEqual({ clips: [], cursor: null });
   });
 });
