@@ -2,17 +2,24 @@ export function GoogleButton({
   onClick,
   loading,
   disabled = false,
+  shape = "default",
 }: {
   onClick: () => void;
   loading: boolean;
   disabled?: boolean;
+  /** "flat": Landing v2 (52px tall, 6px radius, no shadow, chalk focus ring). */
+  shape?: "default" | "flat";
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={loading || disabled}
-      className="group w-full flex items-center justify-center gap-3 rounded-xl bg-white text-[#1f1f1f] font-body text-sm font-semibold py-3.5 px-6 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] hover:bg-[#f5f5f5] shadow-[0_1px_3px_rgba(0,0,0,0.12)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.15)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+      className={`group w-full flex items-center justify-center gap-3 bg-white text-[#1f1f1f] font-body font-semibold px-6 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] hover:bg-[#f5f5f5] focus-visible:outline-2 focus-visible:outline-offset-2 ${
+        shape === "flat"
+          ? "h-[52px] rounded-ct text-base transition-[background-color,scale] duration-[120ms] ease-ct focus-visible:outline-ct-chalk"
+          : "rounded-xl text-sm py-3.5 transition-all duration-200 shadow-[0_1px_3px_rgba(0,0,0,0.12)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.15)] focus-visible:outline-brand-orange"
+      }`}
     >
       {loading ? (
         <div className="w-5 h-5 border-2 border-[#ddd] border-t-[#4285F4] rounded-full animate-spin" />

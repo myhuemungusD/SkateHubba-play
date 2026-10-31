@@ -38,6 +38,7 @@ import {
   isClosetStudioEnabled,
   isMapCheckinsEnabled,
   isTipsEnabled,
+  isLandingV2Enabled,
 } from "./lib/featureFlags";
 import { startCheckinQueue } from "./services/mapCheckins";
 import { PresenceRunner } from "./components/presence/PresenceRunner";
@@ -955,6 +956,7 @@ function AppRoutes() {
       <ConsentBanner
         onNav={nav.setScreen}
         liftAboveNav={Boolean(auth.activeProfile) && isBottomNavScreen(nav.screen)}
+        variant={nav.screen === "landing" && isLandingV2Enabled() ? "bar" : "card"}
       />
       {analyticsAllowed && (
         <>

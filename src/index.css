@@ -116,6 +116,26 @@
 
   /* ── Transition timing ───────────────────────────── */
   --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ── Concrete & Tape (Landing v2, VITE_FEATURE_LANDING_V2) ──
+     Prefixed `ct-` so no other screen changes: the plain names (line,
+     line-strong) already mean something else above. Only LandingV2* files
+     and their scoped variants use these. */
+  --color-ct-ink: #0e0e0d;
+  --color-ct-concrete: #1a1a18;
+  --color-ct-curb: #242421;
+  --color-ct-line: #2e2c29;
+  --color-ct-line-strong: #6b665f;
+  --color-ct-chalk: #f2efe8;
+  --color-ct-dust: #a8a49b;
+  --color-ct-ash: #8a867e;
+  --color-ct-hubba: #ff6b00;
+  --color-ct-hubba-hover: #ff8533;
+  --color-ct-landed: #3ddc84;
+  --color-ct-bail: #ff4d3d;
+  --radius-ct: 6px;
+  --radius-ct-media: 2px;
+  --ease-ct: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @layer base {

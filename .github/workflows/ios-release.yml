@@ -183,6 +183,8 @@ jobs:
           # Share button on the Clips feed rail stays off until it ships post-launch
           # (matches ci_post_clone.sh for Xcode Cloud).
           VITE_FEATURE_FEED_SHARE: "false"
+          # Landing v2 redesign is web only; the app keeps the reviewed landing.
+          VITE_FEATURE_LANDING_V2: "false"
           # Tester build only: What's That Trick ("wtt" input).
           VITE_FEATURE_WTT_ENABLED: ${{ inputs.wtt && 'true' || 'false' }}
           # Map key required now that Map is public (and for testers).

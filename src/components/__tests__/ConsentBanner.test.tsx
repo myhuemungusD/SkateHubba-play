@@ -121,3 +121,34 @@ describe("ConsentBanner bottom clearance", () => {
     }
   });
 });
+
+describe("ConsentBanner bar variant (Landing v2)", () => {
+  it("renders a slim bar with equal Accept and Decline", () => {
+    render(<ConsentBanner onNav={vi.fn()} variant="bar" />);
+    const region = screen.getByRole("region", { name: /analytics notice/i });
+    expect(region).toHaveAttribute("data-variant", "bar");
+    const accept = screen.getByRole("button", { name: "Accept" });
+    const decline = screen.getByRole("button", { name: "Decline" });
+    expect(accept.className).toBe(decline.className);
+  });
+
+  it("stores accept from the bar", async () => {
+    render(<ConsentBanner onNav={vi.fn()} variant="bar" />);
+    await userEvent.click(screen.getByRole("button", { name: "Accept" }));
+    expect(localStorage.getItem("sh_analytics_consent")).toBe("accepted");
+    expect(screen.queryByRole("region", { name: /analytics notice/i })).not.toBeInTheDocument();
+  });
+
+  it("stores decline from the bar", async () => {
+    render(<ConsentBanner onNav={vi.fn()} variant="bar" />);
+    await userEvent.click(screen.getByRole("button", { name: "Decline" }));
+    expect(localStorage.getItem("sh_analytics_consent")).toBe("declined");
+  });
+
+  it("opens the privacy policy from the bar", async () => {
+    const onNav = vi.fn();
+    render(<ConsentBanner onNav={onNav} variant="bar" />);
+    await userEvent.click(screen.getByRole("button", { name: /Privacy\sPolicy/ }));
+    expect(onNav).toHaveBeenCalledWith("privacy");
+  });
+});

@@ -332,3 +332,13 @@ export function isRandomChallengerEnabled(): boolean {
 export function isFeedShareEnabled(): boolean {
   return flagOn(import.meta.env.VITE_FEATURE_FEED_SHARE);
 }
+
+/**
+ * Landing v2 "Concrete & Tape" redesign (src/screens/LandingV2.tsx). Web only:
+ * the iOS/Android shell always shows the current landing (the one App Review
+ * saw), even if the env var is set by mistake. Literal "true" only; off by
+ * default; tester override turns it on on the web.
+ */
+export function isLandingV2Enabled(): boolean {
+  return !isNativeShell() && flagOn(import.meta.env.VITE_FEATURE_LANDING_V2);
+}
