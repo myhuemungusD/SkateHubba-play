@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 import { Capacitor } from "@capacitor/core";
 import { initSentry, captureException, addBreadcrumb } from "./lib/sentry";
+import { scrubBreadcrumb, scrubEvent } from "./lib/sentryScrub";
 import { initPosthogOnConsent } from "./lib/posthog";
 import { captureInstallPrompt } from "./lib/installPrompt";
 import { installToolbarOverlay } from "./lib/toolbarOverlay";
@@ -44,16 +45,6 @@ const APP_RELEASE =
   (import.meta.env.VITE_GIT_SHA as string | undefined) ||
   undefined;
 
-// Regex listing param names we must never ship to Sentry. Match is
-// case-insensitive and anchored only to a leading boundary (?, &, or start)
-// so it won't accidentally eat substrings of unrelated keys.
-const PII_PARAM_RE =
-  /([?&;]|^)(email|token|api[_-]?key|access[_-]?token|id[_-]?token|auth|authorization|password|phone|otp|verification[_-]?code)=([^&#]*)/gi;
-
-function scrubUrl(url: string): string {
-  return url.replace(PII_PARAM_RE, (_match, sep: string, key: string) => `${sep}${key}=[REDACTED]`);
-}
-
 // Initialise Sentry only when a DSN is provided (set VITE_SENTRY_DSN in
 // Vercel → Project Settings → Environment Variables).
 // initSentry() dynamically imports @sentry/react so the SDK is never
@@ -76,37 +67,13 @@ if (import.meta.env.VITE_SENTRY_DSN) {
       // backs the "PII scrubbing: Done" status — beforeSend below is the
       // belt-and-braces for anything that still slips through.
       sendDefaultPii: false,
-      // Strip PII from breadcrumbs / event data. We scrub both the request URL
-      // and any breadcrumb data.url since a reported event often carries
-      // navigation history (fetch, history.pushState) picked up automatically
-      // by the browser integrations — those are a more common PII leak than
-      // the report URL itself.
-      beforeSend(event) {
-        if (event.request?.url) {
-          event.request.url = scrubUrl(event.request.url);
-        }
-        // Drop request headers/cookies wholesale — these can carry auth
-        // tokens, session cookies, and the user's IP via forwarding headers.
-        // We never need them for triage, so strip rather than scrub.
-        if (event.request) {
-          delete event.request.headers;
-          delete event.request.cookies;
-        }
-        // Scrub identifying user fields. sendDefaultPii=false already keeps the
-        // SDK from auto-populating these, but setUser() (src/lib/sentry.ts) can
-        // still attach them, so redact explicitly here.
-        if (event.user) {
-          delete event.user.email;
-          delete event.user.ip_address;
-        }
-        if (event.breadcrumbs) {
-          for (const crumb of event.breadcrumbs) {
-            const url = crumb.data?.url;
-            if (typeof url === "string") crumb.data!.url = scrubUrl(url);
-          }
-        }
-        return event;
-      },
+      // Strip PII and URL tokens (src/lib/sentryScrub.ts). Crumbs are
+      // scrubbed as they are recorded, since the browser integrations pick up
+      // console lines, fetches and navigation that can carry either; events
+      // get their request, user, message, exception text, extras, contexts and
+      // tags scrubbed.
+      beforeBreadcrumb: scrubBreadcrumb,
+      beforeSend: scrubEvent,
     }),
   );
 }
