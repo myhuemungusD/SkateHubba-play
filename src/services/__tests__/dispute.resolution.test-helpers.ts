@@ -12,7 +12,7 @@ import type { GameDoc } from "../games.mappers";
 export const DISPUTE_NOW = 1_700_000_000_000;
 
 /** Minimal Timestamp-like stub: the helpers never read turnDeadline/reviewDeadline. */
-export function stubTs(): GameDoc["turnDeadline"] {
+function stubTs(): GameDoc["turnDeadline"] {
   return { toMillis: () => 0 } as unknown as GameDoc["turnDeadline"];
 }
 

@@ -18,6 +18,8 @@ import { TrainingConsentPrompt } from "../components/TrainingConsentPrompt";
 import { LevelChip } from "../components/LevelChip";
 import { isXpEnabled } from "../lib/featureFlags";
 import { useLevelUpMoment } from "../hooks/useLevelUpMoment";
+import { logger } from "../services/logger";
+import { errorLogFields } from "../utils/errors";
 
 export function GameOverScreen({
   game,
@@ -103,7 +105,7 @@ export function GameOverScreen({
       .catch((err) => {
         // Transient failures fail closed — the card is optional and the
         // game-over screen stays usable.
-        console.warn("dispute_result_fetch_failed", err);
+        logger.warn("dispute_result_fetch_failed", { gameId: game.id, ...errorLogFields(err) });
       });
     return () => {
       active = false;
@@ -257,16 +259,6 @@ export function GameOverScreen({
             />
           </div>
         )}
-
-        {/* WTT GameOver post flow (implementation pending):
-         * When VITE_FEATURE_POST_MAKES_ENABLED=true:
-         * - Show "Post your makes" section here
-         * - Filter turnHistory for landed tricks (where current user was matcher && landed=true)
-         * - Check both players have trainingConsentOptedIn=true
-         * - Offer one-tap publish with pre-checked checkboxes
-         * - Submit to clips collection (requires copying video from game storage to userClips/ storage)
-         * See: https://github.com/myhuemungusD/SkateHubba-play/pull/715 § GameOver post flow
-         */}
 
         <div className="flex flex-col gap-3 w-full">
           {hasTurns && (

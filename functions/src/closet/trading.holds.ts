@@ -44,7 +44,7 @@ async function readHold(
 }
 
 /** Release one held trade. Returns the new status, or null when not due. */
-export async function releaseHold(db: ClosetDb, tradeId: string, nowMs: number): Promise<string | null> {
+async function releaseHold(db: ClosetDb, tradeId: string, nowMs: number): Promise<string | null> {
   return db.runTransaction(async (tx) => {
     const trade = (await tx.get(paths.trade(tradeId))).data;
     const releaseAt = toMillis(trade?.releaseAt);

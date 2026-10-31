@@ -12,7 +12,7 @@ import { RecordFigure } from "../RecordFigure";
 export const MEDAL_TEXT = ["text-brand-orange", "text-bright", "text-dim"] as const;
 
 /** "4 / 6 won · 67% win rate", or "· New. Needs 5 games." before the rate counts. Every figure is labelled. */
-export function LeaderboardStat({ player, className = "" }: { player: UserProfile; className?: string }) {
+function LeaderboardStat({ player, className = "" }: { player: UserProfile; className?: string }) {
   const games = totalGames(player.wins, player.losses);
   const rate = ratedWinRate(player.wins, player.losses);
   return (

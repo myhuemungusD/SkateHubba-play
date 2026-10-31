@@ -1,6 +1,8 @@
 import { useEffect, type RefObject } from "react";
 import { MeshStandardMaterial, SRGBColorSpace, TextureLoader, type Group, type Texture } from "three";
 import { customBoardGraphicUrl, customLogoDecalUrl } from "../artSlots";
+import { logger } from "../../services/logger";
+import { errorLogFields } from "../../utils/errors";
 
 function applyMap(root: Group, name: string, texture: Texture): boolean {
   const mesh = root.getObjectByName(name);
@@ -46,7 +48,7 @@ export function useCustomBoardArt(root: RefObject<Group | null>): void {
           if (applyMap(group, name, texture)) textures.push(texture);
         })
         .catch((error: unknown) => {
-          console.warn("Runner custom art failed to load", error);
+          logger.warn("runner_custom_art_load_failed", errorLogFields(error));
         });
     }
 

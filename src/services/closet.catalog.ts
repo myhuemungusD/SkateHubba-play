@@ -7,14 +7,14 @@ import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { parseFirebaseError } from "../utils/helpers";
 import { logger } from "./logger";
-import { toDateOrNull } from "./closet.time";
+import { toDateOrNull } from "./firestoreDate";
 
-export type Rarity = "common" | "uncommon" | "rare" | "limited" | "grail";
-export type Slot = "head" | "top" | "bottom" | "shoes" | "deck" | "accessory";
-export type EditionKind = "open" | "limited" | "one_of_one";
+type Rarity = "common" | "uncommon" | "rare" | "limited" | "grail";
+type Slot = "head" | "top" | "bottom" | "shoes" | "deck" | "accessory";
+type EditionKind = "open" | "limited" | "one_of_one";
 export type Source = "earn" | "drop" | "pro_signature" | "event" | "shop";
 
-export interface Edition {
+interface Edition {
   kind: EditionKind;
   supply: number | null;
   minted: number;

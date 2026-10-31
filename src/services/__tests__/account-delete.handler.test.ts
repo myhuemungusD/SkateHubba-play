@@ -406,6 +406,34 @@ describe("admin bootstrap", () => {
     );
   });
 
+  it("boots from a hand-pasted service account (expanded \\n) and logs the repair", async () => {
+    // A key pasted into the Vercel UI often arrives with its \\n escapes turned
+    // into real line breaks. Deletion must still work, the PEM handed to cert()
+    // must be the repaired one, and the repair must be logged (never the key).
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = VALID_SERVICE_ACCOUNT.replace(/\\n/g, "\n");
+    const out = await call();
+    expect(out.code).toBe(200);
+    const sa = h.certMock.mock.calls.at(-1)?.[0] as { privateKey: string };
+    expect(sa.privateKey).toBe("-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n");
+    const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(lines).toContain(JSON.stringify({ event: "service_account_json_repaired" }));
+    expect(lines.join("\n")).not.toContain("PRIVATE KEY");
+  });
+
+  it("keeps its admin app across warm invocations (one init, same bucket)", async () => {
+    const handler = await loadHandler();
+    for (let i = 0; i < 2; i++) {
+      const { res, out } = makeAccountRes(true);
+      await handler(makeAccountReq({ method: "POST", authorization: AUTH }), res);
+      expect(out.code).toBe(200);
+    }
+    expect(h.initializeAppMock).toHaveBeenCalledTimes(1);
+    expect(h.cascadeMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ bucketName: "demo.firebasestorage.app" }),
+      TOKEN_UID,
+    );
+  });
+
   it("refuses to erase when no bucket name can be resolved", async () => {
     // A warm app initialized elsewhere (the crons initialize without a
     // storageBucket) plus no env override. Erasing with an empty bucket would

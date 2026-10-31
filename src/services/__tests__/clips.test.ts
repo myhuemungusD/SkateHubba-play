@@ -77,17 +77,15 @@ vi.mock("../../firebase");
 import {
   writeLandedClipsInTransaction,
   fetchClipsFeed,
-  upvoteClip,
-  removeUpvote,
-  fetchClipUpvoteState,
-  AlreadyUpvotedError,
-  NotUpvotedError,
-  SelfUpvoteError,
+  castClipVote,
+  removeClipVote,
+  fetchClipVoteState,
   _resetTopIndexCircuitBreaker,
   type LandedClipContext,
   type ClipsFeedCursor,
 } from "../clips";
 import { toClipDoc } from "../clips.mappers";
+import { AlreadyVotedError, NotVotedError, SelfVoteError } from "../clips.votes";
 // Not mocked: the orphan-cleanup path logs through the real logger, so the
 // test spies on the exported object to assert the event name it emits.
 import { logger } from "../logger";
@@ -227,8 +225,11 @@ function makeClipSnap(id: string, data: Record<string, unknown>) {
   return { id, data: () => data };
 }
 
+// The public feed carries user posts only, so the feed fixtures default to
+// source "user". Game-clip coverage lives in the "user posts only" block.
 function validClipData(overrides: Record<string, unknown> = {}) {
   return {
+    source: "user",
     gameId: "g1",
     turnNumber: 2,
     role: "set",
@@ -267,8 +268,13 @@ describe("fetchClipsFeed (sort='new')", () => {
     expect(mockStartAfter).not.toHaveBeenCalled();
 
     expect(page.clips).toHaveLength(2);
-    expect(page.clips[0]).toMatchObject({ id: "g1_2_set", role: "set", playerUid: "p1", moderationStatus: "active" });
-    expect(page.clips[1]).toMatchObject({ id: "g1_2_match", role: "match", playerUid: "p2" });
+    expect(page.clips[0]).toMatchObject({
+      id: "g1_2_set",
+      source: "user",
+      playerUid: "p1",
+      moderationStatus: "active",
+    });
+    expect(page.clips[1]).toMatchObject({ id: "g1_2_match", source: "user", playerUid: "p2" });
     expect(page.cursor).toEqual({
       createdAt: expect.any(FakeTimestamp),
       id: "g1_2_match",
@@ -390,14 +396,9 @@ describe("fetchClipsFeed (sort='new')", () => {
     expect(page.clips[0].id).toBe("g1_2_set");
   });
 
-  it("filters out a doc with an invalid role", async () => {
-    mockGetDocs.mockResolvedValueOnce({
-      docs: [makeClipSnap("bad", validClipData({ role: "judge" })), makeClipSnap("g1_2_set", validClipData())],
-    });
-
-    const page = await fetchClipsFeed(null, 20, "new");
-    expect(page.clips).toHaveLength(1);
-    expect(page.clips[0].id).toBe("g1_2_set");
+  it("rejects a game clip with an invalid role", () => {
+    const bad = makeClipSnap("bad", validClipData({ source: "game", role: "judge" }));
+    expect(() => toClipDoc(bad as unknown as Parameters<typeof toClipDoc>[0])).toThrow();
   });
 
   it("filters out docs with missing or wrong-typed required fields", async () => {
@@ -428,7 +429,7 @@ describe("fetchClipsFeed (sort='new')", () => {
     mockGetDocs.mockResolvedValueOnce({
       docs: [
         makeClipSnap("g1_2_set", validClipData()),
-        { id: "g1_3_set", data: () => ({ ...validClipData(), createdAt: trailingTs, role: "judge" }) },
+        { id: "g1_3_set", data: () => ({ ...validClipData(), createdAt: trailingTs, videoUrl: 42 }) },
       ],
     });
 
@@ -745,9 +746,9 @@ describe("fetchClipsFeed (failed-precondition fallback)", () => {
   });
 });
 
-/* ── upvoteClip ────────────────────────────────── */
+/* ── castClipVote (upvote) ─────────────────────── */
 
-describe("upvoteClip", () => {
+describe("castClipVote (upvote)", () => {
   type ObservedTx = {
     set: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
@@ -757,7 +758,7 @@ describe("upvoteClip", () => {
   /**
    * Wires `mockRunTransaction` to capture and return the Transaction stub
    * the service body sees. The service issues two `tx.get` calls — one for
-   * the vote doc (drives the AlreadyUpvotedError branch) and one for the
+   * the vote doc (drives the AlreadyVotedError branch) and one for the
    * clip doc (drives the post-tx return count). The mock differentiates by
    * the ref's `__path` prefix produced by the firestore mockDoc helper.
    */
@@ -814,7 +815,7 @@ describe("upvoteClip", () => {
   it("writes the vote inside a transaction and returns the post-increment count from the in-tx clip read", async () => {
     captureTxOnce(false, 6);
 
-    const count = await upvoteClip("me", "g1_2_set");
+    const { upvoteCount: count } = await castClipVote("me", "g1_2_set", 1);
 
     // Returned count is current+1, derived from the in-transaction read —
     // no follow-up aggregate query was needed.
@@ -826,7 +827,7 @@ describe("upvoteClip", () => {
   it("writes the literal post-increment count to the clip aggregate (not increment(1))", async () => {
     const cap = captureTxOnce(false, 1);
 
-    await upvoteClip("me", "g1_2_set");
+    await castClipVote("me", "g1_2_set", 1);
 
     // Both writes must land on the same Transaction object — that's what
     // makes the aggregate consistent with the votes underneath.
@@ -853,7 +854,7 @@ describe("upvoteClip", () => {
     // than crashing or writing NaN.
     const cap = captureTxOnce(false, 0);
     let count = 0;
-    count = await upvoteClip("me", "g1_2_set");
+    ({ upvoteCount: count } = await castClipVote("me", "g1_2_set", 1));
     expect(count).toBe(1);
     const [, clipPayload] = cap.observed().update.mock.calls[0];
     expect(clipPayload).toEqual({ upvoteCount: 1 });
@@ -865,7 +866,7 @@ describe("upvoteClip", () => {
     // requires `upvoteCount is int`, so a NaN write would be rejected at
     // the server. Coerce to 0 in code so the literal write is always int.
     const cap = captureTxOnce(false, "non-numeric");
-    const count = await upvoteClip("me", "g1_2_set");
+    const { upvoteCount: count } = await castClipVote("me", "g1_2_set", 1);
     expect(count).toBe(1);
     const [, clipPayload] = cap.observed().update.mock.calls[0];
     expect(clipPayload).toEqual({ upvoteCount: 1 });
@@ -877,7 +878,7 @@ describe("upvoteClip", () => {
     // defensive branch — clip docs are written inside the parent game's
     // transaction so they should always exist by the time anyone votes.
     const cap = captureTxOnce(false, "no-clip-doc");
-    const count = await upvoteClip("me", "g1_2_set");
+    const { upvoteCount: count } = await castClipVote("me", "g1_2_set", 1);
     expect(count).toBe(1);
     const [, clipPayload] = cap.observed().update.mock.calls[0];
     expect(clipPayload).toEqual({ upvoteCount: 1 });
@@ -886,30 +887,30 @@ describe("upvoteClip", () => {
   it("does not bump upvoteCount when the user has already upvoted (error path)", async () => {
     const cap = captureTxOnce(true);
 
-    await expect(upvoteClip("me", "g1_2_set")).rejects.toBeInstanceOf(AlreadyUpvotedError);
+    await expect(castClipVote("me", "g1_2_set", 1)).rejects.toBeInstanceOf(AlreadyVotedError);
     const tx = cap.observed();
     expect(tx.set).not.toHaveBeenCalled();
     expect(tx.update).not.toHaveBeenCalled();
   });
 
-  it("throws AlreadyUpvotedError when the vote doc already exists", async () => {
+  it("throws AlreadyVotedError when the vote doc already exists", async () => {
     captureTxOnce(true);
-    await expect(upvoteClip("me", "g1_2_set")).rejects.toBeInstanceOf(AlreadyUpvotedError);
+    await expect(castClipVote("me", "g1_2_set", 1)).rejects.toBeInstanceOf(AlreadyVotedError);
   });
 
-  it("converts a permission-denied rejection into AlreadyUpvotedError", async () => {
+  it("converts a permission-denied rejection into AlreadyVotedError", async () => {
     mockRunTransaction.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
 
-    await expect(upvoteClip("me", "g1_2_set")).rejects.toBeInstanceOf(AlreadyUpvotedError);
+    await expect(castClipVote("me", "g1_2_set", 1)).rejects.toBeInstanceOf(AlreadyVotedError);
   });
 
-  it("throws SelfUpvoteError without writing when the caller owns the clip", async () => {
+  it("throws SelfVoteError without writing when the caller owns the clip", async () => {
     // The clipVotes create rule does NOT reject a vote on your own clip, so
     // this service guard is the canonical block against inflating your own
     // count. The clip doc's playerUid matches the upvoter here.
     const cap = captureTxOnce(false, 3, "me");
 
-    await expect(upvoteClip("me", "g1_2_set")).rejects.toBeInstanceOf(SelfUpvoteError);
+    await expect(castClipVote("me", "g1_2_set", 1)).rejects.toBeInstanceOf(SelfVoteError);
 
     // No vote doc, no count bump — the guard fires before either write.
     const tx = cap.observed();
@@ -917,22 +918,22 @@ describe("upvoteClip", () => {
     expect(tx.update).not.toHaveBeenCalled();
   });
 
-  it("re-throws SelfUpvoteError verbatim rather than masking it as AlreadyUpvotedError", async () => {
-    // The catch block must let SelfUpvoteError pass through untouched — a
+  it("re-throws SelfVoteError verbatim rather than masking it as AlreadyVotedError", async () => {
+    // The catch block must let SelfVoteError pass through untouched — a
     // self-upvote is a distinct business state from a duplicate upvote.
     captureTxOnce(false, 0, "me");
-    await expect(upvoteClip("me", "g1_2_set")).rejects.toThrow(/^self_vote:g1_2_set$/);
+    await expect(castClipVote("me", "g1_2_set", 1)).rejects.toThrow(/^self_vote:g1_2_set$/);
   });
 
   it("propagates unexpected transaction errors", async () => {
     mockRunTransaction.mockRejectedValueOnce(new Error("unavailable"));
-    await expect(upvoteClip("me", "g1_2_set")).rejects.toThrow(/unavailable/);
+    await expect(castClipVote("me", "g1_2_set", 1)).rejects.toThrow(/unavailable/);
   });
 });
 
-/* ── fetchClipUpvoteState ──────────────────────── */
+/* ── fetchClipVoteState ────────────────────────── */
 
-describe("fetchClipUpvoteState", () => {
+describe("fetchClipVoteState", () => {
   function clip(
     id: string,
     upvoteCount: number,
@@ -940,9 +941,10 @@ describe("fetchClipUpvoteState", () => {
   ): {
     id: string;
     upvoteCount: number;
+    downvoteCount: number;
     playerUid: string;
   } {
-    return { id, upvoteCount, playerUid };
+    return { id, upvoteCount, downvoteCount: 0, playerUid };
   }
 
   function voteSnap(voteIds: string[]) {
@@ -951,7 +953,7 @@ describe("fetchClipUpvoteState", () => {
         id: vid,
         data: () => {
           // vote id is `${uid}_${clipId}` — strip the uid prefix to recover
-          // the clip id stored on the doc body (mirrors upvoteClip's write).
+          // the clip id stored on the doc body (mirrors castClipVote's write).
           const sep = vid.indexOf("_");
           return { uid: vid.slice(0, sep), clipId: vid.slice(sep + 1) };
         },
@@ -960,7 +962,7 @@ describe("fetchClipUpvoteState", () => {
   }
 
   it("returns an empty Map when no clips are passed (no Firestore reads)", async () => {
-    const map = await fetchClipUpvoteState("me", []);
+    const map = await fetchClipVoteState("me", []);
     expect(map.size).toBe(0);
     expect(mockGetDocs).not.toHaveBeenCalled();
   });
@@ -970,45 +972,45 @@ describe("fetchClipUpvoteState", () => {
     // returning only the vote docs that exist for this viewer.
     mockGetDocs.mockResolvedValueOnce(voteSnap(["me_c1"])); // viewer upvoted c1, not c2/c3
 
-    const map = await fetchClipUpvoteState("me", [clip("c1", 3), clip("c2", 0), clip("c3", 11)]);
+    const map = await fetchClipVoteState("me", [clip("c1", 3), clip("c2", 0), clip("c3", 11)]);
 
     expect(mockGetDocs).toHaveBeenCalledTimes(1);
     expect(mockWhere).toHaveBeenCalledWith({ __documentId: true }, "in", ["me_c1", "me_c2", "me_c3"]);
 
-    expect(map.get("c1")).toEqual({ count: 3, alreadyUpvoted: true });
-    expect(map.get("c2")).toEqual({ count: 0, alreadyUpvoted: false });
-    expect(map.get("c3")).toEqual({ count: 11, alreadyUpvoted: false });
+    expect(map.get("c1")).toEqual({ upvoteCount: 3, downvoteCount: 0, myVote: 1 });
+    expect(map.get("c2")).toEqual({ upvoteCount: 0, downvoteCount: 0, myVote: null });
+    expect(map.get("c3")).toEqual({ upvoteCount: 11, downvoteCount: 0, myVote: null });
   });
 
   it("filters out the viewer's own clips before issuing any read (rule disallows self-upvote)", async () => {
     mockGetDocs.mockResolvedValueOnce(voteSnap([]));
 
-    const map = await fetchClipUpvoteState("me", [clip("own", 5, "me"), clip("other", 9, "you")]);
+    const map = await fetchClipVoteState("me", [clip("own", 5, "me"), clip("other", 9, "you")]);
 
     // Own clip never enters the result map — its count would be misleading
     // because the viewer can never upvote it. Hydration is skipped entirely.
     expect(map.has("own")).toBe(false);
-    expect(map.get("other")).toEqual({ count: 9, alreadyUpvoted: false });
+    expect(map.get("other")).toEqual({ upvoteCount: 9, downvoteCount: 0, myVote: null });
     // Only the non-self clip's vote id should be batched.
     expect(mockWhere).toHaveBeenCalledWith({ __documentId: true }, "in", ["me_other"]);
   });
 
   it("issues no reads when every supplied clip is owned by the viewer", async () => {
-    const map = await fetchClipUpvoteState("me", [clip("a", 1, "me"), clip("b", 2, "me")]);
+    const map = await fetchClipVoteState("me", [clip("a", 1, "me"), clip("b", 2, "me")]);
     expect(map.size).toBe(0);
     expect(mockGetDocs).not.toHaveBeenCalled();
   });
 
-  it("falls back to seeded {count, alreadyUpvoted=false} when the batched read fails (no per-clip blanking)", async () => {
+  it("falls back to the seeded counts with myVote=null when the batched read fails (no per-clip blanking)", async () => {
     // Whole-batch failure: counts still come from the denormalized field
     // on the clip docs, so the UI continues to render accurate vote totals
     // even when the viewer's vote-doc lookup is rejected.
     mockGetDocs.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
 
-    const map = await fetchClipUpvoteState("me", [clip("c1", 4), clip("c2", 7)]);
+    const map = await fetchClipVoteState("me", [clip("c1", 4), clip("c2", 7)]);
 
-    expect(map.get("c1")).toEqual({ count: 4, alreadyUpvoted: false });
-    expect(map.get("c2")).toEqual({ count: 7, alreadyUpvoted: false });
+    expect(map.get("c1")).toEqual({ upvoteCount: 4, downvoteCount: 0, myVote: null });
+    expect(map.get("c2")).toEqual({ upvoteCount: 7, downvoteCount: 0, myVote: null });
   });
 
   it("ignores vote docs whose data.clipId is missing or non-string (defensive against malformed writes)", async () => {
@@ -1026,12 +1028,12 @@ describe("fetchClipUpvoteState", () => {
       ],
     });
 
-    const map = await fetchClipUpvoteState("me", [clip("c1", 5), clip("c2", 8)]);
+    const map = await fetchClipVoteState("me", [clip("c1", 5), clip("c2", 8)]);
 
     // Both requested clips fall through to the seeded not-upvoted state
     // because the malformed vote docs above can't be safely attributed.
-    expect(map.get("c1")).toEqual({ count: 5, alreadyUpvoted: false });
-    expect(map.get("c2")).toEqual({ count: 8, alreadyUpvoted: false });
+    expect(map.get("c1")).toEqual({ upvoteCount: 5, downvoteCount: 0, myVote: null });
+    expect(map.get("c2")).toEqual({ upvoteCount: 8, downvoteCount: 0, myVote: null });
     // The unknown clip never gets injected into the result map.
     expect(map.has("unknown")).toBe(false);
   });
@@ -1041,18 +1043,18 @@ describe("fetchClipUpvoteState", () => {
     const clips = Array.from({ length: 35 }, (_, i) => clip(`c${i}`, i));
     mockGetDocs.mockResolvedValueOnce(voteSnap([])).mockResolvedValueOnce(voteSnap([]));
 
-    const map = await fetchClipUpvoteState("me", clips);
+    const map = await fetchClipVoteState("me", clips);
 
     expect(mockGetDocs).toHaveBeenCalledTimes(2);
     // Spot-check: every clip got an entry, all default to not-upvoted.
     expect(map.size).toBe(35);
-    expect(map.get("c34")).toEqual({ count: 34, alreadyUpvoted: false });
+    expect(map.get("c34")).toEqual({ upvoteCount: 34, downvoteCount: 0, myVote: null });
   });
 });
 
-/* ── removeUpvote ──────────────────────────────── */
+/* ── removeClipVote ────────────────────────────── */
 
-describe("removeUpvote", () => {
+describe("removeClipVote", () => {
   type RemoveTx = {
     get: ReturnType<typeof vi.fn>;
     delete: ReturnType<typeof vi.fn>;
@@ -1071,7 +1073,7 @@ describe("removeUpvote", () => {
   type Attempt = { vote: boolean; clip: ClipDisk };
 
   /**
-   * Drive `mockRunTransaction` for removeUpvote. The service reads the vote
+   * Drive `mockRunTransaction` for removeClipVote. The service reads the vote
    * doc and the clip doc in one `Promise.all`, so the stub answers by the
    * ref's `__path` prefix (produced by the firestore mockDoc helper).
    *
@@ -1113,7 +1115,7 @@ describe("removeUpvote", () => {
   it("deletes the vote and writes the decremented literal count in the same transaction", async () => {
     const cap = wireTx([{ vote: true, clip: { upvoteCount: 5 } }]);
 
-    const count = await removeUpvote("me", "g1_2_set");
+    const { upvoteCount: count } = await removeClipVote("me", "g1_2_set");
 
     // Post-write count comes from the in-tx read — no follow-up aggregate query.
     expect(count).toBe(4);
@@ -1134,20 +1136,20 @@ describe("removeUpvote", () => {
     // the smallest value that may still be decremented legally.
     const cap = wireAttempt(true, { upvoteCount: 1 });
 
-    await expect(removeUpvote("me", "g1_2_set")).resolves.toBe(0);
+    await expect(removeClipVote("me", "g1_2_set")).resolves.toMatchObject({ upvoteCount: 0 });
 
     const [tx] = cap.txs();
     expect(tx.update).toHaveBeenCalledWith(expect.anything(), { upvoteCount: 0 });
     expect(mockDeleteDoc).not.toHaveBeenCalled();
   });
 
-  it("throws NotUpvotedError without writing anything when the caller has no vote", async () => {
+  it("throws NotVotedError without writing anything when the caller has no vote", async () => {
     const cap = wireAttempt(false, { upvoteCount: 4 });
 
-    const err: unknown = await removeUpvote("me", "g1_2_set").catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(NotUpvotedError);
+    const err: unknown = await removeClipVote("me", "g1_2_set").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(NotVotedError);
     // Callers key off the clipId to advance the feed past the un-upvoted clip.
-    expect((err as NotUpvotedError).clipId).toBe("g1_2_set");
+    expect((err as NotVotedError).clipId).toBe("g1_2_set");
     expect((err as Error).message).toBe("not_voted:g1_2_set");
 
     const [tx] = cap.txs();
@@ -1166,7 +1168,7 @@ describe("removeUpvote", () => {
   ])("returns 0 and cleans the vote up after the transaction when the count is $label", async ({ clip }) => {
     const cap = wireAttempt(true, clip);
 
-    await expect(removeUpvote("me", "g1_2_set")).resolves.toBe(0);
+    await expect(removeClipVote("me", "g1_2_set")).resolves.toMatchObject({ upvoteCount: 0 });
 
     // Nothing inside the transaction: a -1 write would be rejected by the
     // rule's `upvoteCount >= 0` guard and strand the vote doc forever.
@@ -1187,7 +1189,7 @@ describe("removeUpvote", () => {
     mockDeleteDoc.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
     wireAttempt(true, { upvoteCount: 0 });
 
-    await expect(removeUpvote("me", "g1_2_set")).resolves.toBe(0);
+    await expect(removeClipVote("me", "g1_2_set")).resolves.toMatchObject({ upvoteCount: 0 });
 
     expect(warn).toHaveBeenCalledWith(
       "clip_vote_orphan_delete_failed",
@@ -1207,7 +1209,7 @@ describe("removeUpvote", () => {
       { vote: true, clip: { upvoteCount: 2 } },
     ]);
 
-    await expect(removeUpvote("me", "g1_2_set")).resolves.toBe(1);
+    await expect(removeClipVote("me", "g1_2_set")).resolves.toMatchObject({ upvoteCount: 1 });
 
     const [, retry] = cap.txs();
     expect(retry.delete).toHaveBeenCalledTimes(1);
@@ -1254,29 +1256,34 @@ describe("toClipDoc source variants (via fetchClipsFeed)", () => {
     });
   });
 
-  it("defaults a legacy doc with no `source` to 'game' and its counts to 0", async () => {
-    mockGetDocs.mockResolvedValueOnce({
-      docs: [makeClipSnap("legacy-1", validClipData({ upvoteCount: undefined, downvoteCount: undefined }))],
-    });
+  it("defaults a legacy doc with no `source` to 'game' and its counts to 0", () => {
+    const legacy = validClipData({ source: undefined, upvoteCount: undefined, downvoteCount: undefined });
+    const clip = toClipDoc(makeClipSnap("legacy-1", legacy) as unknown as Parameters<typeof toClipDoc>[0]);
 
-    const page = await fetchClipsFeed(null, 20, "new");
-
-    expect(page.clips[0]).toMatchObject({ source: "game", upvoteCount: 0, downvoteCount: 0, gameId: "g1" });
+    expect(clip).toMatchObject({ source: "game", upvoteCount: 0, downvoteCount: 0, gameId: "g1" });
   });
 
-  it("still drops a game-source doc missing its game coordinates", async () => {
+  it("still throws on a game-source doc missing its game coordinates", () => {
+    for (const broken of [{ gameId: undefined }, { role: undefined }, { playerUid: undefined }]) {
+      const snap = makeClipSnap("broken", validClipData({ source: "game", ...broken }));
+      expect(() => toClipDoc(snap as unknown as Parameters<typeof toClipDoc>[0])).toThrow();
+    }
+  });
+
+  it("throws on a snapshot with no data", () => {
+    const empty = { id: "gone", data: () => undefined };
+    expect(() => toClipDoc(empty as unknown as Parameters<typeof toClipDoc>[0])).toThrow(
+      "Malformed clip document: gone",
+    );
+  });
+
+  it("drops a malformed user doc without blanking the page", async () => {
     mockGetDocs.mockResolvedValueOnce({
-      docs: [
-        makeClipSnap("broken-1", validClipData({ gameId: undefined })),
-        makeClipSnap("broken-2", validClipData({ role: undefined })),
-        makeClipSnap("broken-3", validClipData({ playerUid: undefined })),
-        makeClipSnap("ok-1", validClipData()),
-      ],
+      docs: [makeClipSnap("broken-1", validClipData({ playerUid: undefined })), makeClipSnap("ok-1", validClipData())],
     });
 
     const page = await fetchClipsFeed(null, 20, "new");
 
-    // One bad doc must not blank the page — only the malformed ones drop.
     expect(page.clips.map((c) => c.id)).toEqual(["ok-1"]);
   });
 
@@ -1288,5 +1295,70 @@ describe("toClipDoc source variants (via fetchClipsFeed)", () => {
     const page = await fetchClipsFeed(null, 20, "new");
 
     expect(page.clips[0]).toMatchObject({ upvoteCount: 0, downvoteCount: 0 });
+  });
+});
+
+/* ── fetchClipsFeed: user posts only ─────────────────────── */
+
+describe("fetchClipsFeed (user posts only)", () => {
+  const gameClip = (id: string, ms: number) =>
+    makeClipSnap(id, validClipData({ source: "game", createdAt: new FakeTimestamp(ms) }));
+  const legacyClip = (id: string, ms: number) =>
+    makeClipSnap(id, validClipData({ source: undefined, createdAt: new FakeTimestamp(ms) }));
+  const userClip = (id: string, ms: number) => makeClipSnap(id, validClipData({ createdAt: new FakeTimestamp(ms) }));
+
+  it("keeps game clips and legacy clips with no source out of the feed", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [gameClip("game-1", 5), legacyClip("legacy-1", 4), userClip("user-1", 3)],
+    });
+
+    const page = await fetchClipsFeed(null, 20, "new");
+
+    expect(page.clips.map((c) => c.id)).toEqual(["user-1"]);
+    expect(mockGetDocs).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads the next window when a full page held only game clips", async () => {
+    mockGetDocs
+      .mockResolvedValueOnce({ docs: [gameClip("game-1", 9), gameClip("game-2", 8)] })
+      .mockResolvedValueOnce({ docs: [userClip("user-1", 7)] });
+
+    const page = await fetchClipsFeed(null, 2, "new");
+
+    expect(mockGetDocs).toHaveBeenCalledTimes(2);
+    // The second read starts after the last game clip, not from the top.
+    expect(mockStartAfter).toHaveBeenCalledWith(expect.any(FakeTimestamp), "game-2");
+    expect(page.clips.map((c) => c.id)).toEqual(["user-1"]);
+    expect(page.cursor).toEqual({ createdAt: expect.any(FakeTimestamp), id: "user-1" });
+  });
+
+  it("stops after four full windows of game clips and hands back a cursor to keep going", async () => {
+    mockGetDocs.mockImplementation(async () => ({ docs: [gameClip(`game-${mockGetDocs.mock.calls.length}`, 1)] }));
+
+    const page = await fetchClipsFeed(null, 1, "new");
+
+    expect(mockGetDocs).toHaveBeenCalledTimes(4);
+    expect(page.clips).toEqual([]);
+    expect(page.cursor).toEqual({ createdAt: expect.any(FakeTimestamp), id: "game-4" });
+  });
+
+  it("stops at once when a full window already has enough user clips", async () => {
+    mockGetDocs.mockResolvedValueOnce({ docs: [userClip("user-1", 2), userClip("user-2", 1)] });
+
+    const page = await fetchClipsFeed(null, 2, "new");
+
+    expect(mockGetDocs).toHaveBeenCalledTimes(1);
+    expect(page.clips).toHaveLength(2);
+  });
+
+  it("stops when a full window ends on a doc it cannot page past", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("game-1", validClipData({ source: "game", createdAt: null }))],
+    });
+
+    const page = await fetchClipsFeed(null, 1, "new");
+
+    expect(mockGetDocs).toHaveBeenCalledTimes(1);
+    expect(page).toEqual({ clips: [], cursor: null });
   });
 });

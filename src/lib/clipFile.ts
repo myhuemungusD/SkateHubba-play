@@ -10,7 +10,7 @@ const EXTENSIONS: Record<string, string> = {
   "video/webm": "webm",
 };
 
-export const DEFAULT_CLIP_MIME = "video/mp4";
+const DEFAULT_CLIP_MIME = "video/mp4";
 
 export function clipFileType(blobType: string | undefined): { mime: string; ext: string } {
   const mime = (blobType ?? "").split(";")[0].trim().toLowerCase();

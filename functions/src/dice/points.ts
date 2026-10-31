@@ -13,8 +13,8 @@
  */
 import { cloResolve } from "./clo.js";
 
-export const CLO_POINTS = { fourFiveSix: 3, trips: 2, point: 1, bail: 1 } as const;
-export const CRAPS_POINTS = { natural: 1, made: 2, hard: 3 } as const;
+const CLO_POINTS = { fourFiveSix: 3, trips: 2, point: 1, bail: 1 } as const;
+const CRAPS_POINTS = { natural: 1, made: 2, hard: 3 } as const;
 
 /** Points a C-Lo hand earns when it wins the round. */
 export function cloHandPoints(dice: readonly number[]): number {

@@ -28,10 +28,12 @@
  *   • Dry-run: `?dryRun=1` (or DRY_RUN=1) logs intended forfeits, writes nothing.
  */
 
-import { cert, getApps, initializeApp, type App, type ServiceAccount } from "firebase-admin/app";
-import { getFirestore, FieldValue, Timestamp, type Firestore } from "firebase-admin/firestore";
-import { matchesCronSecret } from "./_cronAuth.js";
-import { describeInitFailure, parseServiceAccountJson } from "./_serviceAccount.js";
+import type { App } from "firebase-admin/app";
+import { FieldValue, Timestamp, type Firestore } from "firebase-admin/firestore";
+import { adminAppFromEnv, adminFirestore } from "./_adminApp.js";
+import { isAuthorized, isDryRun, type CronRequest, type CronResponse } from "./_cronRequest.js";
+import { describeInitFailure } from "./_serviceAccount.js";
+import { dispatchAdminPush, notifyId, NOTIFICATIONS_COLLECTION, writeAdminLandedClip } from "./_referee.js";
 // Relative imports in this file's traced graph need explicit .js extensions:
 // Vercel compiles each file separately (no bundling) and the ESM loader does
 // not do extension resolution. Extensionless specifiers crash the function at
@@ -41,9 +43,6 @@ import { toGameDoc, type GameDoc } from "../../src/services/games.mappers.js";
 import { applyTrainingLabelPending, materializeTrainingLabels } from "../../src/services/trainingLabels.materialize.js";
 import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
 import { safeErrorCode } from "../_safeError.js";
-
-/** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
-const FIRESTORE_DB_NAME = "skatehubba";
 
 /** Max games to process per invocation. The cron repeats every 15 minutes. */
 const MAX_PER_RUN = 100;
@@ -55,18 +54,6 @@ const MAX_PER_RUN = 100;
  * still expire on turnDeadline, so they stay in the query.
  */
 const SWEEP_PHASES = ["setting", "matching", "disputable", "setReview"] as const;
-
-/** Minimal request/response shape — avoids a hard dep on @vercel/node types. */
-interface CronRequest {
-  method?: string;
-  headers: Record<string, string | string[] | undefined>;
-  query?: Record<string, string | string[] | undefined>;
-  url?: string;
-}
-interface CronResponse {
-  status: (code: number) => CronResponse;
-  json: (body: unknown) => void;
-}
 
 interface SweepSummary {
   scanned: number;
@@ -88,58 +75,10 @@ interface SweepSummary {
 
 let cachedApp: App | null = null;
 
-/**
- * Lazily initialize firebase-admin from a service-account JSON in env. Cached
- * across warm invocations. Throws (caught by the handler) if the env is
- * missing or malformed so the misconfiguration surfaces as a 500, not a
- * silent no-op.
- */
+/** Cached across warm invocations; see ./_adminApp.ts. */
 function getAdminFirestore(): Firestore {
-  if (!cachedApp) {
-    const existing = getApps();
-    if (existing.length > 0) {
-      cachedApp = existing[0];
-    } else {
-      const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-      if (!raw) {
-        throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is not set");
-      }
-      // Tolerates known hand-paste damage (expanded \n escapes, smart
-      // quotes) and throws on anything unparseable or missing a field.
-      const { account, repaired } = parseServiceAccountJson(raw);
-      if (repaired) {
-        // Expected error path: the stored env value is damaged but
-        // recoverable. Announce it on every cold start so the
-        // misconfiguration gets fixed instead of silently absorbed forever.
-        console.warn(JSON.stringify({ event: "service_account_json_repaired" }));
-      }
-      const serviceAccount: ServiceAccount = account;
-      cachedApp = initializeApp({ credential: cert(serviceAccount) });
-    }
-  }
-  // getFirestore(app, databaseId) targets the named "skatehubba" database, not
-  // the project's (default) database.
-  return getFirestore(cachedApp, FIRESTORE_DB_NAME);
-}
-
-/**
- * Constant-time bearer check against CRON_SECRET, fail-closed. The comparison
- * lives in ./_cronAuth.ts (shared by every cron); this only picks the header
- * value off the Node request.
- */
-function isAuthorized(req: CronRequest): boolean {
-  const header = req.headers["authorization"] ?? req.headers["Authorization"];
-  return matchesCronSecret(Array.isArray(header) ? header[0] : header);
-}
-
-function isDryRun(req: CronRequest): boolean {
-  if (process.env.DRY_RUN === "1" || process.env.DRY_RUN === "true") return true;
-  const q = req.query?.["dryRun"];
-  const value = Array.isArray(q) ? q[0] : q;
-  if (value === "1" || value === "true") return true;
-  // Fall back to parsing the raw URL when the platform didn't pre-parse query.
-  if (req.url && /[?&]dryRun=(1|true)\b/.test(req.url)) return true;
-  return false;
+  cachedApp ??= adminAppFromEnv();
+  return adminFirestore(cachedApp);
 }
 
 /**
@@ -165,55 +104,6 @@ export function toAdminGameUpdate(update: ForfeitGameUpdate): Record<string, unk
   if (update.appendTurnRecord !== undefined) out.turnHistory = FieldValue.arrayUnion(update.appendTurnRecord);
   applyTrainingLabelPending(out, update.appendTurnRecord);
   return out;
-}
-
-/** Build the landed-clip doc id — mirrors clipId() in clips.mappers.ts. */
-function clipId(gameId: string, turnNumber: number, role: "set" | "match"): string {
-  return `${gameId}_${turnNumber}_${role}`;
-}
-
-/** Collection the in-app notification feed reads — mirrors notifications.ts. */
-const NOTIFICATIONS_COLLECTION = "notifications";
-/** Token mirror + dispatch collections — mirror pushDispatch.ts constants. */
-const PUSH_TARGETS_COLLECTION = "pushTargets";
-const PUSH_DISPATCH_COLLECTION = "push_dispatch";
-/** Per-dispatch token cap — mirrors MAX_TOKENS_PER_DISPATCH in pushDispatch.ts. */
-const MAX_TOKENS_PER_DISPATCH = 10;
-/** User-visible string caps — mirror pushDispatch.ts. */
-const MAX_TITLE_LEN = 80;
-const MAX_BODY_LEN = 200;
-
-function truncate(value: string, max: number): string {
-  return value.length > max ? value.slice(0, max) : value;
-}
-
-/**
- * Deterministic "your turn" notification doc id for a given resolved turn.
- * Keying on (gameId, turnNumber, kind) makes the notification write idempotent:
- * a re-run of the sweep over the same (now already-resolved) turn would no-op
- * anyway via decideExpiredForfeit, but a deterministic id is belt-and-braces in
- * case two overlapping invocations both read the still-expired doc.
- */
-function notifyId(gameId: string, turnNumber: number, kind: string): string {
-  return `${gameId}_${turnNumber}_${kind}_notify`;
-}
-
-/** Mirror of buildDispatchDoc in pushDispatch.ts, using the admin SDK. */
-function buildAdminDispatchDoc(
-  n: { senderUid: string; recipientUid: string; type: string; title: string; body: string },
-  gameId: string,
-  tokens: string[],
-): Record<string, unknown> {
-  return {
-    tokens,
-    notification: { title: truncate(n.title, MAX_TITLE_LEN), body: truncate(n.body, MAX_BODY_LEN) },
-    data: { gameId, type: n.type, click_action: `/?game=${gameId}` },
-    senderUid: n.senderUid,
-    recipientUid: n.recipientUid,
-    gameId,
-    type: n.type,
-    createdAt: FieldValue.serverTimestamp(),
-  };
 }
 
 /** What one swept game produced — drives the post-tx push fan-out. */
@@ -256,35 +146,28 @@ async function sweepOneGame(db: Firestore, gameId: string, nowMs: number, dryRun
     if (decision.landedClips) {
       const c = decision.landedClips;
       const createdAt = FieldValue.serverTimestamp();
+      const clip = { gameId: c.gameId, turnNumber: c.turnNumber, trickName: c.trickName, spotId: c.spotId };
       if (c.setVideoUrl) {
-        tx.set(db.collection("clips").doc(clipId(c.gameId, c.turnNumber, "set")), {
-          gameId: c.gameId,
-          turnNumber: c.turnNumber,
-          role: "set",
-          playerUid: c.setterUid,
-          playerUsername: c.setterUsername,
-          trickName: c.trickName,
-          videoUrl: c.setVideoUrl,
-          spotId: c.spotId,
-          moderationStatus: "active",
-          upvoteCount: 0,
+        writeAdminLandedClip(
+          tx,
+          db,
+          { ...clip, role: "set", playerUid: c.setterUid, playerUsername: c.setterUsername, videoUrl: c.setVideoUrl },
           createdAt,
-        });
+        );
       }
       if (c.matcherLanded && c.matchVideoUrl) {
-        tx.set(db.collection("clips").doc(clipId(c.gameId, c.turnNumber, "match")), {
-          gameId: c.gameId,
-          turnNumber: c.turnNumber,
-          role: "match",
-          playerUid: c.matcherUid,
-          playerUsername: c.matcherUsername,
-          trickName: c.trickName,
-          videoUrl: c.matchVideoUrl,
-          spotId: c.spotId,
-          moderationStatus: "active",
-          upvoteCount: 0,
+        writeAdminLandedClip(
+          tx,
+          db,
+          {
+            ...clip,
+            role: "match",
+            playerUid: c.matcherUid,
+            playerUsername: c.matcherUsername,
+            videoUrl: c.matchVideoUrl,
+          },
           createdAt,
-        });
+        );
       }
     }
 
@@ -310,37 +193,6 @@ async function sweepOneGame(db: Firestore, gameId: string, nowMs: number, dryRun
 
     return { forfeited: true, push: n };
   });
-}
-
-/**
- * Fire the OS-level push for a server-written notification, AFTER the game tx
- * committed. Reads the recipient's token mirror and writes a /push_dispatch doc
- * api/cron/drain-push-dispatch.ts drains. Best-effort: no tokens → no-op; any
- * failure is logged and swallowed so push health never fails the sweep.
- */
-async function dispatchAdminPush(
-  db: Firestore,
-  gameId: string,
-  n: { senderUid: string; recipientUid: string; type: string; title: string; body: string },
-): Promise<void> {
-  try {
-    const targetSnap = await db.collection(PUSH_TARGETS_COLLECTION).doc(n.recipientUid).get();
-    const raw = targetSnap.exists ? (targetSnap.data() as { tokens?: unknown }).tokens : undefined;
-    const tokens = (Array.isArray(raw) ? raw : [])
-      .filter((t): t is string => typeof t === "string" && t.length > 0)
-      .slice(0, MAX_TOKENS_PER_DISPATCH);
-    if (tokens.length === 0) return;
-    await db.collection(PUSH_DISPATCH_COLLECTION).add(buildAdminDispatchDoc(n, gameId, tokens));
-  } catch (err) {
-    console.warn(
-      JSON.stringify({
-        event: "sweep_push_failed",
-        gameId,
-        code: safeErrorCode(err),
-      }),
-    );
-    captureServerError("sweep_push_failed", err, { gameId }, { level: "warning" });
-  }
 }
 
 /* ────────────────────────────────────────────
@@ -421,7 +273,7 @@ async function emitAdminNotification(
   });
   batch.update(db.collection("games").doc(gameId), tombstone);
   await batch.commit();
-  await dispatchAdminPush(db, gameId, n);
+  await dispatchAdminPush(db, gameId, n, "sweep_push_failed");
 }
 
 /**
@@ -731,7 +583,7 @@ async function handler(req: CronRequest, res: CronResponse): Promise<void> {
         else summary.skipped += 1;
         // Fan out the OS push after the game tx committed. Skipped under
         // dry-run (push is null) and for plain forfeit (no next turn).
-        if (push) await dispatchAdminPush(db, docSnap.id, push);
+        if (push) await dispatchAdminPush(db, docSnap.id, push, "sweep_push_failed");
       } catch (err) {
         summary.errors += 1;
         console.warn(

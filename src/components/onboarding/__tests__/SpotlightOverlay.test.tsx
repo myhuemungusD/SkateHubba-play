@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { SpotlightOverlay } from "../SpotlightOverlay";
 
 /**
@@ -22,8 +22,30 @@ const installIO = (factory: IOFactory) => {
 };
 
 afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
   document.body.innerHTML = "";
 });
+
+/**
+ * Queue animation frames instead of letting jsdom run them on its own clock,
+ * so a test decides exactly when the overlay's rAF-deferred measurement and
+ * retry run. Without this, whether those frames fire before a synchronous test
+ * ends depends on machine speed, and so does the file's branch coverage.
+ */
+function captureFrames() {
+  const frames: FrameRequestCallback[] = [];
+  const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+    frames.push(cb);
+    return frames.length;
+  });
+  vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+  const flush = () =>
+    act(() => {
+      for (const cb of frames.splice(0)) cb(0);
+    });
+  return { raf, flush };
+}
 
 beforeEach(() => {
   installIO(() => ({
@@ -81,14 +103,41 @@ describe("SpotlightOverlay", () => {
   });
 
   it("does NOT paint a highlight when the selector matches an element with zero size", () => {
+    const { flush } = captureFrames();
     mountTarget("ghost", { top: 0, left: 0, width: 0, height: 0 });
     renderOverlay({ targetSelector: '[data-tutorial="ghost"]' });
+    flush();
     expect(screen.queryByTestId("spotlight-cutout")).toBeNull();
   });
 
+  it("paints a highlight for a zero-width element that still has height", () => {
+    const { flush } = captureFrames();
+    mountTarget("rule", { top: 10, left: 20, width: 0, height: 30 });
+    renderOverlay({ targetSelector: '[data-tutorial="rule"]' });
+    flush();
+    const cutout = screen.getByTestId("spotlight-cutout");
+    expect(cutout.style.width).toBe("16px");
+    expect(cutout.style.height).toBe("46px");
+  });
+
   it("does NOT paint a highlight when selector matches nothing", () => {
+    const { flush } = captureFrames();
     renderOverlay({ targetSelector: '[data-tutorial="missing"]' });
+    flush();
     expect(screen.queryByTestId("spotlight-cutout")).toBeNull();
+  });
+
+  it("measures once per frame however many scroll and resize events arrive", () => {
+    const { raf, flush } = captureFrames();
+    mountTarget("busy", { top: 0, left: 0, width: 10, height: 10 });
+    renderOverlay({ targetSelector: '[data-tutorial="busy"]' });
+    const framesAfterMount = raf.mock.calls.length;
+    window.dispatchEvent(new Event("scroll"));
+    window.dispatchEvent(new Event("resize"));
+    expect(raf.mock.calls.length).toBe(framesAfterMount);
+    flush();
+    window.dispatchEvent(new Event("scroll"));
+    expect(raf.mock.calls.length).toBe(framesAfterMount + 1);
   });
 
   it("is non-blocking (pointer-events none on the root frame so the page stays interactive)", () => {
@@ -142,9 +191,11 @@ describe("SpotlightOverlay", () => {
   it("fires onAnchorMissing after the watchdog window when the target never intersects", async () => {
     vi.useFakeTimers();
     mountTarget("offscreen", { top: 0, left: 0, width: 10, height: 10 });
-    // IO never reports an intersection.
-    installIO(() => ({
-      observe: () => undefined,
+    // IO only ever reports the target as outside the viewport.
+    installIO((cb) => ({
+      observe: (el) => {
+        cb([{ isIntersecting: false, target: el } as unknown as IntersectionObserverEntry], {} as IntersectionObserver);
+      },
       unobserve: () => undefined,
       disconnect: () => undefined,
     }));
@@ -172,6 +223,44 @@ describe("SpotlightOverlay", () => {
     vi.advanceTimersByTime(2000);
     expect(onAnchorMissing).not.toHaveBeenCalled();
     vi.useRealTimers();
+  });
+
+  describe("when the target mounts after the overlay", () => {
+    function renderBeforeTarget(isIntersecting: boolean) {
+      vi.useFakeTimers();
+      const { flush } = captureFrames();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      installIO((cb) => ({
+        observe: (el) => {
+          cb([{ isIntersecting, target: el } as unknown as IntersectionObserverEntry], {} as IntersectionObserver);
+        },
+        unobserve: () => undefined,
+        disconnect: () => undefined,
+      }));
+      const onAnchorMissing = vi.fn();
+      renderOverlay({ targetSelector: '[data-tutorial="late"]', onAnchorMissing });
+      mountTarget("late", { top: 0, left: 0, width: 10, height: 10 });
+      flush();
+      act(() => {
+        vi.advanceTimersByTime(1500);
+      });
+      return { onAnchorMissing, warn };
+    }
+
+    it("stays quiet when the retried observer sees it intersect", () => {
+      const { onAnchorMissing, warn } = renderBeforeTarget(true);
+      expect(onAnchorMissing).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("reports no-intersect, not no-element, when it never comes into view", () => {
+      const { onAnchorMissing, warn } = renderBeforeTarget(false);
+      expect(onAnchorMissing).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith("[WARN]", "tutorial_step_anchor_missing", {
+        reason: "no-intersect",
+        selector: '[data-tutorial="late"]',
+      });
+    });
   });
 });
 

@@ -15,7 +15,7 @@
 import { addBreadcrumb } from "../lib/sentry";
 import { redactPII } from "../utils/pii";
 
-export type LogLevel = "debug" | "info" | "warn" | "error";
+type LogLevel = "debug" | "info" | "warn" | "error";
 
 interface LogEntry {
   level: LogLevel;

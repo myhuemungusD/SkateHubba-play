@@ -29,8 +29,8 @@ beforeEach(() => {
 describe("ProPicks", () => {
   it("opens to featured clips and lets a player enter a challenge", async () => {
     h.listFeaturedClips.mockResolvedValue([
-      { clipId: "f1", proUid: "p", proUsername: "mike", videoUrl: "v", trickName: "kf" },
-      { clipId: "f2", proUid: "p", proUsername: "mike", videoUrl: null, trickName: "" },
+      { clipId: "f1", proUid: "p", proUsername: "mike", videoUrl: "v", trickName: "kf", userClip: true },
+      { clipId: "f2", proUid: "p", proUsername: "mike", videoUrl: null, trickName: "", userClip: true },
     ]);
     h.listChallenges.mockResolvedValue([
       { id: "c1", proUid: "p", proUsername: "mike", trickName: "tre", description: "flat ground" },
@@ -42,6 +42,8 @@ describe("ProPicks", () => {
     fireEvent.click(screen.getByRole("button", { name: /PRO PICKS/ }));
     expect(screen.getByText("Loading…")).toBeInTheDocument();
     expect(await screen.findByLabelText("kf")).toBeInTheDocument();
+    // Pro Picks sits on the feed: it asks the service for user posts only.
+    expect(h.listFeaturedClips).toHaveBeenCalledWith({ userPostsOnly: true });
     expect(screen.getByText("flat ground")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Your clip for tre"), { target: { value: "m1" } });
     fireEvent.click(screen.getAllByRole("button", { name: "ENTER" })[0]);

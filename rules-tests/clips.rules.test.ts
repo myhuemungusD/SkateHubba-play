@@ -11,7 +11,7 @@
  *
  * Run via:  npm run test:rules
  */
-import { describe, it, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import {
   initializeTestEnvironment,
   assertSucceeds,
@@ -21,7 +21,21 @@ import {
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { doc, setDoc, deleteDoc, getDoc, runTransaction, serverTimestamp, setLogLevel } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  setDoc,
+  deleteDoc,
+  getDoc,
+  getDocs,
+  limit,
+  query,
+  runTransaction,
+  serverTimestamp,
+  setLogLevel,
+  where,
+} from "firebase/firestore";
+import { proSpotsConstraints } from "../src/services/proSpotsQuery";
 
 const PROJECT_ID = "demo-skatehubba-rules-clips";
 
@@ -204,6 +218,51 @@ describe("clips — read", () => {
     await assertSucceeds(getDoc(clipRef(asP1(), id)));
     const admin = testEnv.authenticatedContext("admin-1", { email_verified: true, admin: true });
     await assertSucceeds(getDoc(clipRef(admin, id)));
+  });
+
+  // The pro profile's spot list (fetchProSpots) runs this query for any
+  // visitor. A list query must be provable from its own filters, so it needs
+  // the moderationStatus filter for a non-owner (hesher #936 S1).
+  describe("pro spots query", () => {
+    // The service's own query (src/services/proSpotsQuery.ts), so a change
+    // there is tested here too.
+    const proSpots = (ctx: RulesTestContext) =>
+      getDocs(query(collection(ctx.firestore(), "clips"), ...proSpotsConstraints(P1_UID)));
+    // Deliberately the same query minus its moderationStatus filter: the
+    // variant a visitor must not be able to run.
+    const withoutStatus = (ctx: RulesTestContext) =>
+      getDocs(
+        query(
+          collection(ctx.firestore(), "clips"),
+          where("playerUid", "==", P1_UID),
+          where("source", "==", "user"),
+          limit(60),
+        ),
+      );
+
+    beforeEach(async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        const post = { source: "user", gameId: null, turnNumber: null, role: null, videoUrl: VALID_VIDEO_URL };
+        await setDoc(doc(ctx.firestore(), "clips", "post-active"), makeValidClip(post));
+        await setDoc(
+          doc(ctx.firestore(), "clips", "post-hidden"),
+          makeValidClip({ ...post, moderationStatus: "hidden" }),
+        );
+      });
+    });
+
+    it("a visitor CAN list a player's active posts", async () => {
+      const snap = await assertSucceeds(proSpots(asStranger()));
+      expect(snap.docs.map((d) => d.id)).toEqual(["post-active"]);
+    });
+
+    it("a visitor CANNOT run the query without the moderationStatus filter", async () => {
+      await assertFails(withoutStatus(asStranger()));
+    });
+
+    it("the owner can still list their own posts without it", async () => {
+      await assertSucceeds(withoutStatus(asP1()));
+    });
   });
 });
 
@@ -566,7 +625,7 @@ describe("clips — upvoteCount aggregate (paired delta only)", () => {
 });
 
 /* ────────────────────────────────────────────
- * removeUpvote() write shapes (src/services/clips.upvotes.ts)
+ * removeClipVote() write shapes (src/services/clips.votes.ts)
  *
  * The un-upvote service emits exactly two write sets. Both are covered
  * here so a future rules edit can't silently break the withdraw path:
@@ -583,7 +642,7 @@ describe("clips — upvoteCount aggregate (paired delta only)", () => {
  * user's vote is destroyed while the count stays inflated.
  * ──────────────────────────────────────────── */
 
-describe("clipVotes — standalone delete (removeUpvote drift path)", () => {
+describe("clipVotes — standalone delete (removeClipVote drift path)", () => {
   const VOTER_UID = "voter-uid";
 
   function voteDocRef(ctx: RulesTestContext, voterUid: string, clipId: string) {
@@ -593,7 +652,7 @@ describe("clipVotes — standalone delete (removeUpvote drift path)", () => {
   const seedVote = seedVoteDoc;
 
   it("the voter CAN delete their own vote doc alone when the count is already 0", async () => {
-    // Drift path: upvoteCount is at its floor, so removeUpvote skips the
+    // Drift path: upvoteCount is at its floor, so removeClipVote skips the
     // clip update entirely and issues a bare vote delete.
     const id = await seedClip({ upvoteCount: 0 });
     await seedVote(id, VOTER_UID);
@@ -657,7 +716,7 @@ describe("clips — un-upvote atomicity (rejected update must not strand the vot
   });
 
   it("a -1 on a LEGACY clip lacking upvoteCount is rejected (0 - 1 < 0)", async () => {
-    // Why removeUpvote must treat a missing count as the drift path rather
+    // Why removeClipVote must treat a missing count as the drift path rather
     // than decrementing: the rule defaults the field to 0, so -1 trips the
     // `upvoteCount >= 0` floor and the whole transaction fails.
     const id = deterministicId();

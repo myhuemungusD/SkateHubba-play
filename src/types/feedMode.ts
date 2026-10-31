@@ -5,8 +5,6 @@
 
 export type FeedMode = "scroll" | "name-it" | "vote" | "judge";
 
-export const FEED_MODES: readonly FeedMode[] = ["scroll", "name-it", "vote", "judge"] as const;
-
 export const FEED_MODE_LABELS: Record<FeedMode, string> = {
   scroll: "Scroll",
   "name-it": "Name It",

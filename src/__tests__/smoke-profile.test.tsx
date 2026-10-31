@@ -124,15 +124,7 @@ describe("Smoke: Profile Setup", () => {
     await userEvent.click(screen.getByText("Lock It In"));
 
     await waitFor(() => {
-      expect(users.refs.createProfile).toHaveBeenCalledWith(
-        "u1",
-        "newsk8r",
-        "Regular",
-        false,
-        "2000-01-15",
-        false,
-        true,
-      );
+      expect(users.refs.createProfile).toHaveBeenCalledWith("u1", "newsk8r", "Regular", "2000-01-15", false, true);
     });
   });
 

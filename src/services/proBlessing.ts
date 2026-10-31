@@ -16,7 +16,7 @@ import { logger } from "./logger";
 export const BLESSING_REASON_MIN = 10;
 export const BLESSING_REASON_MAX = 280;
 
-export type BlessingStatus = "pending" | "accepted" | "declined" | "expired" | "revoked";
+type BlessingStatus = "pending" | "accepted" | "declined" | "expired" | "revoked";
 
 export interface Blessing {
   id: string;
@@ -110,7 +110,7 @@ export function subscribeToPendingBlessings(uid: string, onUpdate: (items: Bless
 }
 
 /** The accepted blessing that made `uid` pro, or null (admin-seeded or none). */
-export async function fetchAcceptedBlessing(uid: string): Promise<Blessing | null> {
+async function fetchAcceptedBlessing(uid: string): Promise<Blessing | null> {
   const q = query(
     collection(firebase.requireDb(), "proBlessings"),
     where("targetUid", "==", uid),

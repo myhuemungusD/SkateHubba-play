@@ -174,7 +174,7 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 - **Cloud Firestore** — primary datastore, named database `"skatehubba"` (not default), offline persistence via `persistentLocalCache` + `persistentMultipleTabManager`
 - **Firebase Storage** — `set-{uid}.webm` / `match-{uid}.webm` (web) and `set-{uid}.mp4` / `match-{uid}.mp4` (native), 1KB–50MB, filename pinned to the uploader's UID; plus `users/{uid}/avatar.*` (≤2MB) and `userClips/{uid}/*`
 - **Firebase App Check** — reCAPTCHA v3 (web), DeviceCheck/Play Integrity (native)
-- **All game writes use `runTransaction`** — non-negotiable. Enforced across `games.create.ts`, `games.turns.ts`, `games.judge.ts`, `games.match.ts`, plus `spots.ts`, `users.ts`, and `clips.upvotes.ts` / `clips.writes.ts` (the vote and write paths for the clip feed).
+- **All game writes use `runTransaction`** — non-negotiable. Enforced across `games.create.ts`, `games.turns.ts`, `games.judge.ts`, `games.match.ts`, plus `spots.ts`, `users.ts`, and `clips.votes.ts` / `clips.writes.ts` (the vote and write paths for the clip feed).
 - **Three `onSnapshot` listeners for OR queries** in `games.subscriptions.ts` (player1Uid + player2Uid + judgeId merged in memory, `limit(20)` each by default)
 
 ### 4.4 Push & background work
@@ -432,7 +432,7 @@ screenshots/         — README images and brand assets
 - Smoke tests for all screens
 - Rules tests for any rule change
 - E2E for critical flows (signup, challenge, full game)
-- Pre-flight gate: `npm run verify` runs `tsc -b && lint && test:coverage && build && check:test-dup`. This is a **subset** of CI — full CI (`.github/workflows/main.yml` + `pr-gate.yml`) additionally runs `npm audit --audit-level=moderate` (blocking only when the change touches `package.json`/`package-lock.json`; report-only otherwise, with a nightly scheduled audit catching advisory drift against main's existing lockfile), an inline `as any` grep guard, `npm run test:e2e`, and the 9 `pr-gate.yml` jobs listed in §8. A clean `verify` is necessary but not sufficient.
+- Pre-flight gate: `npm run verify` runs `tsc -b && lint && check:dead && check:coverage-ignores && test:coverage && build && check:test-dup && check:dup`. This is a **subset** of CI — full CI (`.github/workflows/main.yml` + `pr-gate.yml`) additionally runs `npm audit --audit-level=moderate` (blocking only when the change touches `package.json`/`package-lock.json`; report-only otherwise, with a nightly scheduled audit catching advisory drift against main's existing lockfile), an inline `as any` grep guard, `npm run test:e2e`, and the 9 `pr-gate.yml` jobs listed in §8. A clean `verify` is necessary but not sufficient.
 - Never push code that will fail CI
 
 ---

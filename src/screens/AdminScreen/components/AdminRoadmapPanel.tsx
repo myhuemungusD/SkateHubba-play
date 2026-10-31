@@ -7,9 +7,9 @@ import { AdminInsightsPanel } from "./AdminInsightsPanel";
 
 /** Roadmap titles the admin console has built (hidden when its flag is on). */
 /** Roadmap titles the admin ops panel has built. */
-export const ADMIN_OPS_BUILT = ["Disputes queue", "Audit log"];
-export const ADMIN_INSIGHTS_BUILT = ["Analytics", "Announcements"];
-export const ADMIN_CONSOLE_BUILT = ["Bans list", "User search", "Feature switches"];
+const ADMIN_OPS_BUILT = ["Disputes queue", "Audit log"];
+const ADMIN_INSIGHTS_BUILT = ["Analytics", "Announcements"];
+const ADMIN_CONSOLE_BUILT = ["Bans list", "User search", "Feature switches"];
 
 const SECTIONS = [
   {

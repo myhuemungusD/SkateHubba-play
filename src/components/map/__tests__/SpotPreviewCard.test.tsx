@@ -6,6 +6,9 @@ import type { ReactElement } from "react";
 import { SpotPreviewCard } from "../SpotPreviewCard";
 
 vi.mock("../CheckInButton", () => ({ CheckInButton: () => <div data-testid="checkin-button" /> }));
+vi.mock("../../presence/WhosSkatingHere", () => ({
+  WhosSkatingHere: ({ spot }: { spot: { id: string } }) => <div data-testid="whos-skating">{spot.id}</div>,
+}));
 import type { Spot } from "../../../types/spot";
 
 /** Echoes the current router location.search so the test can assert it. */
@@ -165,6 +168,35 @@ describe("SpotPreviewCard map check-ins", () => {
     render(renderCard({ ...FIXTURE_SPOT, scope: "private" }));
     expect(screen.getByTestId("checkin-button")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "View Spot" })).toBeDisabled();
+    vi.unstubAllEnvs();
+  });
+
+  it("closes on Escape but not on other keys", () => {
+    const onClose = vi.fn();
+    render(renderCard(FIXTURE_SPOT, onClose));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.keyDown(dialog, { key: "Enter" });
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a touchend that had no matching touchstart", () => {
+    const onClose = vi.fn();
+    render(renderCard(FIXTURE_SPOT, onClose));
+    fireEvent.touchEnd(screen.getByRole("dialog"), { changedTouches: [{ clientY: 500 }] });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("shows who is skating here for public spots when spot presence is on, and the challenge CTA for private ones", () => {
+    vi.stubEnv("VITE_FEATURE_SPOT_PRESENCE", "true");
+    const { unmount } = render(renderCard(FIXTURE_SPOT));
+    expect(screen.getByTestId("whos-skating")).toHaveTextContent(FIXTURE_SPOT.id);
+    expect(screen.queryByRole("button", { name: /challenge from here/i })).toBeNull();
+    unmount();
+    render(renderCard({ ...FIXTURE_SPOT, scope: "private" }));
+    expect(screen.queryByTestId("whos-skating")).toBeNull();
+    expect(screen.getByRole("button", { name: /challenge from here/i })).toBeInTheDocument();
     vi.unstubAllEnvs();
   });
 });

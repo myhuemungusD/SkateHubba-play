@@ -77,7 +77,7 @@ const VOTE_DOC_IN_BATCH_LIMIT = 30;
  * these disputes the viewer has already ruled on: a single batched
  * `getDocs(query(disputeVotes, where(__name__, in, [...])))` keyed on the
  * deterministic `{uid}_{disputeId}` vote-doc ids — exactly the shape
- * `fetchClipUpvoteState` uses.
+ * `fetchClipVoteState` uses.
  *
  * The two players are filtered out before the network call: `castDisputeVerdict`
  * rejects them, so hydrating their state would burn reads with no UI value.
@@ -155,7 +155,7 @@ export async function fetchDisputeViewerState(
  * vote doc AND the incremented counter as a literal (`current + 1`, never
  * `increment(1)`). The literal lets us return the authoritative post-write
  * tally without a follow-up read, and it is the shape the security rule
- * matches — identical reasoning to `upvoteClip`.
+ * matches — identical reasoning to `castClipVote`.
  *
  * Only the counter that actually moved is written: the rule pairs a single
  * `+1` field delta with the matching vote-doc create-after, so a client
@@ -216,7 +216,7 @@ export async function castDisputeVerdict(
     }
     // permission-denied is ambiguous here. Either the vote doc already exists
     // and the rules rejected the implicit overwrite (a lost double-tap race,
-    // mirrors `upvoteClip`), or the dispute closed between feed render and
+    // mirrors `castClipVote`), or the dispute closed between feed render and
     // tap: closed disputes are participant/voter-only reads, so the tx.get
     // above is itself denied for a would-be first-time voter. The vote doc is
     // owner-readable, so one follow-up read on this error path tells the two

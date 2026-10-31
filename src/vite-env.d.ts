@@ -94,8 +94,8 @@ interface ImportMetaEnv {
   /** Feed modes switch: "true" shows Scroll / Name It / Vote / Judge toggle.
    *  Unset (default) keeps today's feed. Read via isFeedModesEnabled(). */
   readonly VITE_FEATURE_FEED_MODES_ENABLED?: string;
-  /** Post your makes switch: "true" shows GameOver post flow. Unset (default)
-   *  hides it. Read via isPostMakesEnabled(). */
+  /** Post your makes switch, reserved for the planned GameOver post flow
+   *  (docs/POST_MAKES.md). Nothing reads it yet. */
   readonly VITE_FEATURE_POST_MAKES_ENABLED?: string;
   /** Referee nomination on new games: "true" shows the picker and lets
    *  createGame stamp a judge. Unset (default) forces the honor system.

@@ -58,6 +58,18 @@ describe("installDynamicType", () => {
     teardown();
   });
 
+  it("falls back to 16px when the document has no window to measure with", () => {
+    // A detached document (no defaultView) can't compute styles; the probe
+    // reads as NaN and the root size must stay at the default.
+    const doc = document.implementation.createHTMLDocument("detached");
+    expect(doc.defaultView).toBeNull();
+    doc.documentElement.style.fontSize = "30px";
+    const teardown = installDynamicType({ document: doc } as unknown as Window, () => "ios");
+    expect(doc.documentElement.style.fontSize).toBe("");
+    expect(doc.body.children).toHaveLength(0); // the probe is cleaned up
+    teardown();
+  });
+
   it("uses Capacitor's platform by default", () => {
     const teardown = installDynamicType();
     expect(document.documentElement.style.fontSize).toBe("");

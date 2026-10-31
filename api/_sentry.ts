@@ -63,7 +63,7 @@ export function scrubString(value: string): string {
 }
 
 /** Deep-scrub any JSON-ish value. Depth-limited so a cyclic object can't hang. */
-export function scrubValue(value: unknown, depth = 0): unknown {
+function scrubValue(value: unknown, depth = 0): unknown {
   if (typeof value === "string") return scrubString(value);
   if (value === null || typeof value !== "object" || depth > 12) return value;
   if (Array.isArray(value)) return value.map((v) => scrubValue(v, depth + 1));

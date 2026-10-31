@@ -6,6 +6,7 @@ import {
   afterLandingPainted,
   clearBootAuthDraft,
   clearBootAuthMode,
+  getLandingBridge,
   hasBootAppleSignIn,
   hasBootGoogleSignIn,
   isLandingBooted,
@@ -16,6 +17,8 @@ import {
   runWhenIdle,
   setBootAuthMode,
   setLandingBooted,
+  setLandingBridge,
+  subscribeBootShell,
   updateBootAuthDraft,
   shouldBootLanding,
   takeBootAppleSignIn,
@@ -63,6 +66,13 @@ describe("shouldBootLanding", () => {
   });
 
   it("defaults to the global indexedDB (absent in jsdom → normal path)", async () => {
+    expect(await shouldBootLanding("/", false)).toBe(false);
+  });
+
+  it("reads the global indexedDB when the browser has one", async () => {
+    vi.stubGlobal("indexedDB", idbWith("other"));
+    expect(await shouldBootLanding("/", false)).toBe(true);
+    vi.stubGlobal("indexedDB", idbWith(FIREBASE_AUTH_IDB_NAME));
     expect(await shouldBootLanding("/", false)).toBe(false);
   });
 
@@ -117,6 +127,29 @@ describe("boot state and intents", () => {
     expect(hasBootAppleSignIn()).toBe(true);
     expect(takeBootAppleSignIn()).toBe(true);
     expect(hasBootAppleSignIn()).toBe(false);
+  });
+});
+
+describe("landing bridge", () => {
+  it("notifies subscribers only when the bridge actually changes", () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeBootShell(listener);
+    const bridge = {
+      googleLoading: false,
+      appleLoading: false,
+      onNav: vi.fn(),
+      onGo: vi.fn(),
+      onGoogle: vi.fn(),
+      onApple: vi.fn(),
+    };
+    setLandingBridge(bridge);
+    setLandingBridge(bridge);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(getLandingBridge()).toBe(bridge);
+    setLandingBridge(null);
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(getLandingBridge()).toBeNull();
+    unsubscribe();
   });
 });
 

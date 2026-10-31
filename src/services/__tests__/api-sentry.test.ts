@@ -120,6 +120,26 @@ describe("with SENTRY_DSN", () => {
     warn.mockRestore();
   });
 
+  it("labels the environment 'development' when neither VERCEL_ENV nor NODE_ENV is set", async () => {
+    vi.stubEnv("NODE_ENV", undefined);
+    try {
+      await ensureSentry();
+      expect(initOptions()).toMatchObject({ environment: "development", release: undefined });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("logs an init failure that is not an Error as 'unknown', never its contents", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    s.init.mockImplementationOnce(() => {
+      throw "dsn https://secret@example.invalid";
+    });
+    expect(await ensureSentry()).toBeNull();
+    expect(warn).toHaveBeenCalledWith(JSON.stringify({ event: "sentry_init_failed", message: "unknown" }));
+    warn.mockRestore();
+  });
+
   it("reports caught failures tagged with their log event name", async () => {
     await ensureSentry();
     const err = new Error("Firestore unavailable");

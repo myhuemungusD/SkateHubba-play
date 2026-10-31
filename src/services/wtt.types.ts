@@ -3,7 +3,7 @@
  * Server-written items, client-created votes, server-computed reliability.
  */
 
-export type WttItemStatus = "open" | "retired" | "pro_queue" | "excluded";
+type WttItemStatus = "open" | "retired" | "pro_queue" | "excluded";
 
 export type WttChoice = string | "unsure" | "not_landed";
 
@@ -26,12 +26,6 @@ export interface WttVote {
   uid: string;
   choice: WttChoice;
   createdAt: Date;
-}
-
-export interface WttGold {
-  answerTrickId: string;
-  source: "pro" | "consensus";
-  confirmedBy?: string;
 }
 
 export interface WttReliability {

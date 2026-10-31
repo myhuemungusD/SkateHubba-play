@@ -38,7 +38,7 @@ The CI allowlist (`verify-no-cloud-functions` in `.github/workflows/pr-gate.yml`
 - `functions/src/applyGameStats.test.ts`
 - `functions/src/dice/*.ts`
 
-This build adds no file under `functions/src/`. The gate does not change. `applyGameStats.ts` is 331 lines today, under the soft 400-line budget. If the XP math pushes it over 400, that is a warning. Splitting a new `functions/src/xp.ts` would fail the gate until you sign off on an allowlist edit, so the math stays in the allowlisted file.
+This build adds no file under `functions/src/`. The gate does not change. `applyGameStats.ts` is 693 lines today. The file-length gate (`scripts/check-file-length.mjs`) budgets only `src/`, so its size trips no check. Splitting a new `functions/src/xp.ts` would fail the gate until you sign off on an allowlist edit, so the math stays in the allowlisted file.
 
 `functions/tsconfig.json` compiles only `functions/src`. The function cannot import the app's `src/constants/`. The level formula below is integer arithmetic, so the function and the client can each carry a copy without float drift. Tests pin level 2 = 24, level 10 = 1,944, and level 50 = 57,624.
 

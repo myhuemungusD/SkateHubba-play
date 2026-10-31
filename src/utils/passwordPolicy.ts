@@ -24,9 +24,9 @@ export const MIRRORED_PASSWORD_POLICY: SignupPasswordPolicy = {
   requireNonAlphanumeric: false,
 };
 
-export type PasswordPolicyIssue = "short" | "long" | "number" | "lower" | "upper" | "symbol";
+type PasswordPolicyIssue = "short" | "long" | "number" | "lower" | "upper" | "symbol";
 
-export function passwordPolicyIssue(
+function passwordPolicyIssue(
   password: string,
   policy: SignupPasswordPolicy = MIRRORED_PASSWORD_POLICY,
 ): PasswordPolicyIssue | null {

@@ -8,7 +8,7 @@ import { callCloset } from "./closet.callable";
 import { withRetry } from "../utils/retry";
 import { parseFirebaseError } from "../utils/helpers";
 import { logger } from "./logger";
-import { toDateOrNull } from "./closet.time";
+import { toDateOrNull } from "./firestoreDate";
 import { trackEvent } from "./analytics";
 
 /** What the trading screen shows. Mapped from the server's status below. */
@@ -28,7 +28,7 @@ const STATUS_FROM_SERVER: Record<string, TradeStatus> = {
   declined: "declined",
 };
 
-export interface TradeItem {
+interface TradeItem {
   copyId: string;
   name: string;
   rarity: string;
@@ -171,7 +171,7 @@ export async function proposeTrade(params: ProposeTradeParams): Promise<{ tradeI
   }
 }
 
-export type TradeResponse = "accept" | "decline" | "cancel";
+type TradeResponse = "accept" | "decline" | "cancel";
 
 export interface RespondTradeParams {
   tradeId: string;

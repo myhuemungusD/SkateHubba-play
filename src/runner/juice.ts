@@ -1,7 +1,7 @@
 import type { Grade } from "./types";
 
 /** Speed lines start just above the cruise speed. Max speed is 9, so a gate above that never draws. */
-export const SPEED_LINE_START = 6.6;
+const SPEED_LINE_START = 6.6;
 
 export function speedLineOpacity(speed: number, reducedMotion: boolean, playing: boolean): number {
   if (reducedMotion || !playing || speed <= SPEED_LINE_START) return 0;
@@ -18,7 +18,7 @@ export function shouldPuffDust(
   return wasOnGrind && !onGrind && !reducedMotion && playing;
 }
 
-export const PERFECT_SHAKE_SECONDS = 0.28;
+const PERFECT_SHAKE_SECONDS = 0.28;
 const PERFECT_SHAKE_AMP = 0.04;
 
 export interface ShakeClock {

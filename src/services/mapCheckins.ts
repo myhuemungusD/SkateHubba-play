@@ -27,7 +27,7 @@ import type { CreateSpotRequest, Spot } from "../types/spot";
 export type CheckinScope = "public" | "private";
 export type SpotVisibility = "public" | "crew" | "private";
 
-export type CheckinCode =
+type CheckinCode =
   | "ok"
   | "duplicate"
   | "cooldown_spot"

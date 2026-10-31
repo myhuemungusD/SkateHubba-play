@@ -1,15 +1,27 @@
-import { collection, doc, runTransaction, serverTimestamp, Timestamp, arrayUnion } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  runTransaction,
+  serverTimestamp,
+  Timestamp,
+  arrayUnion,
+  type DocumentReference,
+  type Transaction,
+} from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { metrics } from "./logger";
 import { writeLandedClipsInTransaction } from "./clips";
 import { writeNotificationInTx } from "./notifications";
-import { createPushDispatchOutbox, drainPushDispatchOutbox, resetPushDispatchOutbox } from "./pushDispatch";
+import {
+  createPushDispatchOutbox,
+  drainPushDispatchOutbox,
+  resetPushDispatchOutbox,
+  type PushDispatchOutbox,
+} from "./pushDispatch";
 import { toGameDoc, type GameDoc } from "./games.mappers";
-import { TURN_DURATION_MS } from "./turnDuration";
+import { turnDurationMsFor } from "./turnDuration";
 import { decideExpiredForfeit, type ForfeitGameUpdate } from "./turnForfeit.shared";
 import { applyTrainingLabelPending } from "./trainingLabels.materialize";
-
-export { TURN_DURATION_MS };
 
 export function gamesRef() {
   return collection(requireDb(), "games");
@@ -41,14 +53,14 @@ export function recordGameCreation(): void {
   lastGameCreatedAt = Date.now();
 }
 
-export function checkTurnActionRate(gameId: string): void {
+function checkTurnActionRate(gameId: string): void {
   const last = lastTurnActionAt.get(gameId) ?? 0;
   if (Date.now() - last < TURN_ACTION_COOLDOWN_MS) {
     throw new Error("Please wait before submitting another action");
   }
 }
 
-export function recordTurnAction(gameId: string): void {
+function recordTurnAction(gameId: string): void {
   const now = Date.now();
   lastTurnActionAt.set(gameId, now);
   // Drop entries past the cooldown window so the map stays bounded by
@@ -57,6 +69,41 @@ export function recordTurnAction(gameId: string): void {
   for (const [id, ts] of lastTurnActionAt) {
     if (ts < cutoff) lastTurnActionAt.delete(id);
   }
+}
+
+/** What a turn action's transaction body gets: the live, still-active game. */
+export interface ActiveGameTurn {
+  tx: Transaction;
+  gameRef: DocumentReference;
+  game: GameDoc;
+  pushOutbox: PushDispatchOutbox;
+}
+
+/**
+ * The shared shape of a client turn action: rate-check, run `body` in one
+ * transaction against the game (throwing if it is gone or already over), then
+ * drain the staged pushes and record the action once the transaction commits.
+ * The outbox is reset per attempt so a transaction retry never double-sends.
+ * Firestore transactions retry transient conflicts on their own; withRetry is
+ * not used here because it would also retry app-logic errors.
+ */
+export async function runActiveGameTurn<T>(gameId: string, body: (turn: ActiveGameTurn) => Promise<T>): Promise<T> {
+  checkTurnActionRate(gameId);
+  const gameRef = doc(requireDb(), "games", gameId);
+  const pushOutbox = createPushDispatchOutbox();
+
+  const result = await runTransaction(requireDb(), async (tx) => {
+    resetPushDispatchOutbox(pushOutbox);
+    const snap = await tx.get(gameRef);
+    if (!snap.exists()) throw new Error("Game not found");
+
+    const game = toGameDoc(snap);
+    if (game.status !== "active") throw new Error("Game is already over");
+    return body({ tx, gameRef, game, pushOutbox });
+  });
+  void drainPushDispatchOutbox(pushOutbox);
+  recordTurnAction(gameId);
+  return result;
 }
 
 /** @internal Reset rate-limit state (for tests only) */
@@ -212,4 +259,25 @@ export function toWebGameUpdate(update: ForfeitGameUpdate): Record<string, unkno
   if (update.appendTurnRecord !== undefined) out.turnHistory = arrayUnion(update.appendTurnRecord);
   applyTrainingLabelPending(out, update.appendTurnRecord);
   return out;
+}
+
+/**
+ * Close out a scored round on `updates`: mark the game complete with its
+ * winner, or hand the next turn to `nextSetter` with a fresh deadline.
+ */
+export function applyRoundOutcome(
+  updates: Record<string, unknown>,
+  game: GameDoc,
+  outcome: { gameOver: boolean; winner: string | null; nextSetter: string },
+): void {
+  if (outcome.gameOver) {
+    updates.status = "complete";
+    updates.winner = outcome.winner;
+  } else {
+    updates.phase = "setting";
+    updates.currentSetter = outcome.nextSetter;
+    updates.currentTurn = outcome.nextSetter;
+    updates.turnDeadline = Timestamp.fromMillis(Date.now() + turnDurationMsFor(game));
+    updates.turnNumber = game.turnNumber + 1;
+  }
 }

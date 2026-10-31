@@ -216,6 +216,14 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Dead code (knip)
+        run: npm run check:dead
+
+      - name: Duplicated production code (jscpd)
+        # Only the intentional api/ <-> functions/ push mirrors and the OFL font
+        # licenses are allowlisted in .jscpd.json.
+        run: npm run check:dup
+
       - name: Type check
         run: npx tsc -b
 

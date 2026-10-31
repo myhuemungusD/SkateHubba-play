@@ -104,6 +104,8 @@ describe("project", () => {
     expect(addCut(p, 2, "nope")).toBe(p);
     expect(angleAt(p, 0.5).id).toBe("main");
     expect(angleAt(p, 4).id).toBe("b");
+    // A cut that points at a removed angle falls back to angle 0.
+    expect(angleAt({ ...p, cuts: [{ atSec: 0, angleId: "gone" }] }, 1).id).toBe("main");
     expect(removeAngle(p, "main")).toBe(p);
     const r = removeAngle(p, "b");
     expect(r.angles).toHaveLength(1);
@@ -155,6 +157,9 @@ describe("beats", () => {
     expect(g).toEqual([0, 0.5, 1, 1.5, 2]);
     expect(beatGrid(120, 0.25, 1)).toEqual([0.25, 0.75]);
     expect(beatGrid(0, 0, 2)).toEqual([]);
+    // An offset a hair past a beat (inside the 1e-9 ceil tolerance) must not
+    // emit that beat at a negative output time; the grid starts one beat later.
+    expect(beatGrid(1, 120.00000003, 100)).toEqual([60]);
     expect(snapToBeat(0.6, g)).toBe(0.5);
     expect(snapToBeat(0.6, [])).toBe(0.6);
   });
@@ -284,6 +289,14 @@ describe("export plan", () => {
     expect(plan.exceedsUploadCap).toBe(false);
     expect(bitrateFor("720p", 30)).toBe(6_000_000);
   });
+
+  it("keeps the full bitrate for a zero-length edit instead of dividing by zero", () => {
+    const p = { ...base(), trimOutSec: 0 };
+    const plan = planExport(p, WEB_CAPABILITIES);
+    expect(plan.durationSec).toBe(0);
+    expect(plan.uploadBitrate).toBe(plan.bitrate);
+    expect(plan.estimatedBytes).toBe(0);
+  });
 });
 
 describe("sfx trim", () => {
@@ -307,6 +320,12 @@ describe("sfx trim", () => {
     expect(setSfxGain(t, sid, 5).sfx[0].gain).toBe(2);
     expect(setSfxGain(t, "other", 5).sfx[0].gain).toBe(1);
     expect(sfxSpan({ id: "x", soundId: "nope", outAtSec: 0, gain: 1 }).length).toBe(0);
+    // A placement whose sound left the library trims against a 0 s file: it
+    // collapses to an empty span (which sfxSchedule then never plays).
+    const orphan = { ...p, sfx: [{ id: "o", soundId: "nope", outAtSec: 0, gain: 1 }] };
+    const trimmed = trimSfx(orphan, "o", 0.1, 0.2).sfx[0];
+    expect(trimmed).toMatchObject({ trimStartSec: 0, trimEndSec: 0 });
+    expect(sfxSpan(trimmed).length).toBe(0);
   });
 
   it("sfxSchedule plays only the trimmed part, with fades, from any playhead", () => {

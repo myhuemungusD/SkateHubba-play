@@ -95,7 +95,13 @@ describe("GameOverScreen", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     fetchResolvedDispute.mockRejectedValueOnce(new Error("offline"));
     render(<GameOverScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
-    await waitFor(() => expect(warn).toHaveBeenCalledWith("dispute_result_fetch_failed", expect.any(Error)));
+    await waitFor(() =>
+      expect(warn).toHaveBeenCalledWith("[WARN]", "dispute_result_fetch_failed", {
+        gameId: "game1",
+        error: "offline",
+        stack: expect.stringContaining("Error: offline"),
+      }),
+    );
     expect(screen.queryByText("COMMUNITY VERDICT")).not.toBeInTheDocument();
     warn.mockRestore();
   });

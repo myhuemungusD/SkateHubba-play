@@ -24,13 +24,13 @@ function fmt(n: number): string {
   return n.toLocaleString("en-US");
 }
 
-export interface HandView {
+interface HandView {
   dice: number[];
   label: string;
 }
 
 /** One finished round (C-Lo, 4-5-6) or hand (craps, 10,000), for the history list. */
-export interface RoundRecord {
+interface RoundRecord {
   round: number;
   winner: string | null;
   points: number;

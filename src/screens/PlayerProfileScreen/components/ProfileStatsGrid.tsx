@@ -29,7 +29,7 @@ import { LastTenPips } from "./LastTenPips";
  */
 
 /** A one-game "streak" is just a win; the flame starts at two. */
-export const MIN_DISPLAYED_WIN_STREAK = 2;
+const MIN_DISPLAYED_WIN_STREAK = 2;
 
 interface Props {
   stats: ProfileStats;
