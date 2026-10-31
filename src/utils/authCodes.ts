@@ -38,6 +38,11 @@ const BENIGN_AUTH_CODES: ReadonlySet<string> = new Set([
   "auth/invalid-verification-code",
   "auth/missing-verification-code",
   "auth/code-expired",
+  // A native Apple/Google sign-in sheet could not run on this device
+  // (services/nativeSignInErrors). The service already sends one Sentry
+  // warning with the reason; an exception on top would only be noise.
+  "sign-in/apple-unavailable",
+  "sign-in/google-unavailable",
 ]);
 
 export function isBenignAuthCode(code: string): boolean {
@@ -101,6 +106,10 @@ export function getAuthErrorMessage(code: string): string | null {
       return "That code didn't match. Try again.";
     case "auth/code-expired":
       return "That code expired. Request a new one.";
+    case "sign-in/apple-unavailable":
+      return "Sign in with Apple isn't available right now. Please use Email instead.";
+    case "sign-in/google-unavailable":
+      return "Sign in with Google isn't available right now. Please use Email instead.";
     default:
       return null;
   }

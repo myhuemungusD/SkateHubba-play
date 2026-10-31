@@ -22,6 +22,14 @@ import { captureException } from "../lib/sentry";
 import { getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { verificationContinueHost } from "../utils/verificationEmail";
 import { logger } from "./logger";
+import {
+  isAppleSheetCancel,
+  isAppleSignInUnavailable,
+  isGoogleSheetCancel,
+  isGoogleSignInUnavailable,
+  reportSignInUnavailable,
+  signInDismissedError,
+} from "./nativeSignInErrors";
 
 export type AuthUser = User;
 
@@ -384,6 +392,14 @@ export async function signInWithGoogle(): Promise<User | null> {
       logger.info("google_sign_in_native_success", { uid: result.user.uid, email: result.user.email });
       return result.user;
     } catch (err: unknown) {
+      if (isGoogleSheetCancel(err)) {
+        logger.info("google_sign_in_native_dismissed");
+        throw signInDismissedError("google", err);
+      }
+      if (isGoogleSignInUnavailable(err)) {
+        logger.warn("google_sign_in_native_unavailable", { reason: "cannot_present" });
+        throw reportSignInUnavailable("google", err);
+      }
       const code = getErrorCode(err);
       logger.error("google_sign_in_native_error", { code, message: parseFirebaseError(err) });
       throw err;
@@ -407,29 +423,6 @@ export async function signInWithGoogle(): Promise<User | null> {
     logger.error("google_sign_in_popup_error", { code, message: parseFirebaseError(err) });
     throw err;
   }
-}
-
-/**
- * Apple's native cancel is ASAuthorizationError.canceled (code 1001). The
- * Capacitor plugin does not map that onto a Firebase auth code, so the JS
- * error is either code 1001 or a message that mentions 1001 / "cancel".
- * The UI already treats `auth/popup-closed-by-user` as a silent dismiss.
- */
-function isAppleUserCancel(err: unknown): boolean {
-  const code = getErrorCode(err);
-  if (code === "1001" || code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
-    return true;
-  }
-  if (typeof err === "object" && err !== null && "code" in err && (err as { code: unknown }).code === 1001) {
-    return true;
-  }
-  const text = parseFirebaseError(err);
-  return /\b1001\b/.test(text) || /cancel/i.test(text);
-}
-
-function appleCancelError(err: unknown): Error {
-  const wrapped = new Error("Apple sign-in was cancelled");
-  return Object.assign(wrapped, { code: "auth/popup-closed-by-user", cause: err });
 }
 
 function makeAppleProvider(): OAuthProvider {
@@ -469,9 +462,13 @@ export async function signInWithApple(): Promise<User | null> {
       logger.info("apple_sign_in_native_success", { uid: result.user.uid, email: result.user.email });
       return result.user;
     } catch (err: unknown) {
-      if (isAppleUserCancel(err)) {
+      if (isAppleSheetCancel(err)) {
         logger.info("apple_sign_in_native_dismissed", { code: getErrorCode(err) || "1001" });
-        throw appleCancelError(err);
+        throw signInDismissedError("apple", err);
+      }
+      if (isAppleSignInUnavailable(err)) {
+        logger.warn("apple_sign_in_native_unavailable", { nativeCode: "1000" });
+        throw reportSignInUnavailable("apple", err);
       }
       const code = getErrorCode(err);
       logger.error("apple_sign_in_native_error", { code, message: parseFirebaseError(err) });

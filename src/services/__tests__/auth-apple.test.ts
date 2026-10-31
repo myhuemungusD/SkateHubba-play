@@ -69,6 +69,10 @@ vi.mock("@capacitor-firebase/authentication", () => ({
 }));
 
 vi.mock("../../firebase");
+vi.mock("../../lib/sentry", async (importOriginal) =>
+  (await import("./nativeSignIn.test-helpers")).sentryWithCaptureMessageSpy(importOriginal),
+);
+import { captureMessageSpy, unavailableWarning } from "./nativeSignIn.test-helpers";
 
 import { signInWithApple } from "../auth";
 
@@ -142,7 +146,7 @@ describe("signInWithApple (native)", () => {
     await expect(signInWithApple()).rejects.toMatchObject({ code: "auth/popup-closed-by-user" });
   });
 
-  it("maps a Firebase popup dismiss and a message that says cancelled", async () => {
+  it("maps a Firebase popup dismiss and Apple's cancel NSError", async () => {
     mockNativeSignInWithApple.mockRejectedValueOnce({ code: "auth/popup-closed-by-user" });
     await expect(signInWithApple()).rejects.toMatchObject({ code: "auth/popup-closed-by-user" });
 
@@ -151,14 +155,33 @@ describe("signInWithApple (native)", () => {
 
     mockNativeSignInWithApple.mockRejectedValueOnce(new Error("AuthorizationError error 1001"));
     await expect(signInWithApple()).rejects.toMatchObject({ code: "auth/popup-closed-by-user" });
+  });
 
-    mockNativeSignInWithApple.mockRejectedValueOnce(new Error("User canceled the authorization"));
-    await expect(signInWithApple()).rejects.toMatchObject({ code: "auth/popup-closed-by-user" });
+  it("does not treat free text that says cancel as the user closing the sheet", async () => {
+    // Only Apple's domain + code means a cancel; a word match would hide real
+    // failures such as a cancelled network request.
+    const err = new Error("User canceled the authorization");
+    mockNativeSignInWithApple.mockRejectedValueOnce(err);
+    await expect(signInWithApple()).rejects.toBe(err);
+  });
+
+  it("turns ASAuthorizationError 1000 into the use-Email error and one fixed Sentry warning", async () => {
+    const err = new Error(
+      "The operation couldn’t be completed. (com.apple.AuthenticationServices.AuthorizationError error 1000.)",
+    );
+    mockNativeSignInWithApple.mockRejectedValueOnce(err);
+
+    await expect(signInWithApple()).rejects.toMatchObject({ code: "sign-in/apple-unavailable", cause: err });
+
+    expect(mockSignInWithCredential).not.toHaveBeenCalled();
+    expect(captureMessageSpy).toHaveBeenCalledTimes(1);
+    expect(captureMessageSpy).toHaveBeenCalledWith(...unavailableWarning("apple"));
   });
 
   it("rethrows a real native failure", async () => {
     const err = new Error("network down");
     mockNativeSignInWithApple.mockRejectedValueOnce(err);
     await expect(signInWithApple()).rejects.toBe(err);
+    expect(captureMessageSpy).not.toHaveBeenCalled();
   });
 });

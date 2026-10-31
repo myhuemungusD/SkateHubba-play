@@ -29,6 +29,7 @@ const {
   mockSetSentryUser,
   mockConsent,
   mockSignInWithGoogle,
+  mockSignInWithApple,
   mockResolveGoogleRedirect,
   mockGetMfaChallenge,
   mockAnalyticsSignIn,
@@ -52,6 +53,7 @@ const {
   // Default: no analytics consent. Individual tests flip this to true.
   mockConsent: vi.fn<() => boolean>(() => false),
   mockSignInWithGoogle: vi.fn(),
+  mockSignInWithApple: vi.fn(),
   mockResolveGoogleRedirect: vi.fn<() => Promise<unknown>>(() => Promise.resolve(null)),
   // Default: nothing is a second-factor challenge (matches the real total
   // function's behaviour for every non-MFA error).
@@ -68,7 +70,7 @@ vi.mock("../../hooks/useAuth", () => ({
 vi.mock("../../services/auth", () => ({
   signOut: vi.fn(),
   signInWithGoogle: (...args: unknown[]) => mockSignInWithGoogle(...args),
-  signInWithApple: vi.fn(),
+  signInWithApple: (...args: unknown[]) => mockSignInWithApple(...args),
   resolveGoogleRedirect: () => mockResolveGoogleRedirect(),
   deleteAccount: (...args: unknown[]) => mockDeleteAccount(...args),
 }));
@@ -311,6 +313,28 @@ describe("identity sync", () => {
   });
 });
 
+// Exposes the live context so tests can drive the social sign-in
+// flows and read back their state.
+function renderCtx(): { current: ReturnType<typeof useAuthContext> | null } {
+  const ctxRef: { current: ReturnType<typeof useAuthContext> | null } = { current: null };
+  function Harness() {
+    const ctx = useAuthContext();
+    // Mirrored in an effect (not during render) so the value published to the
+    // test is always one React has committed. `value` is a fresh object each
+    // render, so this re-runs whenever anything in the context changes.
+    useEffect(() => {
+      ctxRef.current = ctx;
+    }, [ctx]);
+    return null;
+  }
+  render(
+    <AuthProvider>
+      <Harness />
+    </AuthProvider>,
+  );
+  return ctxRef;
+}
+
 /**
  * Second-factor challenge capture. Users with MFA enrolled used to be stranded:
  * the Google popup rejected with auth/multi-factor-auth-required and the raw
@@ -318,28 +342,6 @@ describe("identity sync", () => {
  */
 describe("mfa challenge", () => {
   const challenge = { resolver: {}, hints: [{ uid: "f1", factorId: "phone" }] };
-
-  // Exposes the live context so tests can drive the Google flow and read back
-  // the challenge state.
-  function renderCtx(): { current: ReturnType<typeof useAuthContext> | null } {
-    const ctxRef: { current: ReturnType<typeof useAuthContext> | null } = { current: null };
-    function Harness() {
-      const ctx = useAuthContext();
-      // Mirrored in an effect (not during render) so the value published to the
-      // test is always one React has committed. `value` is a fresh object each
-      // render, so this re-runs whenever anything in the context changes.
-      useEffect(() => {
-        ctxRef.current = ctx;
-      }, [ctx]);
-      return null;
-    }
-    render(
-      <AuthProvider>
-        <Harness />
-      </AuthProvider>,
-    );
-    return ctxRef;
-  }
 
   // Starting point for the "how does it get cleared" cases: a provider with a
   // challenge already captured.
@@ -1175,5 +1177,59 @@ describe("handleDownloadData", () => {
         codes: { profile: "unavailable", gamesAsPlayer1: "unavailable" },
       },
     });
+  });
+});
+
+describe("social sign-in sheet unavailable or dismissed", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetMfaChallenge.mockReturnValue(null);
+    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+  });
+
+  it.each([
+    {
+      method: "apple" as const,
+      code: "sign-in/apple-unavailable",
+      message: "Sign in with Apple isn't available right now. Please use Email instead.",
+    },
+    {
+      method: "google" as const,
+      code: "sign-in/google-unavailable",
+      message: "Sign in with Google isn't available right now. Please use Email instead.",
+    },
+  ])("points $method users to Email without an exception or a stuck spinner", async ({ method, code, message }) => {
+    const signIn = method === "apple" ? mockSignInWithApple : mockSignInWithGoogle;
+    signIn.mockRejectedValueOnce(Object.assign(new Error(`${method}_sign_in_unavailable`), { code }));
+
+    const ctx = renderCtx();
+    await act(async () => {
+      await (method === "apple" ? ctx.current?.handleAppleSignIn() : ctx.current?.handleGoogleSignIn());
+    });
+
+    expect(ctx.current?.googleError).toBe(message);
+    // The service already sent the one Sentry warning; no exception on top.
+    expect(mockCaptureException).not.toHaveBeenCalled();
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(`${method}_sign_in_known_error`, { code });
+    expect(mockLoggerError).not.toHaveBeenCalled();
+    expect(mockMetricsSignInFailure).toHaveBeenCalledWith(method, code);
+    expect(ctx.current?.appleLoading).toBe(false);
+    expect(ctx.current?.googleLoading).toBe(false);
+  });
+
+  it("stays silent when the Google sheet is closed", async () => {
+    mockSignInWithGoogle.mockRejectedValueOnce(
+      Object.assign(new Error("Google sign-in was cancelled"), { code: "auth/popup-closed-by-user" }),
+    );
+
+    const ctx = renderCtx();
+    await act(async () => {
+      await ctx.current?.handleGoogleSignIn();
+    });
+
+    expect(ctx.current?.googleError).toBe("");
+    expect(mockCaptureException).not.toHaveBeenCalled();
+    expect(mockLoggerInfo).toHaveBeenCalledWith("google_sign_in_dismissed", { code: "auth/popup-closed-by-user" });
+    expect(ctx.current?.googleLoading).toBe(false);
   });
 });

@@ -21,6 +21,11 @@ describe("isBenignAuthCode", () => {
     expect(isBenignAuthCode("auth/timeout")).toBe(true);
   });
 
+  it("treats a native sign-in sheet that cannot run as benign (the service sends its own warning)", () => {
+    expect(isBenignAuthCode("sign-in/apple-unavailable")).toBe(true);
+    expect(isBenignAuthCode("sign-in/google-unavailable")).toBe(true);
+  });
+
   it("treats infra/config codes as non-benign so they reach Sentry", () => {
     // auth/internal-error is the exact signal we need to alert on — must not
     // be filtered as benign or outage detection breaks.
@@ -51,6 +56,15 @@ describe("getAuthErrorMessage", () => {
     expect(getAuthErrorMessage("auth/web-storage-unsupported")).toMatch(/private browsing|different browser/i);
     expect(getAuthErrorMessage("auth/missing-or-invalid-nonce")).toMatch(/reload the page/i);
     expect(getAuthErrorMessage("auth/timeout")).toMatch(/network/i);
+  });
+
+  it("points users to Email when a native sign-in sheet cannot run", () => {
+    expect(getAuthErrorMessage("sign-in/apple-unavailable")).toBe(
+      "Sign in with Apple isn't available right now. Please use Email instead.",
+    );
+    expect(getAuthErrorMessage("sign-in/google-unavailable")).toBe(
+      "Sign in with Google isn't available right now. Please use Email instead.",
+    );
   });
 
   it("maps rate-limit codes to the same wait message", () => {
